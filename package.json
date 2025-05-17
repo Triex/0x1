@@ -5,9 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "0x1": "./bin/0x1.js"
-  },
+  "bin": "./bin/0x1",
   "preferUnplugged": true,
   "files": [
     "dist",

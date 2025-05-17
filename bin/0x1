@@ -1,56 +1,57 @@
-#!/usr/bin/env bash
-# 0x1 CLI Launcher
-# This script ensures the CLI is executed with Bun
+#!/usr/bin/env node
 
-# Find the Bun executable
-BUN_PATH=$(which bun)
+/**
+ * 0x1 CLI Entry Point 
+ * Uses Node.js compatibility for global binary exposure
+ * But executes with Bun runtime
+ */
 
-if [ -z "$BUN_PATH" ]; then
-  echo "Error: Bun is required but not found in PATH"
-  echo "Please install Bun: https://bun.sh"
-  exit 1
-fi
+// Explicitly use the node built-ins for maximum compatibility
+const path = require('path');
+const { spawnSync } = require('child_process');
 
-# Get the directory of this script
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+// Potential locations for the CLI script
+const locations = [
+  // Local development or npm/yarn link
+  path.join(__dirname, '../dist/cli/index.js'),
+  // Global Bun installation locations
+  path.join(process.env.HOME || '', '.bun/install/global/node_modules/0x1/dist/cli/index.js'),
+  // Try to use globally installed executable directly if above fails
+  '0x1'
+];
 
-# Determine the real path to the CLI script
-# For global installations, we need to look in the package's node_modules directory
-CLI_SCRIPT="$DIR/../dist/cli/index.js"
-
-# If the CLI script doesn't exist at the expected path, try to find it in node_modules
-if [ ! -f "$CLI_SCRIPT" ]; then
-  # Check common install locations for Bun global packages
-  # This handles both global installations and linked packages
-  POSSIBLE_PATHS=(
-    "$DIR/../node_modules/0x1/dist/cli/index.js"
-    "$HOME/.bun/install/global/node_modules/0x1/dist/cli/index.js"
-    "/usr/local/lib/node_modules/0x1/dist/cli/index.js"
-    "$HOME/.node_modules/0x1/dist/cli/index.js"
-    "$HOME/.bun/node_modules/0x1/dist/cli/index.js"
-  )
-
-  for path in "${POSSIBLE_PATHS[@]}"; do
-    if [ -f "$path" ]; then
-      CLI_SCRIPT="$path"
-      break
-    fi
-  done
-fi
-
-# If we still can't find the CLI script, try a fallback approach
-if [ ! -f "$CLI_SCRIPT" ]; then
-  # Try to find it using Bun's install location
-  BUNX_PATH=$(which bunx)
-  if [ -n "$BUNX_PATH" ]; then
-    exec "$BUNX_PATH" 0x1 "$@"
-    exit $?
-  fi
+// Try to execute Bun with the CLI script
+try {
+  // Run with Bun using the first available path
+  const args = process.argv.slice(2);
+  let bunArgs = [];
   
-  echo "Error: Could not find 0x1 CLI script"
-  echo "Please reinstall 0x1 using: bun install -g 0x1"
-  exit 1
-fi
+  // Find an existing CLI script path
+  const fs = require('fs');
+  for (const loc of locations) {
+    if (loc === '0x1') {
+      // If we get here, use bunx as a last resort
+      const result = spawnSync('bunx', ['0x1', ...args], { stdio: 'inherit' });
+      process.exit(result.status || 0);
+    } else if (fs.existsSync(loc)) {
+      bunArgs = [loc, ...args];
+      break;
+    }
+  }
+  
+  if (bunArgs.length === 0) {
+    throw new Error('Could not find 0x1 CLI script');
+  }
 
-# Execute the CLI with Bun
-exec "$BUN_PATH" "$CLI_SCRIPT" "$@"
+  // Execute with Bun
+  const result = spawnSync('bun', bunArgs, { stdio: 'inherit' });
+  process.exit(result.status || 0);
+} catch (error) {
+  console.error('Error executing 0x1 CLI:', error.message);
+  console.error('\nMake sure Bun is installed and try reinstalling with: bun install -g 0x1');
+  console.error('You may need to add ~/.bun/bin to your PATH');
+  console.error('\nAdd this to your profile (~/.zshrc, ~/.bashrc, etc.):');
+  console.error('export BUN_INSTALL="$HOME/.bun"');
+  console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
+  process.exit(1);
+}
