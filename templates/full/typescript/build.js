@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { build } from 'bun';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,6 +18,13 @@ async function main() {
       './sw-register.ts'
     ];
     
+    // Initialize Bun's transpiler once for all files
+    const transpiler = new Bun.Transpiler({
+      loader: 'ts',
+      target: 'browser',
+      minify: false
+    });
+    
     for (const tsFile of tsFiles) {
       try {
         // Check if file exists
@@ -34,11 +40,7 @@ async function main() {
         const source = await Bun.file(tsFile).text();
         
         // Use Bun's built-in transpiler
-        const result = await Bun.transformSync(source, {
-          loader: 'ts',
-          target: 'browser',
-          minify: false,
-        });
+        const result = transpiler.transformSync(source);
         
         // Convert ES modules to regular browser JS by removing import/export statements
         const browserJS = result.code
