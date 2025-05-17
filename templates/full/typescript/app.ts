@@ -137,8 +137,13 @@ ready(() => {
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
     // Log that button was clicked for debugging
     console.log('Theme toggle button clicked');
-    // Directly call toggleTheme instead of dispatching an event
+    
+    // Directly call toggleTheme
     toggleTheme();
+    
+    // Force the page to reflect changes immediately
+    const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    console.log(`Theme is now: ${currentTheme}`);
   });
   
   // Set up mobile menu toggle

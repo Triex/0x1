@@ -30,11 +30,15 @@ export class Router {
   renderRoute(path: string): void {
     console.log(`Rendering route: ${path}`);
     
-    // Check if we should be targeting main-content instead of the root
+    // ALWAYS target the main-content element
     const mainContent = document.getElementById('main-content');
-    const targetElement = mainContent || this.root;
+    if (!mainContent) {
+      console.error('Main content container not found, falling back to root element');
+    }
     
-    console.log(`Target element for content: ${mainContent ? 'main-content' : 'root'}`);
+    // Use main content if available, otherwise fall back to root
+    const targetElement = mainContent || this.root;
+    console.log(`Target element for content:`, targetElement);
     
     // Clear current content
     while (targetElement.firstChild) {

@@ -6,14 +6,14 @@
   <title>0x1 Full App</title>
   <!-- CSS path that works with 0x1 dev server -->
   <link rel="stylesheet" href="/styles/tailwind.css">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0077cc">
   <meta name="description" content="0x1 Full-Featured Application">
   <!-- iOS PWA meta tags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="apple-touch-icon" href="./public/icons/icon-192x192.png">
+  <link rel="apple-touch-icon" href="/public/icons/icon-192x192.png">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white min-h-screen transition-colors duration-200">
   <!-- App Shell -->
@@ -23,7 +23,7 @@
       <nav class="container mx-auto px-4 py-3 flex items-center justify-between">
         <div class="flex items-center space-x-4">
           <a href="/" class="flex items-center space-x-2">
-            <img src="./public/favicon.svg" alt="Logo" class="w-8 h-8" />
+            <img src="/public/favicon.svg" alt="Logo" class="w-8 h-8" />
             <span class="text-primary-600 dark:text-primary-400 font-bold text-xl">0x1</span>
           </a>
           <div class="hidden md:flex space-x-6">
@@ -97,6 +97,6 @@
   <script type="module" src="./app.js"></script>
 
   <!-- Service worker registration -->
-  <script type="module" src="./sw-register.ts"></script>
+  <script type="module" src="./sw-register.js"></script>
 </body>
 </html>

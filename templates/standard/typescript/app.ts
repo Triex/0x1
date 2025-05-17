@@ -21,12 +21,15 @@ function ready(callback: () => void): void {
 
 // Initialize the app
 ready(() => {
+  console.log('DOM ready - initializing app');
   const appRoot = document.getElementById('app');
   
   if (!appRoot) {
     console.error('App root element not found');
     return;
   }
+  
+  console.log('App root found, initializing structure');
   
   // Create layout container
   const container = document.createElement('div');
