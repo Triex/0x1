@@ -1,6 +1,6 @@
 {
   "name": "0x1-store",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,5 +17,11 @@
   ],
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "author": "TriexDev",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Triex/0x1"
   }
 }
