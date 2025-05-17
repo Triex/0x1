@@ -314,15 +314,20 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
             // Determine the loader based on the file extension
             const loader = path.endsWith('.tsx') ? 'tsx' : 'ts';
             
-            const result = Bun.transpileFile(filePath, {
-              loader,
-              target: 'browser',
-              platform: 'browser',
-              minify: false,
-              tsc: {
-                target: 99, // esnext
-                module: 99, // esnext
+            // Read the file content
+            const fileContent = await Bun.file(filePath).text();
+            
+            // Use TypeScript's transpileModule for both TS and TSX files
+            const { transpileModule } = require('typescript');
+            
+            const result = transpileModule(fileContent, {
+              compilerOptions: {
+                target: 99, // ESNext
+                module: 99, // ESNext
                 moduleResolution: 2, // node
+                jsx: path.endsWith('.tsx') ? 4 : 0, // 4 = React JSX, 0 = None
+                jsxFactory: 'createElement',
+                jsxFragmentFactory: 'Fragment',
                 esModuleInterop: true,
                 skipLibCheck: true,
                 allowSyntheticDefaultImports: true,
