@@ -102,14 +102,14 @@ interface Args {
 // CLI banner
 const showBanner = () => {
   logger.banner([
-    ' _______            ____ ',
-    '\   _  \  ___  ___/_   |',
-    '/  /_\  \ \  \/  / |   |',
-    '\  \_/   \ >    <  |   |',
-    ' \_____  //__/\_ \ |___| framework',
-    '       \/       \/      '
+    ' ██████╗  ██╗  ██╗ ███╗',
+    '██╔═══██╗ ╚██╗██╔╝ ╚██║',
+    '██║   ██║  ╚███╔╝   ██║',
+    '██║   ██║  ██╔██╗   ██║',
+    '╚██████╔╝ ██╔╝ ██╗  ██║',
+    ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
-  logger.info(`v0.0.17 - The ultra-minimal TypeScript framework`);
+  logger.info(`v0.0.18 - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
 
