@@ -75,7 +75,19 @@ class Router {
     }
     
     console.log(`Executing handler for path: ${path}`);
+    
+    // Ensure main content container exists
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) {
+      console.error('Main content container not found');
+      return;
+    }
+    
+    // Execute route handler
     routeHandler();
+    
+    // Verify content was rendered
+    console.log('Content after rendering:', mainContent.innerHTML.length > 0 ? 'Content rendered' : 'No content');
     
     // Update active link in nav
     this.updateActiveLinks();

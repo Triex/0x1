@@ -39,8 +39,11 @@ ready(() => {
   
   // Create main content area
   const main = document.createElement('main');
+  main.id = 'main-content'; // Important: Add ID for router to target
   main.className = 'flex-1 container mx-auto px-4 py-8';
   container.appendChild(main);
+  
+  console.log('Main content container created with ID: main-content');
   
   // Add footer
   const footer = Footer();

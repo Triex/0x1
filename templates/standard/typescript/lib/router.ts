@@ -28,9 +28,17 @@ export class Router {
   }
   
   renderRoute(path: string): void {
+    console.log(`Rendering route: ${path}`);
+    
+    // Check if we should be targeting main-content instead of the root
+    const mainContent = document.getElementById('main-content');
+    const targetElement = mainContent || this.root;
+    
+    console.log(`Target element for content: ${mainContent ? 'main-content' : 'root'}`);
+    
     // Clear current content
-    while (this.root.firstChild) {
-      this.root.removeChild(this.root.firstChild);
+    while (targetElement.firstChild) {
+      targetElement.removeChild(targetElement.firstChild);
     }
     
     // Find matching route or use not found handler
@@ -58,7 +66,10 @@ export class Router {
     if (content) {
       // Add fade-in animation class to content
       content.classList.add('animate-fade-in');
-      this.root.appendChild(content);
+      targetElement.appendChild(content);
+      console.log('Content rendered successfully');
+    } else {
+      console.error('Failed to generate content for route');
     }
   }
   
