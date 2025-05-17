@@ -39,11 +39,13 @@ interface NewProjectOptions {
   template?: string;
   tailwind?: boolean;
   typescript?: boolean;
+  javascript?: boolean; // Add explicit JavaScript flag
   stateManagement?: boolean;
   minimal?: boolean;
   force?: boolean;
   tdlLicense?: boolean;
   pwa?: boolean;
+  'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeColor?: string;
   secondaryColor?: string;
   textColor?: string;

@@ -21,7 +21,7 @@ export function NotFound(): HTMLElement {
   // Description
   const description = document.createElement('p');
   description.className = 'text-xl text-gray-600 dark:text-gray-400 mb-8';
-  description.textContent = 'The page you're looking for doesn't exist or has been moved.';
+  description.textContent = 'The page you\'re looking for doesn\'t exist or has been moved.';
   container.appendChild(description);
   
   // Back button

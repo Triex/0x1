@@ -5,7 +5,7 @@
  */
 
 import { serve, type Server, spawn, type Subprocess } from 'bun';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, Dirent } from 'fs';
 import { watch } from 'fs/promises';
 import { join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
@@ -119,7 +119,8 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   if (hasCustomStructure) {
     try {
       // Load custom structure configuration
-      const structureConfig = require(customStructureFile);
+      const structureConfigModule = await import(customStructureFile);
+      const structureConfig = structureConfigModule.default || structureConfigModule;
       if (structureConfig.sourceDirs) {
         // Use the root directory as source
         srcDir = projectPath;
@@ -615,7 +616,8 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     (async () => {
       const reader = tailwindProcess.stdout.getReader();
       try {
-        while (true) {
+        const continueReading = true;
+        while (continueReading) {
           const { done, value } = await reader.read();
           if (done) break;
           
@@ -644,7 +646,8 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     (async () => {
       const reader = tailwindProcess.stderr.getReader();
       try {
-        while (true) {
+        const continueReading = true;
+        while (continueReading) {
           const { done, value } = await reader.read();
           if (done) break;
           
@@ -733,13 +736,12 @@ function findTailwindInputCss(projectPath: string): string | null {
   // If still not found, look for any CSS file in the project root
   try {
     // Use Node.js API to be compatible with Bun
-    const { readdirSync } = require('fs');
-    const { Dirent } = require('fs');
+    // Now using imports from the top of the file
     
     const dirEntries = readdirSync(projectPath, { withFileTypes: true });
     const cssFiles = dirEntries
-      .filter((entry: typeof Dirent) => entry.isFile() && entry.name.endsWith('.css'))
-      .map((entry: typeof Dirent) => join(projectPath, entry.name));
+      .filter((entry: Dirent) => entry.isFile() && entry.name.endsWith('.css'))
+      .map((entry: Dirent) => join(projectPath, entry.name));
     
     if (cssFiles.length > 0) {
       return cssFiles[0]; // Return the first CSS file found

@@ -177,7 +177,7 @@ export function useMemo<T>(factory: () => T, deps: any[]): T {
 /**
  * The useCallback hook for memoizing functions
  */
-export function useCallback<T extends Function>(callback: T, deps: any[]): T {
+export function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T {
   return useMemo(() => callback, deps);
 }
 

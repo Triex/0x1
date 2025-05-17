@@ -67,10 +67,10 @@ async function promptProvider(): Promise<'vercel' | 'netlify' | 'github' | 'cust
     name: 'provider',
     message: 'Select a deployment provider',
     choices: [
-      { title: 'Vercel', value: 'vercel', description: 'Deploy to Vercel' },
-      { title: 'Netlify', value: 'netlify', description: 'Deploy to Netlify' },
-      { title: 'GitHub Pages', value: 'github', description: 'Deploy to GitHub Pages' },
-      { title: 'Custom', value: 'custom', description: 'Deploy to a custom provider' }
+      { title: 'Vercel (Deploy to Vercel)', value: 'vercel' },
+      { title: 'Netlify (Deploy to Netlify)', value: 'netlify' },
+      { title: 'GitHub Pages (Deploy to GitHub Pages)', value: 'github' },
+      { title: 'Custom (Deploy to a custom provider)', value: 'custom' }
     ],
     initial: 0
   });
@@ -198,9 +198,10 @@ async function deployToGitHubPages(buildPath: string, options: DeployOptions): P
       await execa('npx', ['gh-pages', '--version'], { stdio: 'pipe' });
     } catch (error) {
       // If not installed, install it
-      spin.stop('info', 'Installing gh-pages package');
+      spin.stop('success', 'Installing gh-pages package');
       await execa('bun', ['add', '-D', 'gh-pages'], { stdio: 'pipe' });
-      spin.update('Deploying to GitHub Pages');
+      // Restart spinner for deployment
+      const deploymentSpin = logger.spinner('Deploying to GitHub Pages');
     }
     
     // Deploy to GitHub Pages
@@ -220,7 +221,7 @@ async function deployToGitHubPages(buildPath: string, options: DeployOptions): P
     let deployUrl = 'https://your-username.github.io/your-repo/';
     
     if (repoUrl !== 'unknown') {
-      const match = repoUrl.match(/github\.com[:/]([^/]+)\/([^/\.]+)/);
+      const match = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
       if (match) {
         const [, username, repo] = match;
         deployUrl = `https://${username}.github.io/${repo}/`;

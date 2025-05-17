@@ -191,7 +191,8 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   if (hasCustomStructure) {
     try {
       // Load custom structure configuration
-      const structureConfig = require(customStructureFile);
+      const structureConfigModule = await import(customStructureFile);
+      const structureConfig = structureConfigModule.default || structureConfigModule;
       if (structureConfig.sourceDirs && structureConfig.sourceDirs.pages) {
         // Use the root directory as source
         srcDir = projectPath;
@@ -265,7 +266,8 @@ async function bundleJavaScript(
   if (hasCustomStructure) {
     try {
       // Load custom structure configuration
-      const structureConfig = require(customStructureFile);
+      const structureConfigModule = await import(customStructureFile);
+      const structureConfig = structureConfigModule.default || structureConfigModule;
       if (structureConfig.sourceDirs) {
         // Use the root directory as source
         srcDir = projectPath;
@@ -396,7 +398,8 @@ async function processCssFiles(
   if (hasCustomStructure) {
     try {
       // Load custom structure configuration
-      const structureConfig = require(customStructureFile);
+      const structureConfigModule = await import(customStructureFile);
+      const structureConfig = structureConfigModule.default || structureConfigModule;
       if (structureConfig.sourceDirs) {
         // Use the custom structure paths
         srcDir = projectPath;

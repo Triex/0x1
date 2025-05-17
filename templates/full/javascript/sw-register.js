@@ -86,7 +86,7 @@ async function initBackgroundSync() {
           // Show notification
           const toastEvent = new CustomEvent('app:toast', { 
             detail: { 
-              message: 'Form will be submitted when you're back online',
+              message: 'Form will be submitted when you\'re back online',
               type: 'info'
             } 
           });

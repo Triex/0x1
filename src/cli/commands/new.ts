@@ -18,6 +18,7 @@ interface NewProjectOptions {
   template?: string;
   tailwind?: boolean;
   typescript?: boolean;
+  javascript?: boolean; // Add explicit JavaScript flag
   minimal?: boolean;
   force?: boolean;
   stateManagement?: boolean;
@@ -25,6 +26,7 @@ interface NewProjectOptions {
   overwrite?: boolean;
   complexity?: 'minimal' | 'standard' | 'full';
   pwa?: boolean;
+  'no-pwa'?: boolean; // Add explicit no-pwa flag
 }
 
 /**
@@ -108,15 +110,31 @@ export async function createNewProject(
     defaultComplexity = 'standard';
   }
   
+  // Process CLI flags for consistency before passing to prompts
+  // If --javascript is passed, make sure typescript is explicitly set to false
+  if (options.javascript === true) {
+    options.typescript = false;
+  }
+  
+  // If --no-pwa is passed, make sure pwa is explicitly set to false
+  if (options['no-pwa'] === true) {
+    options.pwa = false;
+  }
+  
+  // Debug log to show processed CLI options
+  logger.debug(`Processed CLI options: typescript=${options.typescript}, javascript=${options.javascript}, pwa=${options.pwa}`);  
+
   // Get project options through the interactive prompts
   const projectOptions = await promptProjectOptions({
     template: options.template,
     tailwind: options.tailwind,
     typescript: options.typescript,
+    javascript: options.javascript,
     stateManagement: options.stateManagement,
     tdlLicense: options.tdlLicense,
     complexity: defaultComplexity,
     pwa: options.pwa,
+    'no-pwa': options['no-pwa'],
     statusBarStyle: options.statusBarStyle
   });
   
@@ -190,7 +208,32 @@ export async function createNewProject(
       
       spin.stop('success', `Project structure created at ${name}`);
       
-      // Stage 3: Set up PWA if requested
+      // Stage 3: Set up icons and PWA if requested
+      // Generate basic project info for icon generation
+      const projectName = options.name || projectPath.split('/').pop() || '';
+      
+      // Generate logo text based on project name
+      // - For multi-word names: use first letters as acronym
+      // - For single word names: use up to 3 characters
+      let logoText = '';
+      
+      // Split projectName by non-alphanumeric characters
+      const words = projectName.split(/[^a-zA-Z0-9]/).filter(Boolean);
+      
+      if (words.length > 1) {
+        // For multi-word names, create an acronym (first letter of each word)
+        logoText = words.slice(0, 3).map((word: string) => word.charAt(0).toUpperCase()).join('');
+      } else {
+        // For single word, use first 3 letters
+        logoText = projectName.substring(0, Math.min(3, projectName.length)).toUpperCase();
+      }
+      
+      // Derive short name - use acronym for multi-word names or full name for short names
+      const shortName = words.length > 1 ? 
+        words.map((word: string) => word.charAt(0).toUpperCase()).join('') : // acronym for multi-word names
+        projectName.length > 10 ? logoText : projectName; // full name or acronym for short names
+
+      // For full PWA setup
       if (usePwa) {
         logger.section('Setting up PWA');
         const pwaSpin = logger.spinner('Configuring Progressive Web App');
@@ -198,29 +241,6 @@ export async function createNewProject(
         try {
           // Import PWA setup utilities here to avoid circular dependencies
           const { addPWA } = await import('./pwa.js');
-          
-          // Configure PWA with project name
-          const projectName = projectPath.split('/').pop() || 'My 0x1 App';
-          
-          // Generate PWA logo text based on project name
-          // Extract 1-3 meaningful characters from the project name
-          let logoText = '';
-          
-          // Check if project name has multiple words
-          const words = projectName.split(/[-_ ]/); // Split by common word separators
-          
-          if (words.length > 1) {
-            // Use first letter of each word (up to 3)
-            logoText = words.slice(0, 3).map(word => word.charAt(0).toUpperCase()).join('');
-          } else {
-            // Use first 1-3 characters of the project name
-            logoText = projectName.substring(0, Math.min(3, projectName.length)).toUpperCase();
-          }
-          
-          // Generate a short name based on the project name
-          const shortName = words.length > 1 ? 
-            words.map(word => word.charAt(0).toUpperCase()).join('') : // acronym for multi-word names
-            projectName.length > 10 ? logoText : projectName; // full name or acronym for short names
           
           // Setup PWA with automatic configuration based on project name and user-selected theme
           const pwaSetupSuccess = await addPWA({
@@ -248,7 +268,33 @@ export async function createNewProject(
         } catch (error) {
           pwaSpin.stop('error', 'Failed to set up PWA');
           logger.error(`Error setting up PWA: ${error}`);
-          // Continue anyway as this is not critical for project creation
+          throw error;
+        }
+      } 
+      // For non-PWA projects, just generate basic icons
+      else {
+        logger.section('Creating basic assets');
+        const iconSpin = logger.spinner('Generating project icons');
+        
+        try {
+          // Import icon generator utility
+          const { generateBasicIcons } = await import('../../utils/icon-generator.js');
+          
+          // Generate basic favicon and app icon
+          await generateBasicIcons(projectPath, {
+            name: projectName,
+            logoText: logoText,
+            themeColor: projectOptions.themeColor,
+            backgroundColor: projectOptions.secondaryColor,
+            theme: projectOptions.theme as string
+          });
+          
+          iconSpin.stop('success', 'Basic project icons created');
+        } catch (error) {
+          iconSpin.stop('error', 'Failed to generate project icons');
+          logger.error(`Error generating icons: ${error}`);
+          // Don't throw - icon generation failing shouldn't stop the whole project creation
+          logger.info('Continuing project creation without custom icons');
         }
       }
       
@@ -303,9 +349,11 @@ interface NewProjectOptions {
   template?: string;
   tailwind?: boolean;
   typescript?: boolean;
+  javascript?: boolean; // Add explicit JavaScript flag
   stateManagement?: boolean;
   tdlLicense?: boolean;
   pwa?: boolean;
+  'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeColor?: string;
   secondaryColor?: string;
   textColor?: string;
@@ -343,6 +391,14 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   logger.spacer();
   
   // Language choice
+  // Debug log to track flag values
+  logger.debug(`CLI flags - javascript: ${defaultOptions.javascript}, typescript: ${defaultOptions.typescript}`);  
+
+  // If the javascript flag is true, select JavaScript (index 1)
+  // If the typescript flag is explicitly false, also select JavaScript
+  // Otherwise default to TypeScript (index 0)
+  const languageDefault = defaultOptions.javascript === true ? 1 : (defaultOptions.typescript === false ? 1 : 0);
+  
   const languageResponse = await promptWithCancel({
     type: 'select',
     name: 'language',
@@ -351,7 +407,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
       { title: 'TypeScript', value: 'typescript' },
       { title: 'JavaScript', value: 'javascript' }
     ],
-    initial: defaultOptions.typescript === false ? 1 : 0,
+    initial: languageDefault,
   });
 
   logger.spacer();
@@ -424,6 +480,10 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   logger.spacer();
 
   // Ask about PWA support (not needed for minimal templates)
+  // Define a proper PWA default: If pwa flag is explicitly true, use Yes, if explicitly false (or --no-pwa), use No
+  // If not specified, default to No
+  const pwaDefault = defaultOptions.pwa === true ? 0 : 1;
+  
   const pwaResponse = complexityResponse.complexity !== 'minimal' ? await promptWithCancel({
     type: 'select',
     name: 'pwa',
@@ -440,7 +500,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
         description: 'Skip PWA setup' 
       }
     ],
-    initial: defaultOptions.pwa ? 0 : 1
+    initial: pwaDefault
   }) : { pwa: false };
   
   // Map theme selection to appropriate PWA colors
@@ -458,8 +518,8 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   
   // Use theme color for PWA by default
   let themeColor = selectedThemeColors.primary;
-  let secondaryColor = selectedThemeColors.secondary;
-  let textColor = selectedThemeColors.text;
+  const secondaryColor = selectedThemeColors.secondary;
+  const textColor = selectedThemeColors.text;
   
   // Ask for PWA options if PWA is enabled
   // Default to 'default' status bar style
@@ -590,6 +650,47 @@ async function copyTemplate(
 }
 
 /**
+ * Recursively copy files from source to destination
+ */
+async function copyRecursive(src: string, dest: string) {
+  const stats = await Bun.file(src).stat();
+  
+  // Check if it's a directory by checking if the mode indicates a directory
+  // Directories typically have the directory bit set in their mode
+  const isDirectory = stats.mode & 0x4000;
+  
+  if (isDirectory) {
+    // Create the destination directory if it doesn't exist
+    if (!existsSync(dest)) {
+      await mkdir(dest, { recursive: true });
+    }
+    
+    // Read all items in the source directory
+    const items = readdirSync(src);
+    
+    // Process each item
+    for (const item of items) {
+      const srcPath = join(src, item);
+      const destPath = join(dest, item);
+      
+      // Skip node_modules and other common files/folders to ignore
+      if (item === 'node_modules' || item === '.git' || item === 'dist' || 
+          item === 'bun.lockb' || item === '.DS_Store') {
+        continue;
+      }
+      
+      // Recursively copy
+      await copyRecursive(srcPath, destPath);
+    }
+  } else {
+    // It's a file, copy it directly
+    const content = await Bun.file(src).text();
+    await Bun.write(dest, content);
+    logger.debug(`Copied: ${src} to ${dest}`);
+  }
+}
+
+/**
  * Copy template files recursively
  */
 async function copyTemplateFiles(
@@ -615,45 +716,6 @@ async function copyTemplateFiles(
   }
   
   try {
-    // Recursive function to copy files and directories
-    async function copyRecursive(src: string, dest: string) {
-      const stats = await Bun.file(src).stat();
-      
-      // Check if it's a directory by checking if the mode indicates a directory
-      // Directories typically have the directory bit set in their mode
-      const isDirectory = stats.mode & 0x4000;
-      
-      if (isDirectory) {
-        // Create the destination directory if it doesn't exist
-        if (!existsSync(dest)) {
-          await mkdir(dest, { recursive: true });
-        }
-        
-        // Read all items in the source directory
-        const items = readdirSync(src);
-        
-        // Process each item
-        for (const item of items) {
-          const srcPath = join(src, item);
-          const destPath = join(dest, item);
-          
-          // Skip node_modules and other common files/folders to ignore
-          if (item === 'node_modules' || item === '.git' || item === 'dist' || 
-              item === 'bun.lockb' || item === '.DS_Store') {
-            continue;
-          }
-          
-          // Recursively copy
-          await copyRecursive(srcPath, destPath);
-        }
-      } else {
-        // It's a file, copy it directly
-        const content = await Bun.file(src).text();
-        await Bun.write(dest, content);
-        logger.debug(`Copied: ${src} to ${dest}`);
-      }
-    }
-    
     // Start the recursive copy
     await copyRecursive(fullSourcePath, destPath);
     

@@ -48,7 +48,7 @@ export async function previewBuild(options: PreviewOptions = {}): Promise<void> 
       fetch(req) {
         // Get the URL path
         const url = new URL(req.url);
-        let path = url.pathname === '/' ? '/index.html' : url.pathname;
+        const path = url.pathname === '/' ? '/index.html' : url.pathname;
         
         // Determine the file path
         let filePath = resolve(buildPath, path.slice(1));

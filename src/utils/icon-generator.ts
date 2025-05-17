@@ -1,6 +1,6 @@
 /**
  * 0x1 Icon Generator
- * Utility for generating PWA icons of various sizes and types
+ * Utility for generating icons, favicons, and PWA assets
  */
 
 import { existsSync } from 'fs';
@@ -264,6 +264,64 @@ export async function generateSplashScreens(
     const svgContent = generateSplashSVG(width, height, options);
     const filePath = join(projectPath, outputPath, `splash-${name}.svg`);
     await saveSVG(svgContent, filePath);
+  }
+}
+
+/**
+ * Generate all required icons for a PWA
+ */
+/**
+ * Generate basic icons for non-PWA projects
+ * Only creates minimal required assets: favicon.svg and a basic app icon
+ */
+export async function generateBasicIcons(
+  projectPath: string,
+  projectOptions: {
+    name: string;
+    logoText?: string;
+    themeColor?: string;
+    backgroundColor?: string;
+    theme?: string;
+  }
+): Promise<void> {
+  // Prepare options from project config
+  const iconOptions: IconGeneratorOptions = {
+    baseColor: projectOptions.themeColor || DEFAULT_OPTIONS.baseColor,
+    backgroundColor: projectOptions.backgroundColor || DEFAULT_OPTIONS.backgroundColor,
+    // Use logoText if provided, otherwise use first character of name
+    text: projectOptions.logoText || projectOptions.name.charAt(0),
+    subtext: projectOptions.name.length > 10 ? '0x1' : projectOptions.name,
+    // Pass theme if provided
+    theme: projectOptions.theme || 'classic',
+    logoText: projectOptions.logoText,
+    // For basic icons, we'll put them in public/icons by default
+    outputPath: 'public/icons'
+  };
+
+  try {
+    // Create dirs if they don't exist
+    const iconDir = join(projectPath, 'public/icons');
+    if (!existsSync(join(projectPath, 'public'))) {
+      await mkdir(join(projectPath, 'public'), { recursive: true });
+    }
+    if (!existsSync(iconDir)) {
+      await mkdir(iconDir, { recursive: true });
+    }
+    
+    // Generate favicon.svg (32px)
+    const faviconContent = generateSVG(32, iconOptions);
+    const faviconPath = join(projectPath, 'public/favicon.svg');
+    await saveSVG(faviconContent, faviconPath);
+    
+    // Generate app icon (192px)
+    const appIconContent = generateSVG(192, iconOptions);
+    const appIconPath = join(projectPath, 'public/icons/app-icon.svg');
+    await saveSVG(appIconContent, appIconPath);
+    
+    return Promise.resolve();
+  } catch (error) {
+    console.error('Error generating basic icons:', error);
+    return Promise.reject(error);
   }
 }
 
