@@ -418,7 +418,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.7**
+Current version: **0.0.8**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -657,9 +657,9 @@ export default {
 
 ```typescript
 // 0x1.config.ts
-import { X1Config } from '0x1';
+import { _0x1Config } from '0x1';
 
-const config: X1Config = {
+const config: _0x1Config = {
   app: {
     name: 'my-0x1-app',
     title: 'My 0x1 App',

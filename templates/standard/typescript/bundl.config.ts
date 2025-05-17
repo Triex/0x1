@@ -4,7 +4,7 @@
  */
 
 // TypeScript types for 0x1 configuration
-type X1Config = {
+type _0x1Config = {
   app: {
     name: string;
     title: string;
