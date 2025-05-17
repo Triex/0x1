@@ -1,4 +1,20 @@
 // src/index.ts
+function createStore(initialState, options) {
+  return new Store({ initialState, ...options });
+}
+function registerStore(name, initialState, options) {
+  if (stores[name]) {
+    console.warn(`Store with name "${name}" already exists. Returning existing store.`);
+    return stores[name];
+  }
+  const store = createStore(initialState, options);
+  stores[name] = store;
+  return store;
+}
+function useStore(name) {
+  return stores[name] || null;
+}
+
 class Store {
   state;
   subscribers = [];
@@ -59,23 +75,10 @@ class Store {
     this.setState(this.options.initialState);
   }
 }
-function createStore(initialState, options) {
-  return new Store({ initialState, ...options });
-}
 var stores = {};
-function registerStore(name, initialState, options) {
-  if (stores[name]) {
-    console.warn(`Store with name "${name}" already exists. Returning existing store.`);
-    return stores[name];
-  }
-  const store = createStore(initialState, options);
-  stores[name] = store;
-  return store;
-}
-function useStore(name) {
-  return stores[name] || null;
-}
 export {
-  createStore, registerStore, Store, useStore
+  useStore,
+  registerStore,
+  createStore,
+  Store
 };
-

@@ -1,9 +1,0 @@
-# 0x1 TypeScript App Robots Configuration
-
-User-agent: *
-Allow: /
-
-Sitemap: https://example.com/sitemap.xml
-
-# Optimize crawling rate
-Crawl-delay: 5

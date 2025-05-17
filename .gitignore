@@ -3,3 +3,6 @@ node_modules
 
 # Test templates
 # test-templates
+
+# Build output
+dist
