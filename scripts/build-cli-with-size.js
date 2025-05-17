@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { $ } from "bun";
+import { spawn } from "bun";
 import fs from "node:fs";
 import { resolve } from "path";
 
@@ -20,8 +20,11 @@ function formatSize(bytes) {
 
 // Run the build process
 console.log("⚙️  Building CLI...");
-const buildResult = await $`bun build ./src/cli/index.ts --outdir=dist/cli --target=bun --minify`;
-console.log(buildResult.stdout);
+const buildResult = await spawn([
+  "bun", "build", "./src/cli/index.ts", "--outdir=dist/cli", "--target=bun", "--minify"
+]);
+const output = await new Response(buildResult.stdout).text();
+console.log(output);
 
 // Get file size information
 const mainBundlePath = resolve(process.cwd(), "dist/cli/index.js");
@@ -29,8 +32,9 @@ const stats = fs.statSync(mainBundlePath);
 const uncompressedSize = stats.size;
 
 // Generate gzipped version to show compressed size
-const { stdout } = await $`gzip -c ${mainBundlePath} | wc -c`;
-const compressedSize = parseInt(stdout.toString().trim(), 10);
+const gzipResult = await spawn(["sh", "-c", `gzip -c ${mainBundlePath} | wc -c`]);
+const gzipOutput = await new Response(gzipResult.stdout).text();
+const compressedSize = parseInt(gzipOutput.trim(), 10);
 
 // Display nice output
 console.log("\n📦 Bundle information:");
