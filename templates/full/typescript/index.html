@@ -94,8 +94,9 @@
   </div>
 
   <!-- Scripts -->
-  <script type="module" src="./app.ts"></script>
+  <script src="./app.js"></script>
   <!-- Service worker registration -->
-  <script type="module" src="./sw-register.ts"></script>
+  <script src="./sw-register.js"></script>
+  <!-- Note: These scripts are loaded as regular scripts, not as ES modules to ensure browser compatibility -->
 </body>
 </html>

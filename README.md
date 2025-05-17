@@ -300,7 +300,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.19**
+Current version: **0.0.20**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -756,6 +756,39 @@ The black-translucent option is particularly useful for immersive UIs where you 
 ```
 
 This will automatically include the TDL v1 license in your project.
+
+## 🔧 Troubleshooting
+
+### Content Not Showing in Browser
+
+If you're experiencing issues with content not displaying in your browser when running a 0x1 project:
+
+1. **Check Browser Console**: Look for MIME type errors related to ES modules
+
+2. **Script Tag Type**: Ensure your script tags in `index.html` don't have `type="module"` if you're not using a bundler:
+   ```html
+   <!-- Use this for direct browser loading -->
+   <script src="./app.js"></script>
+   
+   <!-- Not this, unless bundling properly -->
+   <!-- <script type="module" src="./app.js"></script> -->
+   ```
+
+3. **Build Process**: Run the build script before starting the dev server:
+   ```bash
+   bun run build.js && bun dev
+   ```
+
+4. **TypeScript Compilation**: The dev server automatically transpiles TypeScript files, but ensure you're not using ES module imports/exports without proper bundling:
+   ```typescript
+   // Instead of ES module imports:
+   // import { something } from './somewhere';
+   
+   // Use pattern that works in browsers:
+   const { something } = window.globalNamespace;
+   ```
+
+5. **Dev Server Configuration**: The 0x1 dev server has been updated to properly handle TypeScript files and set the correct MIME types for browser compatibility.
 
 ## 🗂️ Template Structure
 

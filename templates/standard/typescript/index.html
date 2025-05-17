@@ -10,6 +10,10 @@
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white min-h-screen">
   <div id="app" class="min-h-screen"></div>
-  <script type="module" src="./app.ts"></script>
+  <!-- Scripts -->
+  <script src="./app.js"></script>
+  <!-- Service worker registration -->
+  <script src="./sw-register.js"></script>
+  <!-- Note: These scripts are loaded as regular scripts, not as ES modules to ensure browser compatibility -->
 </body>
 </html>

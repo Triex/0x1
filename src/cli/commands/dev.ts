@@ -348,36 +348,39 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         const file = Bun.file(filePath);
         const type = file.type;
         
+        // For HTML files, inject the live reload script
         if (path.endsWith('.html')) {
-          // Inject live reload script into HTML files
-          let content = await file.text();
-          
-          if (!content.includes('__0x1_live_reload.js')) {
-            content = content.replace(
-              '</head>',
-              '<script src="/__0x1_live_reload.js" type="module"></script></head>'
-            );
+          try {
+            // Inject live reload script into HTML files
+            let content = await file.text();
+            
+            if (!content.includes('__0x1_live_reload.js')) {
+              content = content.replace(
+                '</head>',
+                '<script src="/__0x1_live_reload.js"></script></head>'
+              );
+            }
+            
+            // Log successful HTML connection
+            logger.info(`200 OK: ${path}`);
+            
+            return new Response(content, {
+              headers: {
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-cache',
+              },
+            });
+          } catch (error) {
+            logger.error(`Error processing HTML file ${filePath}: ${error}`);
+            return new Response(`Error processing HTML: ${error}`, { status: 500 });
           }
-          
-          // Log successful HTML connection
-          logger.info(`200 OK: ${path}`);
-          
-          return new Response(content, {
-            headers: {
-              'Content-Type': 'text/html',
-              'Cache-Control': 'no-cache',
-            },
-          });
         }
         
         // For TypeScript files, transpile them on the fly
         if (path.endsWith('.ts') || path.endsWith('.tsx')) {
           try {
-            // Determine the loader based on the file extension
-            const loader = path.endsWith('.tsx') ? 'tsx' : 'ts';
-            
-            // Read the file content
-            const fileContent = await Bun.file(filePath).text();
+            const fileContent = await file.text();
+            let transpiled = '';
             
             // Use TypeScript's transpileModule for both TS and TSX files
             const { transpileModule } = require('typescript');
@@ -385,7 +388,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
             const result = transpileModule(fileContent, {
               compilerOptions: {
                 target: 99, // ESNext
-                module: 99, // ESNext
+                module: 1, // CommonJS to avoid ES module imports
                 moduleResolution: 2, // node
                 jsx: path.endsWith('.tsx') ? 4 : 0, // 4 = React JSX, 0 = None
                 jsxFactory: 'createElement',
@@ -393,52 +396,22 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
                 esModuleInterop: true,
                 skipLibCheck: true,
                 allowSyntheticDefaultImports: true,
-                paths: {
-                  '*': ['*', './*', './lib/*', './store/*', './pages/*', './components/*']
-                }
               }
             });
             
-            return result.outputText;
-          } catch (error) {
-            logger.error(`Error transpiling ${filePath}: ${error}`);
-            return `console.error('Failed to load ${filePath}: ${error}');`;
-          }
-        };
-        
-        // For TypeScript and TSX files, transpile them on the fly
-        if (path.endsWith('.ts') || path.endsWith('.tsx')) {
-          try {
-            const fileContent = await Bun.file(filePath).text();
-            let transpiled;
+            // Post-process the result to remove any remaining ES module syntax
+            // This converts the output to be compatible with regular script tags
+            transpiled = result.outputText
+              // Remove import statements
+              .replace(/import\s+.*?from\s+['"](.*?)['"];?\n?/g, '// ES module imports removed for browser compatibility\n')
+              // Remove export statements
+              .replace(/export\s+/g, '')
+              // Add a comment explaining what happened
+              .replace(/\/\*(.*?)\*\//s, '/* $1\n * Note: ES module syntax has been removed for browser compatibility */\n');
             
-            if (path.endsWith('.tsx')) {
-              // Special handling for TSX files
-              const { transpileModule } = require('typescript');
-              const result = transpileModule(fileContent, {
-                compilerOptions: {
-                  target: 99, // ESNext
-                  module: 99, // ESNext
-                  jsx: 4, // React JSX
-                  jsxFactory: 'createElement',
-                  jsxFragmentFactory: 'Fragment',
-                  esModuleInterop: true,
-                }
-              });
-              transpiled = result.outputText;
-            } else {
-              // Regular TS files
-              const { transpileModule } = require('typescript');
-              const result = transpileModule(fileContent, {
-                compilerOptions: {
-                  target: 99, // ESNext
-                  module: 99, // ESNext
-                  esModuleInterop: true,
-                }
-              });
-              transpiled = result.outputText;
-            }
+            logger.info(`200 OK (Transpiled TS → Browser JS): ${path}`);
             
+            // Return transpiled JavaScript with proper MIME type
             return new Response(transpiled, {
               headers: {
                 'Content-Type': 'application/javascript',
@@ -446,8 +419,8 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
               },
             });
           } catch (error) {
-            logger.error(`Failed to transpile ${path}: ${error}`);
-            return new Response(`// Error transpiling ${path}: ${error}`, {
+            logger.error(`Error transpiling ${filePath}: ${error}`);
+            return new Response(`console.error('Failed to load ${path}: ${error}');`, {
               headers: {
                 'Content-Type': 'application/javascript',
                 'Cache-Control': 'no-cache',
@@ -457,6 +430,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
           }
         }
         
+        // For all other file types, serve directly
         // Log successful connection
         logger.info(`200 OK: ${path}`);
         

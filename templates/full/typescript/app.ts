@@ -62,8 +62,19 @@ class Router {
     const path = window.location.pathname;
     this.currentPath = path;
     
+    // Debug logging
+    console.log(`Router handling path: ${path}`);
+    console.log('Available routes:', Object.keys(this.routes));
+    
     // Find matching route or use not found handler
     const routeHandler = this.routes[path] || this.notFoundHandler;
+    
+    if (!routeHandler) {
+      console.error(`No handler found for path: ${path}`);
+      return;
+    }
+    
+    console.log(`Executing handler for path: ${path}`);
     routeHandler();
     
     // Update active link in nav
@@ -89,7 +100,15 @@ class Router {
   }
 
   start(): void {
+    console.log('Starting router...');
+    // Force it to handle the initial route
     this.handleRouteChange();
+    
+    // Special case - if we're at / but it didn't work, try to navigate there explicitly
+    if (window.location.pathname === '/' && !document.getElementById('main-content')?.innerHTML) {
+      console.log('Forcing navigation to homepage');
+      this.navigate('/');
+    }
   }
 }
 
