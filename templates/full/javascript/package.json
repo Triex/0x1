@@ -14,7 +14,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "0x1": "^0.0.21"
+    "0x1": "^0.0.22"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",

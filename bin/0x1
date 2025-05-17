@@ -14,5 +14,22 @@ fi
 # Get the directory of this script
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Determine the real path to the CLI script
+# For global installations, we need to look in the package's node_modules directory
+CLI_SCRIPT="$DIR/../dist/cli/index.js"
+
+# If the CLI script doesn't exist at the expected path, try to find it in node_modules
+if [ ! -f "$CLI_SCRIPT" ]; then
+  # This handles both global installations and linked packages
+  if [ -d "$DIR/../node_modules/0x1" ]; then
+    CLI_SCRIPT="$DIR/../node_modules/0x1/dist/cli/index.js"
+  elif [ -d "/usr/local/lib/node_modules/0x1" ]; then
+    CLI_SCRIPT="/usr/local/lib/node_modules/0x1/dist/cli/index.js"
+  elif [ -d "$HOME/.bun/install/global/node_modules/0x1" ]; then
+    CLI_SCRIPT="$HOME/.bun/install/global/node_modules/0x1/dist/cli/index.js"
+  fi
+fi
+
 # Execute the CLI with Bun
-exec "$BUN_PATH" "$DIR/../dist/cli/index.js" "$@"
+echo "Executing 0x1 CLI with Bun: $CLI_SCRIPT"
+exec "$BUN_PATH" "$CLI_SCRIPT" "$@"
