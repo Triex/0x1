@@ -3,10 +3,10 @@
  * Configure your 0x1 application with modern structure
  */
 
-/** @type {import('bundl').BundlConfig} */
+/** @type {import('0x1').BundlConfig} */
 export default {
   app: {
-    name: "bundl-javascript-app",
+    name: "0x1-javascript-app",
     title: "0x1 JavaScript App",
     description: "Built with 0x1 - the ultra-minimal framework with modern structure"
   },

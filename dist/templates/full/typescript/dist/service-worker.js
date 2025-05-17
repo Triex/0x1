@@ -3,7 +3,7 @@
  * Provides offline support, caching, and background sync
  */
 
-const CACHE_NAME = 'bundl-app-v1';
+const CACHE_NAME = '0x1-app-v1';
 const OFFLINE_URL = '/offline.html';
 const ASSETS_TO_CACHE = [
   '/',

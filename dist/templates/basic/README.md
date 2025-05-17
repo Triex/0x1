@@ -16,7 +16,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ```
 my-app/
-├── bundl.config.js         # 0x1 configuration
+├── 0x1.config.js         # 0x1 configuration
 ├── src/
 │   ├── components/         # Reusable components
 │   ├── pages/              # Page components

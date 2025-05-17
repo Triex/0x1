@@ -2,7 +2,7 @@
  * Footer Component
  */
 
-import { createElement } from 'bundl';
+import { createElement } from '0x1';
 
 export interface FooterLinkProps {
   label: string;

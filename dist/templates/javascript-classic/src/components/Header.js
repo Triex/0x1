@@ -2,7 +2,7 @@
  * Header Component
  */
 
-import { createElement } from 'bundl';
+import { createElement } from '0x1';
 
 export function Header({ title = '0x1 App' }) {
   return createElement('header', {

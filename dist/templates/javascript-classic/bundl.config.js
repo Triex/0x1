@@ -3,10 +3,10 @@
  * Configure your 0x1 application
  */
 
-/** @type {import('bundl').BundlConfig} */
+/** @type {import('0x1').BundlConfig} */
 export default {
   app: {
-    name: "bundl-app",
+    name: "0x1-app",
     title: "0x1 App",
     description: "Built with 0x1 - the ultra-minimal framework"
   },

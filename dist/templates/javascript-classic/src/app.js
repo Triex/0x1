@@ -2,7 +2,7 @@
  * 0x1 App Entry Point
  */
 
-import { mount } from 'bundl';
+import { mount } from '0x1';
 import { HomePage } from './pages/home.js';
 
 // Initialize the application

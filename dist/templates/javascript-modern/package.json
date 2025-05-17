@@ -1,17 +1,17 @@
 {
-  "name": "bundl-javascript-app",
+  "name": "0x1-javascript-app",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bundl dev",
-    "build": "bundl build",
-    "preview": "bundl preview",
-    "deploy": "bundl deploy",
+    "dev": "0x1 dev",
+    "build": "0x1 build",
+    "preview": "0x1 preview",
+    "deploy": "0x1 deploy",
     "lint": "eslint --ext .js,.jsx .",
     "format": "prettier --write '**/*.{js,jsx,css,html}'"
   },
   "dependencies": {
-    "bundl": "^0.2.1"
+    "0x1": "^0.2.1"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.6.0",

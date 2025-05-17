@@ -45,7 +45,7 @@ type BundlConfig = {
 
 const config: BundlConfig = {
   app: {
-    name: "bundl-typescript-app",
+    name: "0x1-typescript-app",
     title: "0x1 TypeScript App",
     description: "Built with 0x1 - the ultra-minimal TypeScript framework"
   },

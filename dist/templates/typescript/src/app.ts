@@ -2,7 +2,7 @@
  * 0x1 TypeScript App Entry Point
  */
 
-import { mount, Router } from 'bundl';
+import { mount, Router } from '0x1';
 import { AboutPage } from './pages/about';
 import { HomePage } from './pages/home';
 
@@ -44,5 +44,5 @@ function initializeRouter(rootElement: HTMLElement): void {
   router.init();
   
   // Store router instance globally for debugging and programmatic navigation
-  (window as any).__BUNDL_ROUTER__ = router;
+  (window as any).__0x1_ROUTER__ = router;
 }

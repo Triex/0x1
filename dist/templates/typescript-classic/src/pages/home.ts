@@ -3,7 +3,7 @@
  * Modern home page with dark mode support, animations, and responsive design
  */
 
-import { createElement, useCallback, useEffect, useState, type Page } from 'bundl';
+import { createElement, useCallback, useEffect, useState, type Page } from '0x1';
 import { FeatureCard, type FeatureProps } from '../components/FeatureCard';
 import { Footer } from '../components/Footer';
 import { Header } from '../components/Header';

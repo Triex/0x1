@@ -1,7 +1,7 @@
 // 0x1 Service Worker
 // Generated with 0x1 PWA support
 
-const CACHE_NAME = 'bundl-app-cache-v1';
+const CACHE_NAME = '0x1-app-cache-v1';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_RESOURCES = [
   '/',

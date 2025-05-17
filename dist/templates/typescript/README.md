@@ -16,7 +16,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ```
 my-app/
-├── bundl.config.ts        # 0x1 TypeScript configuration
+├── 0x1.config.ts        # 0x1 TypeScript configuration
 ├── tsconfig.json          # TypeScript configuration
 ├── src/
 │   ├── components/        # Reusable TypeScript components

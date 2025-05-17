@@ -3,7 +3,7 @@
  * A specialized link component that can highlight when active
  */
 
-import { createElement } from 'bundl';
+import { createElement } from '0x1';
 
 export interface NavLinkProps {
   label: string;

@@ -3,8 +3,7 @@
  * Modern interactive card with animations and hover effects
  */
 
-import { createElement } from 'bundl';
-import { useState, useEffect } from 'bundl';
+import { createElement, useEffect, useState } from '0x1';
 
 export interface FeatureProps {
   title: string;

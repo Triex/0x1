@@ -2,7 +2,7 @@
  * About Page Component
  */
 
-import { createElement, type Page } from 'bundl';
+import { createElement, type Page } from '0x1';
 import { Footer } from '../components/Footer';
 import { Header } from '../components/Header';
 

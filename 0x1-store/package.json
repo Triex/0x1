@@ -1,0 +1,21 @@
+{
+  "name": "0x1-store",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir=dist",
+    "prepublish": "bun run build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

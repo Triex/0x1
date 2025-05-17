@@ -2,7 +2,7 @@
  * Footer Component
  */
 
-import { createElement } from 'bundl';
+import { createElement } from '0x1';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
