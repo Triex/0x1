@@ -75,7 +75,7 @@ export function createStore<T>(
     },
     
     // Subscribe to a specific part of the state using a selector
-    select: <S>(selector: Selector<T, S>, listener?: (selectedState: S) => void): (() => S) => {
+    select: function<S>(this: Store<T>, selector: Selector<T, S>, listener?: (selectedState: S) => void): (() => S) {
       // Get current value
       const getValue = () => {
         // Check cache first
