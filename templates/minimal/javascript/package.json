@@ -9,7 +9,7 @@
     "build-css": "bun build-css.js"
   },
   "dependencies": {
-    "0x1": "^0.0.6"
+    "0x1": "^0.0.7"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.1",

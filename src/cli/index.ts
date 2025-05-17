@@ -109,7 +109,7 @@ const showBanner = () => {
     '██████╔╝██╔╝ ██╗ ██║',
     '╚═════╝ ╚═╝  ╚═╝ ╚═╝'
   ]);
-  logger.info(`v0.0.6 - The ultra-minimal TypeScript framework`);
+  logger.info(`v0.0.7 - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
 

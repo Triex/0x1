@@ -27,6 +27,7 @@ interface NewProjectOptions {
   complexity?: 'minimal' | 'standard' | 'full';
   pwa?: boolean;
   'no-pwa'?: boolean; // Add explicit no-pwa flag
+  themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
 }
 
 /**
@@ -358,6 +359,7 @@ interface NewProjectOptions {
   secondaryColor?: string;
   textColor?: string;
   theme?: string;
+  themeMode?: 'light' | 'dark' | 'system'; // Add theme mode selection
   complexity?: 'minimal' | 'standard' | 'full';
   [key: string]: any;
 }
@@ -374,6 +376,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   secondaryColor: string;
   textColor: string;
   theme: string;
+  themeMode: 'light' | 'dark' | 'system';
   statusBarStyle: string;
 }> {
   // Create a wrapper for prompts that handles cancellation
@@ -475,6 +478,36 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
       }
     ],
     initial: 4
+  });
+  
+  logger.spacer();
+
+  // Ask about theme mode preference
+  const themeModeDefault = defaultOptions.themeMode === 'light' ? 0 : 
+                          defaultOptions.themeMode === 'system' ? 2 : 1; // Default to dark if not specified
+
+  const themeModeResponse = await promptWithCancel({
+    type: 'select',
+    name: 'themeMode',
+    message: '🌓 Choose theme mode:',
+    choices: [
+      {
+        title: 'Light', 
+        value: 'light',
+        description: 'Light theme mode'
+      },
+      {
+        title: 'Dark',
+        value: 'dark',
+        description: 'Dark theme mode (recommended)'
+      },
+      {
+        title: 'System',
+        value: 'system',
+        description: 'Follow system preference'
+      }
+    ],
+    initial: themeModeDefault
   });
   
   logger.spacer();
@@ -606,6 +639,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     secondaryColor: secondaryColor,
     textColor: textColor,
     theme: themeResponse.theme,
+    themeMode: themeModeResponse.themeMode,
     statusBarStyle: statusBarStyle
   };
 }
@@ -620,9 +654,10 @@ async function copyTemplate(
     useTailwind: boolean;
     useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
+    themeMode?: 'light' | 'dark' | 'system';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity } = options;
+  const { useTailwind, useTypescript, complexity, themeMode = 'dark' } = options;
   
   // The template variable already includes the complexity and language (e.g., 'full/typescript')
   // We need to handle both local development and global installation scenarios
@@ -645,13 +680,10 @@ async function copyTemplate(
     useTailwind, 
     useTypescript, 
     complexity,
+    themeMode, // Pass theme mode
     useStateManagement: complexity === 'full' // Enable state management for full template
   });
 }
-
-/**
- * Recursively copy files from source to destination
- */
 async function copyRecursive(src: string, dest: string) {
   const stats = await Bun.file(src).stat();
   
@@ -701,6 +733,7 @@ async function copyTemplateFiles(
     useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
+    themeMode?: 'light' | 'dark' | 'system';
   }
 ): Promise<void> {
   // The sourceType should already include the language folder (typescript/javascript)
@@ -1076,9 +1109,10 @@ async function createConfigFiles(
     useTypescript: boolean;
     useStateManagement?: boolean;
     complexity: 'minimal' | 'standard' | 'full';
+    themeMode?: 'light' | 'dark' | 'system';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity } = options;
+  const { useTailwind, useTypescript, complexity, themeMode = 'dark' } = options;
   
   // Create 0x1.config.ts or 0x1.config.js
   const ext = useTypescript ? 'ts' : 'js';
@@ -1103,7 +1137,7 @@ const config: _0x1Config = {
   },
   styling: {
     tailwind: ${useTailwind},
-    darkMode: 'media'
+    darkMode: '${themeMode}'
   },
   build: {
     outDir: 'dist',
@@ -1135,7 +1169,7 @@ export default {
   },
   styling: {
     tailwind: ${useTailwind},
-    darkMode: 'media'
+    darkMode: '${themeMode}'
   },
   build: {
     outDir: 'dist',

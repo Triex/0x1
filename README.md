@@ -1,6 +1,6 @@
 # 0x1 ⚡ Ultra-Minimal Framework
 
-A pure TypeScript framework called **0x1** - an ultra-minimal, zero-overhead web framework powered by Bun.
+Ultra-minimal, zero-overhead web framework for JS/Typescript powered by Bun.
 
 - **Zero-dependency router**: Hash-based or history API routing with lazy loading
 - **Micro-suspense**: Lightweight content loading states without React
@@ -16,6 +16,9 @@ bun install -g 0x1
 
 # Create a new project
 0x1 new proj-name
+
+# Create a new project with specific options
+0x1 new my-app --typescript --theme-mode=dark|light|system
 ```
 
 ```bash
@@ -27,6 +30,17 @@ bun install -g 0x1
 ```
 
 ## 🚀 Features
+
+### 🌓 Theme Mode
+
+Choose between light, dark, or system theme modes during project creation:
+
+```bash
+# Specify theme mode with the --theme-mode flag
+0x1 new my-app --theme-mode=light  # Light mode
+0x1 new my-app --theme-mode=dark   # Dark mode (default)
+0x1 new my-app --theme-mode=system # Follow system preference
+```
 
 ### 📱 PWA Ready
 - **Zero-config PWA**: Built-in Progressive Web App support
@@ -251,7 +265,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.6**
+Current version: **0.0.7**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
