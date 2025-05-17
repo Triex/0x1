@@ -9,7 +9,7 @@
     "build-css": "bun build-css.js"
   },
   "dependencies": {
-    "0x1": "^0.0.15"
+    "0x1": "^0.0.16"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

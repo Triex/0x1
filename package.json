@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -17,7 +17,7 @@
     "dev": "bun run --watch src/cli/index.ts dev",
     "build": "bun run build:framework && bun run build:cli",
     "build:framework": "bun run scripts/build-framework.ts",
-    "build:cli": "bun build ./src/cli/index.ts --outdir=dist/cli --target=bun --minify",
+    "build:cli": "bun run scripts/build-cli-with-size.js",
     "build:templates": "cp -r templates dist/",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
