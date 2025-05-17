@@ -4,33 +4,62 @@
  * 0x1 CLI Entry Point 
  * Uses Node.js compatibility for global binary exposure
  * But executes with Bun runtime
+ * Cross-platform compatible (macOS, Linux, Windows/WSL)
  */
 
 // Explicitly use the node built-ins for maximum compatibility
 const path = require('path');
 const { spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 
-// Potential locations for the CLI script
+// Get home directory in a cross-platform way
+const homeDir = os.homedir();
+
+// Detect OS for platform-specific operations
+const isWindows = os.platform() === 'win32';
+const isWSL = os.release().toLowerCase().includes('microsoft') || 
+             fs.existsSync('/proc/sys/fs/binfmt_misc/WSLInterop');
+
+// Potential locations for the CLI script in order of priority
 const locations = [
   // Local development or npm/yarn link
   path.join(__dirname, '../dist/cli/index.js'),
-  // Global Bun installation locations
-  path.join(process.env.HOME || '', '.bun/install/global/node_modules/0x1/dist/cli/index.js'),
-  // Try to use globally installed executable directly if above fails
-  '0x1'
-];
+  // Global Bun installation locations (macOS/Linux)
+  path.join(homeDir, '.bun/install/global/node_modules/0x1/dist/cli/index.js'),
+  // Alternative bun install path
+  path.join(homeDir, 'bun/install/global/node_modules/0x1/dist/cli/index.js'),
+  // Windows WSL path
+  isWSL ? path.join(homeDir, '.bun/install/global/node_modules/0x1/dist/cli/index.js') : null,
+  // Global npm installation (fallback)
+  path.join(isWindows ? process.env.APPDATA : '/usr/local', 'npm/node_modules/0x1/dist/cli/index.js'),
+  // Try bunx as last resort
+  'bunx-0x1'
+].filter(Boolean); // Remove null values
 
 // Try to execute Bun with the CLI script
 try {
   // Run with Bun using the first available path
   const args = process.argv.slice(2);
   let bunArgs = [];
+  let bunCommand = 'bun';
+  
+  // First check if Bun is available
+  try {
+    const bunCheck = spawnSync(bunCommand, ['--version'], { stdio: 'pipe' });
+    if (bunCheck.status !== 0) {
+      throw new Error('Bun command not found');
+    }
+  } catch (e) {
+    // If bun command fails, provide helpful error
+    console.error('\n🔴 Bun runtime not found. Please install Bun first: https://bun.sh');
+    process.exit(1);
+  }
   
   // Find an existing CLI script path
-  const fs = require('fs');
   for (const loc of locations) {
-    if (loc === '0x1') {
-      // If we get here, use bunx as a last resort
+    if (loc === 'bunx-0x1') {
+      // Try bunx as a last resort
       const result = spawnSync('bunx', ['0x1', ...args], { stdio: 'inherit' });
       process.exit(result.status || 0);
     } else if (fs.existsSync(loc)) {
@@ -44,14 +73,41 @@ try {
   }
 
   // Execute with Bun
-  const result = spawnSync('bun', bunArgs, { stdio: 'inherit' });
+  const result = spawnSync(bunCommand, bunArgs, { stdio: 'inherit' });
   process.exit(result.status || 0);
 } catch (error) {
-  console.error('Error executing 0x1 CLI:', error.message);
-  console.error('\nMake sure Bun is installed and try reinstalling with: bun install -g 0x1');
-  console.error('You may need to add ~/.bun/bin to your PATH');
-  console.error('\nAdd this to your profile (~/.zshrc, ~/.bashrc, etc.):');
-  console.error('export BUN_INSTALL="$HOME/.bun"');
-  console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
+  console.error('\n🔴 Error executing 0x1 CLI:', error.message);
+  console.error('\n🔄 Try reinstalling with: bun install -g 0x1');
+  
+  // OS-specific path instructions
+  if (isWindows) {
+    console.error('\n📂 On Windows, make sure Bun is properly installed in WSL2:');
+    console.error('  1. Install WSL2 if not already installed');
+    console.error('  2. Install Bun inside WSL2: curl -fsSL https://bun.sh/install | bash');
+    console.error('  3. Inside WSL terminal, add to your .bashrc or .zshrc:');
+    console.error('     export BUN_INSTALL="$HOME/.bun"');
+    console.error('     export PATH="$BUN_INSTALL/bin:$PATH"');
+  } else if (isWSL) {
+    console.error('\n📂 On WSL, add this to your profile (.bashrc or .zshrc):');
+    console.error('export BUN_INSTALL="$HOME/.bun"');
+    console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
+  } else {
+    // macOS or Linux
+    console.error('\n📂 You need to add ~/.bun/bin to your PATH');
+    console.error('\nFor Bash, add this to ~/.bashrc:');
+    console.error('export BUN_INSTALL="$HOME/.bun"');
+    console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
+    console.error('\nFor Zsh (macOS default), add this to ~/.zshrc:');
+    console.error('export BUN_INSTALL="$HOME/.bun"');
+    console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
+    console.error('\nFor Fish shell, add this to ~/.config/fish/config.fish:');
+    console.error('set -x BUN_INSTALL "$HOME/.bun"');
+    console.error('set -x PATH "$BUN_INSTALL/bin" $PATH');
+  }
+  
+  // Try to provide a temporary solution
+  console.error('\n🟢 TEMPORARY FIX: You can also try running:');
+  console.error(`bunx 0x1 ${process.argv.slice(2).join(' ')}`);
+  
   process.exit(1);
 }
