@@ -21,7 +21,7 @@ export function DefaultLayout({ title, description, content }: DefaultLayoutProp
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>${title} - 0x1 App</title>
         <link rel="stylesheet" href="/public/styles/tailwind.css" />
-        <link rel="icon" href="/assets/favicon.ico" type="image/x-icon" />
+        <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
         <meta name="description" content="${description || 'A 0x1 framework application'}" />
         <script type="module" src="/app.ts"></script>
         <!-- PWA support -->
