@@ -311,8 +311,11 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         // For TypeScript files, transpile them on the fly
         if (path.endsWith('.ts') || path.endsWith('.tsx')) {
           try {
+            // Determine the loader based on the file extension
+            const loader = path.endsWith('.tsx') ? 'tsx' : 'ts';
+            
             const result = Bun.transpileFile(filePath, {
-              loader: 'ts',
+              loader,
               target: 'browser',
               platform: 'browser',
               minify: false,
@@ -320,17 +323,56 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
                 target: 99, // esnext
                 module: 99, // esnext
                 moduleResolution: 2, // node
-                jsx: 1, // react
                 esModuleInterop: true,
                 skipLibCheck: true,
                 allowSyntheticDefaultImports: true,
                 paths: {
-                  '*': ['*', './*', './lib/*', './store/*', './pages/*']
+                  '*': ['*', './*', './lib/*', './store/*', './pages/*', './components/*']
                 }
               }
             });
             
-            return new Response(result.outputText, {
+            return result.outputText;
+          } catch (error) {
+            logger.error(`Error transpiling ${filePath}: ${error}`);
+            return `console.error('Failed to load ${filePath}: ${error}');`;
+          }
+        };
+        
+        // For TypeScript and TSX files, transpile them on the fly
+        if (path.endsWith('.ts') || path.endsWith('.tsx')) {
+          try {
+            const fileContent = await Bun.file(filePath).text();
+            let transpiled;
+            
+            if (path.endsWith('.tsx')) {
+              // Special handling for TSX files
+              const { transpileModule } = require('typescript');
+              const result = transpileModule(fileContent, {
+                compilerOptions: {
+                  target: 99, // ESNext
+                  module: 99, // ESNext
+                  jsx: 4, // React JSX
+                  jsxFactory: 'createElement',
+                  jsxFragmentFactory: 'Fragment',
+                  esModuleInterop: true,
+                }
+              });
+              transpiled = result.outputText;
+            } else {
+              // Regular TS files
+              const { transpileModule } = require('typescript');
+              const result = transpileModule(fileContent, {
+                compilerOptions: {
+                  target: 99, // ESNext
+                  module: 99, // ESNext
+                  esModuleInterop: true,
+                }
+              });
+              transpiled = result.outputText;
+            }
+            
+            return new Response(transpiled, {
               headers: {
                 'Content-Type': 'application/javascript',
                 'Cache-Control': 'no-cache',

@@ -6,11 +6,33 @@
  * Main entry point exporting all core functionality
  */
 
-// Export core components
-export {
-  createComponent, createElement, Fragment, fromHTML, mount, template, textElement, updateComponent
+// Export core components and functionality
+export { 
+  fromHTML,
+  mount, 
+  template, 
+  textElement, 
+  updateComponent,
+  // Use legacy names for HTML element creation functions
+  createElement as createComponentElement
 } from './core/component.js';
-export type { Component } from './core/component.js';
+export type { Component, ComponentProps } from './core/component.js';
+
+// Export JSX runtime for TSX support
+// These exports take precedence for TSX files
+export {
+  createElement,
+  Fragment,
+  renderToString,
+} from './jsx-runtime.js';
+
+// Export JSX types
+export type { 
+  JSXNode,
+  JSXAttributes,
+  JSXChildren,
+  ComponentFunction 
+} from './jsx-runtime.js';
 
 // Export router and navigation
 export {

@@ -13,9 +13,11 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
     "useDefineForClassFields": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "0x1",
     "types": ["bun-types"],
     "lib": ["DOM", "DOM.Iterable", "ESNext"]
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "templates"]
 }

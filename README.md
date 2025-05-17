@@ -16,12 +16,21 @@
 ## ✨ Features
 
 - **🔄 Language flexibility**: First-class support for both JavaScript and TypeScript
+- **📱 JSX/TSX support**: Create components using familiar JSX syntax with full TypeScript support
 - **🔀 Zero-dependency router**: Hash-based or history API routing with lazy loading
 - **⏱️ Micro-suspense**: Lightweight content loading states without React
 - **🧩 Component system**: Modern component system with automatic DOM diffing
 - **🚀 Extreme performance**: Sub-16kb JS payload, 100/100 Lighthouse scores
 - **📦 Native ESM**: Direct compilation with no bundling step
 - **🌓 Theme modes**: Built-in support for light, dark, and system modes
+
+## 📑 Documentation
+
+- [Getting Started](https://docs.0x1.dev/getting-started)
+- [Component System](https://docs.0x1.dev/component-system)
+- [TSX Guide](./docs/tsx-guide.md)
+- [Routing](https://docs.0x1.dev/routing)
+- [Performance Tips](https://docs.0x1.dev/performance-tips)
 
 ## 🚀 Getting Started
 
@@ -62,6 +71,38 @@ bun 0x1 preview
 ```
 
 ## 🚀 Features
+
+### 🧩 TSX Components
+
+0x1 supports TSX components out of the box, allowing you to use a React-like syntax without any additional dependencies:
+
+```tsx
+import { createElement, Fragment, renderToString } from '0x1';
+
+interface ButtonProps {
+  text: string;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary';
+}
+
+export function Button({ text, onClick, variant = 'primary' }: ButtonProps) {
+  const className = variant === 'primary' 
+    ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+    : 'bg-gray-200 hover:bg-gray-300 text-gray-800';
+    
+  return (
+    <button 
+      className={`${className} px-4 py-2 rounded transition-colors`}
+      onClick={onClick}
+    >
+      {text}
+    </button>
+  );
+}
+
+// Render the component to HTML string
+const html = renderToString(<Button text="Click me!" />);
+```
 
 ### 🌓 Theme Mode
 
@@ -418,7 +459,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.11**
+Current version: **0.0.12**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 

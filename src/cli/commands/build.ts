@@ -239,8 +239,8 @@ async function processHtml(
   content: string,
   options: { projectPath: string; outputPath: string; relativePath: string }
 ): Promise<string> {
-  // Replace .ts references with .js
-  content = content.replace(/src="([^"]+)\.ts"/g, 'src="$1.js"');
+  // Replace .ts and .tsx references with .js
+  content = content.replace(/src="([^"]+)\.ts(x?)"/g, 'src="$1.js"');
   
   // Remove development-only scripts
   content = content.replace(/<script[^>]*data-dev-only[^>]*>.*?<\/script>/gs, '');
@@ -298,9 +298,9 @@ async function bundleJavaScript(
     }
   }
   
-  // Find entry files (either app.ts or app.js or index.ts or index.js)
+  // Find entry files (app.tsx, app.ts, app.js, index.tsx, index.ts, or index.js)
   const entryFiles = [];
-  const fileExtensions = ['.ts', '.tsx', '.js', '.jsx'];
+  const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
   
   // Check for entry files in srcDir
   for (const name of ['app', 'index']) {
@@ -322,7 +322,7 @@ async function bundleJavaScript(
   // bundle each entry file
   for (const entryFile of entryFiles) {
     const relativePath = relative(srcDir, entryFile);
-    const outputFile = join(outputPath, relativePath.replace(/\.(ts|js)$/, '.js'));
+    const outputFile = join(outputPath, relativePath.replace(/\.(ts|tsx|js|jsx)$/, '.js'));
     
     // Ensure output directory exists
     await mkdir(dirname(outputFile), { recursive: true });
