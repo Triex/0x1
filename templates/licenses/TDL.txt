@@ -1,0 +1,72 @@
+# GitHub Version Sync - TriexDev License v1.0
+
+© 2025 TriexDev
+
+## The "Code With Credit" License
+
+### For Individuals & Open Source Projects
+
+✅ Feel free to use, modify, and distribute this code for personal, educational, or open source projects.
+✅ All I ask is that you include attribution to the original author (TriexDev) in your documentation.
+✅ Share improvements! If you make it better, consider contributing back via a pull request.
+
+### For Commercial & Corporate Use
+
+🔒 Commercial and corporate use requires a separate license agreement.
+🔒 Contact me via GitHub to obtain proper corporate licensing.
+🔒 Enterprise support options are available for teams that need additional assistance.
+
+### What You Can Do (Individual License)
+
+- Use the code in your personal projects
+- Learn from it and teach others
+- Make modifications for your own use
+- Contribute improvements back to the project
+- Use it in open source projects that maintain attribution
+
+### Warranty (or lack thereof)
+
+⚠️ This software is provided "as is" without warranty of any kind.
+⚠️ We've tested it extensively, but your mileage may vary.
+
+### Contributions
+
+By submitting code, you agree it can be included under these same license terms.
+Pull requests are welcome and appreciated!
+
+### Questions & Ideas
+
+If you have questions or ideas, please open an issue on GitHub.
+
+TriexDev
+https://github.com/TriexDev
+
+
+
+TriexDev License (TDL) v1.0
+
+Copyright (c) 2025 TriexDev
+
+Permission is hereby granted, free of charge, to any person or entity obtaining a copy
+of this software and associated documentation files (the "Software"), to use the Software
+for personal, educational, or non-commercial purposes, subject to the following conditions:
+
+1. The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+2. Commercial use of the Software requires explicit written permission from the copyright holder.
+
+3. Redistribution of the Software, in whole or in part, with or without modification,
+   is permitted only with explicit written permission from the copyright holder.
+
+4. The Software is provided "as is", without warranty of any kind, express or implied,
+   including but not limited to the warranties of merchantability, fitness for a particular
+   purpose and noninfringement. In no event shall the authors or copyright holders be
+   liable for any claim, damages or other liability, whether in an action of contract,
+   tort or otherwise, arising from, out of or in connection with the Software or the use
+   or other dealings in the Software.
+
+5. Any derivative works based on this Software must be licensed under the same terms and
+   conditions as this License, unless explicit permission is granted otherwise.
+
+For licensing inquiries or commercial use permission, please contact: license@triex.dev

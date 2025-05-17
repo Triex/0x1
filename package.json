@@ -1,0 +1,68 @@
+{
+  "name": "0x1",
+  "version": "0.0.4",
+  "description": "0x1: Ultra-minimal TypeScript framework with extreme performance powered by Bun",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "0x1": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "bun run --watch src/cli/dev.ts",
+    "build": "bun run build:typescript && bun run build:templates && bun run build:cli",
+    "build:typescript": "bun build ./src/index.ts --outdir=dist --target=node --minify",
+    "build:cli": "bun build ./src/cli/index.ts --outdir=dist/cli --target=bun --minify",
+    "build:templates": "cp -r templates dist/",
+    "lint": "eslint . --ext .ts,.js",
+    "format": "prettier --write '**/*.{ts,js,json,md}'",
+    "test": "bun test",
+    "update-version": "bun run scripts/update-version.ts",
+    "prepublishOnly": "bun run update-version && bun run build"
+  },
+  "keywords": [
+    "bun",
+    "0x1",
+    "framework",
+    "typescript",
+    "minimal",
+    "performance",
+    "spa"
+  ],
+  "author": "TriexDev",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Triex/0x1"
+  },
+  "engines": {
+    "bun": ">=1.0.0",
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "kleur": "^4.1.5",
+    "prompts": "^2.4.2",
+    "zod": "^3.22.4",
+    "execa": "^8.0.1",
+    "picocolors": "^1.0.0",
+    "chokidar": "^3.6.0",
+    "fast-glob": "^3.3.2",
+    "lightningcss": "^1.24.0",
+    "sharp": "^0.33.2",
+    "compression": "^1.7.4",
+    "serve-static": "^1.15.0"
+  }
+}

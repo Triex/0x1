@@ -1,0 +1,36 @@
+{
+  "name": "0x1-full-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build-css && 0x1 dev",
+    "build": "bun run build-css && 0x1 build",
+    "preview": "0x1 preview",
+    "deploy": "0x1 deploy",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write '**/*.{ts,tsx,css,html}'",
+    "pwa": "0x1 pwa",
+    "test": "bun test",
+    "build-css": "bun build-css.js"
+  },
+  "dependencies": {
+    "0x1": "^0.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "*",
+    "@tailwindcss/typography": "*",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.57.0",
+    "postcss": "^8.4.35",
+    "prettier": "^3.2.5",
+    "sharp": "^0.33.2",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "workbox-cli": "^7.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

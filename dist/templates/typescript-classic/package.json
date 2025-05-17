@@ -1,0 +1,29 @@
+{
+  "name": "bundl-typescript-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bundl dev",
+    "build": "bundl build",
+    "preview": "bundl preview",
+    "deploy": "bundl deploy",
+    "lint": "eslint --ext .ts,.tsx src",
+    "format": "prettier --write 'src/**/*.{ts,tsx,css,html}'"
+  },
+  "dependencies": {
+    "bundl": "^0.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.6.0",
+    "@tailwindcss/typography": "^0.6.0",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "tailwindcss": "^4.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

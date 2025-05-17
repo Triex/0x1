@@ -1,0 +1,26 @@
+{
+  "name": "bundl-javascript-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bundl dev",
+    "build": "bundl build",
+    "preview": "bundl preview",
+    "deploy": "bundl deploy",
+    "lint": "eslint --ext .js,.jsx .",
+    "format": "prettier --write '**/*.{js,jsx,css,html}'"
+  },
+  "dependencies": {
+    "bundl": "^0.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.6.0",
+    "@tailwindcss/typography": "^0.6.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "tailwindcss": "^4.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

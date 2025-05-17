@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0077cc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1e293b" media="(prefers-color-scheme: dark)">
+  
+  <title>0x1 TypeScript App</title>
+  <meta name="description" content="Ultra-minimal TypeScript framework with extreme performance">
+  
+  <!-- Favicon and App Icons -->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  
+  <!-- PWA Support -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://example.com">
+  <meta property="og:title" content="0x1 TypeScript App">
+  <meta property="og:description" content="Ultra-minimal TypeScript framework with extreme performance">
+  <meta property="og:image" content="/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  
+  <!-- Preloading and Performance Optimizations -->
+  <link rel="preload" href="./public/styles/tailwind.css" as="style">
+  <link rel="preload" href="./app.ts" as="script" type="module" fetchpriority="high">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  
+  <!-- Primary Stylesheet -->
+  <link rel="stylesheet" href="./public/styles/tailwind.css">
+  
+  <!-- Preemptive dark mode handling to prevent flash -->
+  <script>
+    // Check for dark mode preference
+    const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const savedTheme = localStorage.getItem('darkMode');
+    
+    // Apply theme based on saved preference or system default
+    if (savedTheme === 'true' || (savedTheme === null && darkModeMediaQuery.matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./app.ts"></script>
+  <script type="module" src="./register-sw.ts"></script>
+</body>
+</html>
