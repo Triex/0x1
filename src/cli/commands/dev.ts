@@ -4,12 +4,52 @@
  * Automatically detects and processes Tailwind CSS in parallel
  */
 
-import { serve, type Server, spawn, type Subprocess } from 'bun';
-import { existsSync, mkdirSync, readFileSync, readdirSync, Dirent } from 'fs';
+import { serve, spawn, type Server, type Subprocess } from 'bun';
+import { Dirent, existsSync, mkdirSync, readFileSync, readdirSync } from 'fs';
 import { watch } from 'fs/promises';
+import os from 'os';
 import { join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 import { build } from './build.js';
+
+/**
+ * Open browser at the given URL
+ */
+async function openBrowser(url: string): Promise<void> {
+  const { default: opener } = await import('opener');
+  opener(url);
+}
+
+/**
+ * Get the local IP address for network access
+ */
+function getLocalIP(): string {
+  try {
+    const nets = os.networkInterfaces();
+    
+    for (const name of Object.keys(nets)) {
+      const interfaces = nets[name];
+      if (!interfaces) continue;
+      
+      for (const net of interfaces) {
+        // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+    return 'localhost'; // Fallback
+  } catch (err) {
+    return 'localhost';
+  }
+}
+
+/**
+ * Get the current Bun version
+ */
+function getBunVersion(): string {
+  return `v${Bun.version}`;
+}
 
 export interface DevOptions {
   port?: number;
@@ -38,13 +78,14 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   const open = options.open ?? false;
   const ignorePatterns = options.ignore || config?.build?.ignore || ['node_modules', '.git', 'dist'];
   
-  logger.section('Starting development server');
+  logger.section('DEVELOPMENT SERVER');
+  logger.spacer();
   
   // Run initial build to make sure everything is ready
-  const initialBuild = logger.spinner('Running initial build');
+  const initialBuild = logger.spinner('Running initial build', 'build');
   try {
     await build({ watch: false, silent: true, ignore: ignorePatterns });
-    initialBuild.stop('success', 'Initial build complete');
+    initialBuild.stop('success', 'Initial build: completed successfully');
   } catch (error) {
     initialBuild.stop('error', 'Initial build failed');
     logger.error(`Build error: ${error}`);
@@ -56,23 +97,44 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   if (!options.skipTailwind) {
     const tailwindConfigPath = resolve(process.cwd(), 'tailwind.config.js');
     if (existsSync(tailwindConfigPath)) {
+      const tailwindSpin = logger.spinner('Starting Tailwind CSS watcher', 'css');
       tailwindProcess = await startTailwindProcessing();
+      tailwindSpin.stop('success', 'Tailwind CSS: watching for changes');
+    } else {
+      logger.info('Tailwind CSS configuration not found, skipping CSS processing');
     }
   }
 
-  // Start the development server
-  const serverSpin = logger.spinner(`Starting server at http${options.https ? 's' : ''}://${host}:${port}`);
+  // Start the development server with beautiful styling
+  const serverSpin = logger.spinner(`Starting development server at port ${port}`, 'server');
   
   try {
     // Create the dev server which includes file watcher setup internally
     const { server, watcher } = await createDevServer({ port, host, ignorePatterns });
-    serverSpin.stop('success', `Server running at ${logger.highlight(`http${options.https ? 's' : ''}://${host}:${port}`)}`);
     
-    // Open browser if requested
+    // Display beautiful success message with URL
+    const protocol = options.https ? 'https' : 'http';
+    const url = `${protocol}://${host}:${port}`;
+    serverSpin.stop('success', `Server running at ${logger.highlight(url)}`);
+    
+    // Add file watcher info
+    logger.info(`Watching for file changes in ${logger.highlight(process.cwd())}`);
+    
+    // Open browser if requested with a nicer message
     if (open) {
-      const { default: opener } = await import('opener');
-      opener(`http${options.https ? 's' : ''}://${host}:${port}`);
+      const openSpin = logger.spinner('Opening browser window', 'server');
+      await openBrowser(url);
+      openSpin.stop('success', `Browser: opened at ${logger.highlight(url)}`);
     }
+    
+    // Show a beautiful interface info box
+    logger.spacer();
+    logger.box(
+      `🚀 0x1 Dev Server Running\n\n` + 
+      `Local:            ${logger.highlight(url)}\n` +
+      `Network:          ${logger.highlight(`${protocol}://${getLocalIP()}:${port}`)}\n\n` +
+      `Powered by Bun   v${Bun.version}`
+    );
     
     // Handle exit signals
     process.on('SIGINT', () => {

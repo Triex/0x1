@@ -28,7 +28,19 @@ export interface BuildOptions {
 export async function build(options: BuildOptions = {}): Promise<void> {
   // Only show logs if not silent
   const log = options.silent ? 
-    { info: () => {}, error: () => {}, warn: () => {}, section: () => {}, spinner: () => ({ stop: () => {} }) } :
+    { 
+      info: () => {}, 
+      error: () => {}, 
+      warn: () => {}, 
+      section: () => {}, 
+      spinner: () => ({ stop: () => {} }),
+      spacer: () => {}, // Add spacer method to silent logger
+      success: () => {},
+      highlight: (text: string) => text, // Make sure to include highlight
+      gradient: (text: string) => text, // Include gradient function
+      box: () => {}, // Add box method for silent logger
+      command: () => {} // Add command method for silent logger
+    } :
     logger;
   
   // Get project path
@@ -46,18 +58,19 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   const minify = options.minify ?? config?.build?.minify ?? true;
   const ignorePatterns = options.ignore || config?.build?.ignore || ['node_modules', '.git', 'dist'];
   
-  // Start build
-  log.section('Building application');
+  // Start build with beautiful section header
+  log.section('BUILDING APPLICATION');
+  log.spacer();
   
   // Ensure output directory exists
   const outputPath = resolve(projectPath, outDir);
   await mkdir(outputPath, { recursive: true });
   
-  // Copy static assets
-  const assetsSpin = log.spinner('Copying static assets');
+  // Copy static assets with file icon
+  const assetsSpin = log.spinner('Copying static assets', 'file');
   try {
     await copyStaticAssets(projectPath, outputPath);
-    assetsSpin.stop('success', 'Static assets copied');
+    assetsSpin.stop('success', 'Static assets: copied successfully');
   } catch (error) {
     assetsSpin.stop('error', 'Failed to copy static assets');
     log.error(`${error}`);
@@ -65,11 +78,11 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     return;
   }
   
-  // Process HTML files
-  const htmlSpin = log.spinner('Processing HTML files');
+  // Process HTML files with prettier output
+  const htmlSpin = log.spinner('Processing HTML templates', 'file');
   try {
     await processHtmlFiles(projectPath, outputPath);
-    htmlSpin.stop('success', 'HTML files processed');
+    htmlSpin.stop('success', 'HTML templates: generated successfully');
   } catch (error) {
     htmlSpin.stop('error', 'Failed to process HTML files');
     log.error(`${error}`);
@@ -77,11 +90,11 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     return;
   }
   
-  // bundle JavaScript/TypeScript
-  const bundleSpin = log.spinner('bundling JavaScript/TypeScript');
+  // Bundle JavaScript/TypeScript with appropriate icons
+  const bundleSpin = log.spinner('Bundling JavaScript/TypeScript modules', 'typescript');
   try {
     await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
-    bundleSpin.stop('success', 'JavaScript/TypeScript bundled');
+    bundleSpin.stop('success', 'JavaScript/TypeScript: bundled successfully');
   } catch (error) {
     bundleSpin.stop('error', 'Failed to bundle JavaScript/TypeScript');
     log.error(`${error}`);
@@ -89,17 +102,30 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     return;
   }
   
-  // Process CSS files
-  const cssSpin = log.spinner('Processing CSS files');
+  // Process CSS with appropriate icon
+  const cssSpin = log.spinner('Processing CSS styles', 'css');
   try {
     await processCssFiles(projectPath, outputPath, { minify, ignorePatterns });
-    cssSpin.stop('success', 'CSS files processed');
+    cssSpin.stop('success', 'CSS styles: processed and optimized');
   } catch (error) {
-    cssSpin.stop('error', 'Failed to process CSS files');
-    log.error(`${error}`);
-    if (!options.silent) process.exit(1);
-    return;
+    // CSS processing is optional, so just show a warning
+    cssSpin.stop('warn', 'CSS processing skipped (not configured)');
+    log.warn(`CSS processing error: ${error}`);
   }
+  
+  // Output build info with beautiful formatting
+  log.spacer();
+  log.box(`🎉 Build completed successfully!\n\nOutput directory: ${log.highlight(outputPath)}\nBuild time:      ${log.highlight(new Date().toLocaleTimeString())}`);
+  
+  // Display minification status and helpful next steps
+  if (minify) {
+    log.info(`Files have been minified for production use`);
+  }
+  log.spacer();
+  log.success(`Your 0x1 application is ready to be deployed`);
+  log.info(`To deploy your application, you can run:`);
+  log.command(`bun 0x1 deploy`);
+  log.info(`To learn more about deployment options, see the documentation`);
   
   // Build successful
   if (!options.silent) {

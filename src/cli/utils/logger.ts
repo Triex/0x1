@@ -5,8 +5,58 @@
 
 import kleur from 'kleur';
 
+/**
+ * Remove ANSI escape codes from a string
+ * Used for calculating correct lengths for terminal output
+ */
+function stripAnsi(string: string): string {
+  // This regex pattern matches all ANSI escape codes
+  const pattern = [
+    '[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)',
+    '(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))',
+  ].join('|');
+  
+  return string.replace(new RegExp(pattern, 'g'), '');
+}
+
 // Enable colorful output
 kleur.enabled = true;
+
+// Gradient colors for beautiful outputs
+const gradientColors = [
+  (text: string) => kleur.cyan().bold(text),
+  (text: string) => kleur.blue().bold(text),
+  (text: string) => kleur.magenta().bold(text)
+];
+
+// Beautiful icons for different states
+const icons = {
+  info: '💠',
+  success: '✅',
+  warning: '⚠️',
+  error: '❌',
+  debug: '🔍',
+  build: '🔨',
+  dev: '🚀',
+  server: '🌐',
+  file: '📄',
+  css: '🎨',
+  js: '📦',
+  typescript: '📘',
+};
+
+// Apply gradient to text
+function applyGradient(text: string): string {
+  const chars = text.split('');
+  let colored = '';
+  
+  chars.forEach((char, i) => {
+    const colorFn = gradientColors[i % gradientColors.length];
+    colored += colorFn(char);
+  });
+  
+  return colored;
+}
 
 export const logger = {
   /**
@@ -21,31 +71,45 @@ export const logger = {
   },
 
   /**
+   * Highlight text for output (useful in URLs, file paths, etc.)
+   */
+  highlight: (text: string) => {
+    return kleur.cyan().bold(text);
+  },
+
+  /**
+   * Apply gradient to text for beautiful headers
+   */
+  gradient: (text: string) => {
+    return applyGradient(text);
+  },
+
+  /**
    * Log an info message
    */
   info: (message: string) => {
-    console.log(kleur.blue('ℹ'), message);
+    console.log(kleur.blue(icons.info), message);
   },
 
   /**
    * Log a success message
    */
   success: (message: string) => {
-    console.log(kleur.green('✓'), message);
+    console.log(kleur.green(icons.success), message);
   },
 
   /**
    * Log a warning message
    */
   warn: (message: string) => {
-    console.log(kleur.yellow('⚠'), message);
+    console.log(kleur.yellow(icons.warning), message);
   },
 
   /**
    * Log an error message
    */
   error: (message: string) => {
-    console.log(kleur.red('✗'), message);
+    console.log(kleur.red(icons.error), message);
   },
 
   /**
@@ -53,7 +117,7 @@ export const logger = {
    */
   debug: (message: string) => {
     if (process.env.DEBUG === 'true') {
-      console.log(kleur.dim('🐛'), kleur.dim(message));
+      console.log(kleur.dim(icons.debug), kleur.dim(message));
     }
   },
 
@@ -72,30 +136,66 @@ export const logger = {
   },
 
   /**
-   * Display a section header
+   * Display a section header with gradient styling
    */
   section: (title: string) => {
     console.log();
-    console.log(kleur.bold(kleur.cyan(`■ ${title}`)));
-    console.log(kleur.dim('─'.repeat(title.length + 2)));
+    const gradientTitle = applyGradient(title.toUpperCase());
+    const line = kleur.cyan('═'.repeat(title.length + 4));
+    console.log(line);
+    console.log(kleur.cyan('║') + ' ' + gradientTitle + ' ' + kleur.cyan('║'));
+    console.log(line);
+  },
+
+  /**
+   * Display information in a beautiful box
+   */
+  box: (content: string) => {
+    const lines = content.split('\n');
+    const width = Math.max(...lines.map(line => stripAnsi(line).length)) + 2;
+    
+    // Top border with rounded corners
+    console.log(kleur.dim('╭' + '─'.repeat(width) + '╮'));
+    
+    // Content lines with padding
+    for (const line of lines) {
+      console.log(kleur.dim('│') + ' ' + line + ' '.repeat(width - stripAnsi(line).length - 1) + kleur.dim('│'));
+    }
+    
+    // Bottom border with rounded corners
+    console.log(kleur.dim('╰' + '─'.repeat(width) + '╯'));
   },
 
   /**
    * Display a spinner with a message
    * Returns a function to stop the spinner with a success/error message
    */
-  spinner: (message: string) => {
+  spinner: (message: string, type?: keyof typeof icons) => {
+    // Beautiful spinner frames
     const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     let i = 0;
-    const spinnerText = kleur.cyan(message);
     
-    process.stdout.write(`${frames[0]} ${spinnerText}`);
+    // Choose the icon based on type or use default
+    const icon = type ? icons[type] : ''; 
+    
+    // Create colorful message with icon if provided
+    const taskIcon = type ? kleur.cyan(icon) + ' ' : '';
+    const displayMessage = taskIcon + message;
+    
+    // Add subtle gradient effect to the message
+    const spinnerText = message.includes(':') 
+      ? message.split(':').map((part, idx) => 
+          idx === 0 ? applyGradient(part) + ':' : part
+        ).join(' ')
+      : message;
+    
+    process.stdout.write(`${kleur.cyan(frames[0])} ${displayMessage}`);
     
     const interval = setInterval(() => {
       i = (i + 1) % frames.length;
       process.stdout.clearLine(0);
       process.stdout.cursorTo(0);
-      process.stdout.write(`${kleur.cyan(frames[i])} ${spinnerText}`);
+      process.stdout.write(`${kleur.cyan(frames[i])} ${displayMessage}`);
     }, 80);
     
     return {
@@ -105,34 +205,28 @@ export const logger = {
         process.stdout.cursorTo(0);
         
         const icon = type === 'success' 
-          ? kleur.green('✓') 
+          ? kleur.green(icons.success) 
           : type === 'error' 
-            ? kleur.red('✗') 
-            : kleur.yellow('⚠');
+            ? kleur.red(icons.error) 
+            : kleur.yellow(icons.warning);
         
-        console.log(`${icon} ${endMessage || message}`);
+        // Make success messages more beautiful
+        if (type === 'success') {
+          const successMsg = endMessage || message;
+          const finalMsg = successMsg.includes(':') 
+            ? successMsg.split(':').map((part, idx) => 
+                idx === 0 ? kleur.green().bold(part) + ':' : part
+              ).join(' ')
+            : successMsg;
+          console.log(`${icon} ${finalMsg}`);
+        } else {
+          console.log(`${icon} ${endMessage || message}`);
+        }
       }
     };
   },
 
-  /**
-   * Create a box with a message
-   */
-  box: (message: string) => {
-    const lines = message.split('\n');
-    const width = Math.max(...lines.map(line => line.length)) + 2;
-    
-    console.log();
-    console.log(kleur.cyan('┌' + '─'.repeat(width) + '┐'));
-    
-    lines.forEach(line => {
-      const padding = ' '.repeat(width - line.length - 1);
-      console.log(kleur.cyan('│') + ` ${line}${padding}` + kleur.cyan('│'));
-    });
-    
-    console.log(kleur.cyan('└' + '─'.repeat(width) + '┘'));
-    console.log();
-  },
+
 
   /**
    * Create a table with rows and columns
@@ -179,16 +273,16 @@ export const logger = {
   },
 
   /**
-   * Highlight text in output
+   * Format text as code (e.g., for commands, file paths)
    */
-  highlight: (text: string) => {
-    return kleur.cyan().bold(text);
+  code: (text: string) => {
+    return kleur.blue().dim(`'${text}'`);
   },
 
   /**
-   * Format text as code
+   * Format text as command
    */
-  code: (text: string) => {
+  cmd: (text: string) => {
     return kleur.yellow(`${text}`);
   },
 
