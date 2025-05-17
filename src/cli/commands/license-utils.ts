@@ -73,14 +73,33 @@ For licensing inquiries or commercial use permission, please contact: license@tr
 /**
  * Add a standard MIT license to the project
  */
-export async function addMITLicense(projectPath: string, projectName: string): Promise<void> {
+/**
+ * Add a NO LICENSE file to the project
+ */
+export async function addNoLicense(projectPath: string): Promise<void> {
+  const licenseSpin = logger.spinner('Adding NO LICENSE file');
+  
+  try {
+    // Create a simple NO LICENSE file
+    await writeFile(join(projectPath, 'LICENSE'), 'NO LICENSE\n');
+    licenseSpin.stop('success', 'Added NO LICENSE file');
+  } catch (error) {
+    licenseSpin.stop('error', 'Failed to add NO LICENSE file');
+    logger.error(`Error adding NO LICENSE file: ${error}`);
+  }
+}
+
+/**
+ * Add a standard MIT license to the project
+ */
+export async function addMITLicense(projectPath: string, projectName?: string): Promise<void> {
   const licenseSpin = logger.spinner('Adding MIT License');
   
   try {
     const year = new Date().getFullYear();
     const mitLicenseContent = `MIT License
 
-Copyright (c) ${year} ${projectName}
+Copyright (c) ${year} ${projectName || 'Unknown'}
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

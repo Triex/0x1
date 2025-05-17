@@ -3,14 +3,13 @@
  * Creates a new 0x1 project with the specified template
  */
 
-import { join, resolve } from 'path';
-import { existsSync, mkdirSync, readdirSync } from 'fs';
-import { mkdir, readFile, access } from 'fs/promises';
+import { existsSync, readdirSync } from 'fs';
 import * as fs from 'fs/promises';
-import kleur from 'kleur';
+import { mkdir, readFile } from 'fs/promises';
+import { join, resolve } from 'path';
 import prompts from 'prompts';
 import { logger } from '../utils/logger.js';
-import { addMITLicense, addTDLLicense } from './license-utils.js';
+import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
 // Add execa type definition
 type ExecaModule = { execa: (command: string, args: string[], options?: any) => Promise<{stdout: string; stderr: string}> };
 
@@ -22,7 +21,7 @@ interface NewProjectOptions {
   minimal?: boolean;
   force?: boolean;
   stateManagement?: boolean;
-  tdlLicense?: boolean;
+  licenseType?: 'tdl' | 'mit' | 'none'; // New license type property
   overwrite?: boolean;
   complexity?: 'minimal' | 'standard' | 'full';
   pwa?: boolean;
@@ -132,7 +131,7 @@ export async function createNewProject(
     typescript: options.typescript,
     javascript: options.javascript,
     stateManagement: options.stateManagement,
-    tdlLicense: options.tdlLicense,
+    licenseType: options.licenseType || 'tdl', // Default to TDL license
     complexity: defaultComplexity,
     pwa: options.pwa,
     'no-pwa': options['no-pwa'],
@@ -189,16 +188,19 @@ export async function createNewProject(
       );
       
       // Handle license based on user preference
-      if (projectOptions.tdlLicense) {
+      if (projectOptions.licenseType === 'tdl') {
         // Add TDL license
         await addTDLLicense(projectPath);
+      } else if (projectOptions.licenseType === 'mit') {
+        // Add standard MIT license
+        await addMITLicense(projectPath, name);
+      } else if (projectOptions.licenseType === 'none') {
+        // Add NO LICENSE file
+        await addNoLicense(projectPath);
       } else if (hasLicense) {
         // Restore original license
         await Bun.write(join(projectPath, 'LICENSE'), licenseContent);
         logger.info('Restored original LICENSE file.');
-      } else {
-        // Add standard MIT license
-        await addMITLicense(projectPath, name);
       }
       
       // Restore README if it existed
@@ -352,7 +354,8 @@ interface NewProjectOptions {
   typescript?: boolean;
   javascript?: boolean; // Add explicit JavaScript flag
   stateManagement?: boolean;
-  tdlLicense?: boolean;
+  tdlLicense?: boolean; // Legacy support
+  licenseType?: 'tdl' | 'mit' | 'none'; // New license type property
   pwa?: boolean;
   'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeColor?: string;
@@ -369,7 +372,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   tailwind: boolean; 
   typescript: boolean; 
   stateManagement: boolean; 
-  tdlLicense: boolean;
+  licenseType: 'tdl' | 'mit' | 'none';
   complexity: 'minimal' | 'standard' | 'full';
   pwa: boolean;
   themeColor: string;
@@ -434,13 +437,14 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // Ask about license choice
   const licenseResponse = await promptWithCancel({
     type: 'select',
-    name: 'tdlLicense',
+    name: 'licenseType',
     message: '🔐 Choose a license:',
     choices: [
-      { title: 'MIT License', value: false, description: 'Permissive license' },
-      { title: 'TDL License', value: true, description: 'TriexDev License' }
+      { title: 'TDL License', value: 'tdl', description: 'TriexDev License' },
+      { title: 'MIT License', value: 'mit', description: 'Permissive license' },
+      { title: 'NO LICENSE', value: 'none', description: 'No license specified' }
     ],
-    initial: defaultOptions.tdlLicense ? 1 : 0
+    initial: 0 // TDL is now the default
   });
   
   logger.spacer();
@@ -632,7 +636,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     typescript: languageResponse.language === 'typescript',
     tailwind: useTailwind,
     stateManagement: useStateManagement,
-    tdlLicense: licenseResponse.tdlLicense,
+    licenseType: licenseResponse.licenseType,
     complexity: complexityResponse.complexity,
     pwa: pwaResponse.pwa,
     themeColor: themeColor,
