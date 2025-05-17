@@ -9,9 +9,9 @@
  *   bun run scripts/update-version.ts
  */
 
-import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
+import { join, resolve } from 'path';
 
 // Get the project root directory
 const ROOT_DIR = resolve(import.meta.dir, '..');
@@ -112,6 +112,27 @@ async function updateCliVersions(version: string): Promise<void> {
   }
 }
 
+// Update version in README.md file
+async function updateReadmeVersion(version: string): Promise<void> {
+  const readmePath = join(ROOT_DIR, 'README.md');
+  
+  if (existsSync(readmePath)) {
+    console.log('Updating version in README.md');
+    
+    // Read the README content
+    let readmeContent = await readFile(readmePath, 'utf-8');
+    
+    // Replace version in README.md
+    readmeContent = readmeContent.replace(
+      /Current version: \*\*[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\*\*/g,
+      `Current version: **${version}**`
+    );
+    
+    // Write updated content
+    await writeFile(readmePath, readmeContent, 'utf-8');
+  }
+}
+
 // Main function
 async function main(): Promise<void> {
   try {
@@ -126,6 +147,9 @@ async function main(): Promise<void> {
     
     // Update CLI code references
     await updateCliVersions(version);
+    
+    // Update README.md version
+    await updateReadmeVersion(version);
     
     console.log('✅ Version update complete!');
     console.log('⚠️  Don\'t forget to rebuild the framework with: bun run build');
