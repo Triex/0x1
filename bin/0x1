@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# 0x1 CLI Launcher
+# This script ensures the CLI is executed with Bun
+
+# Find the Bun executable
+BUN_PATH=$(which bun)
+
+if [ -z "$BUN_PATH" ]; then
+  echo "Error: Bun is required but not found in PATH"
+  echo "Please install Bun: https://bun.sh"
+  exit 1
+fi
+
+# Get the directory of this script
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Execute the CLI with Bun
+exec "$BUN_PATH" "$DIR/../dist/cli/index.js" "$@"
