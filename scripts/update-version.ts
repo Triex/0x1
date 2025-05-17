@@ -16,10 +16,22 @@ import { join, resolve } from 'path';
 // Get the project root directory
 const ROOT_DIR = resolve(import.meta.dir, '..');
 
-// Read the main package.json to get the current version
-async function getMainVersion(): Promise<string> {
+// Get or update the main package.json version
+async function getMainVersion(newVersion?: string): Promise<string> {
   const packageJsonPath = join(ROOT_DIR, 'package.json');
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+  
+  // If a new version is provided, update the main package.json
+  if (newVersion) {
+    console.log(`📦 Updating main package.json from ${packageJson.version} to ${newVersion}`);
+    packageJson.version = newVersion;
+    await writeFile(
+      packageJsonPath, 
+      JSON.stringify(packageJson, null, 2) + '\n', 
+      'utf-8'
+    );
+  }
+  
   return packageJson.version;
 }
 
@@ -138,8 +150,11 @@ async function main(): Promise<void> {
   try {
     console.log('🔄 Syncing versions across the codebase...');
     
-    // Get the current version from main package.json
-    const version = await getMainVersion();
+    // Check if a version argument is provided
+    const newVersion = process.argv[2];
+    
+    // Get or update the version in main package.json
+    const version = await getMainVersion(newVersion);
     console.log(`📦 Current version: ${version}`);
     
     // Update all template versions

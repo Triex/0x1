@@ -1,7 +1,7 @@
 {
   "name": "0x1",
   "version": "0.0.7",
-  "description": "0x1: Ultra-minimal TypeScript framework with extreme performance powered by Bun",
+  "description": "0x1: Ultra-minimal JS/TypeScript framework with extreme performance powered by Bun",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
