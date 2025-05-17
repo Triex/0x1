@@ -43,3 +43,63 @@ jobs:
         
       - name: Run TypeScript type checking
         run: bun run tsc --noEmit
+        
+  version-sync:
+    name: Version Sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Check for version changes in package.json
+        id: check-version
+        run: |
+          # Get the current and previous version from package.json
+          CURRENT_VERSION=$(grep '"version":' package.json | head -1 | awk -F: '{ print $2 }' | sed 's/[", ]//g')
+          git checkout HEAD~1 package.json
+          PREVIOUS_VERSION=$(grep '"version":' package.json | head -1 | awk -F: '{ print $2 }' | sed 's/[", ]//g')
+          git checkout HEAD package.json
+          
+          # Check if version has changed
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $CURRENT_VERSION"
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Setup Bun
+        if: steps.check-version.outputs.version_changed == 'true'
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      
+      - name: Install dependencies
+        if: steps.check-version.outputs.version_changed == 'true'
+        run: bun install
+      
+      - name: Run update-version script
+        if: steps.check-version.outputs.version_changed == 'true'
+        run: bun run update-version
+        
+      - name: Build framework
+        if: steps.check-version.outputs.version_changed == 'true'
+        run: bun run build
+        
+      - name: Commit changes
+        if: steps.check-version.outputs.version_changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "chore: sync version to ${{ steps.check-version.outputs.new_version }} across codebase"
+          
+      - name: Push changes
+        if: steps.check-version.outputs.version_changed == 'true'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}

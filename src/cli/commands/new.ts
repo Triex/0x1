@@ -3,9 +3,11 @@
  * Creates a new 0x1 project with the specified template
  */
 
-import { existsSync, readdirSync } from 'fs';
-import { mkdir, readFile } from 'fs/promises';
 import { join, resolve } from 'path';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
+import { mkdir, readFile, access } from 'fs/promises';
+import * as fs from 'fs/promises';
+import kleur from 'kleur';
 import prompts from 'prompts';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addTDLLicense } from './license-utils.js';
@@ -221,7 +223,7 @@ export async function createNewProject(
             projectName.length > 10 ? logoText : projectName; // full name or acronym for short names
           
           // Setup PWA with automatic configuration based on project name and user-selected theme
-          await addPWA({
+          const pwaSetupSuccess = await addPWA({
             skipPrompts: true, // Skip prompts since this is part of project creation
             name: projectName, 
             shortName: shortName,
@@ -236,6 +238,11 @@ export async function createNewProject(
             // Pass the iOS status bar style
             statusBarStyle: projectOptions.statusBarStyle as 'default' | 'black' | 'black-translucent' | undefined
           }, projectPath);
+          
+          if (!pwaSetupSuccess) {
+            pwaSpin.stop('error', 'Failed to set up PWA');
+            throw new Error('Error setting up PWA. Project creation aborted.');
+          }
           
           pwaSpin.stop('success', 'PWA functionality added');
         } catch (error) {
@@ -558,8 +565,20 @@ async function copyTemplate(
   const { useTailwind, useTypescript, complexity } = options;
   
   // The template variable already includes the complexity and language (e.g., 'full/typescript')
-  // so we don't need to append the language again
-  const templatePath = join(import.meta.dirname || '', '../../../templates', template);
+  // We need to handle both local development and global installation scenarios
+  let templatePath = join(import.meta.dirname || '', '../../../templates', template);
+  
+  // Check if template path exists
+  if (!await fs.exists(templatePath)) {
+    // Try finding template in the npm global install directory
+    const globalTemplatePath = join(import.meta.dirname || '', '../templates', template);
+    
+    if (await fs.exists(globalTemplatePath)) {
+      templatePath = globalTemplatePath;
+    } else {
+      throw new Error(`Template path does not exist: ${templatePath}\nAlternative path also doesn't exist: ${globalTemplatePath}`);
+    }
+  }
   
   // Copy template files using internal copy function
   await copyTemplateFiles(templatePath, projectPath, { 
@@ -676,7 +695,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      0x1: '*'
+      "0x1": '*' // Properly quoted to handle the numeric prefix
     },
     devDependencies: {} as Record<string, string>
   };

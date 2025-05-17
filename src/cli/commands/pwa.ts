@@ -3,8 +3,8 @@
  * Add Progressive Web App functionality to a 0x1 project
  */
 
-import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
+import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import prompts from 'prompts';
 import type { PromptObject } from 'prompts';
@@ -37,7 +37,8 @@ interface PWACommandOptions {
 /**
  * Add PWA functionality to a 0x1 project
  */
-export async function addPWA(options: PWACommandOptions = {}, customProjectPath?: string): Promise<void> {
+export async function addPWA(options: PWACommandOptions = {}, customProjectPath?: string): Promise<boolean> {
+  let setupSuccess = false;
   // Display banner
   logger.banner(['0x1 PWA Setup']);
   logger.spacer();
@@ -48,7 +49,7 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   const projectPath = customProjectPath || process.cwd();
   if (!is0x1Project(projectPath)) {
     logger.error('Not a 0x1 project. Please run this command from the root of a 0x1 project.');
-    process.exit(1);
+    return false;
   }
 
   // Get PWA configuration through prompts or options
@@ -103,11 +104,35 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   const isTypeScript = existsSync(join(projectPath, 'tsconfig.json'));
   const extension = isTypeScript ? 'ts' : 'js';
   
-  await writeFile(
-    join(projectPath, 'src', `register-sw.${extension}`),
-    registrationJs
-  );
-  regSpin.stop('success', `Created register-sw.${extension}`);
+  // Check different possible locations for the file
+  // For full template, the file should be in root, for others it might be in src
+  let swRegisterPath;
+  
+  // First try root directory
+  if (existsSync(join(projectPath, 'sw-register.ts')) || existsSync(join(projectPath, 'sw-register.js'))) {
+    swRegisterPath = join(projectPath, `sw-register.${extension}`);
+  } 
+  // Then try src directory
+  else if (existsSync(join(projectPath, 'src'))) {
+    swRegisterPath = join(projectPath, 'src', `register-sw.${extension}`);
+  } 
+  // Default to root if neither exists
+  else {
+    swRegisterPath = join(projectPath, `sw-register.${extension}`);
+  }
+  
+  // Create the parent directory if it doesn't exist
+  const parentDir = swRegisterPath.substring(0, swRegisterPath.lastIndexOf('/'));
+  if (!existsSync(parentDir)) {
+    logger.debug(`Creating directory: ${parentDir}`);
+    await mkdir(parentDir, { recursive: true });
+  }
+  
+  await writeFile(swRegisterPath, registrationJs);
+  regSpin.stop('success', `Created ${swRegisterPath.split('/').pop()}`);
+  
+  // Store the path for later reference in the next steps
+  const swRegisterRelativePath = swRegisterPath.replace(`${projectPath}/`, '');
 
   // Generate icons if enabled
   if (pwaConfig.generateIcons) {
@@ -117,6 +142,7 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
       await generateAllIcons(projectPath, pwaConfig);
       iconSpin.stop('success', 'Generated all PWA icons');
     } catch (error) {
+    setupSuccess = false;
       iconSpin.stop('error', 'Failed to generate icons');
       logger.error(`Error generating icons: ${error}`);
     }
@@ -125,6 +151,9 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Update HTML to include PWA meta tags and manifest
   await updateHtmlFile(projectPath, isTypeScript, options);
 
+  // Mark setup as successful
+  setupSuccess = true;
+  
   // Show completion message
   logger.spacer();
   logger.success('PWA functionality has been added to your project!');
@@ -133,10 +162,12 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Show next steps
   logger.section('Next Steps');
   logger.log('1. Add the service worker registration to your app:');
-  logger.log(`import './register-sw.${extension}';`);
+  logger.log(`import './${swRegisterRelativePath}';`);
   logger.log('2. Test your PWA using Chrome DevTools Lighthouse');
   logger.log('3. Deploy your app to a secure (HTTPS) environment');
   logger.spacer();
+  
+  return setupSuccess;
 }
 
 /**
@@ -149,17 +180,33 @@ function is0x1Project(projectPath: string): boolean {
     return false;
   }
 
-  // Check for src directory
-  const srcPath = join(projectPath, 'src');
-  if (!existsSync(srcPath)) {
+  try {
+    // Read package.json content
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+    
+    // Check if this is a 0x1 project by examining package.json
+    // Consider it a 0x1 project if it has 0x1-related scripts or dependencies
+    const scripts = packageJson.scripts || {};
+    const dependencies = packageJson.dependencies || {};
+    const devDependencies = packageJson.devDependencies || {};
+    
+    // Check for 0x1 scripts
+    const has0x1Scripts = Object.values(scripts).some((script) => 
+      typeof script === 'string' && script.includes('0x1'));
+      
+    // Check for 0x1 as a dependency
+    const has0x1Dependency = '0x1' in dependencies || '0x1' in devDependencies;
+    
+    // Check for src, pages, or components directory (common in 0x1 projects)
+    const hasStructure = existsSync(join(projectPath, 'src')) || 
+                         existsSync(join(projectPath, 'pages')) || 
+                         existsSync(join(projectPath, 'components'));
+    
+    return has0x1Scripts || has0x1Dependency || hasStructure;
+  } catch (error) {
+    logger.debug(`Error checking if directory is a 0x1 project: ${error}`);
     return false;
   }
-
-  // Either 0x1.config.js or 0x1.config.ts should exist
-  const configJsPath = join(projectPath, '0x1.config.js');
-  const configTsPath = join(projectPath, '0x1.config.ts');
-  
-  return existsSync(configJsPath) || existsSync(configTsPath);
 }
 
 /**
@@ -292,20 +339,24 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
  */
 async function updateHtmlFile(projectPath: string, isTypeScript: boolean, pwaOptions?: PWACommandOptions): Promise<void> {
   const htmlSpin = logger.spinner('Updating HTML file');
-
+  
   try {
-    // Find the HTML file
-    const srcDir = join(projectPath, 'src');
-    let htmlFile = 'index.html';
+    // Determine possible paths for index.html
+    const possiblePaths = [
+      join(projectPath, 'index.html'),          // Root directory
+      join(projectPath, 'src', 'index.html'),   // src directory
+      join(projectPath, 'public', 'index.html') // public directory
+    ];
     
-    // Check if HTML file exists in src directory
-    const htmlPath = join(srcDir, htmlFile);
-    if (!existsSync(htmlPath)) {
-      throw new Error('Could not find index.html in src directory');
+    // Find the first existing path
+    const htmlPath = possiblePaths.find(path => existsSync(path));
+    
+    if (!htmlPath) {
+      throw new Error('Could not find index.html in project');
     }
     
     // Read HTML file
-    const html = await Bun.file(htmlPath).text();
+    const html = await readFile(htmlPath, 'utf-8');
     
     // Check if manifest is already included
     if (html.includes('<link rel="manifest"')) {
