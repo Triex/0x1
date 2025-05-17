@@ -8,11 +8,11 @@
 </p>
 
 <p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#getting-started"><strong>Getting Started</strong></a> ·
-  <a href="#philosophy"><strong>Philosophy</strong></a> ·
-  <a href="#cli-commands"><strong>CLI Commands</strong></a> ·
-  <a href="#pwa-features"><strong>PWA Support</strong></a>
+  <a href="#-features"><strong>Features</strong></a> ·
+  <a href="#-getting-started"><strong>Getting Started</strong></a> ·
+  <a href="#-philosophy"><strong>Philosophy</strong></a> ·
+  <a href="#-cli-commands"><strong>CLI Commands</strong></a> ·
+  <a href="#-pwa-features"><strong>PWA Support</strong></a>
 </p>
 
 <p align="center">
