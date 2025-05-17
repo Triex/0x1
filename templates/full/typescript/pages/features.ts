@@ -1,11 +1,11 @@
 /**
  * Features page to showcase 0x1 capabilities
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 import { FeatureCard } from '../components/FeatureCard';
 import { DefaultLayout } from '../components/layouts/DefaultLayout';
 
-export default function FeaturesPage() {
+export default function renderFeaturesPage() {
   return html`
     ${DefaultLayout({
       title: 'Features',

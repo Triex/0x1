@@ -1,7 +1,7 @@
 /**
  * Reusable Button component for 0x1 applications
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 
 interface ButtonProps {
   text: string;

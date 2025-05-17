@@ -1,11 +1,11 @@
 /**
  * Home page showcasing 0x1 features
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 import { DefaultLayout } from '../components/layouts/DefaultLayout';
 import { counterStore } from '../store/counter';
 
-export default function HomePage() {
+export default function renderHomePage() {
   // Demo of using store state
   const { count } = counterStore.getState();
 

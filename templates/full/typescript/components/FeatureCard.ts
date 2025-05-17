@@ -1,7 +1,7 @@
 /**
  * Reusable FeatureCard component
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 
 interface FeatureCardProps {
   title: string;

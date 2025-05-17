@@ -7,10 +7,10 @@ import { useTheme } from './lib/theme';
 import { counterStore, decrementCounter, incrementCounter } from './store/counter';
 
 // Import pages
-import { renderAboutPage } from './pages/about';
-import { renderContactPage } from './pages/contact';
-import { renderFeaturesPage } from './pages/features';
-import { renderHomePage } from './pages/index';
+import renderAboutPage from './pages/about';
+import renderContactPage from './pages/contact';
+import renderFeaturesPage from './pages/features';
+import renderHomePage from './pages/index';
 
 // DOM ready function
 function ready(callback: () => void): void {
@@ -104,8 +104,10 @@ ready(() => {
   
   // Set up theme toggle event handler
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
-    // This will trigger the event listener in the theme.ts file
-    window.dispatchEvent(new CustomEvent('theme-toggle'));
+    // Log that button was clicked for debugging
+    console.log('Theme toggle button clicked');
+    // Directly call toggleTheme instead of dispatching an event
+    toggleTheme();
   });
   
   // Set up mobile menu toggle

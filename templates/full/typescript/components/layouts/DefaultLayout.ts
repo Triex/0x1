@@ -2,7 +2,7 @@
  * Default layout component for 0x1 applications
  */
 import { useTheme } from '../../lib/theme';
-import { html } from '../../utils/template';
+import { html } from '../../lib/html';
 
 interface DefaultLayoutProps {
   title: string;

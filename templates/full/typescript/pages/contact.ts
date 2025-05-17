@@ -1,12 +1,12 @@
 /**
  * Contact page demonstrating forms and interactivity in 0x1
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 import { Button } from '../components/Button';
 import { DefaultLayout } from '../components/layouts/DefaultLayout';
 import { TextField } from '../components/TextField';
 
-export default function ContactPage() {
+export default function renderContactPage() {
   return html`
     ${DefaultLayout({
       title: 'Contact',

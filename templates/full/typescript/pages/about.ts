@@ -1,10 +1,10 @@
 /**
  * About page to demonstrate routing in 0x1
  */
-import { html } from '0x1';
+import { html } from '../lib/html';
 import { DefaultLayout } from '../components/layouts/DefaultLayout';
 
-export default function AboutPage() {
+export default function renderAboutPage() {
   return html`
     ${DefaultLayout({
       title: 'About',

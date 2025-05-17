@@ -132,6 +132,9 @@ const toggleTheme = (): void => {
   const currentTheme = themeStore.getState().current;
   const newTheme: Theme = currentTheme === 'light' ? 'dark' : 'light';
   
+  // Log for debugging
+  console.log(`Toggling theme from ${currentTheme} to ${newTheme}`);
+  
   themeStore.setState({ current: newTheme });
   applyTheme(newTheme);
   updateThemeToggleButton(newTheme);

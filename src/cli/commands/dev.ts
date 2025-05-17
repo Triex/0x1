@@ -311,19 +311,22 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         // For TypeScript files, transpile them on the fly
         if (path.endsWith('.ts') || path.endsWith('.tsx')) {
           try {
-            const content = await file.text();
-            const { transpileModule } = await import('typescript');
-            
-            // Compile TypeScript on the fly
-            const result = transpileModule(content, {
-              compilerOptions: {
-                target: 6, // es2022
+            const result = Bun.transpileFile(filePath, {
+              loader: 'ts',
+              target: 'browser',
+              platform: 'browser',
+              minify: false,
+              tsc: {
+                target: 99, // esnext
                 module: 99, // esnext
                 moduleResolution: 2, // node
                 jsx: 1, // react
                 esModuleInterop: true,
                 skipLibCheck: true,
                 allowSyntheticDefaultImports: true,
+                paths: {
+                  '*': ['*', './*', './lib/*', './store/*', './pages/*']
+                }
               }
             });
             
