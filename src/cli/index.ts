@@ -106,10 +106,10 @@ const showBanner = () => {
     '██╔═══██╗ ╚██╗██╔╝ ╚██║',
     '██║   ██║  ╚███╔╝   ██║',
     '██║   ██║  ██╔██╗   ██║',
-    ' ██████╔╝ ██╔╝ ██╗  ██║',
+    '╚██████╔╝ ██╔╝ ██╗  ██║',
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
-  logger.info(`v0.0.12 - The ultra-minimal TypeScript framework`);
+  logger.info(`v0.0.14 - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
 
