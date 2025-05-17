@@ -280,12 +280,25 @@ bun run deploy
 ### Prerequisites
 - [Bun](https://bun.sh) v1.0.0 or higher (REQUIRED)
 
-### Installation
+### 🚀 Installation
+
 ```bash
+# Install globally
 bun install -g 0x1
+
+# Or use npx (requires Bun to be installed)
+npx 0x1@latest
 ```
 
-> **Important:** The 0x1 framework uses Bun-specific APIs and cannot run on Node.js/npm.
+> **Note:** When installed globally, you may need to run the CLI using `bun 0x1` instead of just `0x1`. This is due to how Bun handles global binary installations.
+>
+> ```bash
+> # Instead of this
+> 0x1 new my-project
+> 
+> # Use this
+> bun 0x1 new my-project
+> ```
 
 ## Publishing to npm Registry
 
@@ -300,7 +313,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.20**
+Current version: **0.0.21**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 

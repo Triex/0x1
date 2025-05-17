@@ -1,16 +1,16 @@
 {
   "name": "0x1",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "0x1": "./dist/cli/index.js"
-  },
+  "bin": "./bin/0x1",
+  "preferUnplugged": true,
   "files": [
     "dist",
     "templates",
+    "bin",
     "LICENSE"
   ],
   "scripts": {
