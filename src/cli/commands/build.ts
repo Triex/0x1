@@ -349,6 +349,10 @@ async function bundleJavaScript(
         loader,
         // Add source maps for better debugging
         sourcemap: 'external',
+        // Improve module resolution
+        plugins: [],
+        // Handle node modules properly
+        external: ['*'],
       };
       
       // Explicitly set the tsconfig if it exists
