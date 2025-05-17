@@ -1,32 +1,64 @@
+<div align="center">
+
 # 0x1 ⚡ Ultra-Minimal Framework
 
-Ultra-minimal, zero-overhead web framework for JS/Typescript powered by Bun.
+**⚡ Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance**
 
-- **Zero-dependency router**: Hash-based or history API routing with lazy loading
-- **Micro-suspense**: Lightweight content loading states without React
-- **Component system**: Simple TypeScript component system with automatic DOM diffing
-- **Extreme performance**: Sub-16kb JS payload, 100/100 Lighthouse scores
-- **Native ESM**: Direct TypeScript-to-JavaScript compilation with no bundling step
+*Powered by [Bun](https://bun.sh)*
 
-## Running Locally
+</div>
+
+<p align="center">
+  <img src="./public/0x1-banner.svg" alt="0x1 Framework" width="800" />
+  <!-- <img src="https://raw.githubusercontent.com/Triex/0x1/main/public/0x1-banner.svg"  -->
+</p>
+
+## ✨ Features
+
+- **🔄 Language flexibility**: First-class support for both JavaScript and TypeScript
+- **🔀 Zero-dependency router**: Hash-based or history API routing with lazy loading
+- **⏱️ Micro-suspense**: Lightweight content loading states without React
+- **🧩 Component system**: Modern component system with automatic DOM diffing
+- **🚀 Extreme performance**: Sub-16kb JS payload, 100/100 Lighthouse scores
+- **📦 Native ESM**: Direct compilation with no bundling step
+- **🌓 Theme modes**: Built-in support for light, dark, and system modes
+
+## 🚀 Getting Started
+
+### Installation
 
 ```bash
-# Install with bun (REQUIRED - framework uses Bun-specific APIs)
+# Install globally with bun (REQUIRED - framework uses Bun-specific APIs)
 bun install -g 0x1
-
-# Create a new project
-0x1 new proj-name
-
-# Create a new project with specific options
-0x1 new my-app --typescript --theme-mode=dark|light|system
 ```
 
+### Create a New Project
+
 ```bash
-# Development
-0x1 dev
+# Create a new project with TypeScript (default)
+bun 0x1 new my-app
+
+# Create with JavaScript
+bun 0x1 new my-app --javascript
+
+# Choose theme mode (dark, light, system)
+bun 0x1 new my-app --theme-mode=light
+```
+
+### Development and Building
+
+```bash
+# Navigate to your project
+cd my-app
+
+# Start development server with hot reload
+bun 0x1 dev
 
 # Build for production
-0x1 build
+bun 0x1 build
+
+# Preview production build
+bun 0x1 preview
 ```
 
 ## 🚀 Features
@@ -53,11 +85,12 @@ Choose between light, dark, or system theme modes during project creation:
 
 ## 🛠️ Technology Stack
 
-- **Core**: Pure TypeScript with custom mini-framework
-- **Runtime**: Bun for development and build optimization
+- **Core**: Pure JavaScript/TypeScript with custom mini-framework
+- **Runtime**: Bun for lightning-fast development and build optimization
 - **Styling**: Optional Tailwind CSS with minimal custom utilities
 - **Deployment**: Optimized for Vercel edge deployment
 - **Performance**: Pre-rendered static HTML with micro-interactions
+- **Development Experience**: First-class DX with smart defaults
 
 ### Deploying to Vercel
 
@@ -65,13 +98,15 @@ The project is configured for zero-config Vercel deployment. Simply connect your
 
 ## ⚙️ Under the Hood
 
-Our custom mini-framework achieves extreme performance through:
+The 0x1 framework achieves extreme performance through:
 
-1. **Zero abstraction cost**: Direct DOM manipulation with no virtual DOM
-2. **Native ESM imports**: Browser-native module loading without bundling
-3. **Precomputed static content**: Pre-rendered HTML with minimal JS hydration
-4. **Micro-optimizations**: Function inlining and dependency flattening
-5. **Progressive enhancement**: Core functionality works without JavaScript
+1. **Language flexibility**: Use JavaScript or TypeScript with equal first-class support
+2. **Zero abstraction cost**: Direct DOM manipulation with no virtual DOM overhead
+3. **Native ESM imports**: Browser-native module loading without complex bundling
+4. **Precomputed static content**: Pre-rendered HTML with minimal JS hydration
+5. **Micro-optimizations**: Function inlining and dependency flattening
+6. **Progressive enhancement**: Core functionality works without JavaScript
+7. **Bun-powered**: Leverages Bun's high-performance JavaScript runtime
 
 ## 📊 Performance Metrics of Demo Template 1
 
@@ -86,8 +121,8 @@ Our custom mini-framework achieves extreme performance through:
 </p>
 
 <p align="center">
-  <strong>Ultra-minimal TypeScript framework with extreme performance</strong><br>
-  <span>The zero-overhead web framework powered by Bun</span>
+  <strong>Lightning-fast web framework for JavaScript/TypeScript with zero overhead</strong><br>
+  <span>The ultra-minimal, maximum performance framework powered by Bun</span>
 </p>
 
 <p align="center">
@@ -99,9 +134,19 @@ Our custom mini-framework achieves extreme performance through:
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/bundle_Size-<16kb-blue" alt="bundle Size" />
-  <img src="https://img.shields.io/badge/Platform-Bun-black" alt="Platform" />
-  <img src="https://img.shields.io/badge/License-TDL_v1-blue" alt="License" />
+  <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/v/0x1.svg?style=flat-square" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/dm/0x1.svg?style=flat-square" alt="npm downloads"></a>
+  <a href="https://github.com/Triex/0x1"><img src="https://img.shields.io/github/stars/Triex/0x1?style=flat-square" alt="github stars"></a>
+  <img src="https://img.shields.io/badge/bundle_size-<16kb-blue?style=flat-square" alt="bundle size" />
+  <img src="https://img.shields.io/badge/dependencies-0-green?style=flat-square" alt="dependencies" />
+</p>
+
+<p align="center">
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Powered_by-Bun-black?style=flat-square&logo=bun" alt="Powered by Bun" /></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square&logo=typescript" alt="TypeScript Ready" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"><img src="https://img.shields.io/badge/JavaScript-Supported-yellow?style=flat-square&logo=javascript" alt="JavaScript Supported" /></a>
+  <img src="https://img.shields.io/badge/ESM-Native-brightgreen?style=flat-square" alt="ESM Native" />
+  <img src="https://img.shields.io/badge/License-TDL_v1-blue?style=flat-square" alt="License" />
 </p>
 
 ---
@@ -115,17 +160,49 @@ Our custom mini-framework achieves extreme performance through:
 - **Precomputed content**: Minimal JS for maximum speed
 
 ### 🧩 Components Without Overhead
-- **Simple API**: TypeScript-powered component system
+- **Simple API**: Modern component system for both JavaScript and TypeScript
 - **Minimal abstractions**: Near-vanilla performance
 - **Custom Diffing**: Optimized DOM updates
-- **Type-safe**: Full TypeScript support
+- **Type-safe**: Full TypeScript support when you want it
+- **Vanilla friendly**: Works with plain JavaScript for maximum flexibility
+
+### 🧪 Template Complexity Options
+
+0x1 offers three complexity levels for projects, available in both JavaScript and TypeScript:
+
+```bash
+# Create a minimal project
+bun 0x1 new my-app --complexity=minimal
+
+# Create a standard project (default)
+bun 0x1 new my-app --complexity=standard
+
+# Create a full-featured project
+bun 0x1 new my-app --complexity=full
+```
+
+#### Minimal Template
+- Basic structure with essential files only
+- Perfect for landing pages or simple sites
+- Extremely lightweight with minimal dependencies
+
+#### Standard Template
+- Complete structure with organized files
+- Router implementation with multi-page support
+- Component architecture for building UIs
+
+#### Full Template
+- Everything in Standard, plus:
+- Built-in state management system
+- Progressive Web App (PWA) support
+- Service worker for offline capabilities
 
 ### 📱 Progressive Web App Support
 - **Auto-generated PWA assets**: Icons, splash screens, and manifest
-- **Offline support**: Service worker with customizable caching strategies
-- **Install prompts**: Native app-like experience with home screen installation
-- **Dark mode**: Automatic dark mode support for PWA UI
-- **Push notification ready**: Infrastructure for implementing push notifications
+- **Offline support**: Service worker with intelligent caching
+- **Install prompts**: Native app-like experience
+- **Dark/light modes**: Theme support for your PWA
+- **Push notifications**: Ready infrastructure
 
 ### 🔄 Built-in Router
 - **Zero-dependency**: No routing libraries needed
@@ -133,17 +210,93 @@ Our custom mini-framework achieves extreme performance through:
 - **Code-splitting**: Automatic lazy loading
 - **SPA navigation**: Fast page transitions
 
-### 🛠️ Developer Experience
-- **Hot reload**: Sub-second refresh times
-- **Bun-powered**: Built on the fastest JS runtime
-- **Tailwind integration**: Zero-config styling
-- **TypeScript-first**: Great editor support
+### 🔨️ Developer Experience
+- **Hot reload**: Sub-second refresh times with bun's lightning-fast runtime
+- **Bun-powered**: Built on the fastest JS runtime available
+- **Tailwind integration**: Zero-config styling with built-in support
+- **Language choice**: JavaScript or TypeScript with equal first-class support
+- **Smart defaults**: Sensible configurations out of the box
+- **Theme flexibility**: Light, dark and system theme modes
+
+### 🚀 Deployment Options
+
+0x1 projects are optimized for modern hosting platforms:
+
+```bash
+# Deploy to Vercel (recommended)
+bun 0x1 deploy --provider=vercel
+
+# Deploy to Netlify
+bun 0x1 deploy --provider=netlify
+
+# Custom deployment
+bun 0x1 build
+# Then deploy the 'dist' directory
+```
+
+The framework is specially optimized for Vercel Edge Runtime and Netlify Edge Functions, providing the best possible performance at the edge.
+
+## 💡 Community & Support
+
+- [GitHub Issues](https://github.com/Triex/0x1/issues) - Bug reports and feature requests
+- [GitHub Discussions](https://github.com/Triex/0x1/discussions) - Ask questions and share ideas
+- [NPM Package](https://www.npmjs.com/package/0x1) - Latest releases
+
+## 👷 Contributing
+
+Contributions are welcome! Here's how you can help:
+
+```bash
+# Clone the repository
+git clone https://github.com/Triex/0x1.git
+cd 0x1
+
+# Install dependencies
+bun install
+
+# Run tests
+bun test
+
+# Build the framework
+bun run build
+```
+
+Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/CONTRIBUTING.md) for more details.
+
+## 📜 License
+
+0x1 is licensed under the [TDL v1 License](https://github.com/Triex/0x1/blob/main/LICENSE).
+
+## 🏎️ Performance Comparison
+
+| Metric              | 0x1 | React | Vue  | Svelte | Next.js |
+|---------------------|-------|-------|------|--------|--------|
+| JS Size (gzip)      | 5kB   | 44kB  | 31kB | 21kB   | 80kB+   |
+| Time to Interactive | 0.3s  | 1.1s  | 0.7s | 0.6s   | 1.5s+   |
+| Memory Usage        | Low   | High  | Med  | Low    | High    |
+| Lighthouse Score    | 100   | 75-85 | 85-95| 90-95  | 70-85   |
+
+## 💡 Philosophy
+
+0x1's philosophy is radically different from most modern frameworks:
+
+1. **Zero abstraction cost**: No virtual DOM or complex state tracking
+2. **Browser-native**: Leverage what browsers are good at
+3. **Minimal over comprehensive**: Focused feature set, exceptional at few things
+4. **No dependencies**: Entire framework in one tiny package
+5. **Extreme performance**: Optimize for loaded page performance, not DX shortcuts
 
 ## 🚀 Quick Start
 
 ```bash
-# Create a new 0x1 app
-bun create 0x1 my-app
+# Create a new 0x1 app with Bun
+bun install -g 0x1
+
+# Create a new project (defaults to TypeScript)
+bun 0x1 new my-app
+
+# Or specify JavaScript explicitly
+bun 0x1 new my-app --javascript
 
 # Or use the CLI directly
 npx 0x1 new my-app

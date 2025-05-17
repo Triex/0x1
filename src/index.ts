@@ -8,8 +8,9 @@
 
 // Export core components
 export {
-  Component, createComponent, createElement, Fragment, fromHTML, mount, template, textElement, updateComponent
+  createComponent, createElement, Fragment, fromHTML, mount, template, textElement, updateComponent
 } from './core/component.js';
+export type { Component } from './core/component.js';
 
 // Export router and navigation
 export {
@@ -45,7 +46,7 @@ export {
 export { clearElement, patchElement, setAttributes, setStyles } from './utils/dom.js';
 
 // Config types
-export type { X1Config } from './types/config.js';
+export type { _0x1Config } from './types/config.js';
 
 // Version info
 export const version = '0.1.0';

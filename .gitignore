@@ -6,3 +6,4 @@ node_modules
 
 # Build output
 dist
+0x1-store/dist

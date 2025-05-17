@@ -93,7 +93,7 @@ export function createStore<T>(
         let previousValue = getValue();
         
         // Create subscription that only fires when selected data changes
-        const unsubscribe = this.subscribe((state: T) => {
+        const unsubscribe = (this as Store<T>).subscribe((state: T) => {
           const newValue = selector(state);
           
           if (newValue !== previousValue) {

@@ -3,7 +3,7 @@
  * A zero-dependency router for single page applications
  */
 
-import { Component } from './component.js';
+import type { Component } from './component.js';
 
 export interface RouteParams {
   [key: string]: string;
