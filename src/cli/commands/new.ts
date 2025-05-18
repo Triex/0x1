@@ -759,8 +759,12 @@ async function copyRecursive(src: string, dest: string) {
   try {
     // Try an optimized approach first for directories
     const { statSync } = await import('fs');
+    const { join } = await import('path');
     const stats = statSync(src);
     const isDirectory = stats.isDirectory();
+    
+    // Debug logging
+    logger.debug(`Copying: ${src} -> ${dest}`);
     
     if (isDirectory) {
       // Fast path: Use optimized directory copy if possible

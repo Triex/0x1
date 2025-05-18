@@ -216,15 +216,28 @@ function generateSplashSVG(width: number, height: number, options: IconGenerator
  */
 async function saveSVG(svgContent: string, filePath: string): Promise<void> {
   try {
-    // Ensure directory exists
-    const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+    // Ensure directory exists using path.dirname for proper path handling
+    const { dirname } = await import('path');
+    const dir = dirname(filePath);
+    
     if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true });
+      try {
+        await mkdir(dir, { recursive: true });
+        console.log(`Created directory: ${dir}`);
+      } catch (dirError) {
+        console.error(`Failed to create directory ${dir}:`, dirError);
+        throw dirError;
+      }
     }
     
     // Use Bun's native file API for better performance
-    await Bun.write(filePath, svgContent);
-    console.log(`Generated ${filePath}`);
+    try {
+      await Bun.write(filePath, svgContent);
+      console.log(`Generated ${filePath}`);
+    } catch (writeError) {
+      console.error(`Failed to write SVG to ${filePath}:`, writeError);
+      throw writeError;
+    }
   } catch (error) {
     console.error(`Failed to save SVG to ${filePath}:`, error);
     throw error;
@@ -321,13 +334,37 @@ export async function generateBasicIcons(
   };
 
   try {
-    // Create dirs if they don't exist
+    // Create dirs if they don't exist - using more robust approach with better error handling
+    const { dirname } = await import('path');
+    const publicDir = join(projectPath, 'public');
     const iconDir = join(projectPath, 'public/icons');
-    if (!existsSync(join(projectPath, 'public'))) {
-      await mkdir(join(projectPath, 'public'), { recursive: true });
+    
+    // Create public directory
+    if (!existsSync(publicDir)) {
+      try {
+        await mkdir(publicDir, { recursive: true, mode: 0o755 });
+        console.log(`Created public directory: ${publicDir}`);
+      } catch (dirError) {
+        console.error(`Failed to create public directory ${publicDir}:`, dirError);
+        // Try alternative approach - using fs.mkdirSync
+        const { mkdirSync } = await import('fs');
+        mkdirSync(publicDir, { recursive: true, mode: 0o755 });
+        console.log(`Created public directory with mkdirSync: ${publicDir}`);
+      }
     }
+    
+    // Create icons directory
     if (!existsSync(iconDir)) {
-      await mkdir(iconDir, { recursive: true });
+      try {
+        await mkdir(iconDir, { recursive: true, mode: 0o755 });
+        console.log(`Created icons directory: ${iconDir}`);
+      } catch (dirError) {
+        console.error(`Failed to create icons directory ${iconDir}:`, dirError);
+        // Try alternative approach - using fs.mkdirSync
+        const { mkdirSync } = await import('fs');
+        mkdirSync(iconDir, { recursive: true, mode: 0o755 });
+        console.log(`Created icons directory with mkdirSync: ${iconDir}`);
+      }
     }
     
     // Generate favicon.svg (32px)
