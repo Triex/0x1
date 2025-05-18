@@ -1,32 +1,72 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bun
 
-# Super-simple 0x1 CLI entry point that fixes recursion issues
-# This is the most reliable way to run the CLI with minimal dependencies
+/**
+ * 0x1 CLI Entry Point - Ultra-simple Bun-based launcher
+ * 
+ * This script finds and imports the CLI script regardless of installation method.
+ * It avoids all recursion issues by using Bun's native ES module support.
+ */
 
-# Define common paths
-HOME_DIR="$HOME"
-BUN_PATH="$HOME_DIR/.bun/bin/bun"
-NODE_MODULES="$HOME_DIR/.bun/install/global/node_modules/0x1"
-CLI_ENTRY="$NODE_MODULES/dist/cli/index.js"
+// 1. First, detect if we're running in a recursive loop via environment
+if (process.env.OX1_RUNNING === '1') {
+  console.error('Error: Detected recursive execution of the 0x1 CLI');
+  process.exit(1);
+}
 
-# Check if this was executed via bunx by looking at environment variables
-if [ -n "$BUN_INSTALL" ] && [ "$BUNX_COMMAND" = "0x1" ]; then
-  # We are being called by bunx - avoid recursion by directly finding the script
-  if [ -f "$CLI_ENTRY" ]; then
-    exec "$BUN_PATH" "$CLI_ENTRY" "$@"
-  else
-    # Can't find the script, look in the path where this bin script is located
-    SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-    SELF_CLI="$SELF_DIR/../dist/cli/index.js"
-    if [ -f "$SELF_CLI" ]; then
-      exec "$BUN_PATH" "$SELF_CLI" "$@"
-    else
-      echo "Error: Cannot find 0x1 CLI entry point" >&2
-      exit 1
-    fi
-  fi
-else
-  # We are being called directly - try bunx with special env vars to prevent recursion
-  export BUNX_COMMAND="0x1"
-  exec bunx 0x1 "$@"
-fi
+// 2. Set recursion prevention flag
+process.env.OX1_RUNNING = '1';
+
+// 3. Import necessary modules
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+// This works in both ESM and CJS
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const homeDir = process.env.HOME || process.env.USERPROFILE;
+
+// 4. Find the CLI entry point from various possible locations
+const possiblePaths = [
+  // Local development path (running from repo)
+  join(__dirname, '../dist/cli/index.js'),
+  
+  // Global installation paths
+  join(homeDir, '.bun/install/global/node_modules/0x1/dist/cli/index.js'),
+  join(process.env.BUN_INSTALL || '', 'install/global/node_modules/0x1/dist/cli/index.js'),
+  
+  // NPM global installation fallback
+  join(homeDir, '.npm/global/node_modules/0x1/dist/cli/index.js')
+];
+
+// 5. Find the first valid path
+let cliPath = null;
+for (const path of possiblePaths) {
+  if (existsSync(path)) {
+    cliPath = path;
+    break;
+  }
+}
+
+// 6. If found, import and run it
+if (cliPath) {
+  try {
+    import(cliPath).catch(error => {
+      console.error(`Failed to import CLI module: ${error.message}`);
+      process.exit(1); 
+    });
+  } catch (error) {
+    console.error(`Error loading CLI: ${error.message}`);
+    process.exit(1);
+  }
+} else {
+  // 7. Help user fix installation issues if not found
+  console.error('\n\x1b[31mError: Could not find 0x1 CLI module\x1b[0m');
+  console.error('\nPlease try one of these solutions:');
+  console.error('  1. Make sure 0x1 is installed globally: \x1b[36mbun install -g 0x1\x1b[0m');
+  console.error('  2. Add Bun\'s bin directory to your PATH:');
+  console.error(`     \x1b[36mexport BUN_INSTALL="${homeDir}/.bun"\x1b[0m`);
+  console.error('     \x1b[36mexport PATH="$BUN_INSTALL/bin:$PATH"\x1b[0m');
+  console.error('  3. Alternatively, you can use: \x1b[36mbunx 0x1 <command>\x1b[0m');
+  process.exit(1);
+}

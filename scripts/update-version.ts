@@ -115,8 +115,8 @@ async function updateCliVersions(version: string): Promise<void> {
     
     // Replace version in banner message
     indexContent = indexContent.replace(
-      /logger\.info\(`v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)? - The ultra-minimal TypeScript framework`\);/g,
-      `logger.info(\`v${version} - The ultra-minimal TypeScript framework\`);`
+      /logger\.info\(`Running 0x1 CLI v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)? - The ultra-minimal TypeScript framework`\);/g,
+      `logger.info(\`Running 0x1 CLI v${version} - The ultra-minimal TypeScript framework\`);`
     );
     
     // Write updated content

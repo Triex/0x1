@@ -329,7 +329,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.39**
+Current version: **0.0.40**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
