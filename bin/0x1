@@ -84,11 +84,26 @@ const find0x1Script = () => {
   return null;
 }
 
+// Check if this script is being called by bunx (to avoid recursion)
+const isCalledViaBunx = () => {
+  // Check environment variables or argv that might indicate bunx
+  return process.env.BUN_RUNTIME === 'true' || 
+         process.argv[0].includes('bunx') ||
+         process.argv[1].includes('bunx');
+};
+
 // Execute 0x1 command
 try {
   const args = process.argv.slice(2);
   const bunPath = findBunExecutable();
   const scriptPath = find0x1Script();
+  
+  // If we're already being called by bunx, just execute the script directly
+  if (isCalledViaBunx() && scriptPath) {
+    // Direct execution of script with node when called via bunx
+    const result = spawnSync('node', [scriptPath, ...args], { stdio: 'inherit' });
+    process.exit(result.status || 0);
+  }
 
   // Set up the custom PATH that includes bun's bin directory
   const env = { 
