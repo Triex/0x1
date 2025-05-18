@@ -1,163 +1,124 @@
-#!/usr/bin/env node
+#!/bin/sh
 
-/**
- * 0x1 CLI Entry Point - Direct Execution Strategy
- * Designed for maximum compatibility across all environments
- * with zero reliance on PATH configuration
- */
+# 0x1 CLI Entry Point - Ultra-simple direct execution strategy
+# This script avoids all ESM/CJS module issues and PATH configuration problems
+# Works reliably across all platforms with minimal dependencies
 
-import { execFileSync, spawnSync } from 'child_process';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
-import { fileURLToPath } from 'url';
+# Robust POSIX-compliant error handling
+set -e
 
-// ESM compatibility for __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get home directory in a cross-platform way
-const homeDir = os.homedir();
-const isWindows = os.platform() === 'win32';
-
-// Attempt to find bun executable
-const findBunExecutable = () => {
-  // Possible locations where bun might be installed
-  const possiblePaths = [
-    // Default bun installation
-    path.join(homeDir, '.bun/bin/bun'),
-    // Alternative locations
-    '/usr/local/bin/bun',
-    '/opt/homebrew/bin/bun',
-    // Windows through WSL
-    isWindows ? '/usr/bin/bun' : null,
-    // Add more paths as needed
-  ].filter(Boolean);
-
-  // First try using the PATH-based "bun" command
-  try {
-    const result = spawnSync('bun', ['--version'], { stdio: 'pipe' });
-    if (result.status === 0) {
-      return 'bun'; // bun command is accessible in PATH
-    }
-  } catch (e) {
-    // Bun not in PATH, continue searching
-  }
-
-  // If not found in PATH, try specific locations
-  for (const bunPath of possiblePaths) {
-    if (fs.existsSync(bunPath)) {
-      return bunPath;
-    }
-  }
-
-  // Last resort: try with bunx directly
-  try {
-    const result = spawnSync('bunx', ['--help'], { stdio: 'pipe' });
-    if (result.status === 0) {
-      return 'use-bunx';
-    }
-  } catch (e) {
-    // bunx not available
-  }
-
-  return null;
+# Detect platform - important for path handling
+is_windows() {
+  case "$(uname -s)" in
+    *MINGW* | *MSYS* | *CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
-// Find 0x1 main script
-const find0x1Script = () => {
-  const possibleScriptPaths = [
-    // Local development
-    path.join(__dirname, '../dist/cli/index.js'),
-    // Global installations
-    path.join(homeDir, '.bun/install/global/node_modules/0x1/dist/cli/index.js'),
-    // Alternative paths
-    path.join(homeDir, 'bun/install/global/node_modules/0x1/dist/cli/index.js'),
-  ];
-
-  for (const scriptPath of possibleScriptPaths) {
-    if (fs.existsSync(scriptPath)) {
-      return scriptPath;
-    }
-  }
-
-  return null;
+is_wsl() {
+  if [ -f /proc/version ] && grep -q Microsoft /proc/version; then
+    return 0
+  else
+    return 1
+  fi
 }
 
-// Check if this script is being called by bunx (to avoid recursion)
-const isCalledViaBunx = () => {
-  // Check environment variables or argv that might indicate bunx
-  return process.env.BUN_RUNTIME === 'true' || 
-         process.argv[0].includes('bunx') ||
-         process.argv[1].includes('bunx');
-};
+# Get home directory - works across platforms
+HOME_DIR="$HOME"
 
-// Execute 0x1 command
-try {
-  const args = process.argv.slice(2);
-  const bunPath = findBunExecutable();
-  const scriptPath = find0x1Script();
-  
-  // If we're already being called by bunx, just execute the script directly
-  if (isCalledViaBunx() && scriptPath) {
-    // Direct execution of script with node when called via bunx
-    const result = spawnSync('node', [scriptPath, ...args], { stdio: 'inherit' });
-    process.exit(result.status || 0);
-  }
+# Create a unique marker file to prevent recursion
+RECURSION_MARKER="/tmp/0x1_run_$$.lock"
+if [ -f "$RECURSION_MARKER" ]; then
+  # Recursion detected, exit immediately
+  echo "Recursion detected, aborting execution" >&2
+  exit 1
+fi
+touch "$RECURSION_MARKER"
 
-  // Set up the custom PATH that includes bun's bin directory
-  const env = { 
-    ...process.env,
-    PATH: `${homeDir}/.bun/bin:${process.env.PATH}` 
-  };
-
-  if (!bunPath) {
-    throw new Error('Bun executable not found. Please install Bun: https://bun.sh');
-  }
-
-  if (bunPath === 'use-bunx') {
-    // Use bunx as fallback
-    const result = spawnSync('bunx', ['0x1', ...args], { 
-      stdio: 'inherit',
-      env 
-    });
-    process.exit(result.status || 0);
-  } else if (scriptPath) {
-    // Use Bun with the script path
-    const result = spawnSync(bunPath, [scriptPath, ...args], { 
-      stdio: 'inherit',
-      env 
-    });
-    process.exit(result.status || 0);
-  } else {
-    // Last resort - try direct bunx execution
-    const result = spawnSync('bunx', ['0x1', ...args], { 
-      stdio: 'inherit',
-      env 
-    });
-    process.exit(result.status || 0);
-  }
-} catch (error) {
-  console.error('\n🔴 Error executing 0x1 CLI:', error.message);
-  
-  // Provide helpful direct execution hint
-  console.error('\n💡 Direct execution method:');
-  console.error(`bunx 0x1 ${process.argv.slice(2).join(' ')}`);
-  
-  // Provide PATH setup instructions
-  console.error('\n📘 For permanent fix, add bun to your PATH:');
-  console.error('export BUN_INSTALL="$HOME/.bun"');
-  console.error('export PATH="$BUN_INSTALL/bin:$PATH"');
-  
-  // Attempt direct execution with bunx as a last resort
-  console.error('\n🔄 Attempting to execute with bunx...');
-  try {
-    const bunxResult = spawnSync('bunx', ['0x1', ...process.argv.slice(2)], { 
-      stdio: 'inherit' 
-    });
-    process.exit(bunxResult.status || 0);
-  } catch (e) {
-    console.error('\n🔴 Failed to execute with bunx. Please ensure bun is installed.');
-    process.exit(1);
-  }
+# Clean up marker on exit
+cleanup() {
+  rm -f "$RECURSION_MARKER"
 }
+trap cleanup EXIT
+
+# Define platform-specific paths
+if is_windows || is_wsl; then
+  # Windows-specific paths
+  BUN_PATH_SEP=";"
+  if is_wsl; then
+    # In WSL, still use Unix-style paths
+    CLI_MAIN_FILE="$HOME_DIR/.bun/install/global/node_modules/0x1/dist/cli/index.js"
+    BUN_BIN="$HOME_DIR/.bun/bin/bun"
+  else
+    # Direct Windows paths
+    CLI_MAIN_FILE="$HOME_DIR\\.bun\\install\\global\\node_modules\\0x1\\dist\\cli\\index.js"
+    BUN_BIN="$HOME_DIR\\.bun\\bin\\bun.exe"
+  fi
+else
+  # Unix-based systems
+  BUN_PATH_SEP=":"
+  CLI_MAIN_FILE="$HOME_DIR/.bun/install/global/node_modules/0x1/dist/cli/index.js"
+  BUN_BIN="$HOME_DIR/.bun/bin/bun"
+fi
+
+# Check if cli exists in development mode
+DEV_CLI_PATH="$(dirname "$0")/../dist/cli/index.js"
+if [ -f "$DEV_CLI_PATH" ]; then
+  CLI_MAIN_FILE="$DEV_CLI_PATH"
+fi
+
+# Use for direct execution
+CLI_SCRIPT="$CLI_MAIN_FILE"
+
+# --- EXECUTION APPROACHES ---
+
+# APPROACH 1: Try direct script execution with node
+if [ -f "$CLI_SCRIPT" ]; then
+  if command -v node >/dev/null 2>&1; then
+    exec node "$CLI_SCRIPT" "$@"
+  fi
+fi
+
+# APPROACH 2: Try with direct bun binary
+if [ -f "$BUN_BIN" ]; then
+  if [ -f "$CLI_SCRIPT" ]; then
+    exec "$BUN_BIN" "$CLI_SCRIPT" "$@"
+  else
+    exec "$BUN_BIN" x 0x1 "$@"
+  fi
+fi
+
+# APPROACH 3: Use PATH-based bun
+if command -v bun >/dev/null 2>&1; then
+  # Try direct script first
+  if [ -f "$CLI_SCRIPT" ]; then
+    exec bun "$CLI_SCRIPT" "$@"
+  else
+    # Fallback to bun x
+    exec bun x 0x1 "$@"
+  fi
+fi
+
+# APPROACH 4: Try bunx as last reliable approach
+if command -v bunx >/dev/null 2>&1; then
+  exec bunx 0x1 "$@"
+fi
+
+# If we get here, all approaches failed
+printf "\033[31mError: Unable to execute 0x1 CLI\033[0m\n"
+printf "\n"
+printf "\033[33mPlease ensure Bun is installed and try one of these approaches:\033[0m\n"
+printf "  1. Run: bunx 0x1 [your commands]\n"
+printf "  2. Add Bun to your PATH:\n"
+printf "     export BUN_INSTALL=\"$HOME/.bun\"\n"
+printf "     export PATH=\"$BUN_INSTALL/bin:$PATH\"\n"
+printf "\n"
+
+# Final attempt - may help in some environments
+if command -v npm >/dev/null 2>&1; then
+  printf "\033[32mAttempting to use npx as fallback...\033[0m\n"
+  exec npx 0x1 "$@"
+fi
+
+# If all else fails
+exit 1
