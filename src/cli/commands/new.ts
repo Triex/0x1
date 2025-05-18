@@ -178,21 +178,7 @@ export async function createNewProject(
   // Get options from prompts if not provided in command line flags
   let projectStructure: 'root' | 'src' = 'root'; // Default to root-level structure
   
-  if (!options.template || !options.complexity) {
-    const promptOptions = await promptProjectOptions(options);
-    const template = promptOptions.template;
-    const useTypescript = promptOptions.typescript;
-    const useTailwind = promptOptions.tailwind;
-    const useStateManagement = promptOptions.stateManagement;
-    const licenseType = promptOptions.licenseType;
-    const complexity = promptOptions.complexity;
-    const themeMode = promptOptions.themeMode;
-    projectStructure = promptOptions.projectStructure;
-  } else if (options.projectStructure) {
-    projectStructure = options.projectStructure;
-  }
-
-  // Get project options through the interactive prompts
+  // Get project options through the interactive prompts - only once!
   const projectOptions = await promptProjectOptions({
     template: options.template,
     tailwind: options.tailwind,
@@ -205,6 +191,12 @@ export async function createNewProject(
     'no-pwa': options['no-pwa'],
     statusBarStyle: options.statusBarStyle
   });
+  
+  // Set project structure from options
+  projectStructure = projectOptions.projectStructure;
+  if (options.projectStructure) {
+    projectStructure = options.projectStructure;
+  }
   
   logger.debug(`Using template complexity: ${projectOptions.complexity}`);
 
@@ -986,7 +978,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.48' // Use current version with caret for compatibility
+      "0x1": '^0.0.49' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
