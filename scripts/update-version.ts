@@ -90,11 +90,20 @@ async function updateCliVersions(version: string): Promise<void> {
     // Read the file content
     let cliContent = await readFile(cliNewCommandPath, 'utf-8');
     
-    // Replace 0x1 version
+    // Simplify to direct replacement for the specific pattern in new.ts
     cliContent = cliContent.replace(
-      /dependencies: \{\s*0x1: '\^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?'\s*\}/g,
-      `dependencies: {\n      0x1: '^${version}'\n    }`
+      /"0x1":\s*['"](\^|\*)[0-9.]+['"].*$/m,
+      `"0x1": '^${version}' // Use current version with caret for compatibility`
     );
+    
+    // Backup approach - try exact string replacement if needed
+    const exactPattern = `"0x1": '^0.0.40'`;
+    if (cliContent.includes(exactPattern)) {
+      cliContent = cliContent.replace(
+        exactPattern,
+        `"0x1": '^${version}'`
+      );
+    }
     
     // Replace 0x1-store version
     cliContent = cliContent.replace(
