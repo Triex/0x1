@@ -2,13 +2,20 @@
 export default {
   content: [
     './index.html',
-    './app.{js,ts}',
+    './app.{js,ts,tsx}',
     './components/**/*.{js,ts,jsx,tsx}',
     './pages/**/*.{js,ts,jsx,tsx}',
     './utils/**/*.{js,ts,jsx,tsx}',
     './lib/**/*.{js,ts,jsx,tsx}',
     './store/**/*.{js,ts}',
-    './src/**/*.{html,js,ts,jsx,tsx}'
+    // More specific paths for src directory structure
+    './src/index.html',
+    './src/app.{js,ts,tsx}',
+    './src/components/**/*.{js,ts,jsx,tsx}',
+    './src/pages/**/*.{js,ts,jsx,tsx}',
+    './src/utils/**/*.{js,ts,jsx,tsx}',
+    './src/lib/**/*.{js,ts,jsx,tsx}',
+    './src/store/**/*.{js,ts}'
   ],
   darkMode: 'class',
   theme: {

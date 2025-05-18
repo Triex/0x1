@@ -7,7 +7,15 @@ export default {
     './pages/**/*.{js,jsx}',
     './utils/**/*.{js,jsx}',
     './lib/**/*.{js,jsx}',
-    './store/**/*.{js}'
+    './store/**/*.{js}',
+    // Support for src directory structure
+    './src/index.html',
+    './src/app.js',
+    './src/components/**/*.{js,jsx}',
+    './src/pages/**/*.{js,jsx}',
+    './src/utils/**/*.{js,jsx}',
+    './src/lib/**/*.{js,jsx}',
+    './src/store/**/*.{js}'
   ],
   darkMode: 'class',
   theme: {

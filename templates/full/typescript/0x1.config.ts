@@ -35,11 +35,14 @@ export default {
       }
     }
   },
+  // Routes configuration that works with both root-level and src directory structures
+  // The framework will automatically detect the correct path based on the project structure
   routes: {
-    "/": "./pages/home",
-    "/about": "./pages/about",
-    "/features": "./pages/features",
-    "/products/:id": "./pages/product"
+    "/": "pages/index",
+    "/about": "pages/about",
+    "/features": "pages/features",
+    "/contact": "pages/contact",
+    "/not-found": "pages/not-found"
   },
   styling: {
     tailwind: {
