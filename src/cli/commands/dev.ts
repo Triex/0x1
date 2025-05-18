@@ -71,7 +71,7 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
     resolve(process.cwd(), options.config) : 
     findConfigFile();
   
-  const config = configPath ? loadConfig(configPath) : {};
+  const config = configPath ? await loadConfig(configPath) : {};
   
   // Set default options
   const port = options.port || config.server?.port || 3000;
@@ -222,9 +222,50 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   let liveReloadScript = '';
   
   try {
-    liveReloadScript = await Bun.file(
-      join(import.meta.dirname || '', '../../browser/live-reload.js')
-    ).text();
+    // Try multiple possible paths for the live-reload script
+    const currentDir = import.meta.dirname || '';
+    const possiblePaths = [
+      join(currentDir, '../../browser/live-reload.js'),
+      join(currentDir, '../browser/live-reload.js'),
+      join(currentDir, '../../../browser/live-reload.js'),
+      join(process.cwd(), 'src/browser/live-reload.js'),
+      join(currentDir, '../../../../browser/live-reload.js')
+    ];
+    
+    logger.debug(`Looking for live-reload.js in:\n${possiblePaths.join('\n')}`);
+    
+    // Try each path until we find the script
+    let scriptFound = false;
+    for (const path of possiblePaths) {
+      try {
+        if (await Bun.file(path).exists()) {
+          liveReloadScript = await Bun.file(path).text();
+          logger.debug(`Found live-reload.js at: ${path}`);
+          scriptFound = true;
+          break;
+        }
+      } catch (err) {
+        // Ignore errors and try next path
+      }
+    }
+    
+    if (!scriptFound) {
+      // If script not found, create a basic version inline
+      logger.warn('Live reload script not found in expected paths, using fallback');
+      liveReloadScript = `
+// Basic live reload script for 0x1 framework
+(function() {
+  const source = new EventSource('/__0x1_live_reload');
+  source.addEventListener('message', function(e) {
+    if (e.data === 'update') {
+      console.log('[0x1] Page update detected, reloading...');
+      window.location.reload();
+    }
+  });
+  console.log('[0x1] Live reload connected');
+})();
+      `;
+    }
   } catch (error) {
     logger.warn('Failed to load live reload script, hot reloading will be disabled');
     liveReloadScript = '// Live reload not available';
@@ -602,7 +643,8 @@ function findConfigFile(): string | null {
 /**
  * Load configuration from file
  */
-function loadConfig(configPath: string): any {
+// Make async to use Bun.file().text()
+async function loadConfig(configPath: string): Promise<any> {
   try {
     if (!existsSync(configPath)) {
       logger.warn(`Configuration file not found: ${configPath}`);
@@ -611,7 +653,8 @@ function loadConfig(configPath: string): any {
     
     // For now, we'll just parse the file to extract configuration values
     // In a real implementation, we would properly import the module
-    const content = readFileSync(configPath, 'utf-8');
+    // Use Bun's native file API for better performance
+    const content = await Bun.file(configPath).text();
     
     // Very basic parsing - in a real implementation, we would use proper module loading
     const config: any = {};
@@ -638,6 +681,11 @@ function loadConfig(configPath: string): any {
 }
 
 /**
+ * Find the input CSS file for Tailwind processing
+ * Searches in common locations and checks the tailwind.config.js for hints
+ */
+// Make async to use Bun.file().text()
+/**
  * Start Tailwind CSS processing in the background
  * This function detects Tailwind configuration and runs the CSS processing
  * in parallel with the development server
@@ -655,7 +703,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     }
     
     // Find the input CSS file
-    const inputCssFile = findTailwindInputCss(projectPath);
+    const inputCssFile = await findTailwindInputCss(projectPath);
     
     if (!inputCssFile) {
       logger.warn('Could not find input CSS file for Tailwind processing.');
@@ -778,7 +826,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
  * Find the input CSS file for Tailwind processing
  * Searches in common locations and checks the tailwind.config.js for hints
  */
-function findTailwindInputCss(projectPath: string): string | null {
+async function findTailwindInputCss(projectPath: string): Promise<string | null> {
   // Common locations for CSS input files
   const commonLocations = [
     join(projectPath, 'styles', 'main.css'),
@@ -810,7 +858,8 @@ function findTailwindInputCss(projectPath: string): string | null {
   const tailwindConfigPath = join(projectPath, 'tailwind.config.js');
   if (existsSync(tailwindConfigPath)) {
     try {
-      const configContent = readFileSync(tailwindConfigPath, 'utf-8');
+      // Use Bun's native file API for better performance
+      const configContent = await Bun.file(tailwindConfigPath).text();
       // Look for comments that might indicate the input file
       const inputFileComment = configContent.match(/input\s*:\s*['"](.*?)['"]/);
       if (inputFileComment && inputFileComment[1]) {

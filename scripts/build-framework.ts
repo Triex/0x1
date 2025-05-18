@@ -4,7 +4,7 @@
  */
 
 import { join, resolve } from 'path';
-import fs from 'fs';
+// Using Bun's native file APIs instead of fs
 
 const rootDir = resolve(import.meta.dir, '..');
 const srcDir = join(rootDir, 'src');
@@ -15,8 +15,11 @@ async function buildFramework() {
   
   try {
     // Ensure dist directory exists
-    if (!fs.existsSync(distDir)) {
-      fs.mkdirSync(distDir, { recursive: true });
+    // Check if directory exists and create if it doesn't
+    const distDirInfo = Bun.file(distDir);
+    if (!(await distDirInfo.exists())) {
+      // Use Bun's spawnSync for mkdir as Bun doesn't have a direct mkdir API yet
+      Bun.spawnSync(['mkdir', '-p', distDir]);
     }
     
     // Build the TypeScript files including JSX/TSX support
@@ -61,14 +64,20 @@ async function buildFramework() {
     
     // Copy type definitions
     console.log('📄 Copying type definitions...');
-    fs.cpSync(join(srcDir, '0x1.d.ts'), join(distDir, '0x1.d.ts'));
-    fs.cpSync(join(srcDir, 'types'), join(distDir, 'types'), { recursive: true });
+    // Use Bun's file APIs for copying
+    const typeDefSource = Bun.file(join(srcDir, '0x1.d.ts'));
+    await Bun.write(join(distDir, '0x1.d.ts'), await typeDefSource.text());
+    
+    // Copy types directory using Bun's spawn for recursive copy
+    Bun.spawnSync(['cp', '-r', join(srcDir, 'types'), join(distDir, 'types')]);
     
     // Copy template files
     console.log('🧩 Copying templates...');
     const templatesDir = join(rootDir, 'templates');
-    if (fs.existsSync(templatesDir)) {
-      fs.cpSync(templatesDir, join(distDir, 'templates'), { recursive: true });
+    const templatesDirFile = Bun.file(templatesDir);
+    if (await templatesDirFile.exists()) {
+      // Use Bun's spawn for recursive directory copy
+      Bun.spawnSync(['cp', '-r', templatesDir, join(distDir, 'templates')]);
     }
     
     console.log('🎉 Build completed successfully!');

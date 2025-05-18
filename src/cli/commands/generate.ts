@@ -4,7 +4,7 @@
  */
 
 import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation
 import { dirname, join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 
@@ -85,7 +85,8 @@ export async function generateComponent(
     }
     
     // Write code to file
-    await writeFile(fullPath, code, 'utf-8');
+    // Use Bun's native file API for better performance
+    await Bun.write(fullPath, code);
     
     spin.stop('success', `Generated ${type}: ${componentName}`);
     logger.info(`File created: ${fullPath}`);

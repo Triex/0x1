@@ -3,7 +3,7 @@
  * Beautiful terminal output for 0x1 CLI
  */
 
-import kleur from 'kleur';
+// Using Bun's native console styling capabilities instead of kleur
 
 /**
  * Remove ANSI escape codes from a string
@@ -19,15 +19,34 @@ function stripAnsi(string: string): string {
   return string.replace(new RegExp(pattern, 'g'), '');
 }
 
-// Enable colorful output
-kleur.enabled = true;
-
-// Gradient colors for beautiful outputs
+// Gradient colors for beautiful outputs using Bun's native console styling
 const gradientColors = [
-  (text: string) => kleur.cyan().bold(text),
-  (text: string) => kleur.blue().bold(text),
-  (text: string) => kleur.magenta().bold(text)
+  (text: string) => `\x1b[1;36m${text}\x1b[0m`, // cyan bold
+  (text: string) => `\x1b[1;34m${text}\x1b[0m`, // blue bold
+  (text: string) => `\x1b[1;35m${text}\x1b[0m`  // magenta bold
 ];
+
+// ANSI color code helpers
+const colors = {
+  reset: '\x1b[0m',
+  bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
+  dim: (text: string) => `\x1b[2m${text}\x1b[0m`,
+  cyan: (text: string) => `\x1b[36m${text}\x1b[0m`,
+  blue: (text: string) => `\x1b[34m${text}\x1b[0m`,
+  green: (text: string) => `\x1b[32m${text}\x1b[0m`,
+  red: (text: string) => `\x1b[31m${text}\x1b[0m`,
+  yellow: (text: string) => `\x1b[33m${text}\x1b[0m`,
+  magenta: (text: string) => `\x1b[35m${text}\x1b[0m`,
+  // Combined styles
+  cyanBold: (text: string) => `\x1b[1;36m${text}\x1b[0m`,
+  blueBold: (text: string) => `\x1b[1;34m${text}\x1b[0m`,
+  greenBold: (text: string) => `\x1b[1;32m${text}\x1b[0m`,
+  redBold: (text: string) => `\x1b[1;31m${text}\x1b[0m`,
+  yellowBold: (text: string) => `\x1b[1;33m${text}\x1b[0m`,
+  magentaBold: (text: string) => `\x1b[1;35m${text}\x1b[0m`,
+  cyanDim: (text: string) => `\x1b[2;36m${text}\x1b[0m`,
+  blueDim: (text: string) => `\x1b[2;34m${text}\x1b[0m`
+};
 
 // Beautiful icons for different states
 const icons = {
@@ -65,7 +84,7 @@ export const logger = {
   banner: (lines: string[]) => {
     console.log();
     lines.forEach(line => {
-      console.log(kleur.cyan().bold(line));
+      console.log(colors.cyanBold(line));
     });
     console.log();
   },
@@ -74,7 +93,7 @@ export const logger = {
    * Highlight text for output (useful in URLs, file paths, etc.)
    */
   highlight: (text: string) => {
-    return kleur.cyan().bold(text);
+    return colors.cyanBold(text);
   },
 
   /**
@@ -88,28 +107,28 @@ export const logger = {
    * Log an info message
    */
   info: (message: string) => {
-    console.log(kleur.blue(icons.info), message);
+    console.log(colors.blue(icons.info), message);
   },
 
   /**
    * Log a success message
    */
   success: (message: string) => {
-    console.log(kleur.green(icons.success), message);
+    console.log(colors.green(icons.success), message);
   },
 
   /**
    * Log a warning message
    */
   warn: (message: string) => {
-    console.log(kleur.yellow(icons.warning), message);
+    console.log(colors.yellow(icons.warning), message);
   },
 
   /**
    * Log an error message
    */
   error: (message: string) => {
-    console.log(kleur.red(icons.error), message);
+    console.log(colors.red(icons.error), message);
   },
 
   /**
@@ -117,7 +136,7 @@ export const logger = {
    */
   debug: (message: string) => {
     if (process.env.DEBUG === 'true') {
-      console.log(kleur.dim(icons.debug), kleur.dim(message));
+      console.log(colors.dim(icons.debug), colors.dim(message));
     }
   },
 
@@ -132,7 +151,7 @@ export const logger = {
    * Log a command being executed
    */
   command: (cmd: string) => {
-    console.log(kleur.dim('$ ') + kleur.bold(cmd));
+    console.log(colors.dim('$ ') + colors.bold(cmd));
   },
 
   /**
@@ -141,9 +160,9 @@ export const logger = {
   section: (title: string) => {
     console.log();
     const gradientTitle = applyGradient(title.toUpperCase());
-    const line = kleur.cyan('═'.repeat(title.length + 4));
+    const line = colors.cyan('═'.repeat(title.length + 4));
     console.log(line);
-    console.log(kleur.cyan('║') + ' ' + gradientTitle + ' ' + kleur.cyan('║'));
+    console.log(colors.cyan('║') + ' ' + gradientTitle + ' ' + colors.cyan('║'));
     console.log(line);
   },
 
@@ -155,15 +174,15 @@ export const logger = {
     const width = Math.max(...lines.map(line => stripAnsi(line).length)) + 2;
     
     // Top border with rounded corners
-    console.log(kleur.dim('╭' + '─'.repeat(width) + '╮'));
+    console.log(colors.dim('╭' + '─'.repeat(width) + '╮'));
     
     // Content lines with padding
     for (const line of lines) {
-      console.log(kleur.dim('│') + ' ' + line + ' '.repeat(width - stripAnsi(line).length - 1) + kleur.dim('│'));
+      console.log(colors.dim('│') + ' ' + line + ' '.repeat(width - stripAnsi(line).length - 1) + colors.dim('│'));
     }
     
     // Bottom border with rounded corners
-    console.log(kleur.dim('╰' + '─'.repeat(width) + '╯'));
+    console.log(colors.dim('╰' + '─'.repeat(width) + '╯'));
   },
 
   /**
@@ -179,7 +198,7 @@ export const logger = {
     const icon = type ? icons[type] : ''; 
     
     // Create colorful message with icon if provided
-    const taskIcon = type ? kleur.cyan(icon) + ' ' : '';
+    const taskIcon = type ? colors.cyan(icon) + ' ' : '';
     const displayMessage = taskIcon + message;
     
     // Add subtle gradient effect to the message
@@ -189,13 +208,13 @@ export const logger = {
         ).join(' ')
       : message;
     
-    process.stdout.write(`${kleur.cyan(frames[0])} ${displayMessage}`);
+    process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
     
     const interval = setInterval(() => {
       i = (i + 1) % frames.length;
       process.stdout.clearLine(0);
       process.stdout.cursorTo(0);
-      process.stdout.write(`${kleur.cyan(frames[i])} ${displayMessage}`);
+      process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
     }, 80);
     
     return {
@@ -205,17 +224,17 @@ export const logger = {
         process.stdout.cursorTo(0);
         
         const icon = type === 'success' 
-          ? kleur.green(icons.success) 
-          : type === 'error' 
-            ? kleur.red(icons.error) 
-            : kleur.yellow(icons.warning);
+          ? colors.green(icons.success) 
+          : type === 'error'
+            ? colors.red(icons.error) 
+            : colors.yellow(icons.warning);
         
         // Make success messages more beautiful
         if (type === 'success') {
           const successMsg = endMessage || message;
           const finalMsg = successMsg.includes(':') 
             ? successMsg.split(':').map((part, idx) => 
-                idx === 0 ? kleur.green().bold(part) + ':' : part
+                idx === 0 ? colors.greenBold(part) + ':' : part
               ).join(' ')
             : successMsg;
           console.log(`${icon} ${finalMsg}`);
@@ -225,8 +244,6 @@ export const logger = {
       }
     };
   },
-
-
 
   /**
    * Create a table with rows and columns
@@ -242,14 +259,14 @@ export const logger = {
     console.log();
     console.log(
       ...headers.map((h, i) => 
-        kleur.bold(h.padEnd(widths[i]))
+        colors.bold(h.padEnd(widths[i]))
       )
     );
     
     // Print header separator
     console.log(
       ...headers.map((_, i) => 
-        kleur.dim('─'.repeat(widths[i]))
+        colors.dim('─'.repeat(widths[i]))
       )
     );
     
@@ -276,22 +293,23 @@ export const logger = {
    * Format text as code (e.g., for commands, file paths)
    */
   code: (text: string) => {
-    return kleur.blue().dim(`'${text}'`);
+    return colors.blueDim(`'${text}'`);
   },
 
   /**
    * Format text as command
    */
   cmd: (text: string) => {
-    return kleur.yellow(`${text}`);
+    return colors.yellow(`${text}`);
   },
 
   /**
    * Update spinner text
    */
   update: (message: string) => {
+    // Provide the direction argument to clearLine (0 = entire line)
     process.stdout.clearLine(0);
-    process.stdout.cursorTo(0);
-    process.stdout.write(`${kleur.cyan('⠋')} ${kleur.cyan(message)}`);
+    process.stdout.write('\r');
+    process.stdout.write(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
   }
 };

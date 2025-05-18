@@ -9,8 +9,7 @@
  *   bun run scripts/update-version.ts
  */
 
-import { existsSync } from 'fs';
-import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs'; // Keep for compatibility
 import { join, resolve } from 'path';
 
 // Get the project root directory
@@ -19,16 +18,17 @@ const ROOT_DIR = resolve(import.meta.dir, '..');
 // Get or update the main package.json version
 async function getMainVersion(newVersion?: string): Promise<string> {
   const packageJsonPath = join(ROOT_DIR, 'package.json');
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+  // Use Bun's native file API for better performance
+  const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
   
   // If a new version is provided, update the main package.json
   if (newVersion) {
     console.log(`📦 Updating main package.json from ${packageJson.version} to ${newVersion}`);
     packageJson.version = newVersion;
-    await writeFile(
+    // Use Bun's native file API for better performance
+    await Bun.write(
       packageJsonPath, 
-      JSON.stringify(packageJson, null, 2) + '\n', 
-      'utf-8'
+      JSON.stringify(packageJson, null, 2) + '\n'
     );
   }
   
@@ -53,7 +53,8 @@ async function updateTemplateVersions(version: string): Promise<void> {
           console.log(`Updating ${type}/${language}/package.json`);
           
           // Read and parse package.json
-          const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+          // Use Bun's native file API for better performance
+          const packageJsonContent = await Bun.file(packageJsonPath).text();
           const packageJson = JSON.parse(packageJsonContent);
           
           // Update 0x1 dependency version
@@ -67,10 +68,10 @@ async function updateTemplateVersions(version: string): Promise<void> {
           }
           
           // Write updated package.json
-          await writeFile(
+          // Use Bun's native file API for better performance
+          await Bun.write(
             packageJsonPath, 
-            JSON.stringify(packageJson, null, 2) + '\n', 
-            'utf-8'
+            JSON.stringify(packageJson, null, 2) + '\n'
           );
         }
       }
@@ -88,7 +89,8 @@ async function updateCliVersions(version: string): Promise<void> {
     console.log('Updating CLI version references in new.ts');
     
     // Read the file content
-    let cliContent = await readFile(cliNewCommandPath, 'utf-8');
+    // Use Bun's native file API for better performance
+    let cliContent = await Bun.file(cliNewCommandPath).text();
     
     // Simplify to direct replacement for the specific pattern in new.ts
     cliContent = cliContent.replace(
@@ -111,8 +113,9 @@ async function updateCliVersions(version: string): Promise<void> {
       `'0x1-store': '^${version}'`
     );
     
-    // Write updated content
-    await writeFile(cliNewCommandPath, cliContent, 'utf-8');
+    // Write the updated content
+    // Use Bun's native file API for better performance
+    await Bun.write(cliNewCommandPath, cliContent);
   }
   
   // Update index.ts file to update the CLI banner version
@@ -120,7 +123,8 @@ async function updateCliVersions(version: string): Promise<void> {
     console.log('Updating CLI banner version in index.ts');
     
     // Read the file content
-    let indexContent = await readFile(cliIndexPath, 'utf-8');
+    // Use Bun's native file API for better performance
+    let indexContent = await Bun.file(cliIndexPath).text();
     
     // Replace version in banner message
     indexContent = indexContent.replace(
@@ -128,8 +132,9 @@ async function updateCliVersions(version: string): Promise<void> {
       `logger.info(\`Running 0x1 CLI v${version} - The ultra-minimal TypeScript framework\`);`
     );
     
-    // Write updated content
-    await writeFile(cliIndexPath, indexContent, 'utf-8');
+    // Write the updated content
+    // Use Bun's native file API for better performance
+    await Bun.write(cliIndexPath, indexContent);
   }
 }
 
@@ -141,7 +146,7 @@ async function updateReadmeVersion(version: string): Promise<void> {
     console.log('Updating version in README.md');
     
     // Read the README content
-    let readmeContent = await readFile(readmePath, 'utf-8');
+    let readmeContent = await Bun.file(readmePath).text();
     
     // Replace version in README.md
     readmeContent = readmeContent.replace(
@@ -150,7 +155,8 @@ async function updateReadmeVersion(version: string): Promise<void> {
     );
     
     // Write updated content
-    await writeFile(readmePath, readmeContent, 'utf-8');
+    // Use Bun's native file API for better performance
+    await Bun.write(readmePath, readmeContent);
   }
 }
 

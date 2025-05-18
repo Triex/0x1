@@ -3,8 +3,8 @@
  * Add Progressive Web App functionality to a 0x1 project
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { mkdir, writeFile, readFile } from 'fs/promises';
+import { existsSync } from 'fs';
+import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation
 import { join } from 'path';
 import prompts from 'prompts';
 // Import with underscore prefix to satisfy linting while preserving type info
@@ -48,7 +48,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
 
   // Use custom project path or current directory
   const projectPath = customProjectPath || process.cwd();
-  if (!is0x1Project(projectPath)) {
+  // Use await with the now-async function
+  if (!(await is0x1Project(projectPath))) {
     logger.error('Not a 0x1 project. Please run this command from the root of a 0x1 project.');
     return false;
   }
@@ -71,7 +72,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Create manifest.json
   const manifestSpin = logger.spinner('Creating manifest.json');
   const manifestJson = generateManifest(pwaConfig);
-  await writeFile(
+  // Use Bun's native file API for better performance
+  await Bun.write(
     join(projectPath, 'public', 'manifest.json'),
     manifestJson
   );
@@ -80,7 +82,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Create service worker
   const swSpin = logger.spinner('Creating service worker');
   const serviceWorkerJs = generateServiceWorker(pwaConfig);
-  await writeFile(
+  // Use Bun's native file API for better performance
+  await Bun.write(
     join(projectPath, 'public', 'service-worker.js'),
     serviceWorkerJs
   );
@@ -90,7 +93,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   if (pwaConfig.offlineSupport) {
     const offlineSpin = logger.spinner('Creating offline page');
     const offlineHtml = generateOfflinePage(pwaConfig);
-    await writeFile(
+    // Use Bun's native file API for better performance
+    await Bun.write(
       join(projectPath, 'public', 'offline.html'),
       offlineHtml
     );
@@ -129,7 +133,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
     await mkdir(parentDir, { recursive: true });
   }
   
-  await writeFile(swRegisterPath, registrationJs);
+  // Use Bun's native file API for better performance
+  await Bun.write(swRegisterPath, registrationJs);
   regSpin.stop('success', `Created ${swRegisterPath.split('/').pop()}`);
   
   // Store the path for later reference in the next steps
@@ -174,7 +179,8 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
 /**
  * Check if the current directory is a 0x1 project
  */
-function is0x1Project(projectPath: string): boolean {
+// Made async to use Bun.file().text()
+async function is0x1Project(projectPath: string): Promise<boolean> {
   // Check for package.json
   const packageJsonPath = join(projectPath, 'package.json');
   if (!existsSync(packageJsonPath)) {
@@ -183,7 +189,9 @@ function is0x1Project(projectPath: string): boolean {
 
   try {
     // Read package.json content
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+    // Use Bun's native file API for better performance
+    const packageJsonText = await Bun.file(packageJsonPath).text();
+    const packageJson = JSON.parse(packageJsonText);
     
     // Check if this is a 0x1 project by examining package.json
     // Consider it a 0x1 project if it has 0x1-related scripts or dependencies
@@ -357,7 +365,8 @@ async function updateHtmlFile(projectPath: string, isTypeScript: boolean, pwaOpt
     }
     
     // Read HTML file
-    const html = await readFile(htmlPath, 'utf-8');
+    // Use Bun's native file API for better performance
+    const html = await Bun.file(htmlPath).text();
     
     // Check if manifest is already included
     if (html.includes('<link rel="manifest"')) {
@@ -394,7 +403,8 @@ async function updateHtmlFile(projectPath: string, isTypeScript: boolean, pwaOpt
     const updatedHtml = html.slice(0, headIndex) + pwaLinks + html.slice(headIndex);
     
     // Write updated HTML file
-    await writeFile(htmlPath, updatedHtml);
+    // Use Bun's native file API for better performance
+    await Bun.write(htmlPath, updatedHtml);
     
     htmlSpin.stop('success', 'Updated HTML file with PWA meta tags and manifest');
   } catch (error) {

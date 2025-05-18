@@ -4,7 +4,7 @@
  */
 
 import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation
 import { join } from 'path';
 import type { PWAConfig } from '../core/pwa';
 
@@ -82,16 +82,22 @@ function generateSVG(size: number, options: IconGeneratorOptions, isMaskable = f
   const {
     baseColor = DEFAULT_OPTIONS.baseColor,
     backgroundColor = DEFAULT_OPTIONS.backgroundColor,
-    text = DEFAULT_OPTIONS.text,
-    subtext = DEFAULT_OPTIONS.subtext,
-    textColor = '#ffffff',
+    text = DEFAULT_OPTIONS.text || '0',
+    subtext = DEFAULT_OPTIONS.subtext || 'x1',
+    // Using a variable with underscore prefix for the unused property
+    textColor: _textColor = '#ffffff',
     theme,
     logoText
   } = options;
   
   // Ensure proper sizing
   const padding = isMaskable ? size * 0.15 : size * 0.1; // More padding for maskable icons
-  const iconSize = size - (padding * 2);
+  // Using underscore prefix for the unused variable
+  const _iconSize = size - (padding * 2);
+  
+  // Ensure we have valid colors to avoid blank icons
+  const validBaseColor = baseColor && baseColor.startsWith('#') ? baseColor : '#0077cc';
+  const validBgColor = backgroundColor && backgroundColor.startsWith('#') ? backgroundColor : '#ffffff';
   
   // Define viewBox for consistent proportions
   const viewBox = "0 0 100 100";
@@ -109,13 +115,28 @@ function generateSVG(size: number, options: IconGeneratorOptions, isMaskable = f
   const fontSize = mainText.length <= 1 ? 30 : 
                    mainText.length === 2 ? 24 : 18;
   
+  let svgContent;
+  
+  // Check if we have a valid theme
+  const themeOption = theme || 'classic';
+  
+  if (themeOption === 'minimal') {
+    // Simple letter-based icon for minimal theme
+    svgContent = `<rect width="100" height="100" rx="20" fill="${validBaseColor}"/>
+    <text x="50" y="${showSubtext ? '45' : '55'}" font-family="Arial, sans-serif" font-size="40" text-anchor="middle" fill="white" font-weight="bold">${logoText || text}</text>
+    ${showSubtext ? `<text x="50" y="70" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="white" font-weight="bold">${subtext}</text>` : ''}`;
+  } else {
+    // Default 0x1 branded icon
+    svgContent = `<rect width="100" height="100" rx="20" fill="${validBaseColor}"/>
+    <path d="M30 35h40v10H30z" fill="white"/>
+    <path d="M50 45v25" stroke="white" stroke-width="10" stroke-linecap="round"/>
+    <path d="M30 70h40" stroke="white" stroke-width="10" stroke-linecap="round"/>`;
+  }
+  
   return `
 <svg width="${size}" height="${size}" viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg">
   ${isMaskable ? `<rect width="100" height="100" fill="${backgroundColor}" />` : ''}
-  <${themeStyling.shape} fill="${backgroundColor}" stroke="${baseColor}" stroke-width="5" />
-  ${themeStyling.effect}
-  <text x="50" y="${showSubtext ? 53 : 55}" font-family="Arial, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${baseColor}" text-anchor="middle" dominant-baseline="middle">${mainText}</text>
-  ${showSubtext && subtext && !logoText ? `<text x="50" y="75" font-family="Arial, sans-serif" font-size="${size > 144 ? 16 : 12}" fill="${baseColor}" text-anchor="middle" dominant-baseline="middle">${subtext}</text>` : ''}
+  ${svgContent}
 </svg>`;
 }
 
@@ -201,7 +222,8 @@ async function saveSVG(svgContent: string, filePath: string): Promise<void> {
       await mkdir(dir, { recursive: true });
     }
     
-    await writeFile(filePath, svgContent);
+    // Use Bun's native file API for better performance
+    await Bun.write(filePath, svgContent);
     console.log(`Generated ${filePath}`);
   } catch (error) {
     console.error(`Failed to save SVG to ${filePath}:`, error);
@@ -312,6 +334,7 @@ export async function generateBasicIcons(
     const faviconContent = generateSVG(32, iconOptions);
     const faviconPath = join(projectPath, 'public/favicon.svg');
     await saveSVG(faviconContent, faviconPath);
+    console.log(`Generated ${faviconPath}`);
     
     // Generate app icon (192px)
     const appIconContent = generateSVG(192, iconOptions);

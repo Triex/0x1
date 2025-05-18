@@ -91,8 +91,16 @@ export async function previewBuild(options: PreviewOptions = {}): Promise<void> 
     
     // Open the browser if requested
     if (open) {
-      const { default: opener } = await import('opener');
-      opener(`http${options.https ? 's' : ''}://${host}:${port}`);
+      // Use Bun's native shell execution instead of opener
+      const url = `http${options.https ? 's' : ''}://${host}:${port}`;
+      if (process.platform === 'darwin') {
+        Bun.spawn(['open', url]);
+      } else if (process.platform === 'win32') {
+        Bun.spawn(['cmd', '/c', 'start', url]);
+      } else {
+        // Linux and others
+        Bun.spawn(['xdg-open', url]);
+      }
     }
     
   } catch (error) {

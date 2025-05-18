@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.43",
+  "version": "0.0.44",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -55,17 +55,21 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "chokidar": "^3.6.0",
-    "compression": "^1.7.4",
-    "execa": "^8.0.1",
-    "fast-glob": "^3.3.2",
-    "kleur": "^4.1.5",
     "lightningcss": "^1.24.0",
-    "opener": "^1.5.2",
-    "picocolors": "^1.0.0",
     "prompts": "^2.4.2",
-    "serve-static": "^1.15.0",
     "sharp": "^0.33.2",
     "zod": "^3.22.4"
+  },
+  "comments": {
+    "removedDependencies": {
+      "chokidar": "Replaced with Bun.watch() API",
+      "compression": "Replaced with Bun's built-in HTTP compression",
+      "execa": "Replaced with Bun.spawn()",
+      "fast-glob": "Replaced with Bun.glob()",
+      "kleur": "Replaced with Bun's console styling",
+      "opener": "Replaced with Bun's shell execution",
+      "picocolors": "Replaced with Bun's console styling",
+      "serve-static": "Replaced with Bun's built-in HTTP server"
+    }
   }
 }

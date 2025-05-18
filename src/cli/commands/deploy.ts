@@ -86,10 +86,13 @@ async function deployToVercel(buildPath: string, options: DeployOptions): Promis
   
   try {
     // Check if Vercel CLI is installed
-    const { execa } = await import('execa');
+    // Using native Bun.spawn instead of execa
     
     try {
-      await execa('vercel', ['--version'], { stdio: 'pipe' });
+      const vercelCheck = Bun.spawnSync(['vercel', '--version'], { stdout: 'pipe' });
+      if (vercelCheck.exitCode !== 0) {
+        throw new Error('Vercel CLI not found');
+      }
     } catch (error) {
       spin.stop('error', 'Vercel CLI not found');
       logger.error('Please install Vercel CLI:');
@@ -110,7 +113,9 @@ async function deployToVercel(buildPath: string, options: DeployOptions): Promis
       args.push('--token', options.token);
     }
     
-    const { stdout } = await execa('vercel', args, { stdio: 'pipe' });
+    const vercelProcess = Bun.spawn(['vercel', ...args], { stdout: 'pipe' });
+    const output = await new Response(vercelProcess.stdout).text();
+    const stdout = output;
     
     // Extract deployment URL
     const deployUrl = stdout.match(/https:\/\/[^\s]+/)?.[0] || 'Unknown URL';
@@ -139,10 +144,13 @@ async function deployToNetlify(buildPath: string, options: DeployOptions): Promi
   
   try {
     // Check if Netlify CLI is installed
-    const { execa } = await import('execa');
+    // Using native Bun.spawn instead of execa
     
     try {
-      await execa('netlify', ['--version'], { stdio: 'pipe' });
+      const netlifyCheck = Bun.spawnSync(['netlify', '--version'], { stdout: 'pipe' });
+      if (netlifyCheck.exitCode !== 0) {
+        throw new Error('Netlify CLI not found');
+      }
     } catch (error) {
       spin.stop('error', 'Netlify CLI not found');
       logger.error('Please install Netlify CLI:');
@@ -163,7 +171,9 @@ async function deployToNetlify(buildPath: string, options: DeployOptions): Promi
       args.push('--auth', options.token);
     }
     
-    const { stdout } = await execa('netlify', args, { stdio: 'pipe' });
+    const netlifyProcess = Bun.spawn(['netlify', ...args], { stdout: 'pipe' });
+    const output = await new Response(netlifyProcess.stdout).text();
+    const stdout = output;
     
     // Extract deployment URL
     const deployUrl = stdout.match(/https:\/\/[^\s]+/)?.[0] || 'Unknown URL';
@@ -192,25 +202,29 @@ async function deployToGitHubPages(buildPath: string, _options: DeployOptions): 
   
   try {
     // Check if gh-pages is installed
-    const { execa } = await import('execa');
+    // Using native Bun.spawn instead of execa
     
     try {
-      await execa('npx', ['gh-pages', '--version'], { stdio: 'pipe' });
+      const ghPagesCheck = Bun.spawnSync(['npx', 'gh-pages', '--version'], { stdout: 'pipe' });
+      if (ghPagesCheck.exitCode !== 0) {
+        throw new Error('gh-pages not found');
+      }
     } catch (error) {
       // If not installed, install it
       spin.stop('success', 'Installing gh-pages package');
-      await execa('bun', ['add', '-D', 'gh-pages'], { stdio: 'pipe' });
+      await Bun.spawn(['bun', 'add', '-D', 'gh-pages'], { stdout: 'pipe' });
       // Restart spinner for deployment
       spin = logger.spinner('Deploying to GitHub Pages');
     }
     
     // Deploy to GitHub Pages
-    await execa('npx', ['gh-pages', '-d', buildPath, '-m', 'Deploy 0x1 app to GitHub Pages'], { stdio: 'pipe' });
+    await Bun.spawn(['npx', 'gh-pages', '-d', buildPath, '-m', 'Deploy 0x1 app to GitHub Pages'], { stdout: 'pipe' });
     
     // Get repo URL to determine the GitHub Pages URL
     let repoUrl = '';
     try {
-      const { stdout } = await execa('git', ['config', '--get', 'remote.origin.url'], { stdio: 'pipe' });
+      const gitProcess = Bun.spawn(['git', 'config', '--get', 'remote.origin.url'], { stdout: 'pipe' });
+      const stdout = await new Response(gitProcess.stdout).text();
       repoUrl = stdout.trim();
     } catch (error) {
       // If not in a git repo, we can't determine the URL
@@ -279,7 +293,7 @@ async function deployToCustomProvider(buildPath: string, _options: DeployOptions
     const args = parts.slice(1);
     
     // Run the command
-    await execa(command, args, { stdio: 'inherit' });
+    await Bun.spawn([command, ...args], { stdout: 'inherit', stderr: 'inherit' });
     
     spin.stop('success', 'Custom deployment completed');
     

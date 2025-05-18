@@ -4,7 +4,7 @@
  */
 
 import { existsSync } from 'fs';
-import { copyFile, writeFile } from 'fs/promises';
+import { copyFile } from 'fs/promises'; // Keep copyFile for compatibility
 import { join } from 'path';
 import { logger } from '../utils/logger.js';
 
@@ -24,7 +24,8 @@ export async function addTDLLicense(projectPath: string): Promise<void> {
     } else {
       // Generate default TDL license content
       const tdlLicenseContent = generateTDLLicense();
-      await writeFile(join(projectPath, 'LICENSE'), tdlLicenseContent);
+      // Use Bun's native file API for better performance
+      await Bun.write(join(projectPath, 'LICENSE'), tdlLicenseContent);
     }
     
     licenseSpin.stop('success', 'Added TriexDev License (TDL)');
@@ -81,7 +82,8 @@ export async function addNoLicense(projectPath: string): Promise<void> {
   
   try {
     // Create a simple NO LICENSE file
-    await writeFile(join(projectPath, 'LICENSE'), 'NO LICENSE\n');
+    // Use Bun's native file API for better performance
+    await Bun.write(join(projectPath, 'LICENSE'), 'NO LICENSE\n');
     licenseSpin.stop('success', 'Added NO LICENSE file');
   } catch (error) {
     licenseSpin.stop('error', 'Failed to add NO LICENSE file');
@@ -120,7 +122,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 `;
     
-    await writeFile(join(projectPath, 'LICENSE'), mitLicenseContent);
+    // Use Bun's native file API for better performance
+    await Bun.write(join(projectPath, 'LICENSE'), mitLicenseContent);
     licenseSpin.stop('success', 'Added MIT License');
   } catch (error) {
     licenseSpin.stop('error', 'Failed to add MIT license');

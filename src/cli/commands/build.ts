@@ -4,7 +4,8 @@
  */
 
 import { existsSync } from 'fs';
-import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readdir } from 'fs/promises'; // For directory operations
+// We'll use Bun.file() instead of readFile/writeFile for better performance
 import { dirname, join, relative, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 
@@ -169,7 +170,8 @@ async function loadConfig(configPath: string): Promise<any> {
     
     // For now we'll just parse the file to extract configuration values
     // In a real implementation, we would properly import the module
-    const content = await readFile(configPath, 'utf-8');
+    // Use Bun's native file API for better performance
+    const content = await Bun.file(configPath).text();
     
     // Very basic parsing - in a real implementation, we would use proper module loading
     const config: any = {};
@@ -249,13 +251,15 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     await mkdir(dirname(outputFilePath), { recursive: true });
     
     // Read HTML content
-    let content = await readFile(htmlFile, 'utf-8');
+    // Use Bun's native file API for better performance
+    let content = await Bun.file(htmlFile).text();
     
     // Process HTML: Update file references, inject scripts, etc.
     content = await processHtml(content, { projectPath, outputPath, relativePath });
     
     // Write processed HTML file
-    await writeFile(outputFilePath, content, 'utf-8');
+    // Use Bun's native file API for better performance
+    await Bun.write(outputFilePath, content);
   }
 }
 
@@ -498,7 +502,8 @@ async function processCssFiles(
     // Ensure output directory exists
     await mkdir(dirname(outputFilePath), { recursive: true });
     
-    let cssContent = await readFile(cssFile, 'utf-8');
+    // Use Bun's native file API for better performance
+    let cssContent = await Bun.file(cssFile).text();
     
     // Process CSS
     if (hasTailwind) {
@@ -543,21 +548,40 @@ async function processCssFiles(
     
     // Minify if needed
     if (options.minify) {
-      cssContent = minifyCss(cssContent);
+      cssContent = await minifyCss(cssContent);
     }
     
     // Write processed CSS file
-    await writeFile(outputFilePath, cssContent, 'utf-8');
+    // Use Bun's native file API for better performance
+    await Bun.write(outputFilePath, cssContent);
   }
 }
 
 /**
- * Helper function to minify CSS (simple version)
+ * Helper function to minify CSS using lightningcss for optimal results
  */
-function minifyCss(css: string): string {
-  // Very basic CSS minification
+async function minifyCss(css: string): Promise<string> {
+  try {
+    // Try to use lightningcss which is a dependency we kept
+    // This gives much better results than basic regex replacement
+    const lightningCssPath = Bun.resolveSync('lightningcss', process.cwd());
+    if (lightningCssPath) {
+      const { transform } = await import(lightningCssPath);
+      const { code } = transform({
+        code: Buffer.from(css),
+        minify: true,
+        sourceMap: false
+      });
+      return new TextDecoder().decode(code);
+    }
+  } catch (error) {
+    // Fall back to basic minification if lightningcss is not available
+    logger.debug(`Using basic CSS minification: ${error}`);
+  }
+  
+  // Basic CSS minification fallback
   return css
-    .replace(/\/\*(?:(?!\*\/)[\s\S])*\*\/|[\r\n\t]+/g, '') // Remove comments and whitespace
+    .replace(/\/\*(?:(?!\*\/).[\s\S])*\*\/|[\r\n\t]+/g, '') // Remove comments and whitespace
     .replace(/ {2,}/g, ' ') // Replace multiple spaces with single space
     .replace(/([{:}]) /g, '$1')
     .replace(/ ([{:}])/g, '$1');
@@ -565,24 +589,48 @@ function minifyCss(css: string): string {
 
 /**
  * Helper function to copy a directory recursively
+ * Using Bun's optimized implementation for better performance
  */
-async function copyDir(src: string, dest: string): Promise<void> {
-  // Read all entries in source directory
-  const entries = await readdir(src, { withFileTypes: true });
-  
-  // Process each entry
-  for (const entry of entries) {
-    const srcPath = join(src, entry.name);
-    const destPath = join(dest, entry.name);
+async function copyDir(source: string, destination: string): Promise<void> {
+  // Use Bun's native spawnSync for optimal performance when copying directories
+  // This is much faster than recursive file copying for large directories
+  try {
+    // Ensure destination exists
+    await mkdir(destination, { recursive: true });
     
-    // Create directory for subdirectory
-    if (entry.isDirectory()) {
-      await mkdir(destPath, { recursive: true });
-      await copyDir(srcPath, destPath);
-    } else {
-      // Copy file
-      await mkdir(dirname(destPath), { recursive: true });
-      await Bun.write(destPath, Bun.file(srcPath));
+    // Use cp -r for high-performance directory copying
+    // This is faster than manually walking directories and copying files
+    const result = Bun.spawnSync(['cp', '-r', `${source}/.`, destination], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'pipe'
+    });
+    
+    if (result.exitCode !== 0) {
+      // Handle copy errors more gracefully
+      const error = new TextDecoder().decode(result.stderr);
+      throw new Error(`Failed to copy directory: ${error}`);
+    }
+  } catch (error) {
+    // Fallback to manual copying if the command fails
+    // Get all files and subdirectories in the source directory
+    const entries = await readdir(source, { withFileTypes: true });
+    
+    // Copy each entry
+    for (const entry of entries) {
+      const sourcePath = join(source, entry.name);
+      const destPath = join(destination, entry.name);
+      
+      if (entry.isDirectory()) {
+        // Recursively copy subdirectory
+        await copyDir(sourcePath, destPath);
+      } else {
+        // Copy file using Bun's optimized file API
+        const file = Bun.file(sourcePath);
+        await Bun.write(destPath, file);
+      }
     }
   }
 }

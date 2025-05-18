@@ -4,14 +4,64 @@
  */
 
 import { existsSync, readdirSync } from 'fs';
-import * as fs from 'fs/promises';
-import { mkdir, readFile } from 'fs/promises';
+import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation compatibility
 import { join, resolve } from 'path';
 import prompts from 'prompts';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
-// Add execa type definition
+// Add execa type definition - keeping for backward compatibility
 type ExecaModule = { execa: (command: string, args: string[], options?: any) => Promise<{stdout: string; stderr: string}> };
+
+/**
+ * Install project dependencies using Bun's native package manager
+ * @param projectPath - Path to the project directory
+ */
+async function installDependencies(projectPath: string): Promise<void> {
+  const spinnerText = 'Installing dependencies';
+  const spinner = logger.spinner(spinnerText);
+  
+  try {
+    // Use Bun's native package manager for optimized installations
+    // This is significantly faster than npm or yarn
+    const result = Bun.spawnSync(['bun', 'install'], {
+      cwd: projectPath,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: process.env
+    });
+    
+    if (result.exitCode === 0) {
+      spinner.stop('success', 'Dependencies installed successfully using Bun');
+    } else {
+      const error = new TextDecoder().decode(result.stderr);
+      throw new Error(`Bun install failed: ${error}`);
+    }
+  } catch (error) {
+    // Fall back to npm if Bun install fails
+    logger.warn(`Bun install failed, falling back to npm: ${error}`);
+    
+    try {
+      // Use Bun's spawn for better performance instead of execa
+      const result = Bun.spawnSync(['npm', 'install'], {
+        cwd: projectPath,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: process.env
+      });
+      
+      if (result.exitCode === 0) {
+        spinner.stop('success', 'Dependencies installed successfully with npm');
+      } else {
+        const error = new TextDecoder().decode(result.stderr);
+        throw new Error(`npm install failed: ${error}`);
+      }
+    } catch (fallbackError) {
+      spinner.stop('error', 'Failed to install dependencies');
+      logger.error(`Error installing dependencies: ${fallbackError}`);
+      logger.info('You may need to run "bun install" or "npm install" manually');
+    }
+  }
+}
 
 interface NewProjectOptions {
   template?: string;
@@ -173,7 +223,7 @@ export async function createNewProject(
       }
       
       if (hasLicense) {
-        licenseContent = await readFile(licensePath, 'utf8');
+        licenseContent = await Bun.file(licensePath).text();
         logger.info('Found existing LICENSE file. This file will be preserved.');
       }
       
@@ -305,16 +355,8 @@ export async function createNewProject(
       // Stage 4: Install dependencies
       logger.section('Installing dependencies');
       
-      const installSpin = logger.spinner('Installing dependencies with Bun');
-      
       try {
-        process.chdir(projectPath);
-        
-        // Run bun install
-        const { execa } = await import('execa') as ExecaModule;
-        await execa('bun', ['install'], { stdio: 'pipe' });
-        
-        installSpin.stop('success', 'Dependencies installed');
+        await installDependencies(projectPath);
         
         // Show success message
         logger.spacer();
@@ -322,15 +364,13 @@ export async function createNewProject(
 🎉 Successfully created project ${name}!
 
 Next steps:
-  cd ${name}
-  bun dev
-
+  cd ${name} && bun run dev
 To build for production:
   bun run build
 `);
-      } catch (error) {
-        installSpin.stop('error', 'Failed to install dependencies');
-        logger.error(`${error}`);
+        logger.command(`cd ${name} && bun install`);
+      } catch (depError) {
+        logger.error(`Failed to install dependencies: ${depError}`);
         logger.info('You can try installing dependencies manually:');
         logger.command(`cd ${name} && bun install`);
       }
@@ -665,19 +705,41 @@ async function copyTemplate(
   const { useTailwind, useTypescript, complexity, themeMode = 'dark' } = options;
   
   // The template variable already includes the complexity and language (e.g., 'full/typescript')
-  // We need to handle both local development and global installation scenarios
-  let templatePath = join(import.meta.dirname || '', '../../../templates', template);
+  // We need to handle all possible paths for templates in different execution contexts
+  // Get the current file's directory to use as base
+  const currentDir = import.meta.dirname || '';
+  logger.debug(`Current directory: ${currentDir}`);
   
-  // Check if template path exists
-  if (!await fs.exists(templatePath)) {
-    // Try finding template in the npm global install directory
-    const globalTemplatePath = join(import.meta.dirname || '', '../templates', template);
-    
-    if (await fs.exists(globalTemplatePath)) {
-      templatePath = globalTemplatePath;
-    } else {
-      throw new Error(`Template path does not exist: ${templatePath}\nAlternative path also doesn't exist: ${globalTemplatePath}`);
+  // Define possible template paths in order of preference
+  const possiblePaths = [
+    // Development path from source directory
+    join(currentDir, '../../../templates', template),
+    // Global installation path
+    join(currentDir, '../templates', template),
+    // Direct path from execution directory
+    join(process.cwd(), 'templates', template),
+    // Absolute path for global installation
+    join(currentDir, '../../templates', template),
+    // One level deeper for node_modules scenarios
+    join(currentDir, '../../../../templates', template)
+  ];
+  
+  logger.debug(`Checking template paths:\n${possiblePaths.join('\n')}`);
+  
+  // Find the first path that exists
+  let templatePath = '';
+  for (const path of possiblePaths) {
+    // Use Bun's native file API for checking file existence
+    if (existsSync(path)) {
+      templatePath = path;
+      logger.debug(`Found valid template path: ${templatePath}`);
+      break;
     }
+  }
+  
+  // If no template path exists, throw an error
+  if (!templatePath) {
+    throw new Error(`Template path does not exist. Tried:\n${possiblePaths.join('\n')}`);
   }
   
   // Copy template files using internal copy function
@@ -689,41 +751,75 @@ async function copyTemplate(
     useStateManagement: complexity === 'full' // Enable state management for full template
   });
 }
+/**
+ * Optimized recursive copy function using Bun's high-performance APIs
+ * This implementation prioritizes speed and efficiency for larger projects
+ */
 async function copyRecursive(src: string, dest: string) {
-  const stats = await Bun.file(src).stat();
-  
-  // Check if it's a directory by checking if the mode indicates a directory
-  // Directories typically have the directory bit set in their mode
-  const isDirectory = stats.mode & 0x4000;
-  
-  if (isDirectory) {
-    // Create the destination directory if it doesn't exist
-    if (!existsSync(dest)) {
-      await mkdir(dest, { recursive: true });
-    }
+  try {
+    // Try an optimized approach first for directories
+    const stats = await Bun.file(src).stat();
+    const isDirectory = stats.mode & 0x4000;
     
-    // Read all items in the source directory
-    const items = readdirSync(src);
-    
-    // Process each item
-    for (const item of items) {
-      const srcPath = join(src, item);
-      const destPath = join(dest, item);
-      
-      // Skip node_modules and other common files/folders to ignore
-      if (item === 'node_modules' || item === '.git' || item === 'dist' || 
-          item === 'bun.lockb' || item === '.DS_Store') {
-        continue;
+    if (isDirectory) {
+      // Fast path: Use optimized directory copy if possible
+      // Create the destination directory
+      if (!existsSync(dest)) {
+        await mkdir(dest, { recursive: true });
       }
       
-      // Recursively copy
-      await copyRecursive(srcPath, destPath);
+      // Try to use Bun's optimized file operations for bulk copying
+      try {
+        // For directories that might contain many files, use a system-level copy
+        // which is much faster than copying files one by one
+        const ignoreItems = ['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store']
+          .map(item => `--exclude=${item}`)
+          .join(' ');
+        
+        // Use rsync for intelligent copying with exclusions
+        // This is dramatically faster for large directories and handles exclusions efficiently
+        const result = Bun.spawnSync(
+          ['rsync', '-avh', '--exclude=node_modules', '--exclude=.git', 
+           '--exclude=dist', '--exclude=bun.lockb', '--exclude=.DS_Store', 
+           `${src}/`, dest], 
+          { stdout: 'pipe', stderr: 'pipe' }
+        );
+        
+        if (result.exitCode === 0) {
+          logger.debug(`Efficiently copied directory using rsync: ${src} -> ${dest}`);
+          return; // Successfully copied with the optimized method
+        }
+        
+        // Fall back to manual approach if rsync isn't available
+        throw new Error('Optimized directory copy failed, falling back to manual copy');
+      } catch (error) {
+        // Fallback to manual copying if the optimized approach fails
+        logger.debug(`Using fallback copy method: ${error}`);
+        
+        // Read all items in the source directory
+        const items = readdirSync(src);
+        
+        // Use Promise.all for parallel processing to speed up file copying
+        await Promise.all(
+          items
+            .filter(item => !['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(item))
+            .map(async (item) => {
+              const srcPath = join(src, item);
+              const destPath = join(dest, item);
+              return copyRecursive(srcPath, destPath);
+            })
+        );
+      }
+    } else {
+      // Optimized file copy - use binary transfer for all file types
+      // This is faster than text() + write() especially for binary files
+      const sourceFile = Bun.file(src);
+      await Bun.write(dest, sourceFile); // Direct file-to-file copy
+      logger.debug(`Copied file: ${src} → ${dest}`);
     }
-  } else {
-    // It's a file, copy it directly
-    const content = await Bun.file(src).text();
-    await Bun.write(dest, content);
-    logger.debug(`Copied: ${src} to ${dest}`);
+  } catch (error) {
+    logger.error(`Error copying ${src} to ${dest}: ${error}`);
+    throw error;
   }
 }
 
@@ -798,7 +894,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.43' // Use current version with caret for compatibility
+      "0x1": '^0.0.44' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
