@@ -8,7 +8,7 @@
     "preview": "0x1 preview"
   },
   "dependencies": {
-    "0x1": "^0.0.50"
+    "0x1": "^0.0.51"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.1",

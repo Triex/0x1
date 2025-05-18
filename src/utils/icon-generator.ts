@@ -317,7 +317,7 @@ export async function generateBasicIcons(
     themeColor?: string;
     backgroundColor?: string;
     theme?: string;
-    projectStructure?: 'root' | 'src';
+    projectStructure?: 'root' | 'src' | 'app';
   }
 ): Promise<void> {
   // Prepare options from project config

@@ -280,110 +280,137 @@ async function processHtml(
 }
 
 /**
- * bundle JavaScript/TypeScript
+ * bundle JavaScript/TypeScript with enhanced Bun APIs
+ * Optimized for Next.js 15 app directory structure
  */
 async function bundleJavaScript(
   projectPath: string,
   outputPath: string,
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
-  // Check for custom structure configuration
-  const customStructureFile = resolve(projectPath, 'structure.js');
-  const hasCustomStructure = existsSync(customStructureFile);
-  
-  let srcDir;
-  let pagesDir;
-  
-  if (hasCustomStructure) {
-    try {
-      // Load custom structure configuration
-      const structureConfigModule = await import(customStructureFile);
-      const structureConfig = structureConfigModule.default || structureConfigModule;
-      if (structureConfig.sourceDirs) {
-        // Use the root directory as source
-        srcDir = projectPath;
-        // Use custom pages directory if specified
-        pagesDir = resolve(projectPath, structureConfig.sourceDirs.pages || 'pages');
-        logger.info('Using custom project structure for JavaScript bundling');
-      } else {
-        // Fall back to standard src directory
-        srcDir = resolve(projectPath, 'src');
-        pagesDir = join(srcDir, 'pages');
-      }
-    } catch (error) {
-      logger.warn(`Failed to load custom structure from ${customStructureFile}. Using default src directory.`);
-      srcDir = resolve(projectPath, 'src');
-      pagesDir = join(srcDir, 'pages');
-    }
-  } else {
-    // Check if src directory exists, if not use project root
-    const standardSrcDir = resolve(projectPath, 'src');
-    
-    if (existsSync(standardSrcDir)) {
-      srcDir = standardSrcDir;
-      pagesDir = join(srcDir, 'pages');
-    } else {
-      // Use project root if no src directory
-      srcDir = projectPath;
-      pagesDir = join(projectPath, 'pages');
-    }
-  }
-  
-  // Find entry files (app.tsx, app.ts, app.js, index.tsx, index.ts, or index.js)
-  const entryFiles = [];
+  // Find entry files in app directory
+  const entryFiles: string[] = [];
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
   
-  // Check for entry files in srcDir
+  // Always use app directory structure for Next.js 15
+  const appDir = join(projectPath, 'app');
+  const isAppDirStructure = existsSync(appDir);
+  
+  if (isAppDirStructure) {
+    async function findAppComponents(dir: string): Promise<string[]> {
+      const components: string[] = [];
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          // Recursively find components in subdirectories
+          const subComponents = await findAppComponents(fullPath);
+          components.push(...subComponents);
+        } else if (entry.isFile()) {
+          // Check for Next.js 15-style component naming patterns
+          if (
+            entry.name.match(/^(page|layout|error|loading|not-found)\.(tsx|jsx|ts|js)$/)
+          ) {
+            components.push(fullPath);
+          }
+        }
+      }
+
+      return components;
+    }
+
+    const appComponents = await findAppComponents(appDir);
+    logger.info(`Found ${appComponents.length} Next.js 15-style app components`);
+    entryFiles.push(...appComponents);
+  }
+
+  // Always check for root level entry files for backwards compatibility
+  const srcDir = projectPath;
   for (const name of ['app', 'index']) {
     for (const ext of fileExtensions) {
       const filePath = join(srcDir, `${name}${ext}`);
       if (existsSync(filePath)) {
         entryFiles.push(filePath);
-        break; // Only add the first match for each name
       }
     }
   }
   
-  // Also bundle any .ts, .tsx, .js, or .jsx files in pages directory if it exists
-  if (existsSync(pagesDir)) {
-    const pageFiles = await findFiles(pagesDir, fileExtensions, options.ignorePatterns);
-    entryFiles.push(...pageFiles);
+  if (entryFiles.length === 0) {
+    logger.warn('No entry files found. Creating a basic entry point for Next.js 15 app structure.');
+    // Create a basic entry file if none exists
+    const basicAppContent = `/**
+ * Basic Next.js 15 entry point
+ */
+import { Router } from './src/core/router';
+
+document.addEventListener('DOMContentLoaded', () => {
+  const appContainer = document.getElementById('app');
+  if (!appContainer) {
+    console.error('App container not found.');
+    return;
   }
   
-  // bundle each entry file
+  const router = new Router({
+    rootElement: appContainer,
+    mode: 'history',
+    transitionDuration: 150,
+    appComponents: {}
+  });
+  
+  router.init();
+});
+`;
+    const basicAppPath = join(projectPath, 'index.tsx');
+    await Bun.write(basicAppPath, basicAppContent);
+    entryFiles.push(basicAppPath);
+    logger.info('Created basic entry point at index.tsx');
+  } else {
+    logger.info(`Found ${entryFiles.length} entry files: ${entryFiles.map(file => basename(file)).join(', ')}`);
+  }
+  
+  // Process each entry file using Bun's optimized bundler
   for (const entryFile of entryFiles) {
-    const relativePath = relative(srcDir, entryFile);
-    const outputFile = join(outputPath, relativePath.replace(/\.(ts|tsx|js|jsx)$/, '.js'));
-    
-    // Ensure output directory exists
-    await mkdir(dirname(outputFile), { recursive: true });
-    
     try {
-      // Log the file we're trying to bundle
-      logger.info(`bundling file: ${entryFile}`);
+      // Determine output file path (convert .ts/.tsx to .js)
+      const outputDir = join(outputPath);
+      const outputFile = join(outputDir, basename(entryFile).replace(/\.(ts|tsx|jsx)$/, '.js'));
       
-      // Determine if this is a JSX/TSX file and set the appropriate loader
+      // Ensure output directory exists
+      await mkdir(dirname(outputFile), { recursive: true });
+      
       const isTsx = entryFile.endsWith('.tsx') || entryFile.endsWith('.jsx');
       // Define proper loader types for Bun's build API
       const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = 
         isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
       
-      // Use Bun's bundler with improved options
+      // Use Bun's bundler with enhanced options optimized for Next.js 15 compatibility
       const buildConfig: any = {
         entrypoints: [entryFile],
         outdir: dirname(outputFile),
         naming: {
           entry: basename(outputFile),
+          // Use content hashing for better caching in production
+          chunk: options.minify ? '[name].[hash]' : '[name]',
+          asset: options.minify ? '[name].[hash]' : '[name]',
         },
         minify: options.minify,
         target: 'browser',
         loader,
         // Add source maps for better debugging
-        sourcemap: 'external',
-        // Improve module resolution
-        plugins: [],
+        sourcemap: options.minify ? 'none' : 'external',
+        // Define environment variables
+        define: {
+          'process.env.NODE_ENV': options.minify ? '"production"' : '"development"',
+          'process.env.APP_DIR': isAppDirStructure ? 'true' : 'false',
+        },
+        // Improve module resolution and tree shaking
+        treeshake: options.minify,
         // Handle node modules properly
         external: ['*'],
+        // Enable better error messages
+        logLevel: 'error',
       };
       
       // Explicitly set the tsconfig if it exists
@@ -393,8 +420,128 @@ async function bundleJavaScript(
       
       // Handle JSX/TSX files if needed
       if (isTsx) {
-        // Use any type to bypass TypeScript's limitations with the current Bun type definitions
-        (buildConfig as any).jsx = 'automatic';
+        // Configure JSX options optimized for Next.js 15 compatibility
+        buildConfig.jsx = 'automatic';
+        buildConfig.jsxImportSource = undefined; // Let bundler decide optimal handling
+        buildConfig.format = 'esm'; // Use ESM for modern browser support
+      }
+      
+      const result = await Bun.build(buildConfig);
+      
+      if (!result.success) {
+        logger.error(`Failed to bundle ${entryFile}:\n${result.logs.join('\n')}`);
+        throw new Error(`bundle failed for ${entryFile}`);
+      } else {
+        logger.info(`Successfully bundled: ${entryFile}`);
+      }
+    } catch (error: any) {
+      logger.error(`Error during bundling of ${entryFile}: ${error.message || error}`);
+      if (error.stack) {
+        logger.debug(`Stack trace: ${error.stack}`);
+      }
+    }
+  }
+}
+
+/* Remove obsolete code below - all functionality has been migrated to the bundleJavaScript function above */
+  
+    async function findAppComponents(dir: string): Promise<string[]> {
+      const components: string[] = [];
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          // Recursively find components in subdirectories
+          const subComponents = await findAppComponents(fullPath);
+          components.push(...subComponents);
+        } else if (entry.isFile()) {
+          // Check for Next.js 15-style component naming patterns
+          if (
+            entry.name.match(/^(page|layout|error|loading|not-found)\.(tsx|jsx|ts|js)$/)
+          ) {
+            components.push(fullPath);
+          }
+        }
+      }
+
+      return components;
+    }
+
+    const appComponents = await findAppComponents(appDir);
+    logger.info(`Found ${appComponents.length} Next.js 15-style app components`);
+    entryFiles.push(...appComponents);
+  }
+
+  // For backwards compatibility, also check for traditional entry files
+  for (const name of ['app', 'index']) {
+    for (const ext of fileExtensions) {
+      const filePath = join(srcDir, `${name}${ext}`);
+      if (existsSync(filePath)) {
+        entryFiles.push(filePath);
+        break; // Only add the first match for each name
+      }
+    }
+  }
+}
+
+/**
+ * Process JavaScript/TypeScript file bundle
+ */
+async function processJSBundle(entryFile: string, projectPath: string, options: { minify: boolean }): Promise<void> {
+  try {
+    // Determine output file path (convert .ts/.tsx to .js)
+    const outputDir = join(projectPath, 'dist');
+    const outputFile = join(outputDir, basename(entryFile).replace(/\.(ts|tsx|jsx)$/, '.js'));
+    
+    // Ensure output directory exists
+    await mkdir(dirname(outputFile), { recursive: true });
+    
+    const isTsx = entryFile.endsWith('.tsx') || entryFile.endsWith('.jsx');
+      // Define proper loader types for Bun's build API
+      const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = 
+        isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
+      
+      // Use Bun's bundler with enhanced options optimized for Next.js 15 compatibility
+      const buildConfig: any = {
+        entrypoints: [entryFile],
+        outdir: dirname(outputFile),
+        naming: {
+          entry: basename(outputFile),
+          // Use content hashing for better caching in production
+          chunk: options.minify ? '[name].[hash]' : '[name]',
+          asset: options.minify ? '[name].[hash]' : '[name]',
+        },
+        minify: options.minify,
+        target: 'browser',
+        loader,
+        // Add source maps for better debugging
+        sourcemap: options.minify ? 'none' : 'external',
+        // Define environment variables
+        define: {
+          'process.env.NODE_ENV': options.minify ? '"production"' : '"development"',
+          'process.env.APP_DIR': isAppDirStructure ? 'true' : 'false',
+        },
+        // Improve module resolution and tree shaking
+        treeshake: options.minify,
+        // Handle node modules properly
+        external: ['*'],
+        // Enable better error messages
+        logLevel: 'error',
+      };
+      
+      // Explicitly set the tsconfig if it exists
+      if (existsSync(join(projectPath, 'tsconfig.json'))) {
+        buildConfig.tsconfig = join(projectPath, 'tsconfig.json');
+      }
+      
+      // Handle JSX/TSX files if needed
+      if (isTsx) {
+        // Configure JSX options optimized for Next.js 15 compatibility
+        buildConfig.jsx = 'automatic';
+        buildConfig.jsxImportSource = undefined; // Let bundler decide optimal handling
+        buildConfig.format = 'esm'; // Use ESM for modern browser support
       }
       
       const result = await Bun.build(buildConfig);

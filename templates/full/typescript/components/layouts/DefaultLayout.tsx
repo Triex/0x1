@@ -1,20 +1,27 @@
 /**
  * Default layout component for 0x1 applications
  */
-import { createElement, Fragment } from '0x1';
+import { createElement, Fragment, JSXNode } from '../../lib/jsx-runtime';
 import { useTheme } from '../../lib/theme';
 
-interface DefaultLayoutProps {
+export interface DefaultLayoutProps {
   title: string;
   description?: string;
-  children?: any;
+  content?: JSXNode | string;
+  children?: JSXNode | string;
 }
 
-export function DefaultLayout({ title, description, children }: DefaultLayoutProps) {
+export function DefaultLayout({ title, description, children, content }: DefaultLayoutProps) {
   const { theme } = useTheme();
   
+  const mainContent = children || content;
+  
   return (
-    <>
+    <Fragment>
+      <head>
+        <title>{title} - 0x1 Framework</title>
+        <meta name="description" content={description || 'A 0x1 framework application'} />
+      </head>
       <div className="flex flex-col min-h-screen">
         <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 transition-colors duration-200">
           <nav className="container mx-auto px-4 py-3 flex items-center justify-between">
@@ -89,6 +96,6 @@ export function DefaultLayout({ title, description, children }: DefaultLayoutPro
           </div>
         </footer>
       </div>
-    </>
+    </Fragment>
   );
 }
