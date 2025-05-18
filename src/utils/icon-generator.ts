@@ -1,11 +1,11 @@
 /**
  * 0x1 Icon Generator
- * Utility for generating icons, favicons, and PWA assets
+ * Utility for generating icons, favicons, and PWA assets for TypeScript projects
  */
 
 import { existsSync } from 'fs';
-import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation
-import { join } from 'path';
+import { mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import type { PWAConfig } from '../core/pwa';
 
 interface IconGeneratorOptions {
@@ -84,20 +84,22 @@ function generateSVG(size: number, options: IconGeneratorOptions, isMaskable = f
     backgroundColor = DEFAULT_OPTIONS.backgroundColor,
     text = DEFAULT_OPTIONS.text || '0',
     subtext = DEFAULT_OPTIONS.subtext || 'x1',
-    // Using a variable with underscore prefix for the unused property
-    textColor: _textColor = '#ffffff',
+    textColor = '#ffffff',
     theme,
     logoText
   } = options;
   
-  // Ensure proper sizing
-  const padding = isMaskable ? size * 0.15 : size * 0.1; // More padding for maskable icons
-  // Using underscore prefix for the unused variable
-  const _iconSize = size - (padding * 2);
+  // Ensure proper sizing - adjust padding for maskable icons
+  const padding = isMaskable ? size * 0.15 : size * 0.1;
   
-  // Ensure we have valid colors to avoid blank icons
-  const validBaseColor = baseColor && baseColor.startsWith('#') ? baseColor : '#0077cc';
-  const validBgColor = backgroundColor && backgroundColor.startsWith('#') ? backgroundColor : '#ffffff';
+  // Ensure we have valid colors with proper TypeScript type checks
+  const validBaseColor: string = typeof baseColor === 'string' && baseColor.startsWith('#') 
+    ? baseColor 
+    : '#0077cc';
+    
+  const validBgColor: string = typeof backgroundColor === 'string' && backgroundColor.startsWith('#') 
+    ? backgroundColor 
+    : '#ffffff';
   
   // Define viewBox for consistent proportions
   const viewBox = "0 0 100 100";
@@ -338,41 +340,14 @@ export async function generateBasicIcons(
   const projectStructure = projectOptions.projectStructure || 'root';
 
   try {
-    // Create dirs if they don't exist - using more robust approach with better error handling
-    const { dirname } = await import('path');
-    
     // Determine public directory path based on project structure
     const publicDir = join(projectPath, 'public');
     const iconDir = join(publicDir, 'icons');
     
-    // Create public directory
-    if (!existsSync(publicDir)) {
-      try {
-        await mkdir(publicDir, { recursive: true, mode: 0o755 });
-        console.log(`Created public directory: ${publicDir}`);
-      } catch (dirError) {
-        console.error(`Failed to create public directory ${publicDir}:`, dirError);
-        // Try alternative approach - using fs.mkdirSync
-        const { mkdirSync } = await import('fs');
-        mkdirSync(publicDir, { recursive: true, mode: 0o755 });
-        console.log(`Created public directory with mkdirSync: ${publicDir}`);
-      }
-    }
-    
-    // Create icons directory
-    if (!existsSync(iconDir)) {
-      try {
-        await mkdir(iconDir, { recursive: true, mode: 0o755 });
-        console.log(`Created icons directory: ${iconDir}`);
-      } catch (dirError) {
-        console.error(`Failed to create icons directory ${iconDir}:`, dirError);
-        // Try alternative approach - using fs.mkdirSync
-        const { mkdirSync } = await import('fs');
-        mkdirSync(iconDir, { recursive: true, mode: 0o755 });
-        console.log(`Created icons directory with mkdirSync: ${iconDir}`);
-      }
-    }
-    
+    // Create directories recursively
+    await mkdir(iconDir, { recursive: true });
+    console.log(`Created directories: ${iconDir}`);
+
     // Generate favicon.svg (32px)
     const faviconContent = generateSVG(32, iconOptions);
     const faviconPath = join(publicDir, 'favicon.svg');
@@ -399,20 +374,27 @@ export async function generateAllIcons(
   pwaConfig: PWAConfig,
   options: IconGeneratorOptions = {}
 ): Promise<void> {
-  // Extract logoText from PWA config if available
-  const logoText = (pwaConfig as any).logoText || '';
-  const theme = (pwaConfig as any).theme || 'classic';
+  // Use type augmentation to properly access extended properties with type safety
+  interface ExtendedPWAConfig extends PWAConfig {
+    logoText?: string;
+    theme?: string;
+  }
+
+  const typedConfig = pwaConfig as ExtendedPWAConfig;
   
-  // Prepare options from PWA config
+  // Extract properties with proper typing
+  const logoText = typedConfig.logoText || '';
+  const theme = typedConfig.theme || 'classic';
+  
+  // Prepare options from PWA config with proper type handling
   const iconOptions: IconGeneratorOptions = {
     baseColor: pwaConfig.themeColor,
     backgroundColor: pwaConfig.backgroundColor,
     // Use logoText if provided, otherwise use first character of shortName
     text: logoText || pwaConfig.shortName.charAt(0),
     subtext: pwaConfig.shortName,
-    // Pass theme and logoText through
-    theme: theme,
-    logoText: logoText,
+    theme,
+    logoText,
     outputPath: pwaConfig.iconsPath?.startsWith('/') 
       ? pwaConfig.iconsPath.substring(1) // Remove leading slash
       : pwaConfig.iconsPath || DEFAULT_OPTIONS.outputPath
@@ -422,6 +404,7 @@ export async function generateAllIcons(
   const finalOptions = { ...iconOptions, ...options };
   
   try {
+    // Execute all icon generation tasks concurrently for better performance
     await Promise.all([
       generateStandardIcons(projectPath, finalOptions),
       generateMaskableIcons(projectPath, finalOptions),
@@ -430,7 +413,7 @@ export async function generateAllIcons(
     
     console.log('All PWA icons generated successfully!');
   } catch (error) {
-    console.error('Error generating PWA icons:', error);
+    console.error('Error generating PWA icons:', error instanceof Error ? error.message : String(error));
     throw error;
   }
 }

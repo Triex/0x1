@@ -7,6 +7,7 @@ import { existsSync, readdirSync } from 'fs';
 import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation compatibility
 import { join, resolve } from 'path';
 import prompts from 'prompts';
+import chalk from 'chalk';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
 // Add execa type definition - keeping for backward compatibility
@@ -66,8 +67,9 @@ async function installDependencies(projectPath: string): Promise<void> {
 interface NewProjectOptions {
   template?: string;
   tailwind?: boolean;
-  typescript?: boolean;
-  javascript?: boolean; // Add explicit JavaScript flag
+  // TypeScript is now the only option, no longer optional
+  typescript?: boolean; // Keep for backwards compatibility but it's always true now
+  javascript?: boolean; // Keep for backwards compatibility but it's always false now
   minimal?: boolean;
   force?: boolean;
   stateManagement?: boolean;
@@ -79,6 +81,12 @@ interface NewProjectOptions {
   themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
   // Only app directory structure is supported for Next.js 15 compatibility
   useNextStyle?: boolean; // Use Next.js 15-style app directory structure (always true)
+  
+  // PWA related properties
+  themeColor?: string;
+  secondaryColor?: string;
+  theme?: string;
+  statusBarStyle?: 'black-translucent' | 'default' | 'black';
 }
 
 /**
@@ -109,19 +117,16 @@ export async function createNewProject(
   
   // Validate project name
   if (!/^[a-z0-9-]+$/.test(name)) {
-    logger.error('Project name can only contain lowercase letters, numbers, and hyphens');
+    logger.error(`Invalid project name: ${name}. Use only lowercase letters, numbers, and hyphens.`);
     process.exit(1);
   }
   
-  // Create project directory
+  // Check if directory already exists
   const projectPath = resolve(process.cwd(), name);
-  
-  // Check if directory exists
   if (existsSync(projectPath)) {
-    if (options.force || options.overwrite) {
-      logger.warn(`Directory ${name} already exists. Overwriting...`);
+    if (options.force) {
+      logger.warn(`Project directory already exists. Using --force flag to overwrite.`);
     } else {
-      // Prompt for overwrite
       const { overwrite } = await prompts({
         type: 'confirm',
         name: 'overwrite',
@@ -137,36 +142,33 @@ export async function createNewProject(
   }
   
   // Determine the complexity from options
-  let defaultComplexity: 'minimal' | 'standard' | 'full';
+  let defaultComplexity: 'minimal' | 'standard' | 'full' = 'standard';
   
-  // If --complexity is provided directly, use it
-  if (options.complexity && ['minimal', 'standard', 'full'].includes(options.complexity)) {
-    defaultComplexity = options.complexity as 'minimal' | 'standard' | 'full';
+  if (options.complexity === 'minimal') {
+    defaultComplexity = 'minimal';
+  } else if (options.complexity === 'standard' || options.complexity === 'full') {
+    defaultComplexity = options.complexity;
   } 
   // If --minimal flag is provided, set to minimal
   else if (options.minimal) {
     defaultComplexity = 'minimal';
-  }
+  } 
   // If --template is provided, extract complexity from template path
   else if (options.template) {
     // Template format should be complexity/language (e.g., minimal/typescript)
     const parts = options.template.split('/');
-    if (parts.length >= 1 && ['minimal', 'standard', 'full'].includes(parts[0])) {
-      defaultComplexity = parts[0] as 'minimal' | 'standard' | 'full';
-    } else {
-      defaultComplexity = 'standard'; // Default if template format is incorrect
+    if (parts.length >= 1) {
+      if (parts[0] === 'minimal' || parts[0] === 'standard' || parts[0] === 'full') {
+        defaultComplexity = parts[0];
+      }
+      // else: defaultComplexity remains 'standard' from initialization
     }
-  } 
-  // Default to standard if no options specified
-  else {
-    defaultComplexity = 'standard';
   }
-  
+  // Default is already set to 'standard' in the initialization
+
   // Process CLI flags for consistency before passing to prompts
-  // If --javascript is passed, make sure typescript is explicitly set to false
-  if (options.javascript === true) {
-    options.typescript = false;
-  }
+  // TypeScript is now the only option, but we keep this for compatibility
+  options.typescript = true;
   
   // If --no-pwa is passed, make sure pwa is explicitly set to false
   if (options['no-pwa'] === true) {
@@ -174,25 +176,29 @@ export async function createNewProject(
   }
   
   // Debug log to show processed CLI options
-  logger.debug(`Processed CLI options: typescript=${options.typescript}, javascript=${options.javascript}, pwa=${options.pwa}`);  
+  logger.debug(`Processed CLI options: pwa=${options.pwa}`);  
 
-  // Get options from prompts if not provided in command line flags
-  // let projectStructure: 'root' | 'src' | 'app' = 'src'; // Default to src-level structure
-  
-  // Get project options through the interactive prompts - only once!
-  const projectOptions = await promptProjectOptions({
-    template: options.template,
-    tailwind: options.tailwind,
-    typescript: options.typescript,
-    javascript: options.javascript,
-    stateManagement: options.stateManagement,
-    licenseType: options.licenseType || 'tdl', // Default to TDL license
-    complexity: defaultComplexity,
-    pwa: options.pwa,
-    'no-pwa': options['no-pwa'],
-    statusBarStyle: options.statusBarStyle
-  });
-  
+  // Retrieve project options either from CLI args or interactive prompt
+  const projectOptions = options.minimal
+    ? {
+        template: 'custom', // Using custom for simplicity
+        tailwind: false,
+        typescript: true, // TypeScript is now the only option
+        stateManagement: false,
+        licenseType: options.licenseType || 'tdl',
+        pwa: false,
+        complexity: options.complexity || 'minimal',
+        themeMode: options.themeMode || 'system',
+        projectStructure: 'app', // Next.js 15 style app directory
+        useNextStyle: true,
+        // Default theme colors for PWA support
+        themeColor: '#0077cc',
+        secondaryColor: '#005fa3',
+        theme: 'light',
+        statusBarStyle: 'black-translucent'
+      }
+    : await promptProjectOptions(options);
+
   // Always use app directory structure for Next.js 15 compatibility
   const projectStructure = 'app';
   logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
@@ -203,7 +209,7 @@ export async function createNewProject(
   // These variables are kept for documentation clarity but prefixed with _ to satisfy linting
   const _template = projectOptions.template;
   const _useTailwind = projectOptions.tailwind;
-  const _useTypescript = projectOptions.typescript;
+  // TypeScript is now the only option - removed the _useTypescript variable
   const _useStateManagement = projectOptions.stateManagement || false;
   const usePwa = projectOptions.pwa || false;
   
@@ -242,10 +248,22 @@ export async function createNewProject(
         projectPath, 
         {
           useTailwind: projectOptions.tailwind,
-          useTypescript: projectOptions.typescript,
           complexity: projectOptions.complexity
         }
       );
+      
+      // Create basic source files if needed
+  // No longer using this for templates since we're using pre-built templates
+  // But keeping for reference and potential future use
+  if (projectOptions.template === 'custom') {
+    const useStateManagement = !!projectOptions.stateManagement;
+    await _createBasicSourceFiles(projectPath, {
+      useTailwind: projectOptions.tailwind || false,
+      useStateManagement,
+      complexity: projectOptions.complexity as ('minimal' | 'standard' | 'full'),
+      projectStructure
+    });
+  }
       
       // Handle license based on user preference
       if (projectOptions.licenseType === 'tdl') {
@@ -415,27 +433,25 @@ interface NewProjectOptions {
   theme?: string;
   themeMode?: 'light' | 'dark' | 'system'; // Add theme mode selection
   complexity?: 'minimal' | 'standard' | 'full';
-  projectStructure?: 'root' | 'src' | 'app';
-  useNextStyle?: boolean;
   [key: string]: any;
 }
 
-async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<{ 
-  template: string; 
-  tailwind: boolean; 
-  typescript: boolean; 
-  stateManagement: boolean; 
+async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<{
+  template: string;
+  tailwind: boolean;
+  typescript: boolean; // Always true but kept for compatibility
+  stateManagement: boolean;
   licenseType: 'tdl' | 'mit' | 'none';
   complexity: 'minimal' | 'standard' | 'full';
   pwa: boolean;
+  themeMode: 'light' | 'dark' | 'system';
+  projectStructure: 'app'; // Only app directory structure is supported now
+  useNextStyle: boolean; // Always true
+  // PWA related properties
   themeColor: string;
   secondaryColor: string;
-  textColor: string;
   theme: string;
-  themeMode: 'light' | 'dark' | 'system';
-  statusBarStyle: string;
-  projectStructure: 'root' | 'src' | 'app';
-  useNextStyle: boolean;
+  statusBarStyle: 'black-translucent' | 'default' | 'black';
 }> {
   // Create a wrapper for prompts that handles cancellation
   const promptWithCancel = async (options: any) => {
@@ -455,41 +471,44 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // Debug log to track flag values
   logger.debug(`CLI flags - javascript: ${defaultOptions.javascript}, typescript: ${defaultOptions.typescript}`);  
 
-  // If the javascript flag is true, select JavaScript (index 1)
-  // If the typescript flag is explicitly false, also select JavaScript
-  // Otherwise default to TypeScript (index 0)
-  const languageDefault = defaultOptions.javascript === true ? 1 : (defaultOptions.typescript === false ? 1 : 0);
-  
-  const languageResponse = await promptWithCancel({
-    type: 'select',
-    name: 'language',
-    message: '🔤 Select language:',
+  logger.info(chalk.bold('\nLanguage: TypeScript'));
+  logger.info('0x1 now uses TypeScript exclusively for type-safe modern development');
+
+  // Prompt for other project settings
+  const complexityResponse = await promptWithCancel({
+    type: "select",
+    name: "complexity",
+    message: "Select a template complexity level (or press Enter for standard):",
     choices: [
-      { title: 'TypeScript', value: 'typescript' },
-      { title: 'JavaScript', value: 'javascript' }
+      { value: "minimal", label: "Minimal - Basic setup with minimal dependencies" },
+      { value: "standard", label: "Standard - Common libraries and project structure" },
+      { value: "full", label: "Full - Complete setup with all recommended features" },
     ],
-    initial: languageDefault,
+    initial: 1
   });
 
-  logger.spacer();
+  // Ask about state management
+  const stateResponse = await promptWithCancel({
+    type: "confirm",
+    name: "stateManagement",
+    message: "Would you like to include state management?",
+    initial: false
+  });
+
+  // Ask about license type
+  const licenseResponse = await promptWithCancel({
+    type: "select",
+    name: "licenseType",
+    message: "Select a license type:",
+    choices: [
+      { value: "mit", label: "MIT License" },
+      { value: "tdl", label: "TDL License (0x1 Default)" },
+      { value: "none", label: "No License" }
+    ],
+    initial: 1
+  });
 
   // Template complexity choice
-  const complexityResponse = await promptWithCancel({
-    type: 'select',
-    name: 'complexity',
-    message: '🏗️ Project complexity:',
-    choices: [
-      { title: 'Minimal', description: 'Bare-bones starter with just the essentials', value: 'minimal' },
-      { title: 'Standard (pending implementation)', description: 'Recommended setup for most projects', value: 'standard' },
-      { title: 'Full (pending implementation)', description: 'Complete setup with all features', value: 'full' }
-    ],
-    initial: defaultOptions.complexity === 'minimal' ? 0 : 
-             defaultOptions.complexity === 'full' ? 2 : 1, // Default to standard if not specified
-  });
-
-  logger.spacer();
-
-  // Ask about license choice
   const templatePrompt = await promptWithCancel({
     type: 'select',
     name: 'template',
@@ -576,6 +595,12 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
   const projectStructure = 'app';
   const useNextStyle = true; // Always use Next.js style app directory structure
+  
+  // Define PWA theme values
+  const themeColor = '#0077cc';
+  const secondaryColor = '#005fa3';
+  const themeResponse = { theme: 'light' };
+  const statusBarStyle: 'black-translucent' | 'default' | 'black' = 'black-translucent';
 
   // Ask about PWA support (not needed for minimal templates)
   // Define a proper PWA default: If pwa flag is explicitly true, use Yes, if explicitly false (or --no-pwa), use No
@@ -689,8 +714,8 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // Tailwind is enabled by default now
   const useTailwind = defaultOptions.tailwind ?? true;
   
-  // Construct the template path based on language and complexity
-  const templatePath = `${complexityResponse.complexity}/${languageResponse.language}`;
+  // Construct the template path - Use the complexity to determine the template path - TypeScript is the only option now
+  const templatePath = `${complexityResponse.complexity}/typescript`;
 
   // Determine appropriate values based on selected options
   const tailwindOption = useTailwind;
@@ -699,26 +724,24 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   
   // Set project structure to 'app' if Next.js template is selected
   const actualProjectStructure = templatePrompt.template === 'next' ? 'app' : projectStructure;
-  
   // Return the complete options object
   return {
     template: templatePrompt.template,
     tailwind: tailwindOption,
-    typescript: languageResponse.language === 'typescript',
+    typescript: true, // TypeScript is now the only option
     stateManagement: stateManagementOption,
     licenseType: defaultOptions.licenseType || 'mit', // Default to MIT if undefined
-    complexity: templatePrompt.template === 'next' ? 'full' : complexityResponse.complexity,
+    complexity: complexityResponse.complexity,
     pwa: pwaResponse.pwa,
-    themeColor,
-    secondaryColor,
-    textColor,
-    theme: themeResponse.theme,
     themeMode: themeModeResponse.themeMode,
-    statusBarStyle,
-    projectStructure: actualProjectStructure as 'root' | 'src' | 'app',
-    useNextStyle: useNextStyleOption
+    projectStructure: 'app', // Fixed project structure for Next.js 15
+    useNextStyle: true, // Always use Next.js style app directory structure
+    themeColor: themeColor,
+    secondaryColor: secondaryColor,
+    theme: themeResponse.theme,
+    statusBarStyle: statusBarStyle
   };
-}
+};
 
 /**
  * Copy template files to project directory
@@ -728,33 +751,33 @@ async function copyTemplate(
   projectPath: string,
   options: {
     useTailwind: boolean;
-    useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'app';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure = 'root' } = options;
+  const { useTailwind, complexity, themeMode = 'dark', projectStructure = 'app' } = options;
   
-  // The template variable already includes the complexity and language (e.g., 'full/typescript')
-  // We need to handle all possible paths for templates in different execution contexts
+  // Simplified structure - TypeScript-only framework
+  // No need for languageDir as the structure is now flattened
+  
   // Get the current file's directory to use as base
   const currentDir = import.meta.dirname || '';
   logger.debug(`Current directory: ${currentDir}`);
   
-  // Define possible template paths in order of preference
+  // Define possible template paths in order of preference with flattened structure
   const possiblePaths = [
     // Development path from source directory
-    join(currentDir, '../../../templates', template),
+    join(currentDir, '../../../templates', complexity),
     // Global installation path
-    join(currentDir, '../templates', template),
+    join(currentDir, '../templates', complexity),
     // Direct path from execution directory
-    join(process.cwd(), 'templates', template),
+    join(process.cwd(), 'templates', complexity),
     // Absolute path for global installation
-    join(currentDir, '../../templates', template),
+    join(currentDir, '../../templates', complexity),
     // One level deeper for node_modules scenarios
-    join(currentDir, '../../../../templates', template)
+    join(currentDir, '../../../../templates', complexity)
   ];
   
   logger.debug(`Checking template paths:\n${possiblePaths.join('\n')}`);
@@ -778,7 +801,6 @@ async function copyTemplate(
   // Copy template files using internal copy function
   await copyTemplateFiles(templatePath, projectPath, { 
     useTailwind, 
-    useTypescript, 
     complexity,
     themeMode, 
     projectStructure
@@ -870,7 +892,6 @@ async function copyTemplateFiles(
   destPath: string,
   options: {
     useTailwind: boolean;
-    useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
@@ -947,13 +968,12 @@ async function createPackageJson(
   projectPath: string,
   options: {
     useTailwind: boolean;
-    useTypescript: boolean;
     useStateManagement?: boolean;
     minimal?: boolean;
     projectStructure?: 'root' | 'src' | 'app';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, useStateManagement, minimal, projectStructure } = options;
+  const { useTailwind, useStateManagement, minimal, projectStructure } = options;
   // Declare unused variables with underscore prefix to satisfy linting
   const _useStateManagement = useStateManagement;
   const _minimal = minimal;
@@ -969,9 +989,12 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.50' // Use current version with caret for compatibility
+      "0x1": '^0.0.51' // Use current version with caret for compatibility
     },
-    devDependencies: {} as Record<string, string>
+    devDependencies: {
+      // TypeScript is always included as 0x1 is TypeScript-only
+      typescript: '^5.3.3'
+    } as Record<string, string>
   };
   
   // Add Tailwind processing scripts if needed
@@ -1009,13 +1032,6 @@ async function createPackageJson(
     }
   }
   
-  // Add TypeScript if needed
-  if (useTypescript) {
-    Object.assign(packageJson.devDependencies, {
-      typescript: '^5.3.3'
-    });
-  }
-  
   // Write package.json file
   await Bun.write(
     join(projectPath, 'package.json'),
@@ -1031,21 +1047,17 @@ async function _createBasicSourceFiles(
   projectPath: string,
   options: {
     useTailwind: boolean;
-    useTypescript: boolean;
     useStateManagement?: boolean;
     complexity: 'minimal' | 'standard' | 'full';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'app' | 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTypescript, complexity } = options;
-  const ext = useTypescript ? 'ts' : 'js';
+  const { complexity } = options;
+  const ext = 'ts'; // TypeScript is now the only option
+  const indexPath = 'index.html'; // Define indexPath variable
   
-  // Create index.html at the root level
-  const indexPath = 'index.html';
-  
-  // Create index.html based on complexity level
   if (complexity === 'full') {
-    // For full template, use a more comprehensive HTML with proper structure
+    // Create index.html at the root level with full template
     await Bun.write(
       join(projectPath, indexPath),
       `<!DOCTYPE html>
@@ -1055,35 +1067,22 @@ async function _createBasicSourceFiles(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 Full App</title>
   <link rel="stylesheet" href="/styles/main.css">
-  <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
-  <link rel="manifest" href="/public/manifest.json">
-  <meta name="theme-color" content="#0077cc">
-  <meta name="description" content="0x1 Full-Featured Application">
-  <!-- iOS PWA meta tags -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="apple-touch-icon" href="/public/icons/icon-192x192.png">
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white min-h-screen">
-  <div id="app" class="min-h-screen flex flex-col items-center justify-center p-4">
-    <h1 class="text-3xl font-bold text-primary mb-4">Welcome to 0x1</h1>
-    <p class="text-xl mb-6">The ultra-minimal TypeScript framework</p>
-    
-    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-w-md w-full">
-      <h2 class="text-2xl font-semibold mb-4">Counter Demo</h2>
-      <div class="flex items-center justify-between">
-        <span class="text-4xl font-bold" id="counter-value">0</span>
-        <button id="increment-btn" class="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded">
-          Increment
-        </button>
-      </div>
-    </div>
-    
-    <div class="mt-8 text-center">
-      <button id="theme-toggle" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 px-4 rounded">
-        Toggle Dark Mode
+<body>
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-w-md w-full">
+    <h2 class="text-2xl font-semibold mb-4">Counter Demo</h2>
+    <div class="flex items-center justify-between">
+      <span class="text-4xl font-bold" id="counter-value">0</span>
+      <button id="increment-btn" class="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded">
+        Increment
       </button>
     </div>
+  </div>
+  
+  <div class="mt-8 text-center">
+    <button id="theme-toggle" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 px-4 rounded">
+      Toggle Dark Mode
+    </button>
   </div>
   <script type="module" src="/app.${ext}"></script>
 </body>
@@ -1109,80 +1108,42 @@ async function _createBasicSourceFiles(
     );
   }
   
-  // Create app.ts or app.js at root level
-  await Bun.write(
-    join(projectPath, `app.${ext}`),
-    useTypescript
-      ? `/**
+  // Create app.ts at root level - TypeScript is now the only option
+  let appTsContent = "";
+  
+  if (complexity === 'full') {
+    appTsContent = `/**
  * 0x1 Application Entry Point
  */
 
-// DOM ready function
-function ready(callback: () => void): void {
-  if (document.readyState !== 'loading') {
-    callback();
-  } else {
-    document.addEventListener('DOMContentLoaded', callback);
-  }
-}
+import { createApp } from '0x1';
 
-// Initialize the app
-ready(() => {
-  console.log('0x1 app started!');
+const app = createApp();
+
+// Set up counter demo if elements exist
+const counterEl = document.getElementById('counter-value');
+const incrementBtn = document.getElementById('increment-btn');
+
+if (counterEl && incrementBtn) {
+  let count = 0;
   
-  // Check for dark mode preference or saved preference
-  const savedTheme = localStorage.getItem('0x1-dark-mode');
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // Display initial value
+  counterEl.textContent = count.toString();
   
-  // Set initial dark mode state based on saved preference or system preference
-  if (savedTheme === 'dark' || (savedTheme === null && prefersDark)) {
-    document.documentElement.classList.add('dark');
-  } else if (savedTheme === 'light') {
-    document.documentElement.classList.remove('dark');
-  }
-  
-  // Set up theme toggle if it exists
-  const themeToggle = document.getElementById('theme-toggle');
-  if (themeToggle) {
-    // Update toggle button text based on current theme
-    updateThemeToggleText();
-    
-    themeToggle.addEventListener('click', () => {
-      // Toggle dark class on the html element
-      document.documentElement.classList.toggle('dark');
-      
-      // Update button text
-      updateThemeToggleText();
-      
-      // Save preference to localStorage
-      const isDark = document.documentElement.classList.contains('dark');
-      localStorage.setItem('0x1-dark-mode', isDark ? 'dark' : 'light');
-    });
-  }
-  
-  // Set up counter demo if elements exist
-  const counterEl = document.getElementById('counter-value');
-  const incrementBtn = document.getElementById('increment-btn');
-  
-  if (counterEl && incrementBtn) {
-    let count = 0;
-    
-    // Display initial value
+  // Set up click handler
+  incrementBtn.addEventListener('click', () => {
+    count++;
     counterEl.textContent = count.toString();
-    
-    // Set up click handler
-    incrementBtn.addEventListener('click', () => {
-      count++;
-      counterEl.textContent = count.toString();
-    });
-  }
-});`
-      : `/**
+  });
+}
+`;
+  } else {
+    appTsContent = `/**
  * 0x1 Application Entry Point
  */
 
 // DOM ready function
-function ready(callback) {
+function ready(callback: () => void) {
   if (document.readyState !== 'loading') {
     callback();
   } else {
@@ -1215,8 +1176,11 @@ ready(() => {
       counterEl.textContent = count.toString();
     });
   }
-});`
-  );
+});
+`;
+  }
+  
+  await Bun.write(join(projectPath, `app.${ext}`), appTsContent);
   
   // Create styles directory if it doesn't exist
   await mkdir(join(projectPath, 'styles'), { recursive: true });
@@ -1286,6 +1250,9 @@ ready(() => {
 }`
   );
   
+  // Create public directory if it doesn't exist
+  await mkdir(join(projectPath, 'public'), { recursive: true });
+
   // Create public/favicon.svg
   await Bun.write(
     join(projectPath, 'public/favicon.svg'),
@@ -1308,88 +1275,60 @@ async function _createConfigFiles(
     name: string;
     template: 'standard' | 'minimal' | 'full' | 'next';
     useTailwind?: boolean;
-    useTypescript?: boolean;
-    useStateManagement?: boolean;
+    complexity?: 'minimal' | 'standard' | 'full';
     eslint?: boolean;
     prettier?: boolean;
-    complexity?: 'minimal' | 'standard' | 'full';
-    themeMode?: 'light' | 'dark';
+    themeMode?: 'light' | 'dark' | 'system';
     projectStructure: 'app';
     pwa?: boolean;
     license?: 'mit' | 'tdl' | 'none';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure } = options;
+  const { name, template, useTailwind, complexity, themeMode = 'dark', projectStructure } = options;
   
-  // Create 0x1.config.ts or 0x1.config.js
-  const ext = useTypescript ? 'ts' : 'js';
-  await Bun.write(
-    join(projectPath, `0x1.config.${ext}`),
-    useTypescript
-      ? `import { _0x1Config } from '0x1';
+  logger.debug(`Creating config files for template type: ${template}`);
+  
+  // TypeScript is now the only option
+  const ext = 'ts';
+  
+  let configFiles = [
+    'tsconfig.json', // Always include TypeScript config
+    useTailwind && 'tailwind.config.js',
+    useTailwind && 'postcss.config.js',
+    '.gitignore'
+  ].filter(Boolean);
+
+  // Create 0x1.config.ts
+  const configContent = `import { _0x1Config } from '0x1';
 
 const config: _0x1Config = {
   app: {
-    name: '${projectPath.split('/').pop()}',
-    title: '0x1 App',
-    description: 'Built with the 0x1 framework'
+    name: "${name || 'my-0x1-app'}",
+    metadata: {
+      description: "A modern TypeScript web application",
+      themeColor: "#0077cc"
+    }
+  },
+  build: {
+    target: "browser",
+    minify: true,
+    sourcemap: process.env.NODE_ENV === 'development',
+    outDir: "dist"
   },
   server: {
     port: 3000,
-    host: 'localhost',
-    basePath: '/'
-  },
-  routes: {
-    '/': './pages/home'
+    host: "localhost"
   },
   styling: {
     tailwind: ${useTailwind},
-    darkMode: '${themeMode}'
-  },
-  build: {
-    outDir: 'dist',
-    minify: true,
-    precomputeTemplates: true,
-    prefetchLinks: true
-  },
-  deployment: {
-    provider: 'vercel',
-    edge: true
+    darkMode: "${themeMode}"
   }
 };
 
-export default config;`
-      : `/** @type {import('0x1')._0x1Config} */
-export default {
-  app: {
-    name: '${projectPath.split('/').pop()}',
-    title: '0x1 App',
-    description: 'Built with the 0x1 framework'
-  },
-  server: {
-    port: 3000,
-    host: 'localhost',
-    basePath: '/'
-  },
-  routes: {
-    '/': './pages/home'
-  },
-  styling: {
-    tailwind: ${useTailwind},
-    darkMode: '${themeMode}'
-  },
-  build: {
-    outDir: 'dist',
-    minify: true,
-    precomputeTemplates: true,
-    prefetchLinks: true
-  },
-  deployment: {
-    provider: 'vercel',
-    edge: true
-  }
-};`
-  );
+export default config;`;
+
+  // Write the config file using Bun
+  await Bun.write(join(projectPath, `0x1.config.${ext}`), configContent);
   
   // Create tailwind.config.js if needed
   if (useTailwind) {
@@ -1466,50 +1405,28 @@ export default {
     );
   }
   
-  // Create tsconfig.json if needed
-  if (useTypescript) {
-    // Set include pattern based on project structure
-    let includePattern;
-    
-    // if (projectStructure === 'src') {
-    //   includePattern = "src/**/*.ts";
-    // } else if (projectStructure === 'app') {
-      includePattern = [
-        "app/**/*.{ts,tsx}",
-        "components/**/*.{ts,tsx}",
-        "lib/**/*.ts",
-        "app.{ts,tsx}",
-        "*.d.ts"
-      ];
-    // } else {
-    //   includePattern = "**/*.ts";
-    // }
-    
-    const includeJson = Array.isArray(includePattern) ? 
-      JSON.stringify(includePattern, null, 2) : 
-      `"${includePattern}"`;
-
-    await Bun.write(
-      join(projectPath, 'tsconfig.json'),
-      `{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"]
-  },
-  "include": ${includeJson},
-  "exclude": ["node_modules", "dist"]
-}`
-    );
-  }
+  // Create TypeScript files (always)
+  // Set include pattern based on project structure
+  let includePattern = ["app/**/*.{ts,tsx}", "**/*.ts", "**/*.tsx"];
+  
+  // Create tsconfig.json
+  await Bun.write(
+    join(projectPath, 'tsconfig.json'),
+    JSON.stringify({
+      "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "jsx": "preserve",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true
+      },
+      "include": includePattern,
+      "exclude": ["node_modules", "dist"]
+    }, null, 2)
+  );
   
   // Create README.md
   await Bun.write(

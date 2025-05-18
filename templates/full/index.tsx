@@ -2,9 +2,9 @@
  * 0x1 Full App - Entry Point
  * Using Next.js 15 app directory structure
  */
-import { Router } from '../../../src/core/router';
+import type { Component } from '../../src/core/component';
+import { Router } from '../../src/core/router';
 import { getAppComponents } from './lib/component-registry';
-import type { Component } from '../../../src/core/component';
 
 // Cast function for component compatibility with core component type
 function castToComponent<T>(component: any): T {

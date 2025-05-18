@@ -1,15 +1,14 @@
 /**
- * 0x1 Standard App - Entry Point
+ * 0x1 Minimal App - Entry Point
  * Using Next.js 15 app directory structure
  */
-import { Router } from '../../../src/core/router';
+import { Router } from '../../src/core/router';
 
-// Simple component registry for Next.js 15 app directory structure
+// Simple component registry - for Next.js 15 app directory structure
 const appComponents = {
   'app/page': { default: require('./app/page').default },
   'app/layout': { default: require('./app/layout').default },
-  'app/not-found': { default: require('./app/not-found').default },
-  'app/about/page': { default: require('./app/about/page').default }
+  'app/not-found': { default: require('./app/not-found').default }
 };
 
 // DOM ready function
@@ -21,7 +20,7 @@ function ready(callback: () => void): void {
   }
 }
 
-// Theme manager
+// Theme manager - simple implementation
 function initializeTheme(): void {
   const themeToggleBtn = document.getElementById('theme-toggle');
   const storageKey = '0x1-dark-mode';
@@ -49,27 +48,6 @@ function initializeTheme(): void {
   }
 }
 
-// Initialize navigation events for client-side routing
-function initializeNavigation(): void {
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    
-    // Check if the click was on a link
-    if (target.tagName === 'A' || target.closest('a')) {
-      const link = target.tagName === 'A' ? target as HTMLAnchorElement : target.closest('a') as HTMLAnchorElement;
-      const href = link.getAttribute('href');
-      
-      // Only handle internal links
-      if (href && !href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#')) {
-        e.preventDefault();
-        window.history.pushState(null, '', href);
-        // Trigger route change
-        window.dispatchEvent(new Event('popstate'));
-      }
-    }
-  });
-}
-
 // Bootstrap the application when DOM is loaded
 ready(() => {
   const appContainer = document.getElementById('app');
@@ -82,9 +60,6 @@ ready(() => {
   // Initialize theme handling
   initializeTheme();
   
-  // Initialize navigation events
-  initializeNavigation();
-  
   // Initialize the router with Next.js 15 app directory structure
   const router = new Router({
     rootElement: appContainer,
@@ -95,5 +70,5 @@ ready(() => {
   
   router.init();
   
-  console.log('0x1 Standard App started with Next.js 15 app directory structure!');
+  console.log('0x1 Minimal App started!');
 });

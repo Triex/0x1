@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Lightning-fast web framework for JavaScript/TypeScript with zero overhead</strong><br>
+  <strong>Lightning-fast TypeScript-only web framework with zero overhead</strong><br>
   <span>The ultra-minimal, maximum performance framework powered by Bun</span>
 </p>
 
@@ -25,8 +25,7 @@
 
 <p align="center">
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Powered_by-Bun-black?style=flat-square&logo=bun" alt="Powered by Bun" /></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square&logo=typescript" alt="TypeScript Ready" /></a>
-  <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"><img src="https://img.shields.io/badge/JavaScript-Supported-yellow?style=flat-square&logo=javascript" alt="JavaScript Supported" /></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-First-blue?style=flat-square&logo=typescript" alt="TypeScript First" /></a>
   <img src="https://img.shields.io/badge/ESM-Native-brightgreen?style=flat-square" alt="ESM Native" />
   <img src="https://img.shields.io/badge/License-TDL_v1-blue?style=flat-square" alt="License" />
 </p>
@@ -42,18 +41,18 @@
 - **Precomputed content**: Minimal JS for maximum speed
 
 ### 🧩 Components Without Overhead
-- **Simple API**: Modern component system for both JavaScript and TypeScript
-- **Minimal abstractions**: Near-vanilla performance
-- **Custom Diffing**: Optimized DOM updates
-- **Type-safe**: Full TypeScript support when you want it
-- **Vanilla friendly**: Works with plain JavaScript for maximum flexibility
+- **TypeScript-Only**: Exclusively built for TypeScript with full type safety
+- **Simple API**: Modern component system with comprehensive TypeScript typing
+- **Minimal abstractions**: Near-vanilla performance with type-checked templates
+- **Custom Diffing**: Optimized DOM updates with TypeScript safety
+- **Compile-time validation**: Catch errors early with strict typing
 
 ### 🧪 Template Complexity Options
 
-0x1 offers three complexity levels for projects, available in both JavaScript and TypeScript:
+0x1 offers three complexity levels for projects, all built with TypeScript:
 
 ```bash
-# Create a new project (all templates now use Next.js 15 app directory structure)
+# Create a new project (all templates use Next.js 15 app directory structure)
 bun 0x1 new my-app
 
 # Customize your project complexity
@@ -106,7 +105,7 @@ bun 0x1 new my-app --complexity=full
 - **Hot reload**: Sub-second refresh times with bun's lightning-fast runtime
 - **Bun-powered**: Built on the fastest JS runtime available
 - **Tailwind integration**: Zero-config styling with built-in support
-- **Language choice**: JavaScript or TypeScript with equal first-class support
+- **TypeScript-native**: Full type safety with TypeScript-only codebase
 - **Smart defaults**: Sensible configurations out of the box
 - **Theme flexibility**: Light, dark and system theme modes
 
@@ -204,7 +203,7 @@ Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 
 ## 📋 Template Options
 
-0x1 now offers a streamlined template selection process with three complexity levels, each available in both TypeScript and JavaScript:
+0x1 now offers a streamlined template selection process with three complexity levels, all built with TypeScript for maximum type safety and developer experience:
 
 ### 🔍 Minimal Templates
 
@@ -243,7 +242,7 @@ Create your project with the desired template using the CLI:
 bun create 0x1 my-app
 ```
 
-The CLI will guide you through selecting your preferred language (TypeScript or JavaScript) and template complexity. Build
+The CLI will guide you through selecting your preferred template complexity and other project options. Build
 
 ```bash
 bun run build
