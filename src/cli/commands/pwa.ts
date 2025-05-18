@@ -7,7 +7,8 @@ import { existsSync, readFileSync } from 'fs';
 import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import prompts from 'prompts';
-import type { PromptObject } from 'prompts';
+// Import with underscore prefix to satisfy linting while preserving type info
+import type { PromptObject as _PromptObject } from 'prompts';
 
 // Extended choice type to support descriptions in prompts
 interface ExtendedPromptChoice {

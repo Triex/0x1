@@ -35,11 +35,13 @@ const uncompressedSize = stats.size;
 const gzipResult = await spawn(["sh", "-c", `gzip -c ${mainBundlePath} | wc -c`]);
 const gzipOutput = await new Response(gzipResult.stdout).text();
 const compressedSize = parseInt(gzipOutput.trim(), 10);
+const ratioInverse = uncompressedSize / compressedSize;
+const ratioString = `${ratioInverse.toFixed(1)}`;
 
 // Display nice output
 console.log("\n📦 Bundle information:");
 console.log(`  • Main bundle: ${formatSize(uncompressedSize)} (${uncompressedSize.toLocaleString()} bytes)`);
 console.log(`  • Compressed: ${formatSize(compressedSize)} (${compressedSize.toLocaleString()} bytes)`);
-console.log(`  • Ratio: ${(compressedSize / uncompressedSize * 100).toFixed(1)}%`);
+console.log(`  • Ratio: ${(compressedSize / uncompressedSize * 100).toFixed(1)}% (${ratioString}x reduction)`);
 
 console.log("\n🎉 Build completed successfully!\n");

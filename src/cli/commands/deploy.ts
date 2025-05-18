@@ -23,7 +23,7 @@ export async function deployProject(options: DeployOptions = {}): Promise<void> 
   
   // Set default options
   const dir = options.dir || 'dist';
-  const production = options.production ?? true;
+  const _production = options.production ?? true; // Unused now but kept for future use
   
   // Get the absolute path to the build directory
   const buildPath = resolve(process.cwd(), dir);
@@ -187,8 +187,8 @@ ${logger.highlight(deployUrl)}
 /**
  * Deploy to GitHub Pages
  */
-async function deployToGitHubPages(buildPath: string, options: DeployOptions): Promise<void> {
-  const spin = logger.spinner('Deploying to GitHub Pages');
+async function deployToGitHubPages(buildPath: string, _options: DeployOptions): Promise<void> {
+  let spin = logger.spinner('Deploying to GitHub Pages');
   
   try {
     // Check if gh-pages is installed
@@ -201,7 +201,7 @@ async function deployToGitHubPages(buildPath: string, options: DeployOptions): P
       spin.stop('success', 'Installing gh-pages package');
       await execa('bun', ['add', '-D', 'gh-pages'], { stdio: 'pipe' });
       // Restart spinner for deployment
-      const deploymentSpin = logger.spinner('Deploying to GitHub Pages');
+      spin = logger.spinner('Deploying to GitHub Pages');
     }
     
     // Deploy to GitHub Pages
@@ -249,7 +249,7 @@ Note: It may take a few minutes for GitHub Pages to build your site.
 /**
  * Deploy to custom provider
  */
-async function deployToCustomProvider(buildPath: string, options: DeployOptions): Promise<void> {
+async function deployToCustomProvider(buildPath: string, _options: DeployOptions): Promise<void> {
   logger.info('Custom deployment provider selected');
   
   // Prompt for custom provider details

@@ -1,7 +1,8 @@
 // This file contains the theme mode implementation code to be integrated into new.ts
 
 // 1. Update createConfigFiles to use themeMode
-const createConfigFilesWithThemeMode = `
+// Using underscore prefix for unused variables to satisfy ESLint
+const _createConfigFilesWithThemeMode = `
 async function createConfigFiles(
   projectPath: string,
   options: {

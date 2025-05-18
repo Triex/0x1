@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/* global Bun */
 
 import fs from 'fs';
 import path from 'path';

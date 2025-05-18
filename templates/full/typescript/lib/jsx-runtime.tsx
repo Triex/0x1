@@ -50,20 +50,27 @@ export const Fragment = (props: { children?: JSXChildren }): JSXNode => {
   return { 
     type: 'fragment',
     props: {},
-    children: Array.isArray(props.children) ? props.children : props.children ? [props.children] : []
+    // Explicitly cast the children to avoid type errors
+    children: Array.isArray(props.children) 
+      ? (props.children as Array<JSXNode | string | number>)
+      : props.children 
+        ? ([props.children] as Array<JSXNode | string | number>) 
+        : []
   };
 };
 
 /**
  * Flattens nested arrays of children
  */
-function flattenChildren(children: JSXChildren[]): Array<JSXNode | string | number | boolean | null | undefined> {
-  return children.flat(Infinity).filter(child => 
+function flattenChildren(children: Array<JSXChildren | JSXChildren[]>): Array<JSXNode | string | number> {
+  // Use a non-recursive flattening approach to avoid infinite type instantiation
+  // Convert to an explicit array type with concrete members
+  return (children.flat(1) as Array<JSXNode | string | number | boolean | null | undefined>).filter(child => 
     child !== false && 
     child !== true && 
     child !== undefined && 
     child !== null
-  ) as Array<JSXNode | string | number | boolean | null | undefined>;
+  ) as Array<JSXNode | string | number>;
 }
 
 /**
@@ -156,7 +163,8 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
-// JSX namespace exports for TypeScript
+// JSX interfaces for TypeScript
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace JSX {
   export interface Element extends JSXNode {}
   

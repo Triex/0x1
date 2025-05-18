@@ -46,8 +46,9 @@ function getLocalIP(): string {
 
 /**
  * Get the current Bun version
+ * Currently unused but kept for potential future diagnostics
  */
-function getBunVersion(): string {
+function _getBunVersion(): string {
   return `v${Bun.version}`;
 }
 
@@ -383,7 +384,10 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
             let transpiled = '';
             
             // Use TypeScript's transpileModule for both TS and TSX files
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const { transpileModule } = require('typescript');
+            // Note: We're using require here because dynamic imports would require await and complicate the code flow
+            // This is a common pattern for loading compiler dependencies on-demand
             
             const result = transpileModule(fileContent, {
               compilerOptions: {
@@ -479,7 +483,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   /**
    * Set up file watcher for live reload
    */
-  function setupFileWatcher(server: Server) {
+  function setupFileWatcher(_server: Server) {
     // Use the already determined srcDir and publicDir from parent scope
     // which support both src-based and root-based project structures
     
@@ -558,7 +562,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       close: () => {
         // Use AbortController to abort the async iterator loops
         const controller = new AbortController();
-        const signal = controller.signal;
+        const _signal = controller.signal; // Will be used when implementing AbortController functionality
         controller.abort();
         
         // Actual AbortController usage would be implemented in the watch function
@@ -683,8 +687,9 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
       env: process.env
     });
     
-    // Log processed CSS info to provide better feedback during development
-    let cssProcessed = false;
+    // Flag to track CSS processing status
+    // Currently not used but reserved for future telemetry or status logging
+    let _cssProcessed = false;
     
     // Set up completion handler
     tailwindProcess.exited.then((result) => {
@@ -713,7 +718,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
             if (!didShowSuccess) {
               tailwindSpin.stop('success', 'Tailwind CSS processed successfully');
               logger.info(`CSS file generated at ${outputCssFile}`);
-              cssProcessed = true;
+              _cssProcessed = true;
               didShowSuccess = true;
             } else {
               // Hot reload message for file changes

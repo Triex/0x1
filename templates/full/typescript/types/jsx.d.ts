@@ -139,10 +139,10 @@ declare namespace JSX {
   }
 
   interface ElementAttributesProperty {
-    props: {};
+    props: Record<string, unknown>;
   }
 
   interface ElementChildrenAttribute {
-    children: {};
+    children: Record<string, unknown>;
   }
 }

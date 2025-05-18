@@ -42,7 +42,8 @@ export async function previewBuild(options: PreviewOptions = {}): Promise<void> 
   
   try {
     // Start the server
-    const server = serve({
+    // Server instance stored with underscore prefix as it might be needed in future for cleanup
+    const _server = serve({
       port,
       hostname: host,
       fetch(req) {

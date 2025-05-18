@@ -9,7 +9,8 @@ import { dirname, join, relative, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 
 // For dynamic imports
-interface TailwindProcessor {
+// Prefixing with underscore to indicate this interface is used for type checking only
+interface _TailwindProcessor {
   process: (css: string, options: any) => Promise<{ css: string }>;
 }
 
@@ -263,7 +264,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
  */
 async function processHtml(
   content: string,
-  options: { projectPath: string; outputPath: string; relativePath: string }
+  _options: { projectPath: string; outputPath: string; relativePath: string }
 ): Promise<string> {
   // Replace .ts and .tsx references with .js
   content = content.replace(/src="([^"]+)\.ts(x?)"/g, 'src="$1.js"');

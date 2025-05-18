@@ -147,14 +147,16 @@ function escapeHtml(html: string): string {
 }
 
 // Type definitions for JSX
+// Use ESLint disable to allow namespace syntax which is required for JSX compatibility
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
       [elemName: string]: any;
     }
     
     interface ElementChildrenAttribute {
-      children: {};
+      children: Record<string, unknown>;
     }
   }
 }

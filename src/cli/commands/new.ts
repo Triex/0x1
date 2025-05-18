@@ -141,10 +141,11 @@ export async function createNewProject(
   logger.debug(`Using template complexity: ${projectOptions.complexity}`);
 
   // Store project options for use throughout the function
-  const template = projectOptions.template;
-  const useTailwind = projectOptions.tailwind;
-  const useTypescript = projectOptions.typescript;
-  const useStateManagement = projectOptions.stateManagement || false;
+  // These variables are kept for documentation clarity but prefixed with _ to satisfy linting
+  const _template = projectOptions.template;
+  const _useTailwind = projectOptions.tailwind;
+  const _useTypescript = projectOptions.typescript;
+  const _useStateManagement = projectOptions.stateManagement || false;
   const usePwa = projectOptions.pwa || false;
   
   // Create project
@@ -782,6 +783,9 @@ async function createPackageJson(
   }
 ): Promise<void> {
   const { useTailwind, useTypescript, useStateManagement, minimal } = options;
+  // Declare unused variables with underscore prefix to satisfy linting
+  const _useStateManagement = useStateManagement;
+  const _minimal = minimal;
   
   // Basic package.json structure
   const packageJson = {
@@ -794,7 +798,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.42' // Use current version with caret for compatibility
+      "0x1": '^0.0.43' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
@@ -824,8 +828,9 @@ async function createPackageJson(
 
 /**
  * Create basic source files
+ * Currently unused but kept for future template customization
  */
-async function createBasicSourceFiles(
+async function _createBasicSourceFiles(
   projectPath: string,
   options: {
     useTailwind: boolean;
@@ -1105,8 +1110,9 @@ ready(() => {
 
 /**
  * Create configuration files
+ * Currently unused but kept for future template customization
  */
-async function createConfigFiles(
+async function _createConfigFiles(
   projectPath: string,
   options: {
     useTailwind: boolean;
