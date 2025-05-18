@@ -772,6 +772,63 @@ This will automatically include the TDL v1 license in your project.
 
 ## 🔧 Troubleshooting
 
+### Global CLI Installation Issues
+
+If you encounter `command not found: 0x1` after installing globally with `bun install -g 0x1`, this is because Bun doesn't automatically add its bin directory to your PATH.
+
+#### Quick Solution
+
+You can always use Bun directly to run 0x1 commands without PATH configuration:
+
+```bash
+# Alternative way to run any 0x1 command
+bunx 0x1 <command>
+```
+
+#### Permanent Fix
+
+Add Bun's bin directory to your PATH:
+
+**For macOS (zsh shell - default):**
+```bash
+# Add these lines to your ~/.zshrc file
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Then reload your shell configuration
+source ~/.zshrc
+```
+
+**For Linux/older macOS (bash shell):**
+```bash
+# Add these lines to your ~/.bashrc or ~/.bash_profile file
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Then reload your shell configuration
+source ~/.bashrc  # or source ~/.bash_profile
+```
+
+**For fish shell:**
+```fish
+# Add these lines to your ~/.config/fish/config.fish file
+set -x BUN_INSTALL "$HOME/.bun"
+set -x PATH "$BUN_INSTALL/bin" $PATH
+
+# Then reload your shell configuration
+source ~/.config/fish/config.fish
+```
+
+**For Windows (WSL):**
+```bash
+# Add these lines to your ~/.bashrc file in WSL
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Then reload your shell configuration
+source ~/.bashrc
+```
+
 ### Content Not Showing in Browser
 
 If you're experiencing issues with content not displaying in your browser when running a 0x1 project:
