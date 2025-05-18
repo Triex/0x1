@@ -77,8 +77,7 @@ interface NewProjectOptions {
   pwa?: boolean;
   'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
-  // Only app directory structure is supported for Next.js 15 compatibility
-  useNextStyle?: boolean; // Use Next.js 15-style app directory structure (always true)
+  projectStructure?: 'root' | 'src'; // Project file structure option
 }
 
 /**
@@ -177,7 +176,7 @@ export async function createNewProject(
   logger.debug(`Processed CLI options: typescript=${options.typescript}, javascript=${options.javascript}, pwa=${options.pwa}`);  
 
   // Get options from prompts if not provided in command line flags
-  // let projectStructure: 'root' | 'src' | 'app' = 'src'; // Default to src-level structure
+  let projectStructure: 'root' | 'src' = 'root'; // Default to root-level structure
   
   // Get project options through the interactive prompts - only once!
   const projectOptions = await promptProjectOptions({
@@ -193,9 +192,11 @@ export async function createNewProject(
     statusBarStyle: options.statusBarStyle
   });
   
-  // Always use app directory structure for Next.js 15 compatibility
-  const projectStructure = 'app';
-  logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
+  // Set project structure from options
+  projectStructure = projectOptions.projectStructure;
+  if (options.projectStructure) {
+    projectStructure = options.projectStructure;
+  }
   
   logger.debug(`Using template complexity: ${projectOptions.complexity}`);
 
@@ -350,7 +351,7 @@ export async function createNewProject(
             themeColor: projectOptions.themeColor,
             backgroundColor: projectOptions.secondaryColor,
             theme: projectOptions.theme as string,
-            projectStructure: projectStructure as 'root' | 'src' | 'app'
+            projectStructure: projectStructure
           });
           
           iconSpin.stop('success', 'Basic project icons created');
@@ -415,8 +416,6 @@ interface NewProjectOptions {
   theme?: string;
   themeMode?: 'light' | 'dark' | 'system'; // Add theme mode selection
   complexity?: 'minimal' | 'standard' | 'full';
-  projectStructure?: 'root' | 'src' | 'app';
-  useNextStyle?: boolean;
   [key: string]: any;
 }
 
@@ -434,8 +433,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   theme: string;
   themeMode: 'light' | 'dark' | 'system';
   statusBarStyle: string;
-  projectStructure: 'root' | 'src' | 'app';
-  useNextStyle: boolean;
+  projectStructure: 'root' | 'src';
 }> {
   // Create a wrapper for prompts that handles cancellation
   const promptWithCancel = async (options: any) => {
@@ -490,19 +488,18 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   logger.spacer();
 
   // Ask about license choice
-  const templatePrompt = await promptWithCancel({
+  const licenseResponse = await promptWithCancel({
     type: 'select',
-    name: 'template',
-    message: 'Which template would you like to use?',
+    name: 'licenseType',
+    message: '🔐 Choose a license:',
     choices: [
-      { title: 'Default [Recommended]', value: 'default', description: 'Fully featured web application template' },
-      { title: 'Minimal', value: 'minimal', description: 'Bare-bones template with minimal features' },
-      { title: 'Full', value: 'full', description: 'Complete application with all features' },
-      { title: 'Next.js Style', value: 'next', description: 'App router pattern inspired by Next.js 15' }
+      { title: 'TDL License', value: 'tdl', description: 'TriexDev License' },
+      { title: 'MIT License', value: 'mit', description: 'Permissive license' },
+      { title: 'NO LICENSE', value: 'none', description: 'No license specified' }
     ],
-    initial: defaultOptions.template === 'next' ? 3 : defaultOptions.template === 'full' ? 2 : defaultOptions.template === 'minimal' ? 1 : 0
+    initial: 0 // TDL is now the default
   });
-
+  
   logger.spacer();
 
   // Ask about project theme
@@ -572,10 +569,29 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   
   logger.spacer();
 
-  // Using standardized app directory structure for all projects
-  logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
-  const projectStructure = 'app';
-  const useNextStyle = true; // Always use Next.js style app directory structure
+  // Ask about project directory structure
+  const structureDefault = defaultOptions.projectStructure === 'src' ? 1 : 0; // Default to root-level
+  
+  const structureResponse = await promptWithCancel({
+    type: 'select',
+    name: 'projectStructure',
+    message: '📁 Choose project directory structure:',
+    choices: [
+      {
+        title: 'Root-level', 
+        value: 'root',
+        description: 'Files at the project root (like Next.js app router)'
+      },
+      {
+        title: 'src Directory',
+        value: 'src',
+        description: 'Files organized in a src/ directory'
+      }
+    ],
+    initial: structureDefault
+  });
+  
+  logger.spacer();
 
   // Ask about PWA support (not needed for minimal templates)
   // Define a proper PWA default: If pwa flag is explicitly true, use Yes, if explicitly false (or --no-pwa), use No
@@ -692,31 +708,21 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // Construct the template path based on language and complexity
   const templatePath = `${complexityResponse.complexity}/${languageResponse.language}`;
 
-  // Determine appropriate values based on selected options
-  const tailwindOption = useTailwind;
-  const stateManagementOption = useStateManagement;
-  const useNextStyleOption = templatePrompt.template === 'next';
-  
-  // Set project structure to 'app' if Next.js template is selected
-  const actualProjectStructure = templatePrompt.template === 'next' ? 'app' : projectStructure;
-  
-  // Return the complete options object
   return {
-    template: templatePrompt.template,
-    tailwind: tailwindOption,
+    template: defaultOptions.template || templatePath,
     typescript: languageResponse.language === 'typescript',
-    stateManagement: stateManagementOption,
-    licenseType: defaultOptions.licenseType || 'mit', // Default to MIT if undefined
-    complexity: templatePrompt.template === 'next' ? 'full' : complexityResponse.complexity,
+    tailwind: useTailwind,
+    stateManagement: useStateManagement,
+    licenseType: licenseResponse.licenseType,
+    complexity: complexityResponse.complexity,
     pwa: pwaResponse.pwa,
-    themeColor,
-    secondaryColor,
-    textColor,
+    themeColor: themeColor,
+    secondaryColor: secondaryColor,
+    textColor: textColor,
     theme: themeResponse.theme,
     themeMode: themeModeResponse.themeMode,
-    statusBarStyle,
-    projectStructure: actualProjectStructure as 'root' | 'src' | 'app',
-    useNextStyle: useNextStyleOption
+    statusBarStyle: statusBarStyle,
+    projectStructure: structureResponse.projectStructure,
   };
 }
 
@@ -730,9 +736,8 @@ async function copyTemplate(
     useTailwind: boolean;
     useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
-    useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure = 'root' } = options;
@@ -874,11 +879,12 @@ async function copyTemplateFiles(
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   // The sourceType should already include the language folder (typescript/javascript)
-  const spinner = logger.spinner(`Creating Next.js 15 app directory structure from ${options.complexity} template`);
+  const spinner = logger.spinner(`Creating project structure from ${options.complexity} template`);
+  const { projectStructure = 'root' } = options;
   
   // Check if the source path exists
   if (!existsSync(sourcePath)) {
@@ -886,44 +892,49 @@ async function copyTemplateFiles(
   }
 
   try {
-    // Always create app directory for Next.js 15 structure
-    const appDir = join(destPath, 'app');
-    if (!existsSync(appDir)) {
-      await mkdir(appDir, { recursive: true });
-    }
-    
-    // Copy files to the app directory structure
-    await copyRecursive(sourcePath, appDir);
+    if (projectStructure === 'src') {
+      // Create src directory if user wants src structure
+      const srcDir = join(destPath, 'src');
+      if (!existsSync(srcDir)) {
+        await mkdir(srcDir, { recursive: true });
+      }
       
-    // Move specific files back to root that shouldn't be in app directory
-    const rootFiles = [
-      '.gitignore',
-      'README.md',
-      'package.json',
-      'tsconfig.json',
-      'postcss.config.js',
-      'tailwind.config.js',
-      '0x1.config.js',
-      '0x1.config.ts'
-    ];
-    
-    for (const file of rootFiles) {
-      const appFilePath = join(appDir, file);
-      if (existsSync(appFilePath)) {
-        const rootFilePath = join(destPath, file);
-        await Bun.write(rootFilePath, Bun.file(appFilePath));
-        // Remove the file from app directory
-        try {
-          Bun.spawnSync(['rm', appFilePath], { cwd: destPath });
-        } catch (e) {
-          // Ignore errors, file may not exist
+      // Copy files to the src directory structure
+      await copyRecursive(sourcePath, srcDir);
+      
+      // Move specific files back to root that shouldn't be in src
+      const rootFiles = [
+        '.gitignore',
+        'README.md',
+        'package.json',
+        'tsconfig.json',
+        'postcss.config.js',
+        'tailwind.config.js',
+        '0x1.config.js',
+        '0x1.config.ts'
+      ];
+      
+      for (const file of rootFiles) {
+        const srcFilePath = join(srcDir, file);
+        if (existsSync(srcFilePath)) {
+          const rootFilePath = join(destPath, file);
+          await Bun.write(rootFilePath, Bun.file(srcFilePath));
+          // Remove the file from src directory
+          try {
+            Bun.spawnSync(['rm', srcFilePath], { cwd: destPath });
+          } catch (e) {
+            // Ignore errors, file may not exist
+          }
         }
       }
+    } else {
+      // Default root-level structure
+      await copyRecursive(sourcePath, destPath);
     }
     
-    spinner.stop('success', 'Next.js 15 app directory structure created successfully');
+    spinner.stop('success', 'Project structure created');
   } catch (error) {
-    spinner.stop('error', `Error copying template: ${error}`);
+    spinner.stop('error', 'Failed to create project structure');
     logger.error(`Error copying template: ${error}`);
     throw error;
   }
@@ -950,13 +961,16 @@ async function createPackageJson(
     useTypescript: boolean;
     useStateManagement?: boolean;
     minimal?: boolean;
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   const { useTailwind, useTypescript, useStateManagement, minimal, projectStructure } = options;
   // Declare unused variables with underscore prefix to satisfy linting
   const _useStateManagement = useStateManagement;
   const _minimal = minimal;
+  
+  // Determine correct paths based on project structure
+  const isSrcStructure = projectStructure === 'src';
   
   // Basic package.json structure
   const packageJson = {
@@ -977,7 +991,7 @@ async function createPackageJson(
   // Add Tailwind processing scripts if needed
   if (useTailwind) {
     // Set up CSS processing paths based on project structure
-    const stylesDir = projectStructure === 'src' ? 'src/styles' : 'styles';
+    const stylesDir = isSrcStructure ? 'src/styles' : 'styles';
     const inputCssPath = `${stylesDir}/main.css`;
     const publicStylesDir = 'public/styles';
     const outputCssPath = `${publicStylesDir}/tailwind.css`;
@@ -1034,7 +1048,7 @@ async function _createBasicSourceFiles(
     useTypescript: boolean;
     useStateManagement?: boolean;
     complexity: 'minimal' | 'standard' | 'full';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   const { useTypescript, complexity } = options;
@@ -1158,6 +1172,14 @@ ready(() => {
       const isDark = document.documentElement.classList.contains('dark');
       localStorage.setItem('0x1-dark-mode', isDark ? 'dark' : 'light');
     });
+  }
+  
+  // Helper function to update theme toggle button text
+  function updateThemeToggleText() {
+    if (themeToggle) {
+      const isDark = document.documentElement.classList.contains('dark');
+      themeToggle.textContent = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    }
   }
   
   // Set up counter demo if elements exist
@@ -1305,21 +1327,15 @@ ready(() => {
 async function _createConfigFiles(
   projectPath: string,
   options: {
-    name: string;
-    template: 'standard' | 'minimal' | 'full' | 'next';
-    useTailwind?: boolean;
-    useTypescript?: boolean;
+    useTailwind: boolean;
+    useTypescript: boolean;
     useStateManagement?: boolean;
-    eslint?: boolean;
-    prettier?: boolean;
-    complexity?: 'minimal' | 'standard' | 'full';
-    themeMode?: 'light' | 'dark';
-    projectStructure: 'app';
-    pwa?: boolean;
-    license?: 'mit' | 'tdl' | 'none';
+    complexity: 'minimal' | 'standard' | 'full';
+    themeMode?: 'light' | 'dark' | 'system';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure } = options;
+  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure = 'root' } = options;
   
   // Create 0x1.config.ts or 0x1.config.js
   const ext = useTypescript ? 'ts' : 'js';
@@ -1397,41 +1413,32 @@ export default {
     // Be specific to avoid accidentally matching node_modules
     let contentPatterns = [];
     
-    // if (projectStructure === 'src') {
-    //   // Patterns for src directory structure
-    //   contentPatterns = [
-    //     "./index.html",
-    //     "./src/**/*.{html,js,ts,jsx,tsx}",
-    //     "./app.{js,ts}"
-    //   ];
-    // } else if (projectStructure === 'app') {
-      // Patterns for Next.js style app directory structure
+    if (projectStructure === 'src') {
+      // Patterns for src directory structure
       contentPatterns = [
         "./index.html",
-        "./app/**/*.{js,ts,jsx,tsx}",
-        "./components/**/*.{js,ts,jsx,tsx}",
-        "./lib/**/*.{js,ts,jsx,tsx}",
-        "./app.{js,ts,jsx,tsx}"
+        "./src/**/*.{html,js,ts,jsx,tsx}",
+        "./app.{js,ts}"
       ];
-    // } else {
-    //   // Patterns for root-level structure
-    //   if (complexity === 'minimal') {
-    //     contentPatterns = [
-    //       "./index.html", 
-    //       "./app.{js,ts}", 
-    //       "./components/**/*.{js,ts,jsx,tsx}", 
-    //       "./pages/**/*.{js,ts,jsx,tsx}", 
-    //       "./lib/**/*.{js,ts}"
-    //     ];
-    //   } else {
-    //     contentPatterns = [
-    //       "./index.html", 
-    //       "./**/*.{html,js,ts,jsx,tsx}",
-    //       "!./node_modules/**",
-    //       "!./dist/**"
-    //     ];
-    //   }
-    // }
+    } else {
+      // Patterns for root-level structure
+      if (complexity === 'minimal') {
+        contentPatterns = [
+          "./index.html", 
+          "./app.{js,ts}", 
+          "./components/**/*.{js,ts,jsx,tsx}", 
+          "./pages/**/*.{js,ts,jsx,tsx}", 
+          "./lib/**/*.{js,ts}"
+        ];
+      } else {
+        contentPatterns = [
+          "./index.html", 
+          "./**/*.{html,js,ts,jsx,tsx}",
+          "!./node_modules/**",
+          "!./dist/**"
+        ];
+      }
+    }
       
     await Bun.write(
       join(projectPath, 'tailwind.config.js'),
@@ -1469,25 +1476,9 @@ export default {
   // Create tsconfig.json if needed
   if (useTypescript) {
     // Set include pattern based on project structure
-    let includePattern;
-    
-    // if (projectStructure === 'src') {
-    //   includePattern = "src/**/*.ts";
-    // } else if (projectStructure === 'app') {
-      includePattern = [
-        "app/**/*.{ts,tsx}",
-        "components/**/*.{ts,tsx}",
-        "lib/**/*.ts",
-        "app.{ts,tsx}",
-        "*.d.ts"
-      ];
-    // } else {
-    //   includePattern = "**/*.ts";
-    // }
-    
-    const includeJson = Array.isArray(includePattern) ? 
-      JSON.stringify(includePattern, null, 2) : 
-      `"${includePattern}"`;
+    const includePattern = projectStructure === 'src' ? 
+      "src/**/*.ts" : 
+      "**/*.ts";
 
     await Bun.write(
       join(projectPath, 'tsconfig.json'),
@@ -1505,7 +1496,7 @@ export default {
     "skipLibCheck": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"]
   },
-  "include": ${includeJson},
+  "include": ["${includePattern}"],
   "exclude": ["node_modules", "dist"]
 }`
     );
