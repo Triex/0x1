@@ -8,10 +8,15 @@
  * Works across all platforms (macOS, Linux, Windows/WSL).
  */
 
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
-const os = require('os');
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import os from 'os';
+import { fileURLToPath } from 'url';
+
+// ESM compatibility for __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const homeDir = os.homedir();
 const args = process.argv.slice(2);
