@@ -1,124 +1,56 @@
 #!/bin/sh
 
 # 0x1 CLI Entry Point - Ultra-simple direct execution strategy
-# This script avoids all ESM/CJS module issues and PATH configuration problems
-# Works reliably across all platforms with minimal dependencies
+# This script ensures proper execution of the 0x1 CLI across all platforms
 
-# Robust POSIX-compliant error handling
-set -e
-
-# Detect platform - important for path handling
-is_windows() {
-  case "$(uname -s)" in
-    *MINGW* | *MSYS* | *CYGWIN*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_wsl() {
-  if [ -f /proc/version ] && grep -q Microsoft /proc/version; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-# Get home directory - works across platforms
-HOME_DIR="$HOME"
-
-# Create a unique marker file to prevent recursion
-RECURSION_MARKER="/tmp/0x1_run_$$.lock"
-if [ -f "$RECURSION_MARKER" ]; then
-  # Recursion detected, exit immediately
-  echo "Recursion detected, aborting execution" >&2
+# Prevent recursive execution
+if [ "$OX1_RUNNING" = "1" ]; then
+  echo "Error: Recursion detected in 0x1 CLI execution" >&2
   exit 1
 fi
-touch "$RECURSION_MARKER"
+export OX1_RUNNING=1
 
-# Clean up marker on exit
-cleanup() {
-  rm -f "$RECURSION_MARKER"
-}
-trap cleanup EXIT
+# Define paths - we need to find both the CLI script and the bun executable
+HOME_DIR="$HOME"
+BUN_BIN="$HOME_DIR/.bun/bin/bun"
+NODE_MODULES="$HOME_DIR/.bun/install/global/node_modules"
+CLI_MAIN="$NODE_MODULES/0x1/dist/cli/index.js"
+DEV_CLI="$(dirname "$0")/../dist/cli/index.js"
 
-# Define platform-specific paths
-if is_windows || is_wsl; then
-  # Windows-specific paths
-  BUN_PATH_SEP=";"
-  if is_wsl; then
-    # In WSL, still use Unix-style paths
-    CLI_MAIN_FILE="$HOME_DIR/.bun/install/global/node_modules/0x1/dist/cli/index.js"
-    BUN_BIN="$HOME_DIR/.bun/bin/bun"
+# Check for development version
+if [ -f "$DEV_CLI" ]; then
+  CLI_MAIN="$DEV_CLI"
+fi
+
+# IMPORTANT: The CLI must be run with bun since it contains Bun-specific code
+# Try different strategies in order of preference
+
+# 1. Direct bun binary execution - most reliable
+if [ -f "$BUN_BIN" ] && [ -f "$CLI_MAIN" ]; then
+  exec "$BUN_BIN" "$CLI_MAIN" "$@"
+  
+# 2. Use bunx directly 
+elif command -v bunx >/dev/null 2>&1; then
+  exec bunx 0x1 "$@"
+  
+# 3. Use PATH-based bun if available
+elif command -v bun >/dev/null 2>&1; then
+  if [ -f "$CLI_MAIN" ]; then
+    exec bun "$CLI_MAIN" "$@"
   else
-    # Direct Windows paths
-    CLI_MAIN_FILE="$HOME_DIR\\.bun\\install\\global\\node_modules\\0x1\\dist\\cli\\index.js"
-    BUN_BIN="$HOME_DIR\\.bun\\bin\\bun.exe"
-  fi
-else
-  # Unix-based systems
-  BUN_PATH_SEP=":"
-  CLI_MAIN_FILE="$HOME_DIR/.bun/install/global/node_modules/0x1/dist/cli/index.js"
-  BUN_BIN="$HOME_DIR/.bun/bin/bun"
-fi
-
-# Check if cli exists in development mode
-DEV_CLI_PATH="$(dirname "$0")/../dist/cli/index.js"
-if [ -f "$DEV_CLI_PATH" ]; then
-  CLI_MAIN_FILE="$DEV_CLI_PATH"
-fi
-
-# Use for direct execution
-CLI_SCRIPT="$CLI_MAIN_FILE"
-
-# --- EXECUTION APPROACHES ---
-
-# APPROACH 1: Try direct script execution with node
-if [ -f "$CLI_SCRIPT" ]; then
-  if command -v node >/dev/null 2>&1; then
-    exec node "$CLI_SCRIPT" "$@"
-  fi
-fi
-
-# APPROACH 2: Try with direct bun binary
-if [ -f "$BUN_BIN" ]; then
-  if [ -f "$CLI_SCRIPT" ]; then
-    exec "$BUN_BIN" "$CLI_SCRIPT" "$@"
-  else
-    exec "$BUN_BIN" x 0x1 "$@"
-  fi
-fi
-
-# APPROACH 3: Use PATH-based bun
-if command -v bun >/dev/null 2>&1; then
-  # Try direct script first
-  if [ -f "$CLI_SCRIPT" ]; then
-    exec bun "$CLI_SCRIPT" "$@"
-  else
-    # Fallback to bun x
     exec bun x 0x1 "$@"
   fi
+
+# 4. As a last resort, try to use bunx
+else
+  echo "Error: Unable to execute 0x1 CLI" >&2
+  echo "" >&2
+  echo "Please ensure Bun is installed properly:" >&2
+  echo "  1. Install Bun: curl -fsSL https://bun.sh/install | bash" >&2
+  echo "  2. Add Bun to your PATH:" >&2
+  echo "     export BUN_INSTALL=\"$HOME/.bun\"" >&2
+  echo "     export PATH=\"\$BUN_INSTALL/bin:\$PATH\"" >&2
+  echo "" >&2
+  echo "  For more details, see: https://bun.sh/docs/installation" >&2
+  exit 1
 fi
-
-# APPROACH 4: Try bunx as last reliable approach
-if command -v bunx >/dev/null 2>&1; then
-  exec bunx 0x1 "$@"
-fi
-
-# If we get here, all approaches failed
-printf "\033[31mError: Unable to execute 0x1 CLI\033[0m\n"
-printf "\n"
-printf "\033[33mPlease ensure Bun is installed and try one of these approaches:\033[0m\n"
-printf "  1. Run: bunx 0x1 [your commands]\n"
-printf "  2. Add Bun to your PATH:\n"
-printf "     export BUN_INSTALL=\"$HOME/.bun\"\n"
-printf "     export PATH=\"$BUN_INSTALL/bin:$PATH\"\n"
-printf "\n"
-
-# Final attempt - may help in some environments
-if command -v npm >/dev/null 2>&1; then
-  printf "\033[32mAttempting to use npx as fallback...\033[0m\n"
-  exec npx 0x1 "$@"
-fi
-
-# If all else fails
-exit 1
