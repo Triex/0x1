@@ -14,7 +14,7 @@
     "build-css": "bun build-css.js"
   },
   "dependencies": {
-    "0x1": "^0.0.31"
+    "0x1": "^0.0.32"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
