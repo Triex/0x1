@@ -1,56 +1,32 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
-# 0x1 CLI Entry Point - Ultra-simple direct execution strategy
-# This script ensures proper execution of the 0x1 CLI across all platforms
+# Super-simple 0x1 CLI entry point that fixes recursion issues
+# This is the most reliable way to run the CLI with minimal dependencies
 
-# Prevent recursive execution
-if [ "$OX1_RUNNING" = "1" ]; then
-  echo "Error: Recursion detected in 0x1 CLI execution" >&2
-  exit 1
-fi
-export OX1_RUNNING=1
-
-# Define paths - we need to find both the CLI script and the bun executable
+# Define common paths
 HOME_DIR="$HOME"
-BUN_BIN="$HOME_DIR/.bun/bin/bun"
-NODE_MODULES="$HOME_DIR/.bun/install/global/node_modules"
-CLI_MAIN="$NODE_MODULES/0x1/dist/cli/index.js"
-DEV_CLI="$(dirname "$0")/../dist/cli/index.js"
+BUN_PATH="$HOME_DIR/.bun/bin/bun"
+NODE_MODULES="$HOME_DIR/.bun/install/global/node_modules/0x1"
+CLI_ENTRY="$NODE_MODULES/dist/cli/index.js"
 
-# Check for development version
-if [ -f "$DEV_CLI" ]; then
-  CLI_MAIN="$DEV_CLI"
-fi
-
-# IMPORTANT: The CLI must be run with bun since it contains Bun-specific code
-# Try different strategies in order of preference
-
-# 1. Direct bun binary execution - most reliable
-if [ -f "$BUN_BIN" ] && [ -f "$CLI_MAIN" ]; then
-  exec "$BUN_BIN" "$CLI_MAIN" "$@"
-  
-# 2. Use bunx directly 
-elif command -v bunx >/dev/null 2>&1; then
-  exec bunx 0x1 "$@"
-  
-# 3. Use PATH-based bun if available
-elif command -v bun >/dev/null 2>&1; then
-  if [ -f "$CLI_MAIN" ]; then
-    exec bun "$CLI_MAIN" "$@"
+# Check if this was executed via bunx by looking at environment variables
+if [ -n "$BUN_INSTALL" ] && [ "$BUNX_COMMAND" = "0x1" ]; then
+  # We are being called by bunx - avoid recursion by directly finding the script
+  if [ -f "$CLI_ENTRY" ]; then
+    exec "$BUN_PATH" "$CLI_ENTRY" "$@"
   else
-    exec bun x 0x1 "$@"
+    # Can't find the script, look in the path where this bin script is located
+    SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+    SELF_CLI="$SELF_DIR/../dist/cli/index.js"
+    if [ -f "$SELF_CLI" ]; then
+      exec "$BUN_PATH" "$SELF_CLI" "$@"
+    else
+      echo "Error: Cannot find 0x1 CLI entry point" >&2
+      exit 1
+    fi
   fi
-
-# 4. As a last resort, try to use bunx
 else
-  echo "Error: Unable to execute 0x1 CLI" >&2
-  echo "" >&2
-  echo "Please ensure Bun is installed properly:" >&2
-  echo "  1. Install Bun: curl -fsSL https://bun.sh/install | bash" >&2
-  echo "  2. Add Bun to your PATH:" >&2
-  echo "     export BUN_INSTALL=\"$HOME/.bun\"" >&2
-  echo "     export PATH=\"\$BUN_INSTALL/bin:\$PATH\"" >&2
-  echo "" >&2
-  echo "  For more details, see: https://bun.sh/docs/installation" >&2
-  exit 1
+  # We are being called directly - try bunx with special env vars to prevent recursion
+  export BUNX_COMMAND="0x1"
+  exec bunx 0x1 "$@"
 fi

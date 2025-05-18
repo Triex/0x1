@@ -280,14 +280,30 @@ bun run deploy
 ### Prerequisites
 - [Bun](https://bun.sh) v1.0.0 or higher (REQUIRED)
 
-### 🚀 Installation
+### Installation
 
 ```bash
-# Install globally
+# Using bun (recommended)
 bun install -g 0x1
 
-# Or use npx (requires Bun to be installed)
-npx 0x1@latest
+# Or using npm
+npm install -g 0x1
+```
+
+### Important: Global CLI Access
+
+After installing with `bun install -g`, you need to add Bun's bin directory to your PATH to use the `0x1` command:
+
+```bash
+# Add these lines to your shell config (~/.bashrc, ~/.zshrc, etc.)
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+```
+
+Alternatively, you can always use 0x1 without modifying your PATH:
+
+```bash
+bunx 0x1 <command>
 ```
 
 > **Note:** When installed globally, you may need to run the CLI using `bun 0x1` instead of just `0x1`. This is due to how Bun handles global binary installations.
@@ -313,7 +329,7 @@ npm publish
 
 ## 📦 Version Information
 
-Current version: **0.0.38**
+Current version: **0.0.39**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
