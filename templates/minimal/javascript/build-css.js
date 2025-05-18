@@ -1,7 +1,7 @@
 // Custom Tailwind CSS build script for 0x1 Minimal Template
 // This ensures styles properly load in both src-based and root-based structures
 
-import { spawn } from 'child_process';
+// Using Bun's native spawn for better performance
 import fs from 'fs';
 import path from 'path';
 
@@ -43,20 +43,16 @@ const outputCssPath = path.join(publicStylesDir, 'tailwind.css');
 // Run tailwindcss CLI
 console.log(`🔄 Processing Tailwind CSS from ${inputCssPath} to ${outputCssPath}`);
 
-const tailwind = spawn('npx', ['tailwindcss', '-i', inputCssPath, '-o', outputCssPath, '--minify']);
-
-tailwind.stdout.on('data', (data) => {
-  console.log(`${data}`);
+const result = Bun.spawnSync([
+  'bunx', 'tailwindcss', '-i', inputCssPath, '-o', outputCssPath
+], {
+  stdout: 'inherit',
+  stderr: 'inherit'
 });
 
-tailwind.stderr.on('data', (data) => {
-  console.error(`⚠️ ${data}`);
-});
-
-tailwind.on('close', (code) => {
-  if (code === 0) {
-    console.log('✅ Tailwind CSS processed successfully');
-  } else {
-    console.error(`❌ Tailwind CSS process exited with code ${code}`);
-  }
-});
+if (result.exitCode === 0) {
+  console.log('✅ Tailwind CSS processing complete');
+} else {
+  console.error(`❌ Tailwind CSS processing failed with code ${result.exitCode}`);
+  process.exit(1);
+}
