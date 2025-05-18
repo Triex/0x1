@@ -6,18 +6,22 @@
  * with zero reliance on PATH configuration
  */
 
-const { execFileSync } = require('child_process');
-const { spawnSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+import { execFileSync, spawnSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import { fileURLToPath } from 'url';
+
+// ESM compatibility for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Get home directory in a cross-platform way
 const homeDir = os.homedir();
 const isWindows = os.platform() === 'win32';
 
 // Attempt to find bun executable
-function findBunExecutable() {
+const findBunExecutable = () => {
   // Possible locations where bun might be installed
   const possiblePaths = [
     // Default bun installation
@@ -61,7 +65,7 @@ function findBunExecutable() {
 }
 
 // Find 0x1 main script
-function find0x1Script() {
+const find0x1Script = () => {
   const possibleScriptPaths = [
     // Local development
     path.join(__dirname, '../dist/cli/index.js'),
