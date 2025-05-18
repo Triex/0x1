@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Lightning-fast web framework for JavaScript/TypeScript with zero overhead</strong><br>
+  <strong>Lightning-fast TypeScript-only web framework with zero overhead</strong><br>
   <span>The ultra-minimal, maximum performance framework powered by Bun</span>
 </p>
 
@@ -25,8 +25,7 @@
 
 <p align="center">
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Powered_by-Bun-black?style=flat-square&logo=bun" alt="Powered by Bun" /></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square&logo=typescript" alt="TypeScript Ready" /></a>
-  <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"><img src="https://img.shields.io/badge/JavaScript-Supported-yellow?style=flat-square&logo=javascript" alt="JavaScript Supported" /></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-First-blue?style=flat-square&logo=typescript" alt="TypeScript First" /></a>
   <img src="https://img.shields.io/badge/ESM-Native-brightgreen?style=flat-square" alt="ESM Native" />
   <img src="https://img.shields.io/badge/License-TDL_v1-blue?style=flat-square" alt="License" />
 </p>
@@ -42,24 +41,23 @@
 - **Precomputed content**: Minimal JS for maximum speed
 
 ### 🧩 Components Without Overhead
-- **Simple API**: Modern component system for both JavaScript and TypeScript
-- **Minimal abstractions**: Near-vanilla performance
-- **Custom Diffing**: Optimized DOM updates
-- **Type-safe**: Full TypeScript support when you want it
-- **Vanilla friendly**: Works with plain JavaScript for maximum flexibility
+- **TypeScript-Only**: Exclusively built for TypeScript with full type safety
+- **Simple API**: Modern component system with comprehensive TypeScript typing
+- **Minimal abstractions**: Near-vanilla performance with type-checked templates
+- **Custom Diffing**: Optimized DOM updates with TypeScript safety
+- **Compile-time validation**: Catch errors early with strict typing
 
 ### 🧪 Template Complexity Options
 
-0x1 offers three complexity levels for projects, available in both JavaScript and TypeScript:
+0x1 offers three complexity levels for projects, all built with TypeScript:
 
 ```bash
-# Create a minimal project
+# Create a new project (all templates use Next.js 15 app directory structure)
+bun 0x1 new my-app
+
+# Customize your project complexity
 bun 0x1 new my-app --complexity=minimal
-
-# Create a standard project (default)
 bun 0x1 new my-app --complexity=standard
-
-# Create a full-featured project
 bun 0x1 new my-app --complexity=full
 ```
 
@@ -79,6 +77,14 @@ bun 0x1 new my-app --complexity=full
 - Progressive Web App (PWA) support
 - Service worker for offline capabilities
 
+### Next.js 15 App Directory Structure
+
+**All 0x1 templates now use the Next.js 15 app directory structure by default:**
+- Modern app directory structure with file-based routing
+- Nested layouts with component co-location
+- Special file conventions for pages and layouts
+- Native support for `page.tsx`, `layout.tsx`, `loading.tsx`, `not-found.tsx`, etc.
+
 ### 📱 Progressive Web App Support
 - **Auto-generated PWA assets**: Icons, splash screens, and manifest
 - **Offline support**: Service worker with intelligent caching
@@ -91,12 +97,15 @@ bun 0x1 new my-app --complexity=full
 - **Suspense-like API**: Async data loading
 - **Code-splitting**: Automatic lazy loading
 - **SPA navigation**: Fast page transitions
+- **App directory routing**: Next.js 15-style file-based routing system
+- **Nested layouts**: Support for shared UI across routes
+- **Special files**: Support for `page.tsx`, `layout.tsx`, `loading.tsx`, and `error.tsx`
 
 ### 🔨️ Developer Experience
 - **Hot reload**: Sub-second refresh times with bun's lightning-fast runtime
 - **Bun-powered**: Built on the fastest JS runtime available
 - **Tailwind integration**: Zero-config styling with built-in support
-- **Language choice**: JavaScript or TypeScript with equal first-class support
+- **TypeScript-native**: Full type safety with TypeScript-only codebase
 - **Smart defaults**: Sensible configurations out of the box
 - **Theme flexibility**: Light, dark and system theme modes
 
@@ -194,7 +203,7 @@ Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 
 ## 📋 Template Options
 
-0x1 now offers a streamlined template selection process with three complexity levels, each available in both TypeScript and JavaScript:
+0x1 now offers a streamlined template selection process with three complexity levels, all built with TypeScript for maximum type safety and developer experience:
 
 ### 🔍 Minimal Templates
 
@@ -233,7 +242,7 @@ Create your project with the desired template using the CLI:
 bun create 0x1 my-app
 ```
 
-The CLI will guide you through selecting your preferred language (TypeScript or JavaScript) and template complexity. Build
+The CLI will guide you through selecting your preferred template complexity and other project options. Build
 
 ```bash
 bun run build
@@ -318,7 +327,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.50**
+Current version: **0.0.51**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -693,6 +702,43 @@ export default {
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to 0x1.
 
+## 🚀 App Directory Structure (Next.js 15-Style)
+
+0x1 now supports a modern Next.js 15-style app directory structure with file-based routing, nested layouts, and special file conventions.
+
+### File Conventions
+
+```
+app/
+  layout.tsx      # Root layout (required)
+  page.tsx        # Home page component for the root route
+  not-found.tsx   # Custom 404 page
+  about/
+    page.tsx      # /about route
+  contact/
+    page.tsx      # /contact route
+  features/
+    layout.tsx    # Nested layout for the features section
+    page.tsx      # /features route
+    [id]/         # Dynamic route segment
+      page.tsx    # /features/[id] route
+```
+
+### Special Files
+
+- `page.tsx` - Renders the unique UI of a route and makes it publicly accessible
+- `layout.tsx` - Shared UI for a segment and its children
+- `loading.tsx` - Loading UI for a segment and its children
+- `error.tsx` - Error UI for a segment and its children
+- `not-found.tsx` - UI for 404 errors
+
+### How Routing Works
+
+- **Automatic Route Discovery**: The `Router` automatically discovers all pages in the `app` directory
+- **Nested Layouts**: Layouts wrap child routes and persist across route changes
+- **Client Navigation**: Full client-side navigation without page refreshes
+- **Zero Configuration**: No need to manually register routes
+
 ## 📱 PWA Features <a name="pwa-features"></a>
 
 ### Creating a PWA
@@ -908,77 +954,51 @@ If you're experiencing issues with content not displaying in your browser when r
 
 ## 🗂️ Template Structure
 
-Each template complexity level is organized as follows:
+All templates now follow the Next.js 15 app directory structure with standardized organization patterns:
 
-### Minimal Template
-
-```
-minimal-app/
-├── components/       # Basic UI components (minimal)
-├── pages/            # Simple page components w home
-|  ├── home.js/ts
-|  ├── not-found.js/ts
-├── styles/           # CSS styling with Tailwind
-│   └── main.css      
-├── public/           # Static assets
-│   └── favicon.svg
-├── app.js/ts        # Application entry point
-├── index.html       # HTML template
-├── 0x1.config.js/ts # Simple configuration
-└── package.json     # Dependencies and scripts
-```
-
-### Standard Template
+### Shared Structure Across All Templates
 
 ```
-standard-app/
-├── components/       # Reusable UI components
-│   ├── Card.js/ts
-│   ├── Footer.js/ts
-│   └── Header.js/ts
+project-name/
+├── app/              # Next.js 15 app directory structure
+│   ├── layout.tsx    # Root layout wrapper (required)
+│   ├── page.tsx      # Home page component
+│   ├── not-found.tsx # 404 error page
+│   ├── about/        # Route folder
+│   │   └── page.tsx  # About page component
+│   ├── contact/      # Route folder
+│   │   └── page.tsx  # Contact page component
+│   └── features/     # Route folder
+│       └── page.tsx  # Features page component
+├── components/       # Shared components
+│   ├── Button.tsx
+│   ├── Card.tsx
+│   └── ThemeToggle.tsx
 ├── lib/             # Library code and utilities
-│   └── router.js/ts  # Client-side router implementation
-├── pages/           # Page components
-│   ├── home.js/ts
-│   ├── about.js/ts
-│   └── not-found.js/ts
+│   ├── component-registry.ts # Component registry for app directory
+│   ├── jsx-runtime.tsx      # JSX runtime implementation
+│   └── theme.ts            # Theme management
 ├── public/          # Static assets
-│   └── favicon.svg
+│   ├── favicon.svg
+│   └── manifest.json # PWA manifest (full template only)
+├── store/           # State management (standard and full templates)
+│   └── index.ts
 ├── styles/          # CSS styling with Tailwind
 │   └── main.css
-├── app.js/ts        # Main application entry point
 ├── index.html       # HTML template
-├── 0x1.config.js/ts # Standard configuration
+├── index.tsx        # Application entry point
+├── 0x1.config.ts    # Framework configuration
+├── tailwind.config.js # Tailwind configuration
 └── package.json     # Dependencies and scripts
 ```
 
-### Full Template
+### Template Differences
 
-```
-full-app/
-├── components/       # Advanced UI components
-│   ├── Header.js/ts
-│   ├── Footer.js/ts
-│   ├── ThemeToggle.js/ts
-│   └── Toaster.js/ts
-├── lib/             # Library code and utilities
-│   └── router.js/ts  # Advanced client-side router
-├── pages/           # Page components with dynamic loading
-│   ├── home.js/ts
-│   ├── about.js/ts
-│   ├── features.js/ts
-│   └── not-found.js/ts
-├── public/          # Static assets
-│   ├── icons/       # PWA icons
-│   ├── manifest.json # PWA manifest
-│   └── service-worker.js # PWA service worker
-├── store/           # State management
-│   └── index.js/ts
-├── styles/          # CSS styling with Tailwind
-│   └── main.css
-├── app.js/ts        # Application entry with state
-├── sw-register.js/ts # Service worker registration
-├── index.html       # HTML template with PWA support
-├── 0x1.config.js/ts # Advanced configuration
-└── package.json     # Dependencies and scripts
-```
+#### Minimal Template
+The minimal template includes only essential files with a simplified app directory structure, basic components, and core styling.
+
+#### Standard Template
+The standard template adds more components, state management, and enhanced routing capabilities while maintaining the app directory structure.
+
+#### Full Template
+The full template includes everything from standard plus Progressive Web App (PWA) support, advanced components, theming, animations, and comprehensive state management.

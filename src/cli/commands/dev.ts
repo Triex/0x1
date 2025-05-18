@@ -228,8 +228,31 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   let srcDir: string;
   let publicDir: string;
   let distDir: string;
+  let appDir: string | null = null;
+  let isAppDirStructure = false;
   
-  if (hasCustomStructure) {
+  // Check for app directory first (Next.js 15-style)
+  const appDirectory = resolve(projectPath, 'app');
+  // Also check if app is in src directory
+  const srcAppDirectory = resolve(projectPath, 'src/app');
+  
+  if (existsSync(appDirectory)) {
+    // App directory in project root
+    isAppDirStructure = true;
+    appDir = appDirectory;
+    srcDir = projectPath;
+    publicDir = resolve(projectPath, 'public');
+    distDir = resolve(projectPath, 'dist');
+    logger.info('Detected Next.js 15-style app directory structure at project root');
+  } else if (existsSync(srcAppDirectory)) {
+    // App directory in src folder
+    isAppDirStructure = true;
+    appDir = srcAppDirectory;
+    srcDir = resolve(projectPath, 'src');
+    publicDir = resolve(projectPath, 'public');
+    distDir = resolve(projectPath, 'dist');
+    logger.info('Detected Next.js 15-style app directory structure in src folder');
+  } else if (hasCustomStructure) {
     try {
       // Load custom structure configuration
       const structureConfigModule = await import(customStructureFile);
@@ -240,6 +263,16 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         // Use custom paths if specified
         publicDir = resolve(projectPath, structureConfig.sourceDirs.public || 'public');
         distDir = resolve(projectPath, structureConfig.buildPaths?.output || 'dist');
+        
+        // Check for app directory in custom structure
+        if (structureConfig.sourceDirs.app) {
+          appDir = resolve(projectPath, structureConfig.sourceDirs.app);
+          isAppDirStructure = existsSync(appDir);
+          if (isAppDirStructure) {
+            logger.info('Using custom app directory structure from configuration');
+          }
+        }
+        
         logger.info('Using custom project structure for development server');
       } else {
         // Fall back to standard directories
@@ -266,6 +299,16 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       srcDir = projectPath;
       publicDir = resolve(projectPath, 'public');
       distDir = resolve(projectPath, 'dist');
+    }
+  }
+  
+  // Ensure the public directory exists
+  if (!existsSync(publicDir)) {
+    try {
+      mkdirSync(publicDir, { recursive: true });
+      logger.debug(`Created missing public directory: ${publicDir}`);
+    } catch (error) {
+      logger.warn(`Failed to create public directory: ${error}`);
     }
   }
   
@@ -395,7 +438,47 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         }
       }
       
-      // If not in public, check src directory
+      // If app directory exists, check for app router-style components
+      if (!fileExists && isAppDirStructure && appDir) {
+        // Check for Next.js 15-style app directory routing paths
+        // For example, /posts becomes /app/posts/page.tsx
+        
+        // Remove leading slash if present
+        const routePath = path.startsWith('/') ? path.substring(1) : path;
+        
+        // Create potential app directory file patterns to check
+        const possibleAppPaths = [
+          // Direct page component match
+          join(appDir, routePath, 'page.tsx'),
+          join(appDir, routePath, 'page.jsx'),
+          join(appDir, routePath, 'page.ts'),
+          join(appDir, routePath, 'page.js'),
+          
+          // For route segments
+          join(appDir, routePath + '.tsx'),
+          join(appDir, routePath + '.jsx'),
+          join(appDir, routePath + '.ts'),
+          join(appDir, routePath + '.js'),
+          
+          // Index pages
+          join(appDir, routePath, 'index.tsx'),
+          join(appDir, routePath, 'index.jsx'),
+          join(appDir, routePath, 'index.ts'),
+          join(appDir, routePath, 'index.js'),
+        ];
+        
+        // Try each possible path in the app directory
+        for (const possiblePath of possibleAppPaths) {
+          if (existsSync(possiblePath)) {
+            filePath = possiblePath;
+            fileExists = true;
+            logger.debug(`Found in app directory: ${filePath}`);
+            break;
+          }
+        }
+      }
+      
+      // If not in app dir, check src directory
       if (!fileExists) {
         filePath = join(srcDir, path);
         fileExists = existsSync(filePath);
@@ -470,41 +553,37 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
           }
         }
         
-        // For TypeScript files, transpile them on the fly
+        // For TypeScript files, transpile them on the fly using Bun.Transpiler
         if (path.endsWith('.ts') || path.endsWith('.tsx')) {
           try {
             const fileContent = await file.text();
-            let transpiled = '';
             
-            // Use TypeScript's transpileModule for both TS and TSX files
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { transpileModule } = require('typescript');
-            // Note: We're using require here because dynamic imports would require await and complicate the code flow
-            // This is a common pattern for loading compiler dependencies on-demand
-            
-            const result = transpileModule(fileContent, {
-              compilerOptions: {
-                target: 99, // ESNext
-                module: 1, // CommonJS to avoid ES module imports
-                moduleResolution: 2, // node
-                jsx: path.endsWith('.tsx') ? 4 : 0, // 4 = React JSX, 0 = None
+            // Use Bun's built-in transpiler for significantly better performance
+            const transpiler = new Bun.Transpiler({
+              loader: path.endsWith('.tsx') ? 'tsx' : 'ts',
+              // Bun transpiler uses these options
+              define: {
+                'process.env.NODE_ENV': '"development"',
+              },
+              // Handle jsx/tsx content
+              macro: {
+                // Convert JSX to createElement calls
                 jsxFactory: 'createElement',
-                jsxFragmentFactory: 'Fragment',
-                esModuleInterop: true,
-                skipLibCheck: true,
-                allowSyntheticDefaultImports: true,
-              }
+                jsxFragment: 'Fragment',
+              },
             });
             
-            // Post-process the result to remove any remaining ES module syntax
-            // This converts the output to be compatible with regular script tags
-            transpiled = result.outputText
-              // Remove import statements
-              .replace(/import\s+.*?from\s+['"](.*?)['"];?\n?/g, '// ES module imports removed for browser compatibility\n')
+            // Transpile the TypeScript code
+            let transpiled = transpiler.transformSync(fileContent);
+            
+            // Post-process the result to ensure browser compatibility
+            transpiled = transpiled
+              // Remove import statements for browser compatibility
+              .replace(/import\s+.*?from\s+['"](.*)['"](;)?\n?/g, '// ES module imports removed for browser compatibility\n')
               // Remove export statements
               .replace(/export\s+/g, '')
               // Add a comment explaining what happened
-              .replace(/\/\*(.*?)\*\//s, '/* $1\n * Note: ES module syntax has been removed for browser compatibility */\n');
+              .replace(/\/\*(.*)\*\//s, '/* $1\n * Note: Transpiled with Bun.Transpiler for optimal performance */\n');
             
             logger.info(`200 OK (Transpiled TS → Browser JS): ${path}`);
             
