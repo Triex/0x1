@@ -77,6 +77,7 @@ interface NewProjectOptions {
   pwa?: boolean;
   'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
+  projectStructure?: 'root' | 'src'; // Project file structure option
 }
 
 /**
@@ -173,6 +174,23 @@ export async function createNewProject(
   
   // Debug log to show processed CLI options
   logger.debug(`Processed CLI options: typescript=${options.typescript}, javascript=${options.javascript}, pwa=${options.pwa}`);  
+
+  // Get options from prompts if not provided in command line flags
+  let projectStructure: 'root' | 'src' = 'root'; // Default to root-level structure
+  
+  if (!options.template || !options.complexity) {
+    const promptOptions = await promptProjectOptions(options);
+    const template = promptOptions.template;
+    const useTypescript = promptOptions.typescript;
+    const useTailwind = promptOptions.tailwind;
+    const useStateManagement = promptOptions.stateManagement;
+    const licenseType = promptOptions.licenseType;
+    const complexity = promptOptions.complexity;
+    const themeMode = promptOptions.themeMode;
+    projectStructure = promptOptions.projectStructure;
+  } else if (options.projectStructure) {
+    projectStructure = options.projectStructure;
+  }
 
   // Get project options through the interactive prompts
   const projectOptions = await promptProjectOptions({
@@ -422,6 +440,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   theme: string;
   themeMode: 'light' | 'dark' | 'system';
   statusBarStyle: string;
+  projectStructure: 'root' | 'src';
 }> {
   // Create a wrapper for prompts that handles cancellation
   const promptWithCancel = async (options: any) => {
@@ -557,6 +576,30 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   
   logger.spacer();
 
+  // Ask about project directory structure
+  const structureDefault = defaultOptions.projectStructure === 'src' ? 1 : 0; // Default to root-level
+  
+  const structureResponse = await promptWithCancel({
+    type: 'select',
+    name: 'projectStructure',
+    message: '📁 Choose project directory structure:',
+    choices: [
+      {
+        title: 'Root-level', 
+        value: 'root',
+        description: 'Files at the project root (like Next.js app router)'
+      },
+      {
+        title: 'src Directory',
+        value: 'src',
+        description: 'Files organized in a src/ directory'
+      }
+    ],
+    initial: structureDefault
+  });
+  
+  logger.spacer();
+
   // Ask about PWA support (not needed for minimal templates)
   // Define a proper PWA default: If pwa flag is explicitly true, use Yes, if explicitly false (or --no-pwa), use No
   // If not specified, default to No
@@ -685,7 +728,8 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     textColor: textColor,
     theme: themeResponse.theme,
     themeMode: themeModeResponse.themeMode,
-    statusBarStyle: statusBarStyle
+    statusBarStyle: statusBarStyle,
+    projectStructure: structureResponse.projectStructure,
   };
 }
 
@@ -700,9 +744,10 @@ async function copyTemplate(
     useTypescript: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     themeMode?: 'light' | 'dark' | 'system';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity, themeMode = 'dark' } = options;
+  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure = 'root' } = options;
   
   // The template variable already includes the complexity and language (e.g., 'full/typescript')
   // We need to handle all possible paths for templates in different execution contexts
@@ -747,10 +792,11 @@ async function copyTemplate(
     useTailwind, 
     useTypescript, 
     complexity,
-    themeMode, // Pass theme mode
-    useStateManagement: complexity === 'full' // Enable state management for full template
+    themeMode, 
+    projectStructure
   });
 }
+
 /**
  * Optimized recursive copy function using Bun's high-performance APIs
  * This implementation prioritizes speed and efficiency for larger projects
@@ -840,33 +886,74 @@ async function copyTemplateFiles(
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   // The sourceType should already include the language folder (typescript/javascript)
-  // Based on the path constructed in copyTemplate function
-  const fullSourcePath = sourcePath;
-  
-  logger.debug(`Copying template from ${fullSourcePath} to ${destPath}`);
-  logger.debug(`Options: ${JSON.stringify(options)}`);
+  const spinner = logger.spinner(`Creating project structure from ${options.complexity} template`);
+  const { projectStructure = 'root' } = options;
   
   // Check if the source path exists
-  if (!existsSync(fullSourcePath)) {
-    throw new Error(`Template path does not exist: ${fullSourcePath}`);
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Template path does not exist: ${sourcePath}`);
+  }
+
+  try {
+    if (projectStructure === 'src') {
+      // Create src directory if user wants src structure
+      const srcDir = join(destPath, 'src');
+      if (!existsSync(srcDir)) {
+        await mkdir(srcDir, { recursive: true });
+      }
+      
+      // Copy files to the src directory structure
+      await copyRecursive(sourcePath, srcDir);
+      
+      // Move specific files back to root that shouldn't be in src
+      const rootFiles = [
+        '.gitignore',
+        'README.md',
+        'package.json',
+        'tsconfig.json',
+        'postcss.config.js',
+        'tailwind.config.js',
+        '0x1.config.js',
+        '0x1.config.ts'
+      ];
+      
+      for (const file of rootFiles) {
+        const srcFilePath = join(srcDir, file);
+        if (existsSync(srcFilePath)) {
+          const rootFilePath = join(destPath, file);
+          await Bun.write(rootFilePath, Bun.file(srcFilePath));
+          // Remove the file from src directory
+          try {
+            Bun.spawnSync(['rm', srcFilePath], { cwd: destPath });
+          } catch (e) {
+            // Ignore errors, file may not exist
+          }
+        }
+      }
+    } else {
+      // Default root-level structure
+      await copyRecursive(sourcePath, destPath);
+    }
+    
+    spinner.stop('success', 'Project structure created');
+  } catch (error) {
+    spinner.stop('error', 'Failed to create project structure');
+    logger.error(`Error copying template: ${error}`);
+    throw error;
   }
   
+  // Create package.json with appropriate dependencies if it doesn't exist after copying
   try {
-    // Start the recursive copy
-    await copyRecursive(fullSourcePath, destPath);
-    
-    // Create package.json with appropriate dependencies if it doesn't exist after copying
     // This ensures we don't overwrite a custom package.json
     if (!existsSync(join(destPath, 'package.json'))) {
       await createPackageJson(destPath, options);
     }
-    
-    logger.debug('Template files copied successfully');
   } catch (error) {
-    logger.error(`Error copying template files: ${error}`);
+    logger.error(`Error creating package.json: ${error}`);
     throw error;
   }
 }
@@ -899,7 +986,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.46' // Use current version with caret for compatibility
+      "0x1": '^0.0.47' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
@@ -938,6 +1025,7 @@ async function _createBasicSourceFiles(
     useTypescript: boolean;
     useStateManagement?: boolean;
     complexity: 'minimal' | 'standard' | 'full';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   const { useTypescript, complexity } = options;
@@ -1221,9 +1309,10 @@ async function _createConfigFiles(
     useStateManagement?: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     themeMode?: 'light' | 'dark' | 'system';
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, complexity, themeMode = 'dark' } = options;
+  const { useTailwind, useTypescript, complexity, themeMode = 'dark', projectStructure = 'root' } = options;
   
   // Create 0x1.config.ts or 0x1.config.js
   const ext = useTypescript ? 'ts' : 'js';
@@ -1297,23 +1386,35 @@ export default {
   
   // Create tailwind.config.js if needed
   if (useTailwind) {
-    // Define content patterns based on template complexity
+    // Define content patterns based on template complexity and project structure
     // Be specific to avoid accidentally matching node_modules
-    let contentPatterns;
-    if (complexity === 'minimal') {
+    let contentPatterns = [];
+    
+    if (projectStructure === 'src') {
+      // Patterns for src directory structure
       contentPatterns = [
-        "./index.html", 
-        "./app.{js,ts}", 
-        "./components/**/*.{js,ts,jsx,tsx}", 
-        "./pages/**/*.{js,ts,jsx,tsx}", 
-        "./lib/**/*.{js,ts}"
-      ];
-    } else {
-      contentPatterns = [
-        "./index.html", 
-        "./src/**/*.{html,js,ts,jsx,tsx}", 
+        "./index.html",
+        "./src/**/*.{html,js,ts,jsx,tsx}",
         "./app.{js,ts}"
       ];
+    } else {
+      // Patterns for root-level structure
+      if (complexity === 'minimal') {
+        contentPatterns = [
+          "./index.html", 
+          "./app.{js,ts}", 
+          "./components/**/*.{js,ts,jsx,tsx}", 
+          "./pages/**/*.{js,ts,jsx,tsx}", 
+          "./lib/**/*.{js,ts}"
+        ];
+      } else {
+        contentPatterns = [
+          "./index.html", 
+          "./**/*.{html,js,ts,jsx,tsx}",
+          "!./node_modules/**",
+          "!./dist/**"
+        ];
+      }
     }
       
     await Bun.write(
@@ -1351,6 +1452,11 @@ export default {
   
   // Create tsconfig.json if needed
   if (useTypescript) {
+    // Set include pattern based on project structure
+    const includePattern = projectStructure === 'src' ? 
+      "src/**/*.ts" : 
+      "**/*.ts";
+
     await Bun.write(
       join(projectPath, 'tsconfig.json'),
       `{
@@ -1367,8 +1473,8 @@ export default {
     "skipLibCheck": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["${includePattern}"],
+  "exclude": ["node_modules", "dist"]
 }`
     );
   }

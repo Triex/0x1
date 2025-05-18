@@ -318,7 +318,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.46**
+Current version: **0.0.47**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -559,6 +559,7 @@ Features include:
 2. **Automatic CSS Processing** - Tailwind and PostCSS are handled automatically
 3. **Fast Refresh** - Changes are immediately reflected without losing state
 4. **Smart Routing** - Route handling without complex configuration
+5. **Flexible Structure** - Support for both root-level and src directory project structures
 
 To disable automatic Tailwind processing:
 
