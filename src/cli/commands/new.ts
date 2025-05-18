@@ -794,7 +794,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.41' // Use current version with caret for compatibility
+      "0x1": '^0.0.42' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };

@@ -8,18 +8,28 @@ This guide outlines advanced performance optimization techniques used in the 0x1
 
 0x1's architecture eliminates traditional hydration costs:
 
-```typescript
-// Instead of hydrating a component tree (expensive)
-const app = hydrate(<App />, document.getElementById('root'));
+```tsx
+// Traditional frameworks use expensive hydration
+// const app = hydrate(<App />, document.getElementById('root'));
 
-// 0x1 directly manipulates the DOM (efficient)
-const app = createElement('div', {
-  className: 'app',
-  children: [
-    // Component tree without virtual DOM overhead
-  ]
-});
-document.getElementById('root').appendChild(app);
+// 0x1 uses a zero-hydration approach with direct DOM rendering
+import { Fragment } from '0x1';
+
+export function App() {
+  return (
+    <div className="app">
+      {/* Component tree without virtual DOM overhead */}
+      <Header />
+      <main>
+        <h1>Welcome to 0x1</h1>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+// Render directly to the DOM
+document.getElementById('root').innerHTML = App();
 ```
 
 ### 2. Bun-Optimized Build Pipeline
@@ -44,15 +54,20 @@ The entire 0x1 runtime is < 16kb gzipped, achieved through:
 
 ### 1. Lazy Loading Components
 
-```typescript
+```tsx
 // Lazy load feature-specific components
-const LazyComponent = async () => {
-  const { FeatureComponent } = await import('./components/FeatureComponent.js');
-  return FeatureComponent();
-};
+import { Fragment } from '0x1';
+import { createLazyComponent } from './utils/lazy';
+
+// Create a lazily loaded component
+const FeaturePage = createLazyComponent(async () => {
+  // Dynamic import only happens when component is needed
+  const { Feature } = await import('./components/Feature');
+  return <Feature />;
+});
 
 // Use in router
-router.register('/feature', LazyComponent);
+router.addRoute('/feature', () => <FeaturePage />);
 ```
 
 ### 2. Memory Management

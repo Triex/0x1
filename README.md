@@ -316,20 +316,9 @@ bunx 0x1 <command>
 > bun 0x1 new my-project
 > ```
 
-## Publishing to npm Registry
-
-```bash
-# Log in to npm
-npm login
-
-# Build and publish with Bun
-bun run prepublishOnly
-npm publish
-```
-
 ## 📦 Version Information
 
-Current version: **0.0.41**
+Current version: **0.0.42**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -345,9 +334,11 @@ This initial release provides all core functionality with a stable API. You can 
 
 ## 🏎️ Performance Comparison
 
+Expected out-of-the-box performance
+
 | Metric              | 0x1 | React | Vue  | Svelte | Next.js |
 |---------------------|-------|-------|------|--------|---------|
-| JS Size (gzip)      | 5kB   | 44kB  | 31kB | 21kB   | 80kB+   |
+| JS Size (gzip)      | 5kB   | 44kB  | 31kB | 4-21kB | 80kB+   |
 | Time to Interactive | 0.3s  | 1.1s  | 0.7s | 0.6s   | 1.5s+   |
 | Memory Usage        | Low   | High  | Med  | Low    | High    |
 | Lighthouse Score    | 100   | 75-85 | 85-95| 90-95  | 70-85   |
@@ -356,8 +347,8 @@ This initial release provides all core functionality with a stable API. You can 
 
 0x1's component system is intentionally simple but powerful:
 
-```typescript
-import { createElement, Component } from '0x1';
+```tsx
+import { Fragment } from '0x1';
 
 // Define a component
 interface ButtonProps {
@@ -365,19 +356,28 @@ interface ButtonProps {
   label: string;
 }
 
-const Button: Component<ButtonProps> = (props) => {
-  return createElement('button', {
-    className: 'btn',
-    onClick: props.onClick,
-    children: [props.label]
-  });
-};
+export function Button({ onClick, label }: ButtonProps) {
+  return (
+    <button 
+      className="btn" 
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
 
 // Use the component
-const myButton = Button({
-  onClick: () => console.log('Clicked!'), 
-  label: 'Click me'
-});
+function App() {
+  return (
+    <div>
+      <Button 
+        onClick={() => console.log('Clicked!')} 
+        label="Click me" 
+      />
+    </div>
+  );
+}
 ```
 
 ## 🗺️ Routing
@@ -387,36 +387,67 @@ const myButton = Button({
 ```typescript
 import { Router } from '0x1';
 
-const router = new Router({
-  root: document.getElementById('app')
-});
+// Initialize the router with the root element
+const router = new Router(document.getElementById('app')!);
 
+// Add routes
 router.addRoute('/', HomePage);
 router.addRoute('/about', AboutPage);
 router.addRoute('/products/:id', ProductPage);
 
-router.init();
+// Set a handler for 404 pages
+router.setNotFound(NotFoundPage);
+
+// Start the router
+router.navigateTo('/');
 ```
 
 ## 🎭 Suspense-like Data Loading
 
-```typescript
-import { suspense } from '0x1';
+```tsx
+import { useState, useEffect } from '0x1';
 
-function ProductPage({ params }) {
-  const container = document.createElement('div');
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+}
+
+interface ProductPageProps {
+  params: { id: string };
+}
+
+export function ProductPage({ params }: ProductPageProps) {
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
   
-  suspense(
-    container,
-    fetchProduct(params.id),
-    (product) => `
-      <h1>${product.name}</h1>
-      <p>${product.description}</p>
-      <span class="price">${product.price}</span>
-    `
+  useEffect(() => {
+    async function loadProduct() {
+      setLoading(true);
+      const data = await fetchProduct(params.id);
+      setProduct(data);
+      setLoading(false);
+    }
+    
+    loadProduct();
+  }, [params.id]);
+  
+  return (
+    <div className="product-container">
+      {loading ? (
+        <div className="loading">Loading product...</div>
+      ) : product ? (
+        <>
+          <h1>{product.name}</h1>
+          <p>{product.description}</p>
+          <span className="price">{product.price}</span>
+        </>
+      ) : (
+        <div className="error">Product not found</div>
+      )}
+    </div>
   );
-  
-  return container;
 }
 ```
 
@@ -424,16 +455,21 @@ function ProductPage({ params }) {
 
 0x1 works seamlessly with Tailwind CSS and includes PostCSS setup:
 
-```typescript
+```tsx
 // styles are automatically processed
 import './styles.css';
 
-const Card: Component = () => {
-  return createElement('div', {
-    className: 'p-4 bg-white rounded shadow-lg hover:shadow-xl transition-shadow',
-    children: ['Card content here']
-  });
-};
+interface CardProps {
+  children?: string | JSX.Element | (string | JSX.Element)[];
+}
+
+export function Card({ children = 'Card content here' }: CardProps) {
+  return (
+    <div className="p-4 bg-white rounded shadow-lg hover:shadow-xl transition-shadow">
+      {children}
+    </div>
+  );
+}
 ```
 
 ## 📄 CLI Commands

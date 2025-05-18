@@ -15,7 +15,7 @@ This guide explains how to use TSX (TypeScript JSX) within your 0x1 projects for
 ### Basic Component
 
 ```tsx
-import { createElement, Fragment } from '0x1';
+import { Fragment } from '0x1';
 
 interface ButtonProps {
   text: string;
@@ -42,11 +42,11 @@ export function Button({ text, onClick, variant = 'primary' }: ButtonProps) {
 ### Using Components
 
 ```tsx
-import { createElement, Fragment, renderToString } from '0x1';
+import { Fragment } from '0x1';
 import { Button } from '../components/Button';
 
-export default function HomePage() {
-  return renderToString(
+export function HomePage() {
+  return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Welcome to 0x1</h1>
       <Button 
@@ -60,11 +60,13 @@ export default function HomePage() {
 
 ## JSX Runtime
 
-The 0x1 JSX runtime provides the following key functions:
+The 0x1 JSX runtime provides the following key features:
 
-- `createElement`: Creates a virtual DOM node (similar to React.createElement)
-- `Fragment`: Creates a fragment that doesn't add extra DOM nodes
-- `renderToString`: Converts a JSX element tree to HTML string
+- **Component-Based Architecture**: Write reusable components with props
+- **Fragment Support**: Use `<>...</>` to avoid unnecessary wrapper elements - creates a fragment that doesn't add extra DOM nodes
+- **TypeScript Integration**: Full type-checking of props and component structure
+- **CSS Class Management**: Easy handling of conditional classes
+- **Event Handling**: Simplified DOM event handling
 
 ## Configuration
 
@@ -125,7 +127,7 @@ If you're migrating from template literal syntax to TSX, follow these guidelines
 
 ### Before (Template Literals):
 ```ts
-import { html } from '../lib/html';
+import { html } from '0x1';
 
 export function Button({ text, onClick }) {
   return html`
@@ -138,7 +140,7 @@ export function Button({ text, onClick }) {
 
 ### After (TSX):
 ```tsx
-import { createElement } from '0x1';
+import { Fragment } from '0x1';
 
 export function Button({ text, onClick }) {
   return (
