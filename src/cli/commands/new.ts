@@ -350,7 +350,8 @@ export async function createNewProject(
             logoText: logoText,
             themeColor: projectOptions.themeColor,
             backgroundColor: projectOptions.secondaryColor,
-            theme: projectOptions.theme as string
+            theme: projectOptions.theme as string,
+            projectStructure: projectStructure
           });
           
           iconSpin.stop('success', 'Basic project icons created');
@@ -374,9 +375,9 @@ export async function createNewProject(
 🎉 Successfully created project ${name}!
 
 Next steps:
-  cd ${name} && bun run dev
+  cd ${name} && bun dev
 To build for production:
-  bun run build
+  bun build
 `);
         logger.command(`cd ${name} && bun install`);
       } catch (depError) {
@@ -960,12 +961,16 @@ async function createPackageJson(
     useTypescript: boolean;
     useStateManagement?: boolean;
     minimal?: boolean;
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, useTypescript, useStateManagement, minimal } = options;
+  const { useTailwind, useTypescript, useStateManagement, minimal, projectStructure } = options;
   // Declare unused variables with underscore prefix to satisfy linting
   const _useStateManagement = useStateManagement;
   const _minimal = minimal;
+  
+  // Determine correct paths based on project structure
+  const isSrcStructure = projectStructure === 'src';
   
   // Basic package.json structure
   const packageJson = {
@@ -978,18 +983,44 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.49' // Use current version with caret for compatibility
+      "0x1": '^0.0.50' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
   
-  // Add Tailwind if needed
+  // Add Tailwind processing scripts if needed
   if (useTailwind) {
+    // Set up CSS processing paths based on project structure
+    const stylesDir = isSrcStructure ? 'src/styles' : 'styles';
+    const inputCssPath = `${stylesDir}/main.css`;
+    const publicStylesDir = 'public/styles';
+    const outputCssPath = `${publicStylesDir}/tailwind.css`;
+    
+    // Add Tailwind dependencies
     Object.assign(packageJson.devDependencies, {
       tailwindcss: '^3.4.1',
       autoprefixer: '^10.4.17',
       postcss: '^8.4.35'
     });
+    
+    // Type-safe way of adding scripts to package.json without replacing the original object
+    // Add build-css script
+    (packageJson.scripts as Record<string, string>)['build-css'] = 
+      `npx tailwindcss -i ${inputCssPath} -o ${outputCssPath}`;
+    
+    // Update dev script to run Tailwind in watch mode alongside dev server
+    (packageJson.scripts as Record<string, string>)['dev'] = 
+      `npx tailwindcss -i ${inputCssPath} -o ${outputCssPath} --watch & 0x1 dev`;
+    
+    // Ensure required directories exist
+    await mkdir(join(projectPath, publicStylesDir), { recursive: true });
+    await mkdir(join(projectPath, stylesDir), { recursive: true });
+    
+    // Create a basic main.css file if it doesn't exist
+    const mainCssPath = join(projectPath, inputCssPath);
+    if (!existsSync(mainCssPath)) {
+      await Bun.write(mainCssPath, `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n/* Custom styles */\n`);
+    }
   }
   
   // Add TypeScript if needed

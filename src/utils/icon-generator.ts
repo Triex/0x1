@@ -317,6 +317,7 @@ export async function generateBasicIcons(
     themeColor?: string;
     backgroundColor?: string;
     theme?: string;
+    projectStructure?: 'root' | 'src';
   }
 ): Promise<void> {
   // Prepare options from project config
@@ -332,12 +333,17 @@ export async function generateBasicIcons(
     // For basic icons, we'll put them in public/icons by default
     outputPath: 'public/icons'
   };
+  
+  // Determine the correct base path based on the project structure
+  const projectStructure = projectOptions.projectStructure || 'root';
 
   try {
     // Create dirs if they don't exist - using more robust approach with better error handling
     const { dirname } = await import('path');
+    
+    // Determine public directory path based on project structure
     const publicDir = join(projectPath, 'public');
-    const iconDir = join(projectPath, 'public/icons');
+    const iconDir = join(publicDir, 'icons');
     
     // Create public directory
     if (!existsSync(publicDir)) {
@@ -369,13 +375,13 @@ export async function generateBasicIcons(
     
     // Generate favicon.svg (32px)
     const faviconContent = generateSVG(32, iconOptions);
-    const faviconPath = join(projectPath, 'public/favicon.svg');
+    const faviconPath = join(publicDir, 'favicon.svg');
     await saveSVG(faviconContent, faviconPath);
     console.log(`Generated ${faviconPath}`);
     
     // Generate app icon (192px)
     const appIconContent = generateSVG(192, iconOptions);
-    const appIconPath = join(projectPath, 'public/icons/app-icon.svg');
+    const appIconPath = join(iconDir, 'app-icon.svg');
     await saveSVG(appIconContent, appIconPath);
     
     return Promise.resolve();

@@ -1,4 +1,4 @@
-# 0x1 Full JavaScript App
+once we get to# 0x1 Full JavaScript App
 
 A comprehensive, production-ready web application template built with the 0x1 framework featuring all advanced capabilities, optimized for performance.
 

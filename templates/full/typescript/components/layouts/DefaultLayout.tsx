@@ -1,7 +1,7 @@
 /**
  * Default layout component for 0x1 applications
  */
-import { createElement, Fragment, renderToString, JSXNode } from '0x1';
+import { createElement, Fragment } from '0x1';
 import { useTheme } from '../../lib/theme';
 
 interface DefaultLayoutProps {
@@ -20,7 +20,7 @@ export function DefaultLayout({ title, description, children }: DefaultLayoutPro
           <nav className="container mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <a href="/" className="flex items-center space-x-2">
-                <img src="./public/favicon.svg" alt="Logo" className="w-8 h-8" />
+                <img src="/favicon.svg" alt="Logo" className="w-8 h-8" />
                 <span className="text-primary-600 dark:text-primary-400 font-bold text-xl">0x1</span>
               </a>
               <div className="hidden md:flex space-x-6">

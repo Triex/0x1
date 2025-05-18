@@ -19,7 +19,7 @@
   <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/v/0x1.svg?style=flat-square" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/dm/0x1.svg?style=flat-square" alt="npm downloads"></a>
   <a href="https://github.com/Triex/0x1"><img src="https://img.shields.io/github/stars/Triex/0x1?style=flat-square" alt="github stars"></a>
-  <img src="https://img.shields.io/badge/bundle_size-<16kb-blue?style=flat-square" alt="bundle size" />
+  <img src="https://img.shields.io/badge/bundle_size-~16kb-blue?style=flat-square" alt="bundle size" />
   <img src="https://img.shields.io/badge/dependencies-0-green?style=flat-square" alt="dependencies" />
 </p>
 
@@ -36,7 +36,7 @@
 ## ⚡ Features
 
 ### 💨 Extreme Performance
-- **Tiny runtime**: <16kb total JS bundle size 
+- **Tiny runtime**: ~16kb total JS bundle size 
 - **Zero hydration cost**: No client-side hydration overhead
 - **Native ESM**: Browser-native module loading without bundling
 - **Precomputed content**: Minimal JS for maximum speed
@@ -318,7 +318,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.49**
+Current version: **0.0.50**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 

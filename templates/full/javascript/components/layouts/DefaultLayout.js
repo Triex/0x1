@@ -15,7 +15,7 @@ export function DefaultLayout({ title, description, content }) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>${title} - 0x1 App</title>
         <link rel="stylesheet" href="/styles/main.css" />
-        <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <meta name="description" content="${description || 'A 0x1 framework application'}" />
         <script type="module" src="/app.js"></script>
         <!-- PWA support -->

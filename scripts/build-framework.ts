@@ -6,6 +6,22 @@
 import { join, resolve } from 'path';
 // Using Bun's native file APIs instead of fs
 
+/**
+ * Format file size in a human-readable way
+ */
+function formatSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
 const rootDir = resolve(import.meta.dir, '..');
 const srcDir = join(rootDir, 'src');
 const distDir = join(rootDir, 'dist');
@@ -25,37 +41,74 @@ async function buildFramework() {
     // Build the TypeScript files including JSX/TSX support
     console.log('📦 Building TypeScript with TSX support...');
     
-    // Run the build command using Bun.spawn
-    const build = Bun.spawn([
-      'bunx', 'tsc', 
-      '--project', 'tsconfig.json',
-      '--outDir', distDir,
-      '--declaration', 
-      '--emitDeclarationOnly'
-    ], {
-      cwd: rootDir,
-      stdio: ['inherit', 'inherit', 'inherit']
-    });
+    // Run the build command using Bun's direct command execution
+    console.log('Running TypeScript compiler with bun...');
     
-    const buildResult = await build.exited;
-    
-    if (buildResult !== 0) {
-      console.error('❌ TypeScript declaration build failed');
+    try {
+      // Execute TypeScript compiler using bun directly
+      const tsResult = Bun.spawnSync([
+        'bun', 'tsc', 
+        '--project', 'tsconfig.json',
+        '--outDir', distDir,
+        '--declaration', 
+        '--emitDeclarationOnly'
+      ], {
+        cwd: rootDir,
+      });
+      
+      if (tsResult.exitCode !== 0) {
+        console.error(`TypeScript compilation failed with exit code ${tsResult.exitCode}`);
+        // Simple fix: cast to any to avoid the 'never' type issue
+        const stderr = tsResult.stderr as any;
+        if (stderr) console.error(stderr.toString());
+        process.exit(1);
+      }
+      
+      console.log('TypeScript declarations generated successfully.');
+    } catch (error) {
+      console.error('TypeScript compilation error:', error);
       process.exit(1);
     }
     
-    // Build the JS files with Bun's build API
+    // We'll use Bun's build API for the bundling in the next step
+    console.log('Preparing for bundle optimization...');
+    
+    // Build the JS files with Bun's build API using optimizations for smaller bundle size
+    console.log('Building optimized bundle...');
     const result = await Bun.build({
       entrypoints: [join(srcDir, 'index.ts')],
       outdir: distDir,
       target: 'browser',
       format: 'esm',
-      minify: false,
+      minify: true, // Enable minification
       sourcemap: 'external',
+      // Note: treeShaking is automatically applied by Bun
+      splitting: false, // Disable code splitting for smaller bundle
+      define: {
+        'process.env.NODE_ENV': '"production"'
+      },
       // Use tsconfig for JSX configuration
     });
     
     if (result.success) {
+      // Get the output file stats and report bundle size
+      const outputPath = join(distDir, 'index.js');
+      
+      // Use Node's fs module to get file size
+      const { stat } = await import('fs/promises');
+      const bundleStat = await stat(outputPath);
+      const bundleSize = bundleStat.size;
+      
+      // Format the size for display
+      const formattedSize = formatSize(bundleSize);
+      const compressedSize = Math.round(bundleSize * 0.3); // Estimate gzipped size at 30%
+      const formattedCompressedSize = formatSize(compressedSize);
+      
+      console.log('\n📦 Framework bundle information:');
+      console.log(`  • Bundle size: ${formattedSize} (${bundleSize} bytes)`);
+      console.log(`  • Estimated compressed: ${formattedCompressedSize} (${compressedSize} bytes)`);
+      console.log(`  • Ratio: ${Math.round((compressedSize / bundleSize) * 100)}% (${(bundleSize / compressedSize).toFixed(1)}x reduction)\n`);
+      
       console.log('✅ TypeScript build successful');
     } else {
       console.error('❌ TypeScript build failed');
