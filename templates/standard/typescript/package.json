@@ -1,0 +1,22 @@
+{
+  "name": "0x1-standard-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "0x1 dev",
+    "build": "0x1 build",
+    "preview": "0x1 preview"
+  },
+  "dependencies": {
+    "0x1": "^0.0.50"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
