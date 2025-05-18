@@ -758,8 +758,9 @@ async function copyTemplate(
 async function copyRecursive(src: string, dest: string) {
   try {
     // Try an optimized approach first for directories
-    const stats = await Bun.file(src).stat();
-    const isDirectory = stats.mode & 0x4000;
+    const { statSync } = await import('fs');
+    const stats = statSync(src);
+    const isDirectory = stats.isDirectory();
     
     if (isDirectory) {
       // Fast path: Use optimized directory copy if possible
@@ -894,7 +895,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.44' // Use current version with caret for compatibility
+      "0x1": '^0.0.45' // Use current version with caret for compatibility
     },
     devDependencies: {} as Record<string, string>
   };
