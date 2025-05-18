@@ -517,30 +517,17 @@ When you run `0x1 dev`, the framework automatically:
 2. Finds your CSS input file (typically in `styles/main.css` or similar locations)
 3. Creates the processed output file at `public/styles/tailwind.css`
 4. Watches for changes during development
-
-All of this happens automatically without additional configuration!
-
-### How to Use
-
-Simply install Tailwind CSS in your project:
-
 ```bash
+# No extra setup required!
+# Just install Tailwind CSS
 bun add -d tailwindcss postcss autoprefixer
+
+# Create a tailwind.config.js
 bunx tailwindcss init
-```
 
-Create your input CSS file (e.g., `styles/main.css`):
-
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-```
-
-Reference the processed file in your HTML:
-
-```html
-<link rel="stylesheet" href="/styles/tailwind.css">
+# Create an input CSS file
+mkdir -p styles
+echo '@tailwind base;\n@tailwind components;\n@tailwind utilities;' > styles/main.css
 ```
 
 Then just run 0x1 dev:
@@ -549,23 +536,29 @@ Then just run 0x1 dev:
 0x1 dev
 ```
 
-That's it! 0x1 handles everything else for you.
+That's it! 0x1 automatically detects and processes your Tailwind CSS files, handling everything for you.
 
-### Legacy Method (Optional)
+### Next.js-Like Developer Experience
 
-For projects that need more control, you can still manage Tailwind processing manually with scripts:
+The 0x1 framework is designed to provide a seamless, Next.js-like developer experience:
 
 ```json
-// package.json
+// package.json - Simple and elegant
 {
   "scripts": {
-    "dev": "bun run tailwind & 0x1 dev",
-    "build": "bun run tailwind:build && 0x1 build",
-    "tailwind": "tailwindcss -i ./styles/main.css -o ./public/styles/tailwind.css --watch",
-    "tailwind:build": "tailwindcss -i ./styles/main.css -o ./public/styles/tailwind.css --minify"
+    "dev": "0x1 dev",     // Starts development server with hot reload
+    "build": "0x1 build", // Optimized production build
+    "preview": "0x1 preview" // Preview production build
   }
 }
 ```
+
+Features include:
+
+1. **Zero-Config TypeScript** - TypeScript files are automatically bundled with the correct settings
+2. **Automatic CSS Processing** - Tailwind and PostCSS are handled automatically
+3. **Fast Refresh** - Changes are immediately reflected without losing state
+4. **Smart Routing** - Route handling without complex configuration
 
 To disable automatic Tailwind processing:
 

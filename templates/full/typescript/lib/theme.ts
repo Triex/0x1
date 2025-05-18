@@ -58,40 +58,30 @@ const themeStore = createStore<{ current: Theme }>({
 
 // Initialize theme from system or saved preference
 const initializeTheme = (): void => {
-  // Check if we have a saved theme preference
+  // Direct approach - check for saved preference or system preference
   const savedTheme = localStorage.getItem('0x1-dark-mode');
-  let initialTheme: Theme;
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   
-  if (savedTheme) {
-    try {
-      const parsed = JSON.parse(savedTheme);
-      if (parsed.current === 'dark' || parsed.current === 'light') {
-        initialTheme = parsed.current;
-      } else {
-        // If saved theme is invalid, use system preference
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        initialTheme = prefersDark ? 'dark' : 'light';
-      }
-    } catch (e) {
-      console.error('Error parsing saved theme:', e);
-      // Fallback to system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      initialTheme = prefersDark ? 'dark' : 'light';
-    }
-  } else {
-    // Check system preference for dark mode
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    initialTheme = prefersDark ? 'dark' : 'light';
+  console.log(`Initializing theme - saved: ${savedTheme}, system prefers dark: ${prefersDark}`);
+  
+  // Set initial dark mode based on saved preference or system preference
+  // Skip parsing JSON and just check for the direct string value - simpler approach
+  if (savedTheme === 'dark' || (savedTheme === null && prefersDark)) {
+    // Set dark mode
+    console.log('Setting initial theme to dark');
+    document.documentElement.classList.add('dark');
+    themeStore.setState({ current: 'dark' });
+  } else if (savedTheme === 'light' || (savedTheme === null && !prefersDark)) {
+    // Set light mode
+    console.log('Setting initial theme to light');
+    document.documentElement.classList.remove('dark');
+    themeStore.setState({ current: 'light' });
   }
   
-  // Update store
-  themeStore.setState({ current: initialTheme });
-  
-  // Apply theme to HTML element
-  applyTheme(initialTheme);
-  
-  // Update theme toggle button
-  updateThemeToggleButton(initialTheme);
+  // Note: We've already updated the store and applied the theme in the conditions above
+  // Just update the theme toggle button based on current theme
+  const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  updateThemeToggleButton(currentTheme as Theme);
   
   // Setup listener for system preference changes
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -129,14 +119,27 @@ const updateThemeToggleButton = (theme: Theme): void => {
 
 // Toggle theme
 const toggleTheme = (): void => {
-  const currentTheme = themeStore.getState().current;
-  const newTheme: Theme = currentTheme === 'light' ? 'dark' : 'light';
+  // Instead of relying on the store, directly check the DOM
+  const isDark = document.documentElement.classList.contains('dark');
+  const newTheme: Theme = isDark ? 'light' : 'dark';
   
   // Log for debugging
-  console.log(`Toggling theme from ${currentTheme} to ${newTheme}`);
+  console.log(`Toggling theme from ${isDark ? 'dark' : 'light'} to ${newTheme}`);
   
+  // Toggle dark class on the HTML element directly
+  if (newTheme === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+  
+  // Save to localStorage directly
+  localStorage.setItem('0x1-dark-mode', newTheme);
+  
+  // Update the store
   themeStore.setState({ current: newTheme });
-  applyTheme(newTheme);
+  
+  // Update the toggle button
   updateThemeToggleButton(newTheme);
   
   // Dispatch theme change event that other components can listen for
@@ -160,10 +163,17 @@ export function useTheme() {
     };
     
     // Return cleanup function (conceptual, since 0x1 isn't React)
-    if (typeof window['__0x1_cleanup'] === 'undefined') {
-      window['__0x1_cleanup'] = [];
+    // Define custom interface to allow indexing window with our custom property
+    interface Window {
+      __0x1_cleanup?: Array<() => void>;
     }
-    window['__0x1_cleanup'].push(cleanup);
+    
+    // Now use the interface for proper typing
+    const win = window as Window;
+    if (!win.__0x1_cleanup) {
+      win.__0x1_cleanup = [];
+    }
+    win.__0x1_cleanup.push(cleanup);
   }
   
   return { 

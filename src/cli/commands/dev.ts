@@ -5,7 +5,7 @@
  */
 
 import { serve, spawn, type Server, type Subprocess } from 'bun';
-import { Dirent, existsSync, mkdirSync, readFileSync, readdirSync } from 'fs';
+import { Dirent, existsSync, mkdirSync, readdirSync } from 'fs';
 import { watch } from 'fs/promises';
 import os from 'os';
 import { join, resolve } from 'path';
@@ -137,17 +137,67 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       `Powered by Bun   v${Bun.version}`
     );
     
-    // Handle exit signals
-    process.on('SIGINT', () => {
-      logger.info('Shutting down development server...');
-      // Terminate Tailwind process if running
-      if (tailwindProcess) {
-        tailwindProcess.kill();
+    // Handle exit signals with robust process termination
+    function shutdownServer() {
+      let isShuttingDown = false;
+      
+      async function cleanup() {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+        
+        logger.info('💠 Shutting down development server...');
+        
+        // First close file watcher to prevent new events
+        if (watcher) {
+          try {
+            watcher.close();
+            logger.info('File watcher closed');
+          } catch (error) {
+            logger.error(`Error closing file watcher: ${error}`);
+          }
+        }
+        
+        // Kill tailwind process if it exists
+        if (tailwindProcess) {
+          try {
+            tailwindProcess.kill(9); // Use SIGKILL for immediate termination
+            logger.info('Tailwind process terminated');
+          } catch (error) {
+            logger.error(`Error killing Tailwind process: ${error}`);
+          }
+        }
+        
+        // Close the server if it exists
+        if (server) {
+          try {
+            server.stop(true); // Force immediate stop
+            logger.info('Server stopped');
+          } catch (error) {
+            logger.error(`Error stopping server: ${error}`);
+          }
+        }
+        
+        // Force kill any process using our port
+        try {
+          const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
+          await killPort.exited;
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        logger.success('Server shutdown complete');
+        
+        // Force exit after a short timeout to ensure cleanup is complete
+        setTimeout(() => process.exit(0), 100);
       }
-      watcher.close();
-      server.stop(true);
-      process.exit(0);
-    });
+      
+      cleanup();
+    };
+    
+    // Register the shutdown handler for various signals
+    process.on('SIGINT', shutdownServer);
+    process.on('SIGTERM', shutdownServer);
+    process.on('SIGHUP', shutdownServer);
     
     logger.info('Ready for development. Press Ctrl+C to stop.');
     
@@ -156,7 +206,7 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
     logger.error(`${error}`);
     
     // Check if the port is already in use
-    if ((error as Error).message.includes('EADDRINUSE')) {
+    if ((error as Error).message?.includes('EADDRINUSE')) {
       logger.info(`Port ${port} is already in use. Try using a different port with --port option.`);
     }
     
@@ -227,6 +277,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     const possiblePaths = [
       join(currentDir, '../../browser/live-reload.js'),
       join(currentDir, '../browser/live-reload.js'),
+      join(currentDir, './live-reload.js'),
       join(currentDir, '../../../browser/live-reload.js'),
       join(process.cwd(), 'src/browser/live-reload.js'),
       join(currentDir, '../../../../browser/live-reload.js')
@@ -238,6 +289,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     let scriptFound = false;
     for (const path of possiblePaths) {
       try {
+        // FIXME: This is not finding the file
         if (await Bun.file(path).exists()) {
           liveReloadScript = await Bun.file(path).text();
           logger.debug(`Found live-reload.js at: ${path}`);

@@ -21,28 +21,57 @@ function ready(callback) {
 
 // Theme initialization function
 function initTheme() {
+  console.log('Initializing theme system...');
+  
   // Check for stored theme preference or use system preference
   const savedTheme = localStorage.getItem('theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  console.log(`Theme debug - Saved theme: ${savedTheme}, System prefers dark: ${prefersDark}`);
   
   if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
     document.documentElement.classList.add('dark');
     localStorage.setItem('theme', 'dark');
+    console.log('Theme set to dark mode');
   } else {
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
+    console.log('Theme set to light mode');
   }
+  
+  // Set up listener for theme media query changes
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQuery.addEventListener('change', (e) => {
+    if (!localStorage.getItem('theme')) {
+      console.log(`System theme preference changed: ${e.matches ? 'dark' : 'light'}`);
+      if (e.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  });
 }
 
 // Initialize the app
 ready(() => {
+  console.log('DOM is ready, initializing app...');
+  
   // Initialize theme
   initTheme();
-  const appRoot = document.getElementById('app');
+  
+  // Get app root element
+  let appRoot = document.getElementById('app');
+  console.log('App root element:', appRoot);
   
   if (!appRoot) {
-    console.error('App root element not found');
-    return;
+    console.error('App root element not found - creating one');
+    // Create a new app root if it doesn't exist
+    const newAppRoot = document.createElement('div');
+    newAppRoot.id = 'app';
+    document.body.appendChild(newAppRoot);
+    // Update the reference
+    appRoot = newAppRoot;
   }
   
   // Create layout container

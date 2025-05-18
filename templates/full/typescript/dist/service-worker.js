@@ -198,7 +198,7 @@ async function queueRequest(request) {
 // Helper function to open IndexedDB
 function openDB() {
   return new Promise((resolve, reject) => {
-    const openRequest = indexedDB.open('BundlOfflineDB', 1);
+    const openRequest = indexedDB.open('0x1OfflineDB', 1);
     
     openRequest.onupgradeneeded = (event) => {
       const db = event.target.result;

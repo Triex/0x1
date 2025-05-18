@@ -1,7 +1,37 @@
-/* Tailwind CSS Directives */
+/* Tailwind CSS directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom styles */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded transition-colors;
+  }
+  
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white dark:bg-primary-dark dark:hover:bg-primary;
+  }
+  
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden;
+  }
+}
+
+/* Dark mode utilities */
+.dark .dark-invert {
+  filter: invert(1);
+}
 
 /* Custom animations */
 @keyframes fadeIn {
@@ -17,15 +47,4 @@
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
-}
-
-/* Custom styles */
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
 }

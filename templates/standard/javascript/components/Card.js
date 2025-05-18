@@ -4,7 +4,7 @@
 
 export function Card(props) {
   const card = document.createElement('div');
-  card.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-100 dark:border-gray-700';
+  card.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-6 border border-gray-200 dark:border-gray-700';
   
   // Icon
   if (props.icon) {

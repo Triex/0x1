@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run build-css && 0x1 dev",
-    "build": "bun run build-css && 0x1 build",
+    "dev": "0x1 dev",
+    "build": "0x1 build",
     "preview": "0x1 preview",
-    "build-css": "bun build-css.js",
     "deploy": "0x1 deploy",
     "lint": "eslint --ext .js .",
     "format": "prettier --write '**/*.{js,css,html}'",

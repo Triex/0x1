@@ -466,8 +466,8 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     message: '🏗️ Project complexity:',
     choices: [
       { title: 'Minimal', description: 'Bare-bones starter with just the essentials', value: 'minimal' },
-      { title: 'Standard', description: 'Recommended setup for most projects', value: 'standard' },
-      { title: 'Full', description: 'Complete setup with all features', value: 'full' }
+      { title: 'Standard (pending implementation)', description: 'Recommended setup for most projects', value: 'standard' },
+      { title: 'Full (pending implementation)', description: 'Complete setup with all features', value: 'full' }
     ],
     initial: defaultOptions.complexity === 'minimal' ? 0 : 
              defaultOptions.complexity === 'full' ? 2 : 1, // Default to standard if not specified

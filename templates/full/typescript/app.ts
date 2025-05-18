@@ -71,6 +71,14 @@ class Router {
     
     if (!routeHandler) {
       console.error(`No handler found for path: ${path}`);
+      
+      // Force the home route as fallback
+      if (this.routes['/']) {
+        console.log('Falling back to home route');
+        this.routes['/']();
+      } else {
+        console.error('No home route available as fallback');
+      }
       return;
     }
     
@@ -83,11 +91,33 @@ class Router {
       return;
     }
     
-    // Execute route handler
-    routeHandler();
-    
-    // Verify content was rendered
-    console.log('Content after rendering:', mainContent.innerHTML.length > 0 ? 'Content rendered' : 'No content');
+    try {
+      // Execute route handler
+      routeHandler();
+      
+      // Directly check and report the content
+      if (mainContent.innerHTML.length === 0) {
+        console.error('Handler executed but no content was rendered!');
+        // Force default content as fallback
+        mainContent.innerHTML = `
+          <div class="flex flex-col items-center justify-center py-16 text-center">
+            <h1 class="text-3xl font-bold text-primary-600 dark:text-primary-400 mb-4">Welcome to 0x1</h1>
+            <p class="text-gray-600 dark:text-gray-400">The modern web framework for Bun</p>
+          </div>
+        `;
+      } else {
+        console.log(`Content successfully rendered! Length: ${mainContent.innerHTML.length}`);
+      }
+    } catch (error) {
+      console.error('Error executing route handler:', error);
+      // Show error message
+      mainContent.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <h1 class="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">Error</h1>
+          <p class="text-gray-600 dark:text-gray-400">There was an error rendering this page.</p>
+        </div>
+      `;
+    }
     
     // Update active link in nav
     this.updateActiveLinks();
@@ -134,17 +164,23 @@ ready(() => {
   window.addEventListener('counter-decrement', () => decrementCounter());
   
   // Set up theme toggle event handler
-  document.getElementById('theme-toggle')?.addEventListener('click', () => {
-    // Log that button was clicked for debugging
-    console.log('Theme toggle button clicked');
-    
-    // Directly call toggleTheme
-    toggleTheme();
-    
-    // Force the page to reflect changes immediately
-    const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-    console.log(`Theme is now: ${currentTheme}`);
-  });
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  if (themeToggleBtn) {
+    console.log('Theme toggle button found, attaching event handler');
+    themeToggleBtn.addEventListener('click', () => {
+      // Log that button was clicked for debugging
+      console.log('Theme toggle clicked');
+      
+      // Call the theme toggler from our imported hook
+      toggleTheme();
+      
+      // Force the page to reflect changes immediately
+      const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+      console.log(`Theme is now: ${currentTheme}`);
+    });
+  } else {
+    console.error('Theme toggle button not found in the document');
+  }
   
   // Set up mobile menu toggle
   document.getElementById('mobile-menu-toggle')?.addEventListener('click', () => {
@@ -173,11 +209,17 @@ ready(() => {
       incrementBtn.addEventListener('click', incrementCounter);
       decrementBtn.addEventListener('click', decrementCounter);
       
-      // Store unsubscribe function for cleanup
-      if (typeof window['__0x1_cleanup'] === 'undefined') {
-        window['__0x1_cleanup'] = [];
+      // Define custom interface to allow indexing window with our custom property
+      interface Window {
+        __0x1_cleanup?: Array<() => void>;
       }
-      window['__0x1_cleanup'].push(unsubscribe);
+      
+      // Now use the interface for proper typing
+      const win = window as Window;
+      if (!win.__0x1_cleanup) {
+        win.__0x1_cleanup = [];
+      }
+      win.__0x1_cleanup.push(unsubscribe);
     }
   };
   
@@ -242,6 +284,7 @@ ready(() => {
   // Initialize router and set up routes
   const router = new Router();
   const contentContainer = document.getElementById('main-content');
+  console.log('Main content container:', contentContainer);
   
   if (contentContainer) {
     // Define routes
