@@ -4,7 +4,7 @@
     "": {
       "name": "0x1-full-app",
       "dependencies": {
-        "0x1": "^0.0.46",
+        "0x1": "^0.0.55",
       },
       "devDependencies": {
         "@tailwindcss/forms": "^0.5.7",
@@ -23,7 +23,7 @@
     },
   },
   "packages": {
-    "0x1": ["0x1@0.0.46", "", { "dependencies": { "lightningcss": "^1.24.0", "prompts": "^2.4.2", "sharp": "^0.33.2", "zod": "^3.22.4" }, "bin": { "0x1": "bin/0x1" } }, "sha512-7J+ByjVBOfgPtwkZhiNUBJXT15G1E3PQdR2iwigPGJO48irCoOSryzbLWW6kI6JEn8Nzunp587NB+Xg2hcUDVQ=="],
+    "0x1": ["0x1@0.0.55", "", { "dependencies": { "lightningcss": "^1.24.0", "prompts": "^2.4.2", "sharp": "^0.33.2", "zod": "^3.22.4" }, "bin": { "0x1": "./bin/0x1" } }, "sha512-WK2EcG/afKaDboXUuuprC73u/zeW0c24O/yn/AVgZc8AwLf/XG/QFIpjMNG1XkZRwpHqQy3jyaYZmieAaqdsUA=="],
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
