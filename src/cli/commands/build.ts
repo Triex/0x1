@@ -453,11 +453,43 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
   try {
     // Ensure the output directory exists
     await mkdir(dirname(outputFile), { recursive: true });
-    
+
+    // Read the entry file content
+    const fileContent = await Bun.file(entryFile).text();
+
     // Configure Bun's bundler
-    const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = 
+    const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } =
       isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
-    
+
+    // Check for 0x1 framework imports
+    const file0x1Imports = fileContent.match(/from\s+['"]0x1(\/[\w-]+)?['"]|import\s+['"]0x1(\/[\w-]+)?['"]/);
+
+    // If we have 0x1 framework imports, we need to set up browser compatibility
+    if (file0x1Imports) {
+      logger.debug(`File ${relative(projectPath, entryFile)} contains 0x1 framework imports. Setting up browser compatibility.`);
+
+      // Create 0x1 module for browser compatibility
+      const framework0x1Dir = join(dirname(outputFile), '0x1');
+      await mkdir(framework0x1Dir, { recursive: true });
+
+      // Create browser-compatible router module
+      const routerContent = `
+        // 0x1 Router Module - Browser Compatible Version
+        export { Router, Link, NavLink, Redirect } from '../node_modules/0x1/dist/router.js';
+        export default { Router };
+      `;
+      await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
+
+      // Create browser-compatible index module
+      const indexContent = `
+        // 0x1 Framework - Browser Compatible Version
+        export * from '../node_modules/0x1/dist/index.js';
+        import * as Core from '../node_modules/0x1/dist/index.js';
+        export default Core;
+      `;
+      await Bun.write(join(framework0x1Dir, 'index.js'), indexContent);
+    }
+
     // Use Bun's built-in bundler
     const result = await Bun.build({
       entrypoints: [entryFile],

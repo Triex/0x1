@@ -7,14 +7,8 @@ This directory contains the official templates for the 0x1 framework. Each templ
 ```
 templates/
 ├── minimal/
-│   ├── javascript/
-│   └── typescript/
 ├── standard/
-│   ├── javascript/
-│   └── typescript/
 └── full/
-    ├── javascript/
-    └── typescript/
 ```
 
 ## Testing Templates
@@ -25,7 +19,7 @@ Use these commands to quickly test each template:
 
 ```bash
 # Create a test project using a specific template with theme and PWA
-bun 0x1 new test-project --template minimal/typescript --theme "royal-purple" --pwa
+bun 0x1 new test-project --template minimal --theme "royal-purple" --pwa
 cd test-project
 
 # Start development server
@@ -70,7 +64,7 @@ themes=("midnight-blue" "forest-green" "royal-purple" "slate-gray" "classic")
 for theme in "${themes[@]}"
 do
   echo "Testing theme: $theme"
-  bun 0x1 new theme-$theme --template standard/typescript --theme $theme --pwa
+  bun 0x1 new theme-$theme --template standard --theme $theme --pwa
 done
 ```
 
@@ -83,7 +77,7 @@ To systematically test all templates:
 mkdir template-tests && cd template-tests
 
 # Test each template variant
-templates=("minimal/javascript" "minimal/typescript" "standard/javascript" "standard/typescript" "full/javascript" "full/typescript")
+templates=("minimal" "standard" "full")
 
 for template in "${templates[@]}"
 do
@@ -129,12 +123,9 @@ import { test, expect } from '@playwright/test';
 
 // Test each template variant
 const templates = [
-  'minimal/javascript',
-  'minimal/typescript',
-  'standard/javascript',
-  'standard/typescript',
-  'full/javascript',
-  'full/typescript'
+  'minimal',
+  'standard',
+  'full'
 ];
 
 for (const template of templates) {

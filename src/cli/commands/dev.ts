@@ -412,6 +412,52 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         });
       }
       
+      // Special handling for 0x1 framework imports
+      // This allows clean imports like: import { Router } from '0x1/router'
+      if (path.startsWith('/0x1/')) {
+        // Extract the module path
+        const modulePath = path.replace('/0x1/', '');
+        
+        // Map the module to its actual implementation
+        let moduleContent = '';
+        
+        if (modulePath === 'router' || modulePath === 'router.js') {
+          // Provide the router module
+          moduleContent = `
+            // 0x1 Router Module - Browser Compatible Version
+            import { Router as _Router, Link as _Link, NavLink as _NavLink, Redirect as _Redirect } from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/router.js';
+            
+            // Re-export with proper names
+            export const Router = _Router;
+            export const Link = _Link;
+            export const NavLink = _NavLink;
+            export const Redirect = _Redirect;
+            
+            // Default export for convenience
+            export default Router;
+          `;
+        } else if (modulePath === '' || modulePath === 'index.js') {
+          // Provide the main 0x1 module
+          moduleContent = `
+            // 0x1 Framework - Browser Compatible Version
+            import * as Core from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/index.js';
+            
+            // Re-export everything
+            export default Core;
+            export * from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/index.js';
+          `;
+        }
+        
+        if (moduleContent) {
+          return new Response(moduleContent, {
+            headers: {
+              'Content-Type': 'application/javascript',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        }
+      }
+      
       // Default to index.html for root path
       if (path === '/') {
         path = '/index.html';
