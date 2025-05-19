@@ -237,7 +237,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   let appDir: string | null = null;
   let isAppDirStructure = false;
   
-  // Check for app directory first (Next.js 15-style)
+  // Check for app directory (modern app router structure)
   const appDirectory = resolve(projectPath, 'app');
   // Also check if app is in src directory
   const srcAppDirectory = resolve(projectPath, 'src/app');
@@ -249,7 +249,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     srcDir = projectPath;
     publicDir = resolve(projectPath, 'public');
     distDir = resolve(projectPath, 'dist');
-    logger.info('Detected Next.js 15-style app directory structure at project root');
+    logger.info('Detected app router structure at project root');
   } else if (existsSync(srcAppDirectory)) {
     // App directory in src folder
     isAppDirStructure = true;
@@ -257,7 +257,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     srcDir = resolve(projectPath, 'src');
     publicDir = resolve(projectPath, 'public');
     distDir = resolve(projectPath, 'dist');
-    logger.info('Detected Next.js 15-style app directory structure in src folder');
+    logger.info('Detected app router structure in src folder');
   } else if (hasCustomStructure) {
     try {
       // Load custom structure configuration
@@ -446,7 +446,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       
       // If app directory exists, check for app router-style components
       if (!fileExists && isAppDirStructure && appDir) {
-        // Check for Next.js 15-style app directory routing paths
+        // Check for app router routing paths
         // For example, /posts becomes /app/posts/page.tsx
         
         // Remove leading slash if present
@@ -830,13 +830,31 @@ async function loadConfig(configPath: string): Promise<any> {
  */
 async function startTailwindProcessing(): Promise<Subprocess | null> {
   try {
-    // First, check if tailwindcss is installed
+    // Check if tailwindcss is installed - with Bun support
     const projectPath = process.cwd();
-    const tailwindBinPath = join(projectPath, 'node_modules', '.bin', 'tailwindcss');
     
-    if (!existsSync(tailwindBinPath)) {
-      logger.warn('Tailwind CSS configuration detected, but tailwindcss package not found in node_modules.');
-      logger.warn('Install tailwindcss to enable automatic CSS processing: bun add -d tailwindcss');
+    // Check for tailwindcss in package.json
+    const packageJsonPath = join(projectPath, 'package.json');
+    let hasTailwind = false;
+    
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJsonContent = await Bun.file(packageJsonPath).text();
+        const packageJson = JSON.parse(packageJsonContent);
+        
+        // Check if tailwindcss is in dependencies or devDependencies
+        hasTailwind = (
+          (packageJson.dependencies && packageJson.dependencies.tailwindcss) ||
+          (packageJson.devDependencies && packageJson.devDependencies.tailwindcss)
+        );
+      } catch (error) {
+        logger.error(`Failed to parse package.json: ${error}`);
+      }
+    }
+    
+    if (!hasTailwind) {
+      logger.warn('Tailwind CSS configuration detected, but tailwindcss package not found in dependencies.');
+      logger.warn('Install tailwindcss to enable automatic CSS processing: bun add -d tailwindcss postcss autoprefixer');
       return null;
     }
     
@@ -865,9 +883,9 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     // Start the Tailwind process with Bun's optimized --watch flag for efficient hot reloading
     const tailwindSpin = logger.spinner('Starting Tailwind CSS processing');
     
-    // Use Bun's API for optimal performance with hot reloading
+    // Use Bun's bunx to run tailwindcss for optimal performance with hot reloading
     const tailwindProcess = spawn({
-      cmd: [tailwindBinPath, '-i', inputCssFile, '-o', outputCssFile, '--watch'],
+      cmd: ['bunx', 'tailwindcss', '-i', inputCssFile, '-o', outputCssFile, '--watch'],
       stdout: 'pipe',
       stderr: 'pipe',
       env: process.env

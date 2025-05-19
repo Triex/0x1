@@ -1,7 +1,7 @@
 /**
  * 0x1 Component System
  * A lightweight component system for creating DOM elements with minimal overhead
- * Fully compatible with Next.js 15-style app directory components
+ * Fully compatible with modern app router component structure
  */
 
 // Parameters for route components

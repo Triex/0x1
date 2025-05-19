@@ -2,7 +2,8 @@
  * 0x1 Minimal App - Entry Point
  * Using automatic app directory structure
  */
-import { Router } from '0x1/core/router';
+// Use simplified router import
+import { Router } from '0x1/router';
 
 // DOM ready function
 function ready(callback: () => void): void {

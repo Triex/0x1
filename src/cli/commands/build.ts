@@ -67,7 +67,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Log app structure detection
   const isAppDirStructure = existsSync(join(projectPath, 'app'));
   if (isAppDirStructure) {
-    log.info('📁 Next.js app router structure detected');
+    log.info('📁 App directory structure detected');
   } else {
     log.info('📁 Classic structure detected - consider migrating to app directory structure');
   }
@@ -262,7 +262,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     const hasAppDir = existsSync(appDir);
     
     if (hasAppDir) {
-      // Using Next.js 15-style app directory structure
+      // Using modern app router structure
       const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -301,8 +301,8 @@ async function processHtml(
 }
 
 /**
- * bundle JavaScript/TypeScript with enhanced Bun APIs
- * Optimized for app directory structure
+ * Bundle JavaScript/TypeScript with enhanced Bun APIs
+ * Optimized for app router structure
  */
 async function bundleJavaScript(
   projectPath: string,
@@ -314,102 +314,115 @@ async function bundleJavaScript(
   // File extensions to look for
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
   
-  // Find entry files in app directory
-  const entryFiles: string[] = [];
-  
-  // Prioritize app directory structure for Next.js 15 compatibility
-  const appDir = join(projectPath, 'app');
-  const isAppDirStructure = existsSync(appDir);
-  
-  // Check for tsconfig.json to ensure accurate TypeScript settings
-  const hasTsConfig = existsSync(join(projectPath, 'tsconfig.json'));
-  if (!hasTsConfig) {
-    logger.warn('No tsconfig.json found, using default TypeScript settings');
+  // Main entry file - always required
+  const mainEntryFile = findMainEntryFile(projectPath);
+  if (mainEntryFile) {
+    await processJSBundle(mainEntryFile, projectPath, { minify });
+  } else {
+    logger.warn('No main entry file found (index.tsx/ts/jsx/js). Project may not work correctly.');
   }
   
-  if (isAppDirStructure) {
-    logger.info('📁 Processing Next.js app router structure');
-    // New app directory structure (Next.js 15-style)
-    // Find all page.tsx/jsx/ts/js files
-    async function findAppComponents(dir: string): Promise<string[]> {
-      const components: string[] = [];
-      const entries = await readdir(dir, { withFileTypes: true });
+  // Helper function to find main entry file
+  function findMainEntryFile(dir: string): string | null {
+    const entryFileNames = ['index.js', 'index.ts', 'index.tsx', 'index.jsx', 'app.js', 'app.ts', 'app.tsx', 'app.jsx'];
+    
+    for (const fileName of entryFileNames) {
+      const entryPath = join(dir, fileName);
+      if (existsSync(entryPath)) {
+        return entryPath;
+      }
+    }
+    
+    return null;
+  }
+  
+  // Modern app router structure component discovery
+  // Find all page, layout, and special component files
+  async function findAppComponents(dir: string): Promise<string[]> {
+    const components: string[] = [];
+    const entries = await readdir(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
       
-      for (const entry of entries) {
-        const path = join(dir, entry.name);
-        
-        // Skip ignored directories
-        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
-          // Recursively search subdirectories
-          const subComponents = await findAppComponents(path);
-          components.push(...subComponents);
-        } else if (entry.isFile()) {
-          // Check if this is a page component
-          for (const ext of fileExtensions) {
-            if (entry.name === `page${ext}`) {
-              components.push(path);
-              break;
-            }
+      // Skip ignored directories
+      if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
+        // Recursively search subdirectories
+        const subComponents = await findAppComponents(path);
+        components.push(...subComponents);
+      } else if (entry.isFile()) {
+        // Check for special app router components
+        for (const ext of fileExtensions) {
+          // Support for all app router special files
+          if (entry.name === `page${ext}` ||
+              entry.name === `layout${ext}` ||
+              entry.name === `loading${ext}` ||
+              entry.name === `error${ext}` ||
+              entry.name === `not-found${ext}`) {
+            components.push(path);
+            break;
           }
         }
       }
-      
-      return components;
     }
     
-    try {
-      const appComponents = await findAppComponents(appDir);
-      logger.debug(`Found ${appComponents.length} Next.js 15-style app components`);
+    return components;
+  }
+  
+  // App directory processing - modern app router structure is required
+  const appDir = join(projectPath, 'app');
+  if (!existsSync(appDir)) {
+    logger.warn('No app directory found. App router structure is required for 0x1 framework.');
+    logger.info('Create an app directory with page.tsx and other components.');
+  } else {
+    // Find and process app router components
+    const appComponents = await findAppComponents(appDir);
+    
+    if (appComponents.length === 0) {
+      logger.warn('No app router components found in app directory.');  
+      logger.info('Create page.tsx, layout.tsx, and other components in the app directory.');  
+    } else {
+      logger.info(`Found ${appComponents.length} app router components.`);  
       
-      // Process each app component
+      // Process each app router component
       for (const component of appComponents) {
-        const relativePath = relative(projectPath, component);
-        const outputDir = dirname(join(outputPath, relativePath));
-        
-        // Ensure output directory exists
-        await mkdir(outputDir, { recursive: true });
-        
-        // Build this component
         await processJSBundle(component, projectPath, { minify });
       }
       
-      // Also look for entry files in project root
-      for (const name of ['app', 'index']) {
-        for (const ext of fileExtensions) {
-          const filePath = join(projectPath, `${name}${ext}`);
-          if (existsSync(filePath)) {
-            entryFiles.push(filePath);
-            break; // Only add the first match for each name
-          }
-        }
-      }
-    } catch (error) {
-      logger.error(`Error processing app directory: ${error}`);
-      throw error;
-    }
-  } else {
-    logger.info('📁 Processing traditional entry points');
-    // Check for traditional entry points in project root
-    for (const name of ['app', 'index']) {
-      for (const ext of fileExtensions) {
-        // Only look in project root for traditional files
-        const filePath = join(projectPath, `${name}${ext}`);
+      // Generate component registry for autoDiscovery
+      logger.info('Generating component registry for auto-discovery...');
+      
+      // Create a component registry map for runtime auto-discovery
+      const componentsMapPath = join(outputPath, 'components-map.js');
+      let componentsMapCode = `// Auto-generated component registry for 0x1 router\n`;
+      componentsMapCode += `// This file is auto-generated by the build process\n\n`;
+      componentsMapCode += `window.__0x1_components = {\n`;
+      
+      for (const component of appComponents) {
+        // Get the relative path from project root to the component
+        const relativePath = relative(projectPath, component);
+        
+        // Create the component key - remove file extension and map to router path
+        const componentKey = relativePath
+          .replace(/\.\w+$/, '') // Remove extension
+          .replace(/\\+/g, '/'); // Normalize path separators for Windows
           
-        if (existsSync(filePath)) {
-          entryFiles.push(filePath);
-          break; // Only add the first match for each name
-        }
+        // Import path relative to the output directory
+        const importPath = `./${relativePath.replace(/\.\w+$/, '')}`;
+        componentsMapCode += `  '${componentKey}': () => import('${importPath}'),\n`;
       }
+      
+      // Close the components map object
+      componentsMapCode += `};\n`;
+      
+      // Write the component registry file
+      await Bun.write(componentsMapPath, componentsMapCode);
+      logger.info(`Component registry written to ${componentsMapPath}`);
     }
-  }
-  
-  // Process each entry file
-  for (const entryFile of entryFiles) {
-    await processJSBundle(entryFile, projectPath, { minify });
   }
   
   // Add a client-side entry point if using app directory
-  if (isAppDirStructure) {
+  if (existsSync(join(projectPath, 'app'))) {
     const clientEntry = "// Auto-generated client entry point\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Import all pages components\n  const appRoot = document.getElementById('app');\n  if (appRoot) {\n    // In a real implementation, this would use client-side routing\n    console.log('0x1 App Started');\n  }\n});";
     
     await Bun.write(join(outputPath, 'app.js'), clientEntry);
@@ -530,36 +543,53 @@ async function processCssFiles(
       // Use Bun's built-in process.spawn to run tailwind CLI instead of importing modules
       // This avoids TypeScript errors with missing type declarations
       const tailwindCssOutputPath = join(outputPath, 'styles.css');
-      
       // Write the combined CSS to a temporary file
       const tempCssPath = join(projectPath, '.temp-tailwind-input.css');
       await Bun.write(tempCssPath, combinedCSS);
       
-      // Use tailwindcss CLI to process the CSS
-      const result = Bun.spawnSync([
-        'npx', 'tailwindcss', 
-        '-i', tempCssPath, 
-        '-o', tailwindCssOutputPath,
-        ...(minify ? ['--minify'] : [])
-      ], {
-        cwd: projectPath,
-        env: process.env,
-        stdout: 'pipe',
-        stderr: 'pipe'
-      });
-      
-      // Clean up temporary file
+      // Use Bun to process Tailwind CSS
       try {
-        Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-      
-      if (result.exitCode === 0) {
-        logger.info('🎨 Tailwind CSS: processed successfully');
-      } else {
-        const error = new TextDecoder().decode(result.stderr);
-        throw new Error(`Failed to process Tailwind CSS: ${error}`);
+        // Using Bun to run tailwindcss for optimal performance
+        const args = [
+          'bunx', 'tailwindcss',
+          '-i', tempCssPath,
+          '-o', tailwindCssOutputPath
+        ];
+        
+        if (minify) {
+          args.push('--minify');
+        }
+        
+        const result = Bun.spawnSync(args, {
+          cwd: projectPath,
+          env: process.env,
+          stdout: 'pipe',
+          stderr: 'pipe'
+        });
+        
+        // Clean up temporary file
+        try {
+          Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        
+        if (result.exitCode === 0) {
+          logger.info('🎨 Tailwind CSS: processed successfully');
+        } else {
+          const error = new TextDecoder().decode(result.stderr);
+          throw new Error(`Failed to process Tailwind CSS: ${error}`);
+        }
+      } catch (error) {
+        // Clean up temporary file if it still exists
+        if (existsSync(tempCssPath)) {
+          try {
+            Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }
+        throw error;
       }
     } catch (error) {
       logger.warn(`Failed to process Tailwind CSS: ${error}`);

@@ -1,7 +1,7 @@
 /**
  * 0x1 Router
  * A zero-dependency router for single page applications
- * Supports Next.js 15-style app directory pattern with file-based routing
+ * Supports app directory pattern with file-based routing
  */
 
 import type { Component } from './component.js';
@@ -24,7 +24,8 @@ export interface RouterOptions {
   transitionDuration?: number;
   notFoundComponent?: Component;
   rootLayout?: Component; // Root layout component for the entire app
-  appComponents: Record<string, { default: Component }>; // App directory components (required for Next.js 15)
+  appComponents?: Record<string, { default: Component }>; // App directory components 
+  autoDiscovery?: boolean; // Auto discover components from file system
   hydrate?: boolean; // Enable hydration mode for server-side rendering
   suspense?: boolean; // Enable React suspense for data fetching
 }
@@ -46,7 +47,7 @@ export class Router {
   
   constructor(options: RouterOptions) {
     this.rootElement = options.rootElement;
-    this.routes = []; // No initial routes in Next.js 15 - app dir only
+    this.routes = []; // No initial routes - app dir only
     this.mode = options.mode || 'hash';
     this.transitionDuration = options.transitionDuration || 0;
     this.rootLayout = options.rootLayout;
@@ -63,8 +64,17 @@ export class Router {
       return element;
     });
     
-    // Initialize app directory components (Next.js 15 app directory is now the standard)
-    this.initAppDirectoryRoutes(options.appComponents);
+    // Initialize app directory components if provided
+    if (options.appComponents) {
+      this.initAppDirectoryRoutes(options.appComponents);
+    } else if (options.autoDiscovery) {
+      // When autoDiscovery is enabled, we automatically find and load components
+      // This is handled by the framework at build time, for runtime we use an empty set
+      // of routes that will be populated by the bundler/compiler
+      this.initAppDirectoryRoutes({});
+
+      console.log('🔍 Using automatic component discovery');
+    }
   }
   
   /**
@@ -353,7 +363,7 @@ export class Router {
   }
   
   /**
-   * Initialize routes from Next.js 15-style app directory components
+   * Initialize routes from app directory components
    * This transforms file-based components into a route structure
    */
   private initAppDirectoryRoutes(components: Record<string, { default: Component }>): void {
