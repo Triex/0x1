@@ -2,8 +2,11 @@
  * 0x1 Minimal App - Entry Point
  * Using automatic app directory structure
  */
-// Use simplified router import
-import { Router } from '0x1/router';
+// Router is available as a global from the script included in index.html
+declare const Router: any;
+declare const Link: any;
+declare const NavLink: any;
+declare const Redirect: any;
 
 // DOM ready function
 function ready(callback: () => void): void {

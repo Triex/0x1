@@ -185,11 +185,11 @@ async function loadConfig(configPath: string): Promise<any> {
       } catch (error) {
         logger.warn(`Failed to import config from ${configPath}: ${error}`);
         // Fallback to reading as text and evaluating
-        const content = Bun.file(configPath).text();
+        const content = await Bun.file(configPath).text();
         
         try {
           // Extract the config object literal from the file
-          const match = (await content).match(/export\s+default\s+({[\s\S]*});?$/m);
+          const match = content.match(/export\s+default\s+({[\s\S]*});?$/m);
           if (match && match[1]) {
             // Very simple approach - this will only work for basic objects
             // A real implementation would need a proper parser
@@ -463,24 +463,35 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
 
     // Check for 0x1 framework imports
     const file0x1Imports = fileContent.match(/from\s+['"]0x1(\/[\w-]+)?['"]|import\s+['"]0x1(\/[\w-]+)?['"]/);
+    const routerImport = fileContent.match(/from\s+['"]0x1\/router['"]|import\s+['"]0x1\/router['"]/);
 
-    // If we have 0x1 framework imports, we need to set up browser compatibility
-    if (file0x1Imports) {
-      logger.debug(`File ${relative(projectPath, entryFile)} contains 0x1 framework imports. Setting up browser compatibility.`);
+    // Modify content based on imports
+    let modifiedContent = fileContent;
+
+    // If we have router imports, replace them with global declarations
+    if (routerImport) {
+      logger.debug(`File ${relative(projectPath, entryFile)} contains router imports. Converting to global approach.`);
+      
+      // Replace router imports with global declarations
+      modifiedContent = modifiedContent.replace(
+        /import\s+\{\s*(?:Router|Link|NavLink|Redirect)(?:\s*,\s*(?:Router|Link|NavLink|Redirect))*\s*\}\s+from\s+['"]0x1\/router['"];?/g,
+        '// Router components are available as globals from the script in index.html\n' +
+        'declare const Router: any;\n' +
+        'declare const Link: any;\n' +
+        'declare const NavLink: any;\n' +
+        'declare const Redirect: any;'
+      );
+    }
+    
+    // For other 0x1 framework imports, we still need to set up browser compatibility
+    if (file0x1Imports && !routerImport) {
+      logger.debug(`File ${relative(projectPath, entryFile)} contains other 0x1 framework imports. Setting up browser compatibility.`);
 
       // Create 0x1 module for browser compatibility
       const framework0x1Dir = join(dirname(outputFile), '0x1');
       await mkdir(framework0x1Dir, { recursive: true });
 
-      // Create browser-compatible router module
-      const routerContent = `
-        // 0x1 Router Module - Browser Compatible Version
-        export { Router, Link, NavLink, Redirect } from '../node_modules/0x1/dist/router.js';
-        export default { Router };
-      `;
-      await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
-
-      // Create browser-compatible index module
+      // Create browser-compatible index module for non-router imports
       const indexContent = `
         // 0x1 Framework - Browser Compatible Version
         export * from '../node_modules/0x1/dist/index.js';
@@ -488,11 +499,30 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
         export default Core;
       `;
       await Bun.write(join(framework0x1Dir, 'index.js'), indexContent);
+
+      // If we modified content for router imports, write it to a temporary file for bundling
+      if (modifiedContent !== fileContent) {
+        const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
+        await Bun.write(tempFile, modifiedContent);
+        // Use the temp file for bundling instead
+        // Note: We need to pass this separately to Bun.build below
+        // We don't actually modify entryFile directly as it could cause TypeScript errors
+      }
     }
 
+    // Create a temporary file path for modified content
+    let actualEntryFile = entryFile;
+    const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
+    
+    // If we modified the content, use the temp file for bundling
+    if (modifiedContent !== fileContent) {
+      await Bun.write(tempFile, modifiedContent);
+      actualEntryFile = tempFile;
+    }
+    
     // Use Bun's built-in bundler
     const result = await Bun.build({
-      entrypoints: [entryFile],
+      entrypoints: [actualEntryFile],
       outdir: dirname(outputFile),
       target: 'browser',
       format: 'esm',

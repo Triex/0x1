@@ -11,6 +11,172 @@
   <!-- App Container - The app directory components from router.ts will render here -->
   <div id="app"></div>
 
+  <!-- Router implementation - directly included to avoid import issues -->
+  <script type="module">
+    // 0x1 Router implementation
+    window.Router = class Router {
+      constructor(options) {
+        this.rootElement = options.root;
+        this.mode = options.mode || 'history';
+        this.routes = new Map();
+        this.basePath = options.basePath || '';
+        this.notFoundComponent = options.notFoundComponent;
+        this.transitionDuration = options.transitionDuration || 200;
+        this.currentComponent = null;
+
+        // Initialize router based on mode
+        if (this.mode === 'history') {
+          window.addEventListener('popstate', () => this.handleRouteChange());
+        } else {
+          window.addEventListener('hashchange', () => this.handleRouteChange());
+        }
+
+        // Initial route rendering
+        this.handleRouteChange();
+      }
+
+      // Add a route to the router
+      add(path, component) {
+        this.routes.set(path, component);
+        return this;
+      }
+
+      // Alias for add method for compatibility
+      addRoute(path, component) {
+        return this.add(path, component);
+      }
+
+      // Get the current path based on routing mode
+      getCurrentPath() {
+        if (this.mode === 'history') {
+          return window.location.pathname.replace(this.basePath, '');
+        } else {
+          let hash = window.location.hash.slice(1);
+          return hash || '/';
+        }
+      }
+
+      // Handle route changes
+      handleRouteChange() {
+        const path = this.getCurrentPath();
+        let component = this.routes.get(path);
+
+        // If route not found, use 404 component or show error
+        if (!component) {
+          if (this.notFoundComponent) {
+            component = this.notFoundComponent;
+          } else {
+            this.rootElement.innerHTML = `<div>Page not found: ${path}</div>`;
+            return;
+          }
+        }
+
+        // Render the component
+        this.renderComponent(component);
+      }
+
+      // Render a component with transition
+      renderComponent(component) {
+        // Apply transition effect if previous component exists
+        if (this.currentComponent) {
+          this.rootElement.style.opacity = '0';
+          
+          setTimeout(() => {
+            // Clear previous content
+            this.rootElement.innerHTML = '';
+            
+            // Create and append new element
+            const el = component.render();
+            this.rootElement.appendChild(el);
+            
+            // Call onMount if available
+            if (component.onMount) {
+              component.onMount(el);
+            }
+            
+            // Store current component
+            this.currentComponent = component;
+            
+            // Restore visibility
+            this.rootElement.style.opacity = '1';
+          }, this.transitionDuration);
+        } else {
+          // First render, no transition needed
+          const el = component.render();
+          this.rootElement.appendChild(el);
+          
+          if (component.onMount) {
+            component.onMount(el);
+          }
+          
+          this.currentComponent = component;
+        }
+      }
+
+      // Navigate to a new route
+      navigate(path) {
+        if (this.mode === 'history') {
+          history.pushState(null, '', this.basePath + path);
+          this.handleRouteChange();
+        } else {
+          window.location.hash = path;
+        }
+      }
+
+      // Go back in history
+      back() {
+        window.history.back();
+      }
+
+      // Go forward in history
+      forward() {
+        window.history.forward();
+      }
+    };
+
+    // Also expose Link and NavLink classes for consistency
+    window.Link = class Link {
+      constructor(options) {
+        this.to = options.to;
+        this.text = options.text;
+        this.className = options.className || '';
+      }
+      
+      render() {
+        const link = document.createElement('a');
+        link.href = this.to;
+        link.className = this.className;
+        link.textContent = this.text;
+        return link;
+      }
+    };
+
+    window.NavLink = class NavLink extends window.Link {
+      constructor(options) {
+        super(options);
+        this.activeClass = options.activeClass || 'active';
+      }
+    };
+
+    window.Redirect = class Redirect {
+      constructor(options) {
+        this.to = options.to;
+      }
+      
+      render() {
+        const div = document.createElement('div');
+        div.style.display = 'none';
+        
+        // Redirect after render
+        setTimeout(() => {
+          window.location.href = this.to;
+        }, 0);
+        
+        return div;
+      }
+    };
+  </script>
+
   <!-- Script built with bun -->
   <script type="module" src="/index.js"></script>
 </body>

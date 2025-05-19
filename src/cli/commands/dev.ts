@@ -398,7 +398,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       let path = url.pathname;
       
       // Handle SSE connection for live reload
-      if (req.url === '/events') {
+      if (path === '/events' || req.url === '/events') {
         // Add client to connected clients
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
@@ -564,14 +564,28 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       }
       
       // Special handling for 0x1 framework imports (both as direct path and as import)
-      // This allows clean imports like: import { Router } from '0x1/router'
-      if (path.startsWith('/0x1/') || path === '/node_modules/0x1/router' || path === '/node_modules/0x1/router.js') {
+      // This allows clean imports to work even though they're not natively supported in browsers
+      // We've moved to a direct script injection approach in index.html, but this handler remains
+      // for backward compatibility with existing projects that might still use import statements
+      if (path.startsWith('/0x1/') || 
+          path.includes('/node_modules/0x1/') || 
+          path === '/router.js' || 
+          path === '/router' ||
+          path.includes('/node_modules/0x1/dist/router.js')) {
         // Extract the module path - handle different import patterns
         let modulePath = '';
         
+        // Handle all possible import patterns for the router
         if (path.startsWith('/0x1/')) {
           modulePath = path.replace('/0x1/', '');
-        } else if (path === '/node_modules/0x1/router' || path === '/node_modules/0x1/router.js') {
+        } else if (path.includes('/node_modules/0x1/')) {
+          // Extract 'router' from any path containing '/node_modules/0x1/'
+          if (path.includes('router')) {
+            modulePath = 'router';
+          } else {
+            modulePath = path.substring(path.lastIndexOf('/') + 1).replace('.js', '');
+          }
+        } else if (path === '/router.js' || path === '/router') {
           modulePath = 'router';
         }
         

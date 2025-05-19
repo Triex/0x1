@@ -11,13 +11,13 @@
     "format": "prettier --write '**/*.{ts,tsx,css,html}'"
   },
   "dependencies": {
-    "0x1": "^0.0.68-1.alpaha"
+    "0x1": "^0.0.68-2.alpaha"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
-    "autoprefixer": "^10.4.21",
+    "autoprefixer": "^10.4.16",
     "eslint": "^8.57.0",
     "postcss": "^8.4.35",
     "prettier": "^3.2.5",
