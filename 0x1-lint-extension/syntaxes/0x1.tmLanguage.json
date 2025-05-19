@@ -1,0 +1,45 @@
+{
+  "name": "0x1 JSX",
+  "scopeName": "source.tsx.0x1",
+  "fileTypes": ["tsx", "jsx"],
+  "patterns": [
+    {
+      "include": "source.tsx"
+    }
+  ],
+  "repository": {
+    "jsx-tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.jsx",
+          "begin": "(<)([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)*)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.jsx"
+            },
+            "2": {
+              "name": "entity.name.tag.jsx"
+            }
+          },
+          "end": "(/>)|((>))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.end.jsx"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.end.jsx"
+            },
+            "3": {
+              "name": "punctuation.definition.tag.end.jsx"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#jsx-tag-attributes"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

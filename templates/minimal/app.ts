@@ -3,14 +3,8 @@
  * A lightweight starting point for your project
  */
 
-// DOM ready function
-function ready(callback: () => void): void {
-  if (document.readyState !== 'loading') {
-    callback();
-  } else {
-    document.addEventListener('DOMContentLoaded', callback);
-  }
-}
+// Import shared DOM ready function from index.tsx
+declare function ready(callback: () => void): void;
 
 // Theme manager
 class ThemeManager {

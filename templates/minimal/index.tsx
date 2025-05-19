@@ -2,11 +2,17 @@
  * 0x1 Minimal App - Entry Point
  * Using automatic app directory structure
  */
+// Import createElement and Fragment for JSX support
+import { createElement, Fragment } from '0x1';
+
 // Router is available as a global from the script included in index.html
 declare const Router: any;
 declare const Link: any;
 declare const NavLink: any;
 declare const Redirect: any;
+
+// Import proper components
+import { Counter } from './components/Counter';
 
 // DOM ready function
 function ready(callback: () => void): void {
@@ -17,32 +23,63 @@ function ready(callback: () => void): void {
   }
 }
 
-// Theme manager - simple implementation
+// Theme manager - enhanced implementation with better user preference handling
 function initializeTheme(): void {
   const themeToggleBtn = document.getElementById('theme-toggle');
   const storageKey = '0x1-dark-mode';
   
-  // Check for saved preference
-  const savedTheme = localStorage.getItem(storageKey);
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // Setup theme toggle functionality
+  function setTheme(mode: 'dark' | 'light' | 'system'): void {
+    if (mode === 'system') {
+      // Use system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', prefersDark);
+      // Don't save to storage - we're using system preference
+      localStorage.removeItem(storageKey);
+    } else {
+      // Explicitly set theme based on mode
+      document.documentElement.classList.toggle('dark', mode === 'dark');
+      localStorage.setItem(storageKey, mode);
+    }
+    
+    // Update any theme toggle visual indicator if exists
+    if (themeToggleBtn) {
+      themeToggleBtn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
+    }
+  }
   
-  // Set initial dark mode state based on saved preference or system preference
+  // Check for saved preference
+  const savedTheme = localStorage.getItem(storageKey) as 'dark' | 'light' | null;
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  // Initialize theme based on saved preference or system preference
   if (savedTheme === 'dark' || (savedTheme === null && prefersDark)) {
-    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add('dark'); 
   } else if (savedTheme === 'light') {
     document.documentElement.classList.remove('dark');
   }
   
-  // Set up toggle button if it exists
+  // Set up theme toggle button
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', () => {
-      // Toggle dark class on html element
-      const isDark = document.documentElement.classList.toggle('dark');
-      
-      // Save user preference
-      localStorage.setItem(storageKey, isDark ? 'dark' : 'light');
+      // Check current state to determine what to switch to
+      const isDark = document.documentElement.classList.contains('dark');
+      // Toggle to opposite theme
+      setTheme(isDark ? 'light' : 'dark');
     });
+    
+    // Set initial button state
+    const isDark = document.documentElement.classList.contains('dark');
+    themeToggleBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
   }
+  
+  // Listen for system preference changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    // Only apply system preference if user hasn't explicitly set a preference
+    if (!localStorage.getItem(storageKey)) {
+      document.documentElement.classList.toggle('dark', e.matches);
+    }
+  });
 }
 
 // Bootstrap the application when DOM is loaded
@@ -64,60 +101,57 @@ ready(() => {
     transitionDuration: 150
   });
   
-  // Create a simple home page component
+  // Create home page component using proper component architecture
+  
+  // Create a home page component using proper component architecture and JSX
   const HomePage = {
     render: () => {
-      const element = document.createElement('div');
-      element.className = 'p-8 max-w-4xl mx-auto';
-      element.innerHTML = `
-        <div class="text-center">
-          <h1 class="text-4xl font-bold mb-6 text-indigo-600">Welcome to 0x1</h1>
-          <p class="text-xl mb-8">The lightning-fast web framework powered by Bun</p>
-          
-          <div class="bg-white shadow-md rounded-lg p-6 mb-8">
-            <div class="flex items-center justify-center gap-4 mb-4">
-              <button id="decrement-btn" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">-</button>
-              <span id="counter-value" class="text-2xl font-bold">0</span>
-              <button id="increment-btn" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">+</button>
+      // Using JSX syntax with the createElement and Fragment imported from 0x1
+      const jsxElement = (
+        <div className="p-8 max-w-4xl mx-auto">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400">
+              Welcome to 0x1
+            </h1>
+            
+            <p className="text-xl mb-8 text-gray-800 dark:text-gray-200">
+              The lightning-fast web framework powered by Bun
+            </p>
+            
+            <Counter 
+              initialValue={0}
+              minValue={-10}
+              maxValue={10}
+              label="Try out this interactive counter component!"
+            />
+            
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              Edit <code className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">
+                index.tsx
+              </code> to customize this page
+            </p>
+            
+            <div className="flex justify-center gap-4">
+              <a 
+                href="https://github.com/Triex/0x1" 
+                target="_blank" 
+                className="text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                GitHub
+              </a>
+              <a 
+                href="https://bun.sh" 
+                target="_blank" 
+                className="text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Bun Docs
+              </a>
             </div>
-            <p class="text-gray-600">Try out this interactive counter component!</p>
-          </div>
-          
-          <p class="text-gray-700 mb-4">Edit <code class="bg-gray-100 px-1 py-0.5 rounded">index.tsx</code> to customize this page</p>
-          <div class="flex justify-center gap-4">
-            <a href="https://github.com/Triex/0x1" target="_blank" class="text-indigo-600 hover:underline">GitHub</a>
-            <a href="https://bun.sh" target="_blank" class="text-indigo-600 hover:underline">Bun Docs</a>
           </div>
         </div>
-      `;
+      );
       
-      // Initialize counter functionality
-      let count = 0;
-      const updateCounter = () => {
-        const counterValue = element.querySelector('#counter-value');
-        if (counterValue) counterValue.textContent = count.toString();
-      };
-      
-      // Add event listeners after the element is mounted
-      setTimeout(() => {
-        const incrementBtn = element.querySelector('#increment-btn');
-        const decrementBtn = element.querySelector('#decrement-btn');
-        
-        if (incrementBtn) {
-          incrementBtn.addEventListener('click', () => {
-            count++;
-            updateCounter();
-          });
-        }
-        
-        if (decrementBtn) {
-          decrementBtn.addEventListener('click', () => {
-            count--;
-            updateCounter();
-          });
-        }
-      }, 0);
-      return element;
+      return jsxElement;
     }
   };
   

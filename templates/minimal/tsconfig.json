@@ -2,9 +2,11 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "node",
-    "jsx": "preserve",
-    "strict": true,
+    "moduleResolution": "bundler",
+    "jsx": "react",
+    "jsxFactory": "createElement",
+    "jsxFragmentFactory": "Fragment",
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -14,14 +16,18 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "0x1": ["node_modules/0x1"],
       "0x1/*": ["node_modules/0x1/dist/*"]
     },
-    "typeRoots": ["./node_modules/@types", "./types"]
+    "typeRoots": ["./node_modules/@types", "./types", "../../types"]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "types/**/*.d.ts"
+    "**/*.jsx",
+    "**/*.js",
+    "types/**/*.d.ts",
+    "../../types/*.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,0 +1,60 @@
+{
+  "name": "0x1-lint-extension",
+  "displayName": "0x1 Lint Extension",
+  "description": "TypeScript and linting support for 0x1 framework projects",
+  "version": "0.1.0",
+  "publisher": "0x1-framework",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Linters",
+    "Formatters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "typescript",
+    "jsx",
+    "tsx",
+    "0x1",
+    "framework"
+  ],
+  "activationEvents": [
+    "workspaceContains:package.json"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "0x1.initializeProject",
+        "title": "0x1: Initialize Project"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "bun run compile",
+    "lint": "eslint src --ext ts",
+    "test": "node ./dist/test/runTest.js",
+    "package": "vsce package",
+    "build": "bun run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.19",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^5.60.1",
+    "@typescript-eslint/parser": "^5.60.1",
+    "@vscode/vsce": "^2.19.0",
+    "eslint": "^9.27.0",
+    "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Triex/0x1"
+  },
+  "homepage": "https://github.com/Triex/0x1",
+  "license": "TDLv1",
+  "packageManager": "bun@1.2.13"
+}

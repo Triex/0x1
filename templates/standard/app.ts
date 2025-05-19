@@ -79,7 +79,7 @@ ready(() => {
 });
 
 /**
- * Set up theme toggle button functionality
+ * Set up theme toggle button functionality with improved visual feedback
  */
 function setupThemeToggle(): void {
   const themeToggle = document.getElementById('theme-toggle');
@@ -88,16 +88,43 @@ function setupThemeToggle(): void {
     return;
   }
   
+  // Set initial button state
+  updateThemeToggleUI(themeToggle);
+  
   themeToggle.addEventListener('click', () => {
     // Toggle dark mode
-    if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem(STORAGE_KEY, 'light');
-    } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem(STORAGE_KEY, 'dark');
-    }
+    const isDark = document.documentElement.classList.contains('dark');
+    const newMode = isDark ? 'light' : 'dark';
+    
+    // Apply theme change
+    document.documentElement.classList.toggle('dark', newMode === 'dark');
+    
+    // Save user preference
+    localStorage.setItem(STORAGE_KEY, newMode);
+    
+    // Update button UI
+    updateThemeToggleUI(themeToggle);
   });
+}
+
+/**
+ * Update theme toggle button UI based on current theme
+ */
+function updateThemeToggleUI(themeToggle: HTMLElement): void {
+  const isDark = document.documentElement.classList.contains('dark');
+  
+  // Update accessibility attributes
+  themeToggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+  themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} mode`);
+  
+  // If toggle has children for different icons
+  const lightIcon = themeToggle.querySelector('.light-icon');
+  const darkIcon = themeToggle.querySelector('.dark-icon');
+  
+  if (lightIcon && darkIcon) {
+    lightIcon.classList.toggle('hidden', isDark);
+    darkIcon.classList.toggle('hidden', !isDark);
+  }
 }
 
 /**

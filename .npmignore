@@ -23,3 +23,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 bun.lockb
+
+# Lint extension
+0x1-lint-extension
+
+# Store
+# 0x1-store

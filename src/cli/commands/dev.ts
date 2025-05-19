@@ -5,10 +5,10 @@
  */
 
 import { serve, spawn, type Server, type Subprocess } from 'bun';
-import { Dirent, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
-import { mkdir, watch, writeFile } from 'fs/promises';
+import { Dirent, existsSync, mkdirSync, readdirSync } from 'fs';
+import { watch } from 'fs/promises';
 import os from 'os';
-import { basename, dirname, extname, join, relative, resolve } from 'path';
+import { join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 import { build } from './build.js';
 
@@ -80,6 +80,7 @@ export interface DevOptions {
   config?: string;
   ignore?: string[];
   skipTailwind?: boolean; // Option to skip Tailwind processing
+  debug?: boolean; // Enable debug mode for verbose logging
 }
 
 /**
@@ -127,97 +128,121 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   }
 
   // Start the development server with beautiful styling
-  const serverSpin = logger.spinner(`Starting development server at port ${port}`, 'server');
+  // Use a single spinner for better UX
+  const serverSpin = logger.spinner('Starting 0x1 development server');
   
   try {
-    // Create the dev server which includes file watcher setup internally
-    const { server, watcher } = await createDevServer({ port, host, ignorePatterns });
-    
-    // Display beautiful success message with URL
-    const protocol = options.https ? 'https' : 'http';
-    const url = `${protocol}://${host}:${port}`;
-    serverSpin.stop('success', `Server running at ${logger.highlight(url)}`);
-    
-    // Add file watcher info
-    logger.info(`Watching for file changes in ${logger.highlight(process.cwd())}`);
-    
-    // Open browser if requested with a nicer message
-    if (open) {
-      const openSpin = logger.spinner('Opening browser window', 'server');
-      await openBrowser(url);
-      openSpin.stop('success', `Browser: opened at ${logger.highlight(url)}`);
-    }
-    
-    // Show a beautiful interface info box
-    logger.spacer();
-    logger.box(
-      `🚀 0x1 Dev Server Running\n\n` + 
-      `Local:            ${logger.highlight(url)}\n` +
-      `Network:          ${logger.highlight(`${protocol}://${getLocalIP()}:${port}`)}\n\n` +
-      `Powered by Bun   v${Bun.version}`
-    );
-    
-    // Handle exit signals with robust process termination
-    function shutdownServer() {
-      let isShuttingDown = false;
+    try {
+      // Define protocol and URL for server
+      const protocol = options.https ? 'https' : 'http';
+      const serverUrl = `${protocol}://${host}:${port}`;
       
-      async function cleanup() {
-        if (isShuttingDown) return;
-        isShuttingDown = true;
-        
-        logger.info('💠 Shutting down development server...');
-        
-        // First close file watcher to prevent new events
-        if (watcher) {
-          try {
-            watcher.close();
-            logger.info('File watcher closed');
-          } catch (error) {
-            logger.error(`Error closing file watcher: ${error}`);
-          }
-        }
-        
-        // Kill tailwind process if it exists
-        if (tailwindProcess) {
-          try {
-            tailwindProcess.kill(9); // Use SIGKILL for immediate termination
-            logger.info('Tailwind process terminated');
-          } catch (error) {
-            logger.error(`Error killing Tailwind process: ${error}`);
-          }
-        }
-        
-        // Close the server if it exists
-        if (server) {
-          try {
-            server.stop(true); // Force immediate stop
-            logger.info('Server stopped');
-          } catch (error) {
-            logger.error(`Error stopping server: ${error}`);
-          }
-        }
-        
-        // Force kill any process using our port
-        try {
-          const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
-          await killPort.exited;
-        } catch (e) {
-          // Ignore errors
-        }
-        
-        logger.success('Server shutdown complete');
-        
-        // Force exit after a short timeout to ensure cleanup is complete
-        setTimeout(() => process.exit(0), 100);
+      const { server: devServer, watcher } = await createDevServer({
+        port,
+        host,
+        ignorePatterns,
+        debug: options.debug || false,
+      });
+      
+      // Stop server spinner and show success message
+      serverSpin.stop('success', `Server started at ${logger.highlight(serverUrl)}`);
+      
+      // Add file watcher info
+      logger.info(`Watching for file changes in ${logger.highlight(process.cwd())}`);
+      
+      // Open browser if requested with a nicer message
+      if (open) {
+        const openSpin = logger.spinner('Opening browser window', 'server');
+        await openBrowser(serverUrl);
+        openSpin.stop('success', `Browser: opened at ${logger.highlight(serverUrl)}`);
       }
       
-      cleanup();
+      // Show a beautiful interface info box
+      logger.spacer();
+      logger.box(
+        `🚀 0x1 Dev Server Running\n\n` + 
+        `Local:            ${logger.highlight(serverUrl)}\n` +
+        `Network:          ${logger.highlight(`${protocol}://${getLocalIP()}:${port}`)}\n\n` +
+        `Powered by Bun   v${Bun.version}`
+      );
+      
+      // Handle exit signals with robust process termination
+      function shutdownServer() {
+        let isShuttingDown = false;
+        
+        async function cleanup() {
+          if (isShuttingDown) return;
+          isShuttingDown = true;
+          
+          logger.info('💠 Shutting down development server...');
+          
+          // First close file watcher to prevent new events
+          if (watcher) {
+            try {
+              watcher.close();
+              logger.info('File watcher closed');
+            } catch (error) {
+              logger.error(`Error closing file watcher: ${error}`);
+            }
+          }
+          
+          // Kill tailwind process if it exists
+          if (tailwindProcess) {
+            try {
+              tailwindProcess.kill(9); // Use SIGKILL for immediate termination
+              logger.info('Tailwind process terminated');
+            } catch (error) {
+              logger.error(`Error killing Tailwind process: ${error}`);
+            }
+          }
+          
+          // Close the server if it exists
+          if (devServer) {
+            try {
+              devServer.stop(); // Stop the server
+              logger.info('Server stopped');
+            } catch (error) {
+              logger.error(`Error stopping server: ${error}`);
+            }
+          }
+          
+          // Force kill any process using our port
+          try {
+            const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
+            await killPort.exited;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          logger.success('Server shutdown complete');
+          
+          // Force exit after a short timeout to ensure cleanup is complete
+          setTimeout(() => process.exit(0), 100);
+        }
+        
+        cleanup();
+      };
+      
+      // Register the shutdown handler for various signals
+      process.on('SIGINT', shutdownServer);
+      process.on('SIGTERM', shutdownServer);
+      process.on('SIGHUP', shutdownServer);
+      
+      logger.info('Ready for development. Press Ctrl+C to stop.');
+      
+    } catch (error) {
+      serverSpin.stop('error', 'Failed to start development server');
+      logger.error(`Failed to start development server: ${error}`);
+      
+      // Check if the port is already in use
+      if ((error as Error).message?.includes('EADDRINUSE')) {
+        logger.info(`Port ${port} is already in use. Try using a different port with --port option.`);
+      }
+      
+      process.exit(1);
     };
     
-    // Register the shutdown handler for various signals
-    process.on('SIGINT', shutdownServer);
-    process.on('SIGTERM', shutdownServer);
-    process.on('SIGHUP', shutdownServer);
+    // These handlers are now registered inside the try block
     
     logger.info('Ready for development. Press Ctrl+C to stop.');
     
@@ -237,7 +262,7 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
 /**
  * Create the development server
  */
-async function createDevServer(options: { port: number; host: string; ignorePatterns?: string[] }): Promise<{ server: Server; watcher: { close: () => void } }> {
+async function createDevServer(options: { port: number; host: string; ignorePatterns?: string[]; debug?: boolean }): Promise<{ server: Server; watcher: { close: () => void } }> {
   const { port, host, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
   
   // Determine source and public directories based on project structure
@@ -398,7 +423,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       let path = url.pathname;
       
       // Handle SSE connection for live reload
-      if (path === '/events' || req.url === '/events') {
+      if (path === '/__0x1_live_reload' || path === '/events' || req.url === '/events') {
         // Add client to connected clients
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
@@ -652,28 +677,6 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
                 this.rootElement = options.root;
                 this.mode = options.mode || 'history';
                 this.routes = new Map();
-                this.basePath = options.basePath || '';
-                this.notFoundComponent = options.notFoundComponent || null;
-                this.transitionDuration = options.transitionDuration || 0;
-                this.currentComponent = null;
-                
-                // Setup event listeners for route changes
-                if (this.mode === 'history') {
-                  window.addEventListener('popstate', () => this.handleRouteChange());
-                } else {
-                  window.addEventListener('hashchange', () => this.handleRouteChange());
-                }
-                
-                // Initialize immediately after construction
-                setTimeout(() => this.handleRouteChange(), 0);
-                
-                // Debug log only in development mode
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Initialized with mode:', this.mode);
-                }
-              }
-              
-              add(path, component) {
                 if (process.env.NODE_ENV === 'development') {
                   console.log('[Router] Registering route:', path);
                 }

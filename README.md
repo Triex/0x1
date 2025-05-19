@@ -332,7 +332,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.68-1.alpaha**
+Current version: **0.0.69**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -1021,3 +1021,4 @@ Ultimately; adding crypto features to give the framework a real use case, and ab
   - [ ] `Coin dApp / Dashboard`, view connected wallet coin holdings, transactions + coin price, market cap, etc as appropriate.
   - [ ] `NFT`, NFT viewing UI, basic NFT minting and collection features.
 - [ ] Audit / ensure stable app router functionality (`"use server"`, `"use client"` tags work, `page.tsx` `actions.ts` work)
+- [ ] Full `ErrorBoundary` support, like `react-error-boundary` or `next-error-boundary`

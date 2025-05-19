@@ -4,6 +4,11 @@
  * This is the consolidated type declaration file for the 0x1 framework.
  */
 
+// Reference DOM types
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+/// <reference path="./jsx.d.ts" />
+
 // Clean import declarations for Next.js-style imports
 declare module '0x1/router' {
   export interface RouterOptions {
@@ -84,16 +89,10 @@ declare module '0x1/router' {
 
 // Main module declaration
 declare module '0x1' {
-  // JSX types and rendering
+  // JSX types and rendering - these are also defined in jsx.d.ts which is referenced above
   export function createElement(type: any, props: any, ...children: any[]): any;
-  export const Fragment: any;
+  export const Fragment: unique symbol;
   export function renderToString(node: any): string;
-  
-  // Component types
-  export type JSXNode = any;
-  export type JSXAttributes = Record<string, any>;
-  export type JSXChildren = any[];
-  export type ComponentFunction = (props: any) => any;
   
   // Store functionality
   export function createStore<T>(

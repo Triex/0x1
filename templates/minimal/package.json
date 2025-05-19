@@ -8,10 +8,11 @@
     "preview": "0x1 preview",
     "deploy": "0x1 deploy",
     "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write '**/*.{ts,tsx,css,html}'"
+    "format": "prettier --write '**/*.{ts,tsx,css,html}'",
+    "type-check": "bun --bun tsc --noEmit"
   },
   "dependencies": {
-    "0x1": "^0.0.68-2.alpaha"
+    "0x1": "^0.0.69"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {

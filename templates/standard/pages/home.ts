@@ -3,6 +3,7 @@
  */
 
 import { Card } from '../components/Card';
+import { Counter } from '../components/Counter';
 
 export function Home(): HTMLElement {
   const container = document.createElement('div');
@@ -34,6 +35,34 @@ export function Home(): HTMLElement {
     window.dispatchEvent(popStateEvent);
   };
   hero.appendChild(actionButton);
+  
+  // Interactive Counter Demo section
+  const demoSection = document.createElement('section');
+  demoSection.className = 'py-8 border-b border-gray-200 dark:border-gray-700';
+  container.appendChild(demoSection);
+  
+  const demoTitle = document.createElement('h2');
+  demoTitle.className = 'text-2xl font-bold text-center mb-6 text-gray-900 dark:text-white';
+  demoTitle.textContent = 'Interactive Component';
+  demoSection.appendChild(demoTitle);
+  
+  const demoText = document.createElement('p');
+  demoText.className = 'text-center text-gray-600 dark:text-gray-300 mb-6 max-w-2xl mx-auto';
+  demoText.textContent = 'Try out this interactive counter component with full dark mode support.';
+  demoSection.appendChild(demoText);
+  
+  const counterContainer = document.createElement('div');
+  counterContainer.className = 'flex justify-center mb-8';
+  demoSection.appendChild(counterContainer);
+  
+  // Add Counter component
+  const counter = Counter({
+    initialValue: 0,
+    minValue: -10,
+    maxValue: 10,
+    label: 'Interactive Counter'
+  });
+  counterContainer.appendChild(counter);
   
   // Features section
   const features = document.createElement('section');
