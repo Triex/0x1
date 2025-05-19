@@ -5,12 +5,26 @@
  */
 
 import { serve, spawn, type Server, type Subprocess } from 'bun';
-import { Dirent, existsSync, mkdirSync, readdirSync } from 'fs';
-import { watch } from 'fs/promises';
+import { Dirent, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { mkdir, watch, writeFile } from 'fs/promises';
 import os from 'os';
-import { join, resolve } from 'path';
+import { basename, dirname, extname, join, relative, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 import { build } from './build.js';
+
+/**
+ * Transform code content to handle 0x1 bare imports
+ * This converts imports like: import { Router } from '0x1/router' 
+ * to browser-compatible: import { Router } from '/0x1/router'
+ */
+function transformBareImports(content: string): string {
+  return content.replace(
+    /from\s+['"]0x1(\/[\w-]+)?['"]|import\s+['"]0x1(\/[\w-]+)?['"]|import\(['"]0x1(\/[\w-]+)?['"]\)/g,
+    (match) => {
+      return match.replace(/['"]0x1\//, '"/0x1/');
+    }
+  );
+}
 
 /**
  * Open browser at the given URL
@@ -412,39 +426,234 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         });
       }
       
-      // Special handling for 0x1 framework imports
+      // Handle framework core files
+      if (path === '/core/navigation.js') {
+        // Provide the router implementation
+        const moduleContent = `
+          // 0x1 Router Implementation
+          export class Router {
+            constructor(options) {
+              this.rootElement = options.root;
+              this.mode = options.mode || 'history';
+              this.routes = new Map();
+              this.basePath = options.basePath || '';
+              this.notFoundComponent = options.notFoundComponent || null;
+              this.transitionDuration = options.transitionDuration || 0;
+              
+              // Setup event listeners for route changes
+              if (this.mode === 'history') {
+                window.addEventListener('popstate', () => this.handleRouteChange());
+              } else {
+                window.addEventListener('hashchange', () => this.handleRouteChange());
+              }
+              
+              // Initialize on document ready
+              if (document.readyState === 'complete') {
+                this.handleRouteChange();
+              } else {
+                window.addEventListener('load', () => this.handleRouteChange());
+              }
+            }
+            
+            addRoute(path, component) {
+              this.routes.set(path, component);
+              return this;
+            }
+            
+            navigate(path) {
+              const url = this.basePath + path;
+              if (this.mode === 'history') {
+                window.history.pushState(null, '', url);
+                this.handleRouteChange();
+              } else {
+                window.location.hash = url;
+              }
+            }
+            
+            handleRouteChange() {
+              const path = this.mode === 'history' 
+                ? window.location.pathname.replace(this.basePath, '') || '/' 
+                : window.location.hash.replace('#' + this.basePath, '') || '/';
+              
+              const component = this.routes.get(path) || this.notFoundComponent;
+              
+              if (!component) {
+                console.error(\`Route \${path} not found and no not-found component provided\`);
+                return;
+              }
+              
+              // Clear previous content with animation
+              this.rootElement.style.opacity = '0';
+              
+              setTimeout(() => {
+                // Clear the root element
+                this.rootElement.innerHTML = '';
+                
+                // Render the component
+                const element = component.render();
+                this.rootElement.appendChild(element);
+                
+                // Call onMount if it exists
+                if (component.onMount) {
+                  component.onMount(element);
+                }
+                
+                // Restore visibility
+                this.rootElement.style.opacity = '1';
+                console.log('Rendered route: ' + path);
+              }, this.transitionDuration);
+            }
+            
+            back() {
+              window.history.back();
+            }
+            
+            forward() {
+              window.history.forward();
+            }
+          }
+          
+          export class Link {
+            constructor(options) {
+              this.to = options.to;
+              this.text = options.text;
+              this.className = options.className || '';
+            }
+            
+            render() {
+              const link = document.createElement('a');
+              link.href = this.to;
+              link.className = this.className;
+              link.textContent = this.text;
+              return link;
+            }
+          }
+          
+          export class NavLink extends Link {
+            constructor(options) {
+              super(options);
+              this.activeClass = options.activeClass || 'active';
+            }
+          }
+          
+          export class Redirect {
+            constructor(options) {
+              this.to = options.to;
+            }
+            
+            render() {
+              const div = document.createElement('div');
+              div.style.display = 'none';
+              
+              // Redirect after render
+              setTimeout(() => {
+                window.location.href = this.to;
+              }, 0);
+              
+              return div;
+            }
+          }
+        `;
+        
+        return new Response(moduleContent, {
+          headers: {
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache',
+          },
+        });
+      }
+      
+      // Special handling for 0x1 framework imports (both as direct path and as import)
       // This allows clean imports like: import { Router } from '0x1/router'
-      if (path.startsWith('/0x1/')) {
-        // Extract the module path
-        const modulePath = path.replace('/0x1/', '');
+      if (path.startsWith('/0x1/') || path === '/node_modules/0x1/router' || path === '/node_modules/0x1/router.js') {
+        // Extract the module path - handle different import patterns
+        let modulePath = '';
+        
+        if (path.startsWith('/0x1/')) {
+          modulePath = path.replace('/0x1/', '');
+        } else if (path === '/node_modules/0x1/router' || path === '/node_modules/0x1/router.js') {
+          modulePath = 'router';
+        }
         
         // Map the module to its actual implementation
         let moduleContent = '';
         
         if (modulePath === 'router' || modulePath === 'router.js') {
-          // Provide the router module
+          // Provide the router module directly instead of reimporting
           moduleContent = `
             // 0x1 Router Module - Browser Compatible Version
-            import { Router as _Router, Link as _Link, NavLink as _NavLink, Redirect as _Redirect } from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/router.js';
-            
-            // Re-export with proper names
-            export const Router = _Router;
-            export const Link = _Link;
-            export const NavLink = _NavLink;
-            export const Redirect = _Redirect;
+            // Direct implementation for browser compatibility
+            export class Router {
+              constructor(options) {
+                this.rootElement = options.root;
+                this.mode = options.mode || 'history';
+                this.routes = new Map();
+                this.basePath = options.basePath || '';
+                this.notFoundComponent = options.notFoundComponent || null;
+                this.transitionDuration = options.transitionDuration || 0;
+                
+                // Setup event listeners for route changes
+                if (this.mode === 'history') {
+                  window.addEventListener('popstate', () => this.handleRouteChange());
+                } else {
+                  window.addEventListener('hashchange', () => this.handleRouteChange());
+                }
+                
+                // Initialize on document ready
+                if (document.readyState === 'complete') {
+                  this.handleRouteChange();
+                } else {
+                  window.addEventListener('load', () => this.handleRouteChange());
+                }
+              }
+              
+              addRoute(path, component) {
+                this.routes.set(path, component);
+                return this;
+              }
+              
+              navigate(path) {
+                const url = this.basePath + path;
+                if (this.mode === 'history') {
+                  window.history.pushState(null, '', url);
+                  this.handleRouteChange();
+                } else {
+                  window.location.hash = url;
+                }
+              }
+              
+              handleRouteChange() {
+                const path = this.mode === 'history' 
+                  ? window.location.pathname.replace(this.basePath, '') || '/' 
+                  : window.location.hash.replace('#' + this.basePath, '') || '/';
+                
+                const component = this.routes.get(path) || this.notFoundComponent;
+                
+              render() {
+                const div = document.createElement('div');
+                div.style.display = 'none';
+                
+                // Redirect after render
+                setTimeout(() => {
+                  window.location.href = this.to;
+                }, 0);
+                
+                return div;
+              }
+            }
             
             // Default export for convenience
             export default Router;
           `;
-        } else if (modulePath === '' || modulePath === 'index.js') {
+        } else if (modulePath === '' || modulePath === 'index.js' || path === '/node_modules/0x1/index.js') {
           // Provide the main 0x1 module
           moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            import * as Core from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/index.js';
+            import { Router, Link, NavLink, Redirect } from '/0x1/router';
             
             // Re-export everything
-            export default Core;
-            export * from '${req.url.startsWith('https') ? 'https' : 'http'}://${req.headers.get('host') || 'localhost'}/node_modules/0x1/dist/index.js';
+            export { Router, Link, NavLink, Redirect };
+            export default { Router, Link, NavLink, Redirect };
           `;
         }
         
@@ -608,9 +817,13 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         // For TypeScript files, transpile them on the fly using Bun.Transpiler
         if (path.endsWith('.ts') || path.endsWith('.tsx')) {
           try {
-            const fileContent = await file.text();
+            // Transform source for better browser compatibility
+            let fileContent = await file.text();
             
-            // Use Bun's built-in transpiler for significantly better performance
+            // First transform bare imports (0x1/router) to browser-compatible paths
+            fileContent = transformBareImports(fileContent);
+            
+            // Create transpiler with better browser compatibility
             const transpiler = new Bun.Transpiler({
               loader: path.endsWith('.tsx') ? 'tsx' : 'ts',
               // Bun transpiler uses these options
