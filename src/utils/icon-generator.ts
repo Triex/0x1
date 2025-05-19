@@ -319,7 +319,7 @@ export async function generateBasicIcons(
     themeColor?: string;
     backgroundColor?: string;
     theme?: string;
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src' | 'app' | 'minimal';
   }
 ): Promise<void> {
   // Prepare options from project config
@@ -337,16 +337,32 @@ export async function generateBasicIcons(
   };
   
   // Determine the correct base path based on the project structure
-  const projectStructure = projectOptions.projectStructure || 'root';
+  const projectStructure = projectOptions.projectStructure || 'minimal';
 
   try {
     // Determine public directory path based on project structure
     const publicDir = join(projectPath, 'public');
     const iconDir = join(publicDir, 'icons');
-    
-    // Create directories recursively
-    await mkdir(iconDir, { recursive: true });
-    console.log(`Created directories: ${iconDir}`);
+
+    // Create directories based on project structure
+    if (projectStructure === 'minimal') {
+      // For minimal structure, ensure the public directory exists
+      const publicExists = existsSync(publicDir);
+      if (!publicExists) {
+        await mkdir(publicDir, { recursive: true });
+        console.log(`Created directory: ${publicDir}`);
+      }
+      
+      // Create icons directory if needed
+      if (!existsSync(iconDir)) {
+        await mkdir(iconDir, { recursive: true });
+        console.log(`Created directory: ${iconDir}`);
+      }
+    } else {
+      // Default behavior for other structures
+      await mkdir(iconDir, { recursive: true });
+      console.log(`Created directories: ${iconDir}`);
+    }
 
     // Generate favicon.svg (32px)
     const faviconContent = generateSVG(32, iconOptions);
@@ -372,7 +388,8 @@ export async function generateBasicIcons(
 export async function generateAllIcons(
   projectPath: string,
   pwaConfig: PWAConfig,
-  options: IconGeneratorOptions = {}
+  options: IconGeneratorOptions = {},
+  projectStructure: 'root' | 'src' | 'app' | 'minimal' = 'minimal'
 ): Promise<void> {
   // Use type augmentation to properly access extended properties with type safety
   interface ExtendedPWAConfig extends PWAConfig {

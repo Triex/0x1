@@ -16,8 +16,14 @@ import { build } from './build.js';
  * Open browser at the given URL
  */
 async function openBrowser(url: string): Promise<void> {
-  const { default: opener } = await import('opener');
-  opener(url);
+  // Use Bun's native capabilities instead of external dependencies
+  const openUrl = (url: string) => {
+    return Bun.spawn(['open', url], {
+      stdout: 'inherit',
+      stderr: 'inherit'
+    });
+  };
+  await openUrl(url);
 }
 
 /**
@@ -568,8 +574,9 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
               // Handle jsx/tsx content
               macro: {
                 // Convert JSX to createElement calls
-                jsxFactory: 'createElement',
-                jsxFragment: 'Fragment',
+                // Using Record<string, string> format for type compatibility
+                jsxFactory: { jsx: 'createElement' },
+                jsxFragment: { jsx: 'Fragment' },
               },
             });
             

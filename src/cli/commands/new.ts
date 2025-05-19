@@ -3,11 +3,11 @@
  * Creates a new 0x1 project with the specified template
  */
 
+import chalk from 'chalk';
 import { existsSync, readdirSync } from 'fs';
 import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation compatibility
 import { join, resolve } from 'path';
 import prompts from 'prompts';
-import chalk from 'chalk';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
 // Add execa type definition - keeping for backward compatibility
@@ -79,8 +79,9 @@ interface NewProjectOptions {
   pwa?: boolean;
   'no-pwa'?: boolean; // Add explicit no-pwa flag
   themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
-  // Only app directory structure is supported for Next.js 15 compatibility
-  useNextStyle?: boolean; // Use Next.js 15-style app directory structure (always true)
+  // Project structure support
+  useNextStyle?: boolean; // Use Next.js 15-style app directory structure (default true)
+  projectStructure?: 'minimal' | 'app' | 'root' | 'src';
   
   // PWA related properties
   themeColor?: string;
@@ -594,13 +595,12 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // Using standardized app directory structure for all projects
   logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
   const projectStructure = 'app';
-  const useNextStyle = true; // Always use Next.js style app directory structure
   
-  // Define PWA theme values
-  const themeColor = '#0077cc';
-  const secondaryColor = '#005fa3';
-  const themeResponse = { theme: 'light' };
-  const statusBarStyle: 'black-translucent' | 'default' | 'black' = 'black-translucent';
+  // Define default PWA theme values - these will be used if user doesn't set specific flags
+  const defaultPwaThemeColor = '#0077cc';
+  const defaultPwaSecondaryColor = '#005fa3';
+  const defaultPwaTheme = { theme: 'light' };
+  const defaultPwaStatusBarStyle: 'black-translucent' | 'default' | 'black' = 'black-translucent';
 
   // Ask about PWA support (not needed for minimal templates)
   // Define a proper PWA default: If pwa flag is explicitly true, use Yes, if explicitly false (or --no-pwa), use No
@@ -640,13 +640,13 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   const selectedThemeColors = themeColorMap[themeKey] || themeColorMap['classic'];
   
   // Use theme color for PWA by default
-  let themeColor = selectedThemeColors.primary;
-  const secondaryColor = selectedThemeColors.secondary;
-  const textColor = selectedThemeColors.text;
+  let pwaThemeColor = selectedThemeColors.primary;
+  const pwaSecondaryColor = selectedThemeColors.secondary;
+  const pwaTextColor = selectedThemeColors.text;
   
   // Ask for PWA options if PWA is enabled
   // Default to 'default' status bar style
-  let statusBarStyle: string = 'default';
+  let pwaStatusBarStyle: 'default' | 'black-translucent' | 'black' = 'default';
   
   if (pwaResponse.pwa) {
     // Ask about status bar style first
@@ -662,7 +662,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
       initial: 0
     });
     
-    statusBarStyle = statusBarResponse.statusBarStyle;
+    pwaStatusBarStyle = statusBarResponse.statusBarStyle;
     
     // Ask about theme colors
     const usePredefinedColors = await promptWithCancel({
@@ -692,17 +692,17 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
         initial: 0
       });
       
-      themeColor = customColorResponse.themeColor;
+      pwaThemeColor = customColorResponse.themeColor;
       
       // Ask for custom color if selected
-      if (themeColor === 'custom') {
+      if (pwaThemeColor === 'custom') {
         const hexColorResponse = await promptWithCancel({
           type: 'text',
           name: 'customColor',
           message: '🎨 Enter a custom hex color (e.g. #ff5500):',
           validate: (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value) ? true : 'Please enter a valid hex color (e.g. #ff5500)'
         });
-        themeColor = hexColorResponse.customColor;
+        pwaThemeColor = hexColorResponse.customColor;
       }
     }
   }
@@ -736,10 +736,10 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     themeMode: themeModeResponse.themeMode,
     projectStructure: 'app', // Fixed project structure for Next.js 15
     useNextStyle: true, // Always use Next.js style app directory structure
-    themeColor: themeColor,
-    secondaryColor: secondaryColor,
-    theme: themeResponse.theme,
-    statusBarStyle: statusBarStyle
+    themeColor: pwaThemeColor,
+    secondaryColor: pwaSecondaryColor,
+    theme: defaultPwaTheme.theme,
+    statusBarStyle: pwaStatusBarStyle
   };
 };
 
@@ -754,20 +754,17 @@ async function copyTemplate(
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'app';
+    projectStructure?: 'app' | 'minimal' | 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, complexity, themeMode = 'dark', projectStructure = 'app' } = options;
-  
-  // Simplified structure - TypeScript-only framework
-  // No need for languageDir as the structure is now flattened
+  const { useTailwind, complexity, themeMode = 'dark', projectStructure = 'minimal' } = options;
   
   // Get the current file's directory to use as base
   const currentDir = import.meta.dirname || '';
   logger.debug(`Current directory: ${currentDir}`);
   
-  // Define possible template paths in order of preference with flattened structure
-  const possiblePaths = [
+  // Define possible template paths for the minimal structure
+  const minimalPaths = [
     // Development path from source directory
     join(currentDir, '../../../templates', complexity),
     // Global installation path
@@ -780,103 +777,102 @@ async function copyTemplate(
     join(currentDir, '../../../../templates', complexity)
   ];
   
-  logger.debug(`Checking template paths:\n${possiblePaths.join('\n')}`);
+  // Define possible template paths for the legacy structure (templates/complexity/typescript)
+  const legacyPaths = minimalPaths.map(path => join(path, 'typescript'));
   
-  // Find the first path that exists
+  logger.debug(`Checking template paths:\n${minimalPaths.join('\n')}`);
+  
+  // Find the first valid template path, preferring minimal structure
   let templatePath = '';
-  for (const path of possiblePaths) {
-    // Use Bun's native file API for checking file existence
+  let isMinimalStructure = false;
+  
+  // First try the minimal structure
+  for (const path of minimalPaths) {
     if (existsSync(path)) {
       templatePath = path;
-      logger.debug(`Found valid template path: ${templatePath}`);
+      isMinimalStructure = true;
+      logger.debug(`Using minimal template structure: ${templatePath}`);
       break;
+    }
+  }
+  
+  // If minimal structure not found, try legacy structure
+  if (!templatePath) {
+    for (const path of legacyPaths) {
+      if (existsSync(path)) {
+        templatePath = path;
+        logger.debug(`Using legacy template structure: ${templatePath}`);
+        break;
+      }
     }
   }
   
   // If no template path exists, throw an error
   if (!templatePath) {
-    throw new Error(`Template path does not exist. Tried:\n${possiblePaths.join('\n')}`);
+    throw new Error(`Template path does not exist. Tried:\n${minimalPaths.join('\n')}`);
   }
   
-  // Copy template files using internal copy function
-  await copyTemplateFiles(templatePath, projectPath, { 
-    useTailwind, 
+  // Copy template files from the detected template directory to project directory
+  await copyTemplateFiles(templatePath, projectPath, {
+    useTailwind,
     complexity,
-    themeMode, 
-    projectStructure
+    useStateManagement: options.useStateManagement,
+    themeMode,
+    projectStructure,
+    isMinimalStructure
   });
+  
+  // Create package.json (only if not using minimal structure or package.json doesn't exist)
+  const projectPackageJsonPath = join(projectPath, 'package.json');
+  if (!isMinimalStructure || !existsSync(projectPackageJsonPath)) {
+    await createPackageJson(projectPath, {
+      useTailwind,
+      useStateManagement: options.useStateManagement,
+      minimal: complexity === 'minimal',
+      projectStructure
+    });
+  }
 }
 
 /**
- * Optimized recursive copy function using Bun's high-performance APIs
- * This implementation prioritizes speed and efficiency for larger projects
+ * Optimized recursive copy function for copying directory contents
+ * @param src Source directory or file path
+ * @param dest Destination directory or file path
  */
-async function copyRecursive(src: string, dest: string) {
+async function copyRecursive(src: string, dest: string): Promise<void> {
   try {
-    // Try an optimized approach first for directories
-    const { statSync } = await import('fs');
-    const { join } = await import('path');
-    const stats = statSync(src);
+    const stats = Bun.file(src).size !== null ? { isDirectory: () => false } : { isDirectory: () => true };
     const isDirectory = stats.isDirectory();
     
-    // Debug logging
-    logger.debug(`Copying: ${src} -> ${dest}`);
-    
     if (isDirectory) {
-      // Fast path: Use optimized directory copy if possible
-      // Create the destination directory
+      // Create destination directory if it doesn't exist
       if (!existsSync(dest)) {
         await mkdir(dest, { recursive: true });
       }
       
-      // Try to use Bun's optimized file operations for bulk copying
-      try {
-        // For directories that might contain many files, use a system-level copy
-        // which is much faster than copying files one by one
-        const ignoreItems = ['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store']
-          .map(item => `--exclude=${item}`)
-          .join(' ');
-        
-        // Use rsync for intelligent copying with exclusions
-        // This is dramatically faster for large directories and handles exclusions efficiently
-        const result = Bun.spawnSync(
-          ['rsync', '-avh', '--exclude=node_modules', '--exclude=.git', 
-           '--exclude=dist', '--exclude=bun.lockb', '--exclude=.DS_Store', 
-           `${src}/`, dest], 
-          { stdout: 'pipe', stderr: 'pipe' }
-        );
-        
-        if (result.exitCode === 0) {
-          logger.debug(`Efficiently copied directory using rsync: ${src} -> ${dest}`);
-          return; // Successfully copied with the optimized method
-        }
-        
-        // Fall back to manual approach if rsync isn't available
-        throw new Error('Optimized directory copy failed, falling back to manual copy');
-      } catch (error) {
-        // Fallback to manual copying if the optimized approach fails
-        logger.debug(`Using fallback copy method: ${error}`);
-        
-        // Read all items in the source directory
-        const items = readdirSync(src);
-        
-        // Use Promise.all for parallel processing to speed up file copying
-        await Promise.all(
-          items
-            .filter(item => !['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(item))
-            .map(async (item) => {
-              const srcPath = join(src, item);
-              const destPath = join(dest, item);
-              return copyRecursive(srcPath, destPath);
-            })
-        );
-      }
+      // Read all entries in the source directory
+      const entries = readdirSync(src);
+      
+      // Use Promise.all for concurrent processing
+      await Promise.all(
+        entries
+          .filter(entry => !['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(entry))
+          .map(async entry => {
+            const srcPath = join(src, entry);
+            const destPath = join(dest, entry);
+            return copyRecursive(srcPath, destPath);
+          })
+      );
     } else {
-      // Optimized file copy - use binary transfer for all file types
-      // This is faster than text() + write() especially for binary files
+      // Create parent directory if it doesn't exist
+      const destDir = dest.split('/').slice(0, -1).join('/');
+      if (destDir && !existsSync(destDir)) {
+        await mkdir(destDir, { recursive: true });
+      }
+      
+      // Directly copy file using Bun APIs for better performance
       const sourceFile = Bun.file(src);
-      await Bun.write(dest, sourceFile); // Direct file-to-file copy
-      logger.debug(`Copied file: ${src} → ${dest}`);
+      await Bun.write(dest, sourceFile);
     }
   } catch (error) {
     logger.error(`Error copying ${src} to ${dest}: ${error}`);
@@ -895,56 +891,59 @@ async function copyTemplateFiles(
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src' | 'app' | 'minimal';
+    isMinimalStructure?: boolean;
   }
 ): Promise<void> {
   // The sourceType should already include the language folder (typescript/javascript)
-  const spinner = logger.spinner(`Creating Next.js 15 app directory structure from ${options.complexity} template`);
+  logger.info(`Copying template files from ${sourcePath} to ${destPath}`);
   
-  // Check if the source path exists
-  if (!existsSync(sourcePath)) {
-    throw new Error(`Template path does not exist: ${sourcePath}`);
-  }
-
+  // Create the destination directory if it doesn't exist
+  await mkdir(destPath, { recursive: true });
+  
+  const { projectStructure = 'minimal', isMinimalStructure = false } = options;
+  
   try {
-    // Always create app directory for Next.js 15 structure
-    const appDir = join(destPath, 'app');
-    if (!existsSync(appDir)) {
-      await mkdir(appDir, { recursive: true });
-    }
-    
-    // Copy files to the app directory structure
-    await copyRecursive(sourcePath, appDir);
+    if (projectStructure === 'app') {
+      // For app directory structure (Next.js 15 style)
+      const appDir = join(destPath, 'app');
+      if (!existsSync(appDir)) {
+        await mkdir(appDir, { recursive: true });
+      }
       
-    // Move specific files back to root that shouldn't be in app directory
-    const rootFiles = [
-      '.gitignore',
-      'README.md',
-      'package.json',
-      'tsconfig.json',
-      'postcss.config.js',
-      'tailwind.config.js',
-      '0x1.config.js',
-      '0x1.config.ts'
-    ];
-    
-    for (const file of rootFiles) {
-      const appFilePath = join(appDir, file);
-      if (existsSync(appFilePath)) {
-        const rootFilePath = join(destPath, file);
-        await Bun.write(rootFilePath, Bun.file(appFilePath));
-        // Remove the file from app directory
-        try {
-          Bun.spawnSync(['rm', appFilePath], { cwd: destPath });
-        } catch (e) {
-          // Ignore errors, file may not exist
+      // Copy files to the app directory structure
+      await copyRecursive(sourcePath, appDir);
+        
+      // Move specific files back to root that shouldn't be in app directory
+      const rootFiles = [
+        '.gitignore',
+        'README.md',
+        'package.json',
+        'tsconfig.json',
+        'postcss.config.js',
+        'tailwind.config.js',
+        '0x1.config.js',
+        '0x1.config.ts'
+      ];
+      
+      for (const file of rootFiles) {
+        const appFilePath = join(appDir, file);
+        if (existsSync(appFilePath)) {
+          const rootFilePath = join(destPath, file);
+          await Bun.write(rootFilePath, Bun.file(appFilePath));
+          // Remove the file from app directory
+          try {
+            Bun.spawnSync(['rm', appFilePath], { cwd: destPath });
+          } catch (e) {
+            // Ignore errors, file may not exist
+          }
         }
       }
+    } else {
+      // For minimal structure, copy files directly to destination
+      await copyRecursive(sourcePath, destPath);
     }
-    
-    spinner.stop('success', 'Next.js 15 app directory structure created successfully');
   } catch (error) {
-    spinner.stop('error', `Error copying template: ${error}`);
     logger.error(`Error copying template: ${error}`);
     throw error;
   }
@@ -970,12 +969,10 @@ async function createPackageJson(
     useTailwind: boolean;
     useStateManagement?: boolean;
     minimal?: boolean;
-    projectStructure?: 'root' | 'src' | 'app';
+    projectStructure?: 'root' | 'src' | 'app' | 'minimal';
   }
 ): Promise<void> {
   const { useTailwind, useStateManagement, minimal, projectStructure } = options;
-  // Declare unused variables with underscore prefix to satisfy linting
-  const _useStateManagement = useStateManagement;
   const _minimal = minimal;
   
   // Basic package.json structure
@@ -989,7 +986,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.51' // Use current version with caret for compatibility
+      "0x1": '^0.0.53' // Use current version with caret for compatibility
     },
     devDependencies: {
       // TypeScript is always included as 0x1 is TypeScript-only
