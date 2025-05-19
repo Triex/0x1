@@ -1,15 +1,8 @@
 /**
  * 0x1 Minimal App - Entry Point
- * Using app directory structure
+ * Using automatic app directory structure
  */
-import { Router } from '../../src/core/router';
-
-// Simple component registry - for app directory structure
-const appComponents = {
-  'app/page': { default: require('./app/page').default },
-  'app/layout': { default: require('./app/layout').default },
-  'app/not-found': { default: require('./app/not-found').default }
-};
+import { Router } from '0x1/core/router';
 
 // DOM ready function
 function ready(callback: () => void): void {
@@ -60,12 +53,13 @@ ready(() => {
   // Initialize theme handling
   initializeTheme();
   
-  // Initialize the router with app directory structure
+  // Initialize the router with automatic app directory discovery
   const router = new Router({
     rootElement: appContainer,
     mode: 'history',
     transitionDuration: 150,
-    appComponents: appComponents
+    // Let 0x1 automatically discover components
+    autoDiscovery: true
   });
   
   router.init();

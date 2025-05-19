@@ -18,6 +18,6 @@
     "types": ["bun-types"],
     "lib": ["DOM", "DOM.Iterable", "ESNext"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "types/config.ts", "types/execa.d.ts", "types/jsx.d.ts", "types/prompts.d.ts"],
   "exclude": ["node_modules", "dist", "templates"]
 }

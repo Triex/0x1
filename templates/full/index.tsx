@@ -1,15 +1,8 @@
 /**
  * 0x1 Full App - Entry Point
- * Using app directory structure
+ * Using automatic app directory structure
  */
-import type { Component } from '../../src/core/component';
-import { Router } from '../../src/core/router';
-import { getAppComponents } from './lib/component-registry';
-
-// Cast function for component compatibility with core component type
-function castToComponent<T>(component: any): T {
-  return component as T;
-}
+import { Router } from '0x1/core/router';
 
 // DOM ready function
 function ready(callback: () => void): void {
@@ -106,12 +99,13 @@ ready(() => {
   // Initialize navigation events
   initializeNavigation();
   
-  // Initialize the router with app directory structure
+  // Initialize the router with automatic app directory discovery
   const router = new Router({
     rootElement: appContainer,
     mode: 'history',
     transitionDuration: 150,
-    appComponents: castToComponent<Record<string, { default: Component }>>(getAppComponents())
+    // Let 0x1 automatically discover components
+    autoDiscovery: true
   });
   
   router.init();

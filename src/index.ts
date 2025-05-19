@@ -7,14 +7,13 @@
  */
 
 // Export core components and functionality
-export { 
-  fromHTML,
-  mount, 
-  template, 
-  textElement, 
-  updateComponent,
+export {
   // Use legacy names for HTML element creation functions
-  createElement as createComponentElement
+  createElement as createComponentElement, fromHTML,
+  mount,
+  template,
+  textElement,
+  updateComponent
 } from './core/component.js';
 export type { Component, ComponentProps } from './core/component.js';
 
@@ -23,15 +22,13 @@ export type { Component, ComponentProps } from './core/component.js';
 export {
   createElement,
   Fragment,
-  renderToString,
+  renderToString
 } from './jsx-runtime.js';
 
 // Export JSX types
-export type { 
-  JSXNode,
-  JSXAttributes,
-  JSXChildren,
-  ComponentFunction 
+export type {
+  ComponentFunction, JSXAttributes,
+  JSXChildren, JSXNode
 } from './jsx-runtime.js';
 
 // Export router and navigation
@@ -68,7 +65,7 @@ export {
 export { clearElement, patchElement, setAttributes, setStyles } from './utils/dom.js';
 
 // Config types
-export type { _0x1Config } from './types/config.js';
+export type { _0x1Config } from '../types/config.js';
 
 // Version info
 export const version = '0.1.0';
