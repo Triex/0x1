@@ -987,7 +987,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.58' // Use current version with caret for compatibility
+      "0x1": '^0.0.59' // Use current version with caret for compatibility
     },
     devDependencies: {
       // TypeScript is always included as 0x1 is TypeScript-only

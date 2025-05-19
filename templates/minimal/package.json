@@ -11,7 +11,7 @@
     "format": "prettier --write '**/*.{ts,tsx,css,html}'"
   },
   "dependencies": {
-    "0x1": "^0.0.58"
+    "0x1": "^0.0.59"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.1.0",
