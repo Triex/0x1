@@ -41,42 +41,57 @@ async function updateTemplateVersions(version: string): Promise<void> {
   const templateTypes = ['minimal', 'standard', 'full'];
   const languageTypes = ['typescript', 'javascript'];
   
-  // Template folders follow the pattern templates/{type}/{language}
+  // Process all template directories
   for (const type of templateTypes) {
+    // First check if this is a new minimal structure (direct package.json)
+    const directTemplatePath = join(templatesDir, type);
+    const directPackageJsonPath = join(directTemplatePath, 'package.json');
+    
+    // Check for direct package.json (new minimal structure)
+    if (existsSync(directPackageJsonPath)) {
+      console.log(`Updating ${type}/package.json (minimal structure)`);
+      await updatePackageJsonDependencies(directPackageJsonPath, version);
+    }
+    
+    // Still check for templates/{type}/{language} structure (backwards compatibility)
     for (const language of languageTypes) {
-      const templatePath = join(templatesDir, type, language);
+      const nestedTemplatePath = join(templatesDir, type, language);
       
-      if (existsSync(templatePath)) {
-        const packageJsonPath = join(templatePath, 'package.json');
+      if (existsSync(nestedTemplatePath)) {
+        const packageJsonPath = join(nestedTemplatePath, 'package.json');
         
         if (existsSync(packageJsonPath)) {
           console.log(`Updating ${type}/${language}/package.json`);
-          
-          // Read and parse package.json
-          // Use Bun's native file API for better performance
-          const packageJsonContent = await Bun.file(packageJsonPath).text();
-          const packageJson = JSON.parse(packageJsonContent);
-          
-          // Update 0x1 dependency version
-          if (packageJson.dependencies && packageJson.dependencies['0x1']) {
-            packageJson.dependencies['0x1'] = `^${version}`;
-          }
-          
-          // Update 0x1-store dependency version (if it exists)
-          if (packageJson.dependencies && packageJson.dependencies['0x1-store']) {
-            packageJson.dependencies['0x1-store'] = `^${version}`;
-          }
-          
-          // Write updated package.json
-          // Use Bun's native file API for better performance
-          await Bun.write(
-            packageJsonPath, 
-            JSON.stringify(packageJson, null, 2) + '\n'
-          );
+          await updatePackageJsonDependencies(packageJsonPath, version);
         }
       }
     }
   }
+}
+
+// Helper function to update package.json dependencies
+async function updatePackageJsonDependencies(packageJsonPath: string, version: string): Promise<void> {
+  // Read and parse package.json
+  // Use Bun's native file API for better performance
+  const packageJsonContent = await Bun.file(packageJsonPath).text();
+  const packageJson = JSON.parse(packageJsonContent);
+  
+  // Update 0x1 dependency version
+  if (packageJson.dependencies && packageJson.dependencies['0x1']) {
+    packageJson.dependencies['0x1'] = `^${version}`;
+  }
+  
+  // Update 0x1-store dependency version (if it exists)
+  if (packageJson.dependencies && packageJson.dependencies['0x1-store']) {
+    packageJson.dependencies['0x1-store'] = `^${version}`;
+  }
+  
+  // Write updated package.json
+  // Use Bun's native file API for better performance
+  await Bun.write(
+    packageJsonPath, 
+    JSON.stringify(packageJson, null, 2) + '\n'
+  );
 }
 
 // Update hardcoded version references in the CLI code

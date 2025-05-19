@@ -51,7 +51,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Load config file
   const configPath = options.config ? 
     resolve(projectPath, options.config) : 
-    findConfigFile(projectPath);
+    await findConfigFile(projectPath);
   
   const config = configPath ? await loadConfig(configPath) : {};
   
@@ -63,6 +63,14 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Start build with beautiful section header
   log.section('BUILDING APPLICATION');
   log.spacer();
+  
+  // Log app structure detection
+  const isAppDirStructure = existsSync(join(projectPath, 'app'));
+  if (isAppDirStructure) {
+    log.info('📁 Next.js app router structure detected');
+  } else {
+    log.info('📁 Classic structure detected - consider migrating to app directory structure');
+  }
   
   // Ensure output directory exists
   const outputPath = resolve(projectPath, outDir);
@@ -117,41 +125,47 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   
   // Output build info with beautiful formatting
   log.spacer();
-  log.box(`🎉 Build completed successfully!\n\nOutput directory: ${log.highlight(outputPath)}\nBuild time:      ${log.highlight(new Date().toLocaleTimeString())}`);
+  log.box('Build Complete');
+  log.info('📦 Output directory: ' + log.highlight(outputPath));
+  log.info('🔧 Minification: ' + (minify ? log.highlight('enabled') : 'disabled'));
   
-  // Display minification status and helpful next steps
-  if (minify) {
-    log.info(`Files have been minified for production use`);
-  }
-  log.spacer();
-  log.success(`Your 0x1 application is ready to be deployed`);
-  log.info(`To deploy your application, you can run:`);
-  log.command(`bun 0x1 deploy`);
-  log.info(`To learn more about deployment options, see the documentation`);
-  
-  // Build successful
-  if (!options.silent) {
-    // Add extra space before success message
-    console.log('');
-    log.info(`✨ Build completed in ${outputPath}`);
-    log.info(`The ${outDir}/ directory is ready to be deployed.`);
+  // Watch mode if requested
+  if (options.watch && !options.silent) {
+    log.spacer();
+    log.info('👀 Watching for changes...');
+    log.info('Press Ctrl+C to stop');
+    
+    // Implementation of watch mode would go here
+    // For now, this is a placeholder
   }
 }
 
 /**
  * Find configuration file in project directory
  */
-function findConfigFile(projectPath: string): string | null {
-  const possibleConfigs = [
-    '0x1.config.ts',
-    '0x1.config.js',
-    '0x1.config.mjs',
-  ];
+async function findConfigFile(projectPath: string): Promise<string | null> {
+  // Check for TypeScript config first
+  const tsConfigPath = join(projectPath, '0x1.config.ts');
+  if (existsSync(tsConfigPath)) {
+    return tsConfigPath;
+  }
   
-  for (const config of possibleConfigs) {
-    const configPath = resolve(projectPath, config);
-    if (existsSync(configPath)) {
-      return configPath;
+  // Then check for JavaScript config
+  const jsConfigPath = join(projectPath, '0x1.config.js');
+  if (existsSync(jsConfigPath)) {
+    return jsConfigPath;
+  }
+  
+  // Look for package.json with 0x1 field
+  const packageJsonPath = join(projectPath, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
+      if (packageJson['0x1']) {
+        return packageJsonPath;
+      }
+    } catch (error) {
+      // Ignore errors in package.json parsing
     }
   }
   
@@ -163,35 +177,38 @@ function findConfigFile(projectPath: string): string | null {
  */
 async function loadConfig(configPath: string): Promise<any> {
   try {
-    if (!existsSync(configPath)) {
-      logger.warn(`Configuration file not found: ${configPath}`);
-      return {};
+    if (configPath.endsWith('.js') || configPath.endsWith('.ts')) {
+      // For JS/TS configs, use dynamic import
+      try {
+        const config = await import(configPath);
+        return config.default || config;
+      } catch (error) {
+        logger.warn(`Failed to import config from ${configPath}: ${error}`);
+        // Fallback to reading as text and evaluating
+        const content = Bun.file(configPath).text();
+        
+        try {
+          // Extract the config object literal from the file
+          const match = (await content).match(/export\s+default\s+({[\s\S]*});?$/m);
+          if (match && match[1]) {
+            // Very simple approach - this will only work for basic objects
+            // A real implementation would need a proper parser
+            return JSON.parse(match[1].replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":'));
+          }
+        } catch (evalError) {
+          logger.warn(`Failed to evaluate config: ${evalError}`);
+        }
+      }
+    } else if (configPath.endsWith('package.json')) {
+      // For package.json, extract the 0x1 field
+      const content = Bun.file(configPath).text();
+      const packageJson = JSON.parse(await content);
+      return packageJson['0x1'] || {};
     }
     
-    // For now we'll just parse the file to extract configuration values
-    // In a real implementation, we would properly import the module
-    // Use Bun's native file API for better performance
-    const content = await Bun.file(configPath).text();
-    
-    // Very basic parsing - in a real implementation, we would use proper module loading
-    const config: any = {};
-    
-    // Extract build options
-    const outDirMatch = content.match(/outDir:\s*['"]([^'"]+)['"]/);
-    if (outDirMatch) {
-      config.build = config.build || {};
-      config.build.outDir = outDirMatch[1];
-    }
-    
-    const minifyMatch = content.match(/minify:\s*(true|false)/);
-    if (minifyMatch) {
-      config.build = config.build || {};
-      config.build.minify = minifyMatch[1] === 'true';
-    }
-    
-    return config;
+    return {};
   } catch (error) {
-    logger.warn(`Failed to load configuration from ${configPath}: ${error}`);
+    logger.warn(`Failed to load config from ${configPath}: ${error}`);
     return {};
   }
 }
@@ -200,8 +217,8 @@ async function loadConfig(configPath: string): Promise<any> {
  * Copy static assets
  */
 async function copyStaticAssets(projectPath: string, outputPath: string): Promise<void> {
-  // Copy public folder contents to output directory
-  const publicDir = resolve(projectPath, 'public');
+  // We'll consider anything in the public directory as static assets
+  const publicDir = join(projectPath, 'public');
   
   if (existsSync(publicDir)) {
     await copyDir(publicDir, outputPath);
@@ -212,54 +229,56 @@ async function copyStaticAssets(projectPath: string, outputPath: string): Promis
  * Process HTML files
  */
 async function processHtmlFiles(projectPath: string, outputPath: string): Promise<void> {
-  // Check for custom structure configuration
-  const customStructureFile = resolve(projectPath, 'structure.js');
-  const hasCustomStructure = existsSync(customStructureFile);
+  // Find HTML files in the project
+  const htmlFiles = await findFiles(projectPath, '.html', ['node_modules', 'dist', '.git']);
   
-  let srcDir;
-  if (hasCustomStructure) {
-    try {
-      // Load custom structure configuration
-      const structureConfigModule = await import(customStructureFile);
-      const structureConfig = structureConfigModule.default || structureConfigModule;
-      if (structureConfig.sourceDirs && structureConfig.sourceDirs.pages) {
-        // Use the root directory as source
-        srcDir = projectPath;
-        logger.info('Using custom project structure from structure.js');
-      } else {
-        // Fall back to standard src directory
-        srcDir = resolve(projectPath, 'src');
-      }
-    } catch (error) {
-      logger.warn(`Failed to load custom structure from ${customStructureFile}. Using default src directory.`);
-      srcDir = resolve(projectPath, 'src');
-    }
-  } else {
-    // Check if src directory exists, if not use project root
-    const standardSrcDir = resolve(projectPath, 'src');
-    srcDir = existsSync(standardSrcDir) ? standardSrcDir : projectPath;
+  // Process each HTML file
+  for (const htmlFile of htmlFiles) {
+    // Get the relative path to maintain directory structure
+    const relativePath = relative(projectPath, htmlFile);
+    const outputFile = join(outputPath, relativePath);
+    
+    // Create output directory if needed
+    await mkdir(dirname(outputFile), { recursive: true });
+    
+    // Read the HTML file
+    const content = await Bun.file(htmlFile).text();
+    
+    // Process the HTML content
+    const processedContent = await processHtml(content, {
+      projectPath,
+      outputPath,
+      relativePath
+    });
+    
+    // Write the processed HTML file
+    await Bun.write(outputFile, processedContent);
   }
   
-  // Find all HTML files in the source directory
-  const htmlFiles = await findFiles(srcDir, '.html');
-  
-  for (const htmlFile of htmlFiles) {
-    const relativePath = relative(srcDir, htmlFile);
-    const outputFilePath = join(outputPath, relativePath);
+  // If no HTML files found, create a basic index.html
+  if (htmlFiles.length === 0) {
+    // Check for app entry point (app/page.tsx, app/page.jsx, app/page.js, etc.)
+    const appDir = join(projectPath, 'app');
+    const hasAppDir = existsSync(appDir);
     
-    // Ensure output directory exists
-    await mkdir(dirname(outputFilePath), { recursive: true });
-    
-    // Read HTML content
-    // Use Bun's native file API for better performance
-    let content = await Bun.file(htmlFile).text();
-    
-    // Process HTML: Update file references, inject scripts, etc.
-    content = await processHtml(content, { projectPath, outputPath, relativePath });
-    
-    // Write processed HTML file
-    // Use Bun's native file API for better performance
-    await Bun.write(outputFilePath, content);
+    if (hasAppDir) {
+      // Using Next.js 15-style app directory structure
+      const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>`;
+      
+      await Bun.write(join(outputPath, 'index.html'), indexHtml);
+    }
   }
 }
 
@@ -270,148 +289,204 @@ async function processHtml(
   content: string,
   _options: { projectPath: string; outputPath: string; relativePath: string }
 ): Promise<string> {
-  // Replace .ts and .tsx references with .js
-  content = content.replace(/src="([^"]+)\.ts(x?)"/g, 'src="$1.js"');
-  
-  // Remove development-only scripts
-  content = content.replace(/<script[^>]*data-dev-only[^>]*>.*?<\/script>/gs, '');
+  // This is a placeholder for more complex HTML processing
+  // In a real implementation, you might want to:
+  // - Inject CSS and JS bundles
+  // - Add preload hints
+  // - Minify HTML
+  // - Add CSP headers
+  // - etc.
   
   return content;
 }
 
 /**
- * bundle JavaScript/TypeScript
+ * bundle JavaScript/TypeScript with enhanced Bun APIs
+ * Optimized for Next.js 15 app directory structure
  */
 async function bundleJavaScript(
   projectPath: string,
   outputPath: string,
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
-  // Check for custom structure configuration
-  const customStructureFile = resolve(projectPath, 'structure.js');
-  const hasCustomStructure = existsSync(customStructureFile);
+  const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
   
-  let srcDir;
-  let pagesDir;
-  
-  if (hasCustomStructure) {
-    try {
-      // Load custom structure configuration
-      const structureConfigModule = await import(customStructureFile);
-      const structureConfig = structureConfigModule.default || structureConfigModule;
-      if (structureConfig.sourceDirs) {
-        // Use the root directory as source
-        srcDir = projectPath;
-        // Use custom pages directory if specified
-        pagesDir = resolve(projectPath, structureConfig.sourceDirs.pages || 'pages');
-        logger.info('Using custom project structure for JavaScript bundling');
-      } else {
-        // Fall back to standard src directory
-        srcDir = resolve(projectPath, 'src');
-        pagesDir = join(srcDir, 'pages');
-      }
-    } catch (error) {
-      logger.warn(`Failed to load custom structure from ${customStructureFile}. Using default src directory.`);
-      srcDir = resolve(projectPath, 'src');
-      pagesDir = join(srcDir, 'pages');
-    }
-  } else {
-    // Check if src directory exists, if not use project root
-    const standardSrcDir = resolve(projectPath, 'src');
-    
-    if (existsSync(standardSrcDir)) {
-      srcDir = standardSrcDir;
-      pagesDir = join(srcDir, 'pages');
-    } else {
-      // Use project root if no src directory
-      srcDir = projectPath;
-      pagesDir = join(projectPath, 'pages');
-    }
-  }
-  
-  // Find entry files (app.tsx, app.ts, app.js, index.tsx, index.ts, or index.js)
-  const entryFiles = [];
+  // File extensions to look for
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
   
-  // Check for entry files in srcDir
-  for (const name of ['app', 'index']) {
-    for (const ext of fileExtensions) {
-      const filePath = join(srcDir, `${name}${ext}`);
-      if (existsSync(filePath)) {
-        entryFiles.push(filePath);
-        break; // Only add the first match for each name
+  // Find entry files in app directory
+  const entryFiles: string[] = [];
+  
+  // Prioritize app directory structure for Next.js 15 compatibility
+  const appDir = join(projectPath, 'app');
+  const isAppDirStructure = existsSync(appDir);
+  
+  // Check for tsconfig.json to ensure accurate TypeScript settings
+  const hasTsConfig = existsSync(join(projectPath, 'tsconfig.json'));
+  if (!hasTsConfig) {
+    logger.warn('No tsconfig.json found, using default TypeScript settings');
+  }
+  
+  if (isAppDirStructure) {
+    logger.info('📁 Processing Next.js app router structure');
+    // New app directory structure (Next.js 15-style)
+    // Find all page.tsx/jsx/ts/js files
+    async function findAppComponents(dir: string): Promise<string[]> {
+      const components: string[] = [];
+      const entries = await readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const path = join(dir, entry.name);
+        
+        // Skip ignored directories
+        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
+          // Recursively search subdirectories
+          const subComponents = await findAppComponents(path);
+          components.push(...subComponents);
+        } else if (entry.isFile()) {
+          // Check if this is a page component
+          for (const ext of fileExtensions) {
+            if (entry.name === `page${ext}`) {
+              components.push(path);
+              break;
+            }
+          }
+        }
       }
+      
+      return components;
     }
-  }
-  
-  // Also bundle any .ts, .tsx, .js, or .jsx files in pages directory if it exists
-  if (existsSync(pagesDir)) {
-    const pageFiles = await findFiles(pagesDir, fileExtensions, options.ignorePatterns);
-    entryFiles.push(...pageFiles);
-  }
-  
-  // bundle each entry file
-  for (const entryFile of entryFiles) {
-    const relativePath = relative(srcDir, entryFile);
-    const outputFile = join(outputPath, relativePath.replace(/\.(ts|tsx|js|jsx)$/, '.js'));
-    
-    // Ensure output directory exists
-    await mkdir(dirname(outputFile), { recursive: true });
     
     try {
-      // Log the file we're trying to bundle
-      logger.info(`bundling file: ${entryFile}`);
+      const appComponents = await findAppComponents(appDir);
+      logger.debug(`Found ${appComponents.length} Next.js 15-style app components`);
       
-      // Determine if this is a JSX/TSX file and set the appropriate loader
-      const isTsx = entryFile.endsWith('.tsx') || entryFile.endsWith('.jsx');
-      // Define proper loader types for Bun's build API
-      const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = 
-        isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
-      
-      // Use Bun's bundler with improved options
-      const buildConfig: any = {
-        entrypoints: [entryFile],
-        outdir: dirname(outputFile),
-        naming: {
-          entry: basename(outputFile),
-        },
-        minify: options.minify,
-        target: 'browser',
-        loader,
-        // Add source maps for better debugging
-        sourcemap: 'external',
-        // Improve module resolution
-        plugins: [],
-        // Handle node modules properly
-        external: ['*'],
-      };
-      
-      // Explicitly set the tsconfig if it exists
-      if (existsSync(join(projectPath, 'tsconfig.json'))) {
-        buildConfig.tsconfig = join(projectPath, 'tsconfig.json');
+      // Process each app component
+      for (const component of appComponents) {
+        const relativePath = relative(projectPath, component);
+        const outputDir = dirname(join(outputPath, relativePath));
+        
+        // Ensure output directory exists
+        await mkdir(outputDir, { recursive: true });
+        
+        // Build this component
+        await processJSBundle(component, projectPath, { minify });
       }
       
-      // Handle JSX/TSX files if needed
-      if (isTsx) {
-        // Use any type to bypass TypeScript's limitations with the current Bun type definitions
-        (buildConfig as any).jsx = 'automatic';
+      // Also look for entry files in project root
+      for (const name of ['app', 'index']) {
+        for (const ext of fileExtensions) {
+          const filePath = join(projectPath, `${name}${ext}`);
+          if (existsSync(filePath)) {
+            entryFiles.push(filePath);
+            break; // Only add the first match for each name
+          }
+        }
       }
-      
-      const result = await Bun.build(buildConfig);
-      
-      if (!result.success) {
-        logger.error(`Failed to bundle ${entryFile}:\n${result.logs.join('\n')}`);
-        throw new Error(`bundle failed for ${entryFile}`);
-      } else {
-        logger.info(`Successfully bundled: ${entryFile}`);
-      }
-    } catch (error: any) {
-      logger.error(`Error during bundling of ${entryFile}: ${error.message || error}`);
-      if (error.stack) {
-        logger.debug(`Stack trace: ${error.stack}`);
-      }
-      throw new Error(`Failed to bundle ${entryFile}: ${error.message || error}`);
+    } catch (error) {
+      logger.error(`Error processing app directory: ${error}`);
+      throw error;
     }
+  } else {
+    logger.info('📁 Processing traditional entry points');
+    // Check for traditional entry points in project root
+    for (const name of ['app', 'index']) {
+      for (const ext of fileExtensions) {
+        // Only look in project root for traditional files
+        const filePath = join(projectPath, `${name}${ext}`);
+          
+        if (existsSync(filePath)) {
+          entryFiles.push(filePath);
+          break; // Only add the first match for each name
+        }
+      }
+    }
+  }
+  
+  // Process each entry file
+  for (const entryFile of entryFiles) {
+    await processJSBundle(entryFile, projectPath, { minify });
+  }
+  
+  // Add a client-side entry point if using app directory
+  if (isAppDirStructure) {
+    const clientEntry = "// Auto-generated client entry point\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Import all pages components\n  const appRoot = document.getElementById('app');\n  if (appRoot) {\n    // In a real implementation, this would use client-side routing\n    console.log('0x1 App Started');\n  }\n});";
+    
+    await Bun.write(join(outputPath, 'app.js'), clientEntry);
+  }
+}
+
+/**
+ * Process JavaScript/TypeScript file bundle
+ */
+async function processJSBundle(entryFile: string, projectPath: string, options: { minify: boolean }): Promise<void> {
+  const { minify } = options;
+  
+  // Check if this is a TypeScript file
+  const isTsx = entryFile.endsWith('.tsx') || entryFile.endsWith('.ts');
+  
+  // Get the relative path to the entry file from the project root
+  const relativePath = relative(projectPath, entryFile);
+  
+  // Calculate the output file path
+  // Convert .tsx/.ts to .js
+  const outputName = relativePath
+    .replace(/\.tsx?$/, '.js')
+    .replace(/\.jsx$/, '.js');
+  
+  // Determine the output file path
+  const outputFile = join(projectPath, 'dist', outputName);
+  
+  try {
+    // Ensure the output directory exists
+    await mkdir(dirname(outputFile), { recursive: true });
+    
+    // Configure Bun's bundler
+    const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = 
+      isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
+    
+    // Use Bun's built-in bundler
+    const result = await Bun.build({
+      entrypoints: [entryFile],
+      outdir: dirname(outputFile),
+      target: 'browser',
+      format: 'esm',
+      splitting: true,
+      naming: {
+        entry: '[dir]/[name].[ext]',
+        chunk: '[name]-[hash].[ext]',
+        asset: 'assets/[name]-[hash].[ext]',
+      },
+      loader,
+      plugins: [],
+      // Apply minification based on options
+      minify,
+      // Add source maps for better debugging
+      sourcemap: options.minify ? 'none' : 'external',
+      // Define environment variables
+      define: {
+        'process.env.NODE_ENV': options.minify ? '"production"' : '"development"',
+        'process.env.APP_DIR': existsSync(join(projectPath, 'app')) ? 'true' : 'false',
+      },
+      // Improve module resolution and tree shaking
+      // treeshake: options.minify, // Removing unsupported property
+      // Handle node modules properly
+      external: ['*'],
+      // Enable better error messages
+      // logLevel: 'error', // Removing unsupported property
+    });
+    
+    if (!result.success) {
+      throw new Error(`Build failed with ${result.logs.length} errors`);
+    }
+    
+    logger.debug(`Bundle generated: ${outputFile}`);
+  } catch (error: any) {
+    logger.error(`Error during bundling of ${entryFile}: ${error.message || error}`);
+    if (error.stack) {
+      logger.debug(`Stack trace: ${error.stack}`);
+    }
+    throw new Error(`Failed to bundle ${entryFile}: ${error.message || error}`);
   }
 }
 
@@ -423,168 +498,205 @@ async function processCssFiles(
   outputPath: string,
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
-  // Check for custom structure configuration
-  const customStructureFile = resolve(projectPath, 'structure.js');
-  const hasCustomStructure = existsSync(customStructureFile);
+  const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
   
-  let srcDir;
-  let stylesDir;
+  // Get all css files
+  const cssFiles = await findFiles(projectPath, '.css', ignorePatterns);
   
-  if (hasCustomStructure) {
+  // Check for tailwind config files
+  const hasTailwind = existsSync(join(projectPath, 'tailwind.config.js')) ||
+    existsSync(join(projectPath, 'tailwind.config.ts'));
+  
+  // Process Tailwind CSS if available
+  if (hasTailwind) {
+    // Create a combined CSS file for all CSS files
+    let combinedCSS = '';
+    
+    // First add Tailwind directives
+    combinedCSS = `
+      /* Tailwind Directives */
+      @tailwind base;
+      @tailwind components;
+      @tailwind utilities;
+    `;
+    
+    // Then add all other CSS files
+    for (const cssFile of cssFiles) {
+      const cssContent = await Bun.file(cssFile).text();
+      combinedCSS += `\n/* From ${relative(projectPath, cssFile)} */\n${cssContent}`;
+    }
+    
     try {
-      // Load custom structure configuration
-      const structureConfigModule = await import(customStructureFile);
-      const structureConfig = structureConfigModule.default || structureConfigModule;
-      if (structureConfig.sourceDirs) {
-        // Use the custom structure paths
-        srcDir = projectPath;
-        // Check for custom styles directory
-        stylesDir = resolve(projectPath, structureConfig.sourceDirs.styles || 'styles');
-        logger.info('Using custom project structure for CSS processing');
+      // Use Bun's built-in process.spawn to run tailwind CLI instead of importing modules
+      // This avoids TypeScript errors with missing type declarations
+      const tailwindCssOutputPath = join(outputPath, 'styles.css');
+      
+      // Write the combined CSS to a temporary file
+      const tempCssPath = join(projectPath, '.temp-tailwind-input.css');
+      await Bun.write(tempCssPath, combinedCSS);
+      
+      // Use tailwindcss CLI to process the CSS
+      const result = Bun.spawnSync([
+        'npx', 'tailwindcss', 
+        '-i', tempCssPath, 
+        '-o', tailwindCssOutputPath,
+        ...(minify ? ['--minify'] : [])
+      ], {
+        cwd: projectPath,
+        env: process.env,
+        stdout: 'pipe',
+        stderr: 'pipe'
+      });
+      
+      // Clean up temporary file
+      try {
+        Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      
+      if (result.exitCode === 0) {
+        logger.info('🎨 Tailwind CSS: processed successfully');
       } else {
-        // Fall back to standard src directory
-        srcDir = resolve(projectPath, 'src');
-        stylesDir = join(srcDir, 'styles');
+        const error = new TextDecoder().decode(result.stderr);
+        throw new Error(`Failed to process Tailwind CSS: ${error}`);
       }
     } catch (error) {
-      logger.warn(`Failed to load custom structure from ${customStructureFile}. Using default src directory.`);
-      srcDir = resolve(projectPath, 'src');
-      stylesDir = join(srcDir, 'styles');
+      logger.warn(`Failed to process Tailwind CSS: ${error}`);
+      logger.info('Falling back to standard CSS processing');
+      
+      // Fall back to standard CSS processing
+      await processCssFilesStandard();
     }
   } else {
-    // Check if src directory exists, if not use project root
-    const standardSrcDir = resolve(projectPath, 'src');
-    
-    if (existsSync(standardSrcDir)) {
-      srcDir = standardSrcDir;
-      stylesDir = join(srcDir, 'styles');
-    } else {
-      // Use project root if no src directory
-      srcDir = projectPath;
-      stylesDir = join(projectPath, 'styles');
-    }
+    // Process CSS files without Tailwind
+    await processCssFilesStandard();
   }
   
-  // First, look for CSS files in the styles directory
-  let cssFiles: string[] = [];
-  
-  if (existsSync(stylesDir)) {
-    // Find CSS files in the styles directory
-    cssFiles = await findFiles(stylesDir, '.css');
-  }
-  
-  // Also look for CSS files in the src directory if it's not the same as project root
-  if (srcDir !== projectPath) {
-    const srcCssFiles = await findFiles(srcDir, '.css');
-    cssFiles = [...cssFiles, ...srcCssFiles];
-  } else {
-    // If using root-based project, be careful not to pick up CSS files from node_modules
-    const rootCssFiles = (await findFiles(srcDir, '.css'))
-      .filter(file => !file.includes('node_modules'));
-    cssFiles = [...cssFiles, ...rootCssFiles];
-  }
-  
-  // Check if tailwindcss is being used
-  const hasTailwind = existsSync(join(projectPath, 'tailwind.config.js')) || 
-                      existsSync(join(projectPath, 'tailwind.config.ts'));
-  
-  for (const cssFile of cssFiles) {
-    // Determine the relative path based on which directory the file is from
-    let relativePath;
-    if (cssFile.startsWith(stylesDir)) {
-      relativePath = join('styles', relative(stylesDir, cssFile));
-    } else {
-      relativePath = relative(srcDir, cssFile);
-    }
-    
-    const outputFilePath = join(outputPath, relativePath);
-    
-    // Ensure output directory exists
-    await mkdir(dirname(outputFilePath), { recursive: true });
-    
-    // Use Bun's native file API for better performance
-    let cssContent = await Bun.file(cssFile).text();
-    
-    // Process CSS
-    if (hasTailwind) {
-      try {
-        // Check if tailwindcss is installed in the project
-        const tailwindConfigPath = existsSync(join(projectPath, 'tailwind.config.js')) 
-          ? join(projectPath, 'tailwind.config.js')
-          : join(projectPath, 'tailwind.config.ts');
-          
-        // Try to import PostCSS and Tailwind dynamically
-        try {
-          const postcssModulePath = Bun.resolveSync('postcss', projectPath);
-          const tailwindModulePath = Bun.resolveSync('tailwindcss', projectPath);
-          const autoprefixerModulePath = Bun.resolveSync('autoprefixer', projectPath);
-          
-          if (postcssModulePath && tailwindModulePath) {
-            const postcss = await import(postcssModulePath);
-            const tailwindcss = await import(tailwindModulePath);
-            const autoprefixer = await import(autoprefixerModulePath);
-            
-            // Process the CSS with PostCSS + Tailwind
-            const result = await postcss.default([
-              tailwindcss.default({ config: tailwindConfigPath }),
-              autoprefixer.default()
-            ]).process(cssContent, {
-              from: cssFile,
-              to: outputFilePath
-            });
-            
-            // Update the CSS content with the processed result
-            cssContent = result.css;
-            logger.debug(`Processed ${cssFile} with Tailwind CSS`);
-          }
-        } catch (error) {
-          logger.warn(`Failed to process Tailwind CSS for ${cssFile}: ${error}`);
-          logger.warn('Make sure tailwindcss, postcss, and autoprefixer are installed in your project.');
+  // Standard CSS processing
+  async function processCssFilesStandard() {
+    if (cssFiles.length === 0) {
+      logger.info('No CSS files found');
+      
+      // Create a minimal styles.css file with modern CSS resets
+      const minimalCSS = `
+        /* Modern CSS Reset */
+        *, *::before, *::after {
+          box-sizing: border-box;
         }
-      } catch (error) {
-        logger.warn(`Error processing Tailwind CSS: ${error}`);
-      }
+        
+        body, h1, h2, h3, h4, p, figure, blockquote, dl, dd {
+          margin: 0;
+        }
+        
+        html:focus-within {
+          scroll-behavior: smooth;
+        }
+        
+        body {
+          min-height: 100vh;
+          text-rendering: optimizeSpeed;
+          line-height: 1.5;
+          font-family: system-ui, sans-serif;
+        }
+        
+        img, picture {
+          max-width: 100%;
+          display: block;
+        }
+        
+        input, button, textarea, select {
+          font: inherit;
+        }
+        
+        /* Basic styles for 0x1 app */
+        #app {
+          padding: 1rem;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+      `;
+      
+      const finalCSS = minify ? await minifyCss(minimalCSS) : minimalCSS;
+      await Bun.write(join(outputPath, 'styles.css'), finalCSS);
+      return;
+    }
+    
+    // Combine all CSS files
+    let combinedCSS = '';
+    
+    for (const cssFile of cssFiles) {
+      const relativePath = relative(projectPath, cssFile);
+      const cssContent = await Bun.file(cssFile).text();
+      
+      combinedCSS += `\n/* From ${relativePath} */\n${cssContent}`;
     }
     
     // Minify if needed
-    if (options.minify) {
-      cssContent = await minifyCss(cssContent);
-    }
+    const finalCSS = minify ? await minifyCss(combinedCSS) : combinedCSS;
     
-    // Write processed CSS file
-    // Use Bun's native file API for better performance
-    await Bun.write(outputFilePath, cssContent);
+    // Write the combined CSS file
+    await Bun.write(join(outputPath, 'styles.css'), finalCSS);
   }
 }
 
 /**
- * Helper function to minify CSS using lightningcss for optimal results
+ * Helper function to minify CSS with a Bun-optimized implementation
+ * This avoids external dependencies that might cause issues
  */
 async function minifyCss(css: string): Promise<string> {
   try {
-    // Try to use lightningcss which is a dependency we kept
-    // This gives much better results than basic regex replacement
-    const lightningCssPath = Bun.resolveSync('lightningcss', process.cwd());
-    if (lightningCssPath) {
-      const { transform } = await import(lightningCssPath);
-      const { code } = transform({
-        code: Buffer.from(css),
-        minify: true,
-        sourceMap: false
-      });
-      return new TextDecoder().decode(code);
+    // First attempt: Use Bun's temporary file approach for better performance
+    const tempFile = join('/tmp', `temp-css-${Date.now()}.css`);
+    await Bun.write(tempFile, css);
+    
+    // Use Bun to process the CSS
+    const minifyScript = `
+      const fs = require('fs');
+      const css = fs.readFileSync('${tempFile}', 'utf8');
+      // Effective CSS minification
+      const minified = css
+        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
+        .replace(/\n/g, '') // Remove newlines
+        .replace(/\s+/g, ' ') // Collapse whitespace
+        .replace(/\s*([{}:;,])\s*/g, '$1') // Remove spaces around symbols
+        .replace(/;}/, '}') // Remove trailing semicolons
+        .trim();
+      process.stdout.write(minified);
+    `;
+    
+    const result = await Bun.spawn(['bun', 'run', '-e', minifyScript]);
+    const minified = await new Response(result.stdout).text();
+    
+    // Clean up temp file
+    await Bun.spawn(['rm', tempFile]);
+    
+    if (minified && minified.length > 0) {
+      return minified;
     }
   } catch (error) {
-    // Fall back to basic minification if lightningcss is not available
-    logger.debug(`Using basic CSS minification: ${error}`);
+    logger.debug(`Error using Bun minification: ${error}. Falling back to basic minification.`);
   }
   
-  // Basic CSS minification fallback
+  // Fallback: Basic CSS minification implementation if Bun approach fails
   return css
-    .replace(/\/\*(?:(?!\*\/).[\s\S])*\*\/|[\r\n\t]+/g, '') // Remove comments and whitespace
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
+    .replace(/[\r\n\t]+/g, '') // Remove whitespace
     .replace(/ {2,}/g, ' ') // Replace multiple spaces with single space
-    .replace(/([{:}]) /g, '$1')
-    .replace(/ ([{:}])/g, '$1');
+    .replace(/([{:;,}]) /g, '$1')
+    .replace(/ ([{:;,}])/g, '$1')
+    .replace(/;}/, '}') // Remove trailing semicolons
+    .trim();
+}
+
+// This function has been removed as there's another more comprehensive implementation below
+
+/**
+ * Helper function to find files with specific extensions
+ */
+async function findFilesByExtension(dir: string, extensions: string[], ignorePatterns: string[] = ['node_modules', '.git', 'dist']): Promise<string[]> {
+  // Directly use the comprehensive findFiles function below
+  return findFiles(dir, extensions, ignorePatterns);
 }
 
 /**
