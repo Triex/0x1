@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/v/0x1.svg?style=flat-square" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/dm/0x1.svg?style=flat-square" alt="npm downloads"></a>
+  <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/dm/0x1.svg?style=flat-square&color=yellowgreen" alt="npm downloads"></a>
   <a href="https://github.com/Triex/0x1"><img src="https://img.shields.io/github/stars/Triex/0x1?style=flat-square" alt="github stars"></a>
   <img src="https://img.shields.io/badge/bundle_size-~16kb-blue?style=flat-square" alt="bundle size" />
   <img src="https://img.shields.io/badge/dependencies-0-green?style=flat-square" alt="dependencies" />
@@ -332,7 +332,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.59**
+Current version: **0.0.60**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -1007,3 +1007,17 @@ The standard template adds more components, state management, and enhanced routi
 
 #### Full Template
 The full template includes everything from standard plus Progressive Web App (PWA) support, advanced components, theming, animations, and comprehensive state management.
+
+---
+
+## Pending Features
+
+Actual project intent is to allow development in Next/React styles-flows-APIs that everyone is used to, but allow devs to instantly spin up what usually takes hours of work, with the added benefit of Bun's speed and zero dependencies.
+
+Ultimately; adding crypto features to give the framework a real use case, and ability to grow rapidly. (Hence 0x1)
+
+- [ ] `Crypto` template option with various crypto features as options, inc;
+  - [ ] `Wallet Connect`, basic connect for `ERC20` EVM tokens, and SOL, etc. OR allow all chains.
+  - [ ] `Coin dApp / Dashboard`, view connected wallet coin holdings, transactions + coin price, market cap, etc as appropriate.
+  - [ ] `NFT`, NFT viewing UI, basic NFT minting and collection features.
+- [ ] Audit / ensure stable app router functionality (`"use server"`, `"use client"` tags work, `page.tsx` `actions.ts` work)

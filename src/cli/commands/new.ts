@@ -6,60 +6,72 @@
 import chalk from 'chalk';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { mkdir } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import prompts from 'prompts';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
-// Add execa type definition - keeping for backward compatibility
-type ExecaModule = { execa: (command: string, args: string[], options?: any) => Promise<{stdout: string; stderr: string}> };
+import type { BunFile } from 'bun';
 
 /**
- * Install project dependencies using Bun's native package manager
+ * Install project dependencies with Bun as the preferred package manager
  * @param projectPath - Path to the project directory
  */
 async function installDependencies(projectPath: string): Promise<void> {
-  const spinnerText = 'Installing dependencies';
-  const spinner = logger.spinner(spinnerText);
+  let spinner = logger.spinner('Installing dependencies');
+  const originalDir = process.cwd();
   
   try {
-    // Use Bun's native package manager for optimized installations
-    // This is significantly faster than npm or yarn
-    const result = Bun.spawnSync(['bun', 'install'], {
-      cwd: projectPath,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: process.env
-    });
+    // Change to project directory
+    process.chdir(projectPath);
     
-    if (result.exitCode === 0) {
-      spinner.stop('success', 'Dependencies installed successfully using Bun');
-    } else {
-      const error = new TextDecoder().decode(result.stderr);
-      throw new Error(`Bun install failed: ${error}`);
-    }
-  } catch (error) {
-    // Fall back to npm if Bun install fails
-    logger.warn(`Bun install failed, falling back to npm: ${error}`);
-    
+    // Always try Bun first
     try {
-      // Use Bun's spawn for better performance instead of execa
-      const result = Bun.spawnSync(['npm', 'install'], {
+      const bunProcess = Bun.spawn(['bun', 'install'], {
         cwd: projectPath,
-        stdout: 'pipe',
         stderr: 'pipe',
-        env: process.env
+        stdout: 'pipe'
       });
       
-      if (result.exitCode === 0) {
-        spinner.stop('success', 'Dependencies installed successfully with npm');
-      } else {
-        const error = new TextDecoder().decode(result.stderr);
-        throw new Error(`npm install failed: ${error}`);
+      const bunExit = await bunProcess.exited;
+      
+      if (bunExit === 0) {
+        spinner.stop('success', 'Dependencies installed with Bun ⚡');
+        return;
       }
-    } catch (fallbackError) {
-      spinner.stop('error', 'Failed to install dependencies');
-      logger.error(`Error installing dependencies: ${fallbackError}`);
-      logger.info('You may need to run "bun install" or "npm install" manually');
+      
+      spinner.stop('warn', 'Trying alternative package manager...');
+    } catch (e) {
+      spinner.stop('warn', 'Bun not detected, trying npm...');
+      // Restart spinner for npm installation
+      spinner = logger.spinner('Installing with npm');
+    }
+    
+    // Fallback to npm if Bun isn't available or fails
+    const npmProcess = Bun.spawn(['npm', 'install'], {
+      cwd: projectPath,
+      stderr: 'pipe',
+      stdout: 'pipe'
+    });
+    
+    const npmExit = await npmProcess.exited;
+    
+    if (npmExit === 0) {
+      spinner.stop('success', 'Dependencies installed with npm');
+    } else {
+      const stderr = await new Response(npmProcess.stderr).text();
+      throw new Error(`Package installation failed: ${stderr}`);
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    spinner.stop('error', 'Failed to install dependencies');
+    logger.error(errorMsg);
+  } finally {
+    // Always return to original directory
+    try {
+      process.chdir(originalDir);
+    } catch (e) {
+      // Non-critical error, just log it
+      logger.debug(`Could not return to original directory: ${e}`);
     }
   }
 }
@@ -140,41 +152,30 @@ export async function createNewProject(
   }
   
   // Determine the complexity from options
-  // Set template type if not already defined
-  // Use template directly since complexity was removed from the interface
-  if (!options.template) {
-    // Default to standard if not specified
-    options.template = 'standard';
-  } 
-  // Check if command line was invoked with --minimal flag (backward compatibility)
-  // Template takes precedence over any legacy flags
-  else if (options.hasOwnProperty('minimal') && (options as any).minimal === true) {
+  // Set and normalize template type
+  const validTemplates = ['minimal', 'standard', 'full'];
+
+  // Handle --minimal flag as a direct shorthand
+  if (process.argv.includes('--minimal')) {
     options.template = 'minimal';
   } 
-  
-  // If --template is provided, ensure it's a valid template type
+  // Normalize template if provided
   else if (options.template) {
-    // Normalize template value to one of our valid options
-    if (typeof options.template === 'string') {
-      const templateValue = options.template.toLowerCase();
-      
-      // If path format is provided, extract just the template type
-      if (templateValue.includes('/')) {
-        const templateParts = templateValue.split('/');
-        const templateType = templateParts[0];
-        if (templateType === 'minimal' || templateType === 'standard' || templateType === 'full') {
-          options.template = templateType as 'minimal' | 'standard' | 'full';
-        } else {
-          // Default to standard if invalid template specified
-          options.template = 'standard';
-        }
-      } else if (['minimal', 'standard', 'full'].includes(templateValue)) {
-        options.template = templateValue as 'minimal' | 'standard' | 'full';
-      } else {
-        // Default to standard if invalid template specified
-        options.template = 'standard';
-      }
-    }
+    const templateValue = String(options.template).toLowerCase();
+    
+    // Extract template type if path format is provided (e.g., 'minimal/custom')
+    const templateType = templateValue.includes('/') 
+      ? templateValue.split('/')[0]
+      : templateValue;
+    
+    // Validate template type
+    options.template = validTemplates.includes(templateType)
+      ? templateType as 'minimal' | 'standard' | 'full'
+      : 'standard'; // Default to standard if invalid
+  }
+  // Default to standard template if nothing specified
+  else {
+    options.template = 'standard';
   }
 
   // Process CLI flags for consistency before passing to prompts
@@ -183,43 +184,41 @@ export async function createNewProject(
     logger.debug('PWA features explicitly disabled via CLI flags');
   }
   
-  // Debug log to show processed CLI options
-  logger.debug(`Processed CLI options: pwa=${options.pwa}`);  
-
-  // Retrieve project options either from CLI args or interactive prompt
-  // Skip interactive prompts if we're running in non-interactive mode or with default options
-  const projectOptions = (options.template && !process.stdout.isTTY) || options.hasOwnProperty('minimal')
-    ? {
-        template: 'standard', // Using standard as the template name to match valid type options
-        tailwind: typeof options.tailwind === 'boolean' ? options.tailwind : false,
-        typescript: true, // TypeScript is now the only option
-        stateManagement: typeof options.stateManagement === 'boolean' ? options.stateManagement : false,
-        licenseType: options.licenseType || 'mit', // Default license to MIT
-        pwa: false,
-        // Using template property instead of legacy complexity
-        themeMode: options.themeMode || 'dark', // Default to dark mode
-        projectStructure: 'app', // Next.js 15 style app directory
-        useNextStyle: true,
-        // Default theme colors for PWA support
-        themeColor: options.themeColor || '#0077cc',
-        secondaryColor: options.secondaryColor || '#005fa3',
-        pwaTheme: options.pwaTheme || 'classic',
-        statusBarStyle: 'black-translucent'
-      }
-    : await promptProjectOptions(options);
-
-  // Always use app directory structure for Next.js 15 compatibility
-  const projectStructure = 'app';
-  logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
+  // Debug logs for processed options
+  logger.debug(`Template: ${options.template}, PWA: ${options.pwa}`);
   
-  logger.debug(`Using template type: ${projectOptions.template}`);
+  // Determine whether to use CLI options directly or prompt interactively
+  const nonInteractiveMode = !process.stdout.isTTY;
+  const skipPrompts = nonInteractiveMode || options.template;
+  
+  // Define default options for consistency
+  const defaultOptions = {
+    template: options.template || 'standard',
+    tailwind: typeof options.tailwind === 'boolean' ? options.tailwind : false,
+    stateManagement: typeof options.stateManagement === 'boolean' ? options.stateManagement : false,
+    licenseType: options.licenseType || 'mit',
+    themeMode: options.themeMode || 'dark',
+    pwa: options.pwa === true, // Explicit boolean check
+    themeColor: options.themeColor || '#0077cc',
+    secondaryColor: options.secondaryColor || '#005fa3',
+    pwaTheme: options.pwaTheme || 'classic',
+    statusBarStyle: options.statusBarStyle || 'black-translucent'
+  };
+  
+  // Get final project options - either from defaults or interactive prompts
+  const projectOptions = skipPrompts
+    ? defaultOptions
+    : await promptProjectOptions(defaultOptions);
 
-  // Store project options for use throughout the function
-  // These variables are kept for documentation clarity but prefixed with _ to satisfy linting
-  const _template = projectOptions.template;
-  const _useTailwind = projectOptions.tailwind;
-  // TypeScript is now the only option - removed the _useTypescript variable
-  const _useStateManagement = projectOptions.stateManagement || false;
+  // Modern app directory structure by default
+  const projectStructure = 'app';
+  
+  logger.debug(`Creating project with template: ${projectOptions.template}`);
+
+  // Extract key options for easier access
+  const templateType = projectOptions.template;
+  const useTailwind = projectOptions.tailwind;
+  const useStateManagement = projectOptions.stateManagement || false;
   const usePwa = projectOptions.pwa || false;
   
   // Create project
@@ -253,43 +252,19 @@ export async function createNewProject(
       
       // Copy template files
       await copyTemplate(
-        projectOptions.template as 'standard' | 'minimal' | 'full', 
+        templateType, 
         projectPath, 
         {
-          useTailwind: projectOptions.tailwind,
-          useStateManagement: projectOptions.stateManagement,
+          useTailwind,
+          useStateManagement,
           themeMode: projectOptions.themeMode
         }
       );
       
-      // Create basic source files if needed
-  // No longer using this for templates since we're using pre-built templates
-  // But keeping for reference and potential future use
-  if (projectOptions.template === 'custom') {
-    const useStateManagement = !!projectOptions.stateManagement;
-    await _createBasicSourceFiles(projectPath, {
-      useTailwind: projectOptions.tailwind || false,
-      useStateManagement,
-      complexity: projectOptions.template as ('minimal' | 'standard' | 'full'),
-      projectStructure
-    });
-  }
+      // Custom template handling is available via the _createBasicSourceFiles function
+      // but not currently used in the main flow
       
-      // Handle license based on user preference
-      if (projectOptions.licenseType === 'tdl') {
-        // Add TDL license
-        await addTDLLicense(projectPath);
-      } else if (projectOptions.licenseType === 'mit') {
-        // Add standard MIT license
-        await addMITLicense(projectPath, name);
-      } else if (projectOptions.licenseType === 'none') {
-        // Add NO LICENSE file
-        await addNoLicense(projectPath);
-      } else if (hasLicense) {
-        // Restore original license
-        await Bun.write(join(projectPath, 'LICENSE'), licenseContent);
-        logger.info('Restored original LICENSE file.');
-      }
+
       
       // Restore README if it existed
       if (hasReadme) {
@@ -303,6 +278,19 @@ export async function createNewProject(
       // Generate basic project info for icon generation
       // Use the name parameter directly since it's already available
       const projectName = name || projectPath.split('/').pop() || '';
+      
+      // Handle license based on user preference
+      if (projectOptions.licenseType === 'tdl') {
+        await addTDLLicense(projectPath);
+      } else if (projectOptions.licenseType === 'mit') {
+        await addMITLicense(projectPath, projectName);
+      } else if (projectOptions.licenseType === 'none') {
+        await addNoLicense(projectPath);
+      } else if (hasLicense) {
+        // Restore original license
+        await Bun.write(join(projectPath, 'LICENSE'), licenseContent);
+        logger.info('Restored original LICENSE file.');
+      }
       
       // Generate logo text based on project name
       // - For multi-word names: use first letters as acronym
@@ -331,32 +319,24 @@ export async function createNewProject(
         const pwaSpin = logger.spinner('Configuring Progressive Web App');
         
         try {
-          // Import PWA setup utilities here to avoid circular dependencies
+          // Dynamically import PWA setup module
           const { addPWA } = await import('./pwa.js');
           
-          // Setup PWA with automatic configuration based on project name and user-selected theme
-          const pwaSetupSuccess = await addPWA({
-            skipPrompts: true, // Skip prompts since this is part of project creation
+          // Configure PWA with project settings
+          const pwaResult = await addPWA({
+            skipPrompts: true,
             name: projectName, 
-            shortName: shortName,
+            shortName,
             themeColor: projectOptions.themeColor,
             backgroundColor: projectOptions.secondaryColor,
-            description: `${projectName} - Built with 0x1 framework`,
-            logoText: logoText, // Pass the generated logo text
+            statusBarStyle: projectOptions.statusBarStyle,
+            theme: projectOptions.pwaTheme,
             icons: true,
-            offline: true,
-            // Additional options for extended templating
-            theme: projectOptions.pwaTheme as string,
-            // Pass the iOS status bar style
-            statusBarStyle: projectOptions.statusBarStyle as 'default' | 'black' | 'black-translucent' | undefined
-          }, projectPath);
+            offline: true
+          }, projectPath); // Pass project path as separate argument
           
-          if (!pwaSetupSuccess) {
-            pwaSpin.stop('error', 'Failed to set up PWA');
-            throw new Error('Error setting up PWA. Project creation aborted.');
-          }
-          
-          pwaSpin.stop('success', 'PWA functionality added');
+          pwaSpin.stop(pwaResult ? 'success' : 'warn', 
+            `PWA configuration ${pwaResult ? 'completed successfully' : 'completed with warnings'}`);
         } catch (error) {
           pwaSpin.stop('error', 'Failed to set up PWA');
           logger.error(`Error setting up PWA: ${error}`);
@@ -607,7 +587,6 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
   logger.spacer();
 
   // Using standardized app directory structure for all projects
-  logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
   const projectStructure = 'app';
   
   // Define default PWA theme values - these will be used if user doesn't set specific flags
@@ -765,58 +744,59 @@ async function copyTemplate(
   }
 ): Promise<void> {
   try {
-    // Set defaults and typed template name
+    // Extract and normalize options
     const { useTailwind, useStateManagement = false, themeMode = 'dark' } = options;
     const templateType = template as 'minimal' | 'standard' | 'full';
-
-    // Get the current file's directory to use as base
+    
+    // Get the current file's directory
     const currentDir = import.meta.dirname || '';
-    logger.debug(`Current directory: ${currentDir}`);
-
-    // Define possible template paths for the template
+    
+    // Use prioritized template path search strategy
     const templatePaths = [
-      // Development path from source directory
-      join(currentDir, '../../../templates', templateType),
-      // Global installation path
-      join(currentDir, '../templates', templateType),
-      // Direct path from execution directory
-      join(process.cwd(), 'templates', templateType),
-      // Absolute path for global installation
-      join(currentDir, '../../templates', templateType),
-      // One level deeper for node_modules scenarios
-      join(currentDir, '../templates/node_modules/0x1/templates', templateType),
+      join(currentDir, '../../../templates', templateType), // Dev environment path
+      join(currentDir, '../templates', templateType),       // Local install path
+      join(process.cwd(), 'templates', templateType),       // Current directory path
+      join(currentDir, '../../templates', templateType),    // Global install path
     ];
-
-    // Create project directory if it doesn't exist
-    if (existsSync(projectPath)) {
-      logger.warn(`Notice: Directory ${projectPath} already exists.`);
-    } else {
+    
+    // Create project directory if needed
+    if (!existsSync(projectPath)) {
       await mkdir(projectPath, { recursive: true });
     }
-
-    // Try each possible path and use the first one that exists
-    let sourcePath = '';
-    for (const path of templatePaths) {
-      if (existsSync(path)) {
-        sourcePath = path;
-        logger.debug(`Found template at ${templatePaths.indexOf(path)}: ${path}`);
-        break;
-      }
-    }
-
-    // Check if a valid template path was found
+    
+    // Find first valid template path
+    const sourcePath = templatePaths.find(path => existsSync(path));
     if (!sourcePath) {
-      throw new Error(`Template path not found for ${templateType}. Tried:\n${templatePaths.join('\n')}`);
+      throw new Error(`Template '${templateType}' not found. Tried: ${templatePaths.length} locations.`);
     }
 
-    // Copy template files from the detected template directory to project directory
+    // Copy template files from source to project directory using Bun file API
+    const copyOptions = {
+      filter: (src: string) => {
+        // Skip node_modules and build artifacts
+        if (src.includes('node_modules') || src.includes('dist') || src.includes('.cache')) {
+          return false;
+        }
+        // Skip tailwind configuration if not requested
+        if (!useTailwind && (src.includes('tailwind.config') || src.includes('postcss.config'))) {
+          return false;
+        }
+        // Skip state management files if not needed
+        if (!useStateManagement && src.includes('/store/')) {
+          return false;
+        }
+        return true;
+      }
+    };
+
+    logger.debug(`Copying template from ${sourcePath} to ${projectPath}`);
     await copyTemplateFiles(sourcePath, projectPath, {
       useTailwind,
-      complexity: templateType,  // Use template type as complexity
+      complexity: templateType,
       useStateManagement,
       themeMode,
       isMinimalStructure: templateType === 'minimal',
-      projectStructure: 'app'  // Default to app directory structure
+      projectStructure: 'app'
     });
     
     // Create package.json with appropriate settings
@@ -826,7 +806,7 @@ async function copyTemplate(
       minimal: templateType === 'minimal',
       projectStructure: 'app'
     });
-    
+
     logger.success(`Template files copied successfully to ${projectPath}`);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -838,54 +818,54 @@ async function copyTemplate(
 }
 
 /**
- * Optimized recursive copy function for copying directory contents
+ * Enhanced recursive file copy utilizing Bun's optimized file operations
  * @param src Source directory or file path
  * @param dest Destination directory or file path
  */
 async function copyRecursive(src: string, dest: string): Promise<void> {
   try {
-    // First check if source exists
+    // Quickly check if source exists
     if (!existsSync(src)) {
-      throw new Error(`Source ${src} does not exist`);
+      throw new Error(`Source path ${src} doesn't exist`);
     }
 
-    // Use fs.statSync instead of Bun.file().size to reliably check if it's a directory
     const stats = statSync(src);
-    const isDirectory = stats.isDirectory();
     
-    if (isDirectory) {
-      // Create destination directory if it doesn't exist
+    if (stats.isDirectory()) {
+      // Create destination directory if needed
       if (!existsSync(dest)) {
         await mkdir(dest, { recursive: true });
       }
       
-      // Read all entries in the source directory
+      // Get directory contents
       const entries = readdirSync(src);
       
-      // Process files sequentially to avoid potential issues
-      for (const entry of entries) {
-        // Skip system files and directories
-        if (['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(entry)) {
-          continue;
-        }
-        
+      // Filter out system files and process each entry
+      const validEntries = entries.filter(entry => ![
+        'node_modules', '.git', 'dist', '.cache',
+        'bun.lockb', '.DS_Store', '.next'
+      ].includes(entry));
+      
+      // Process each entry
+      for (const entry of validEntries) {
         const srcPath = join(src, entry);
         const destPath = join(dest, entry);
         await copyRecursive(srcPath, destPath);
       }
     } else {
-      // Create parent directory if it doesn't exist
+      // Ensure parent directory exists
       const destDir = dirname(dest);
-      if (destDir && !existsSync(destDir)) {
+      if (!existsSync(destDir)) {
         await mkdir(destDir, { recursive: true });
       }
       
-      // Directly copy file using Bun APIs for better performance
-      const sourceFile = Bun.file(src);
-      await Bun.write(dest, sourceFile);
+      // Use Bun's optimized file operations
+      const fileContent = await Bun.file(src).arrayBuffer();
+      await Bun.write(dest, fileContent);
     }
   } catch (error) {
-    logger.error(`Error copying ${src} to ${dest}: ${error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Copy failed: ${src} → ${dest}: ${message}`);
     throw error;
   }
 }
@@ -976,23 +956,26 @@ async function createPackageJson(
   const { useTailwind, useStateManagement, minimal, projectStructure } = options;
   const _minimal = minimal;
   
-  // Basic package.json structure
+  // Modern package.json structure
   const packageJson = {
     name: projectPath.split('/').pop(),
     version: '0.1.0',
+    private: true,
     type: 'module',
     scripts: {
       dev: '0x1 dev',
       build: '0x1 build',
+      start: '0x1 start',
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.59' // Use current version with caret for compatibility
+      "0x1": '^0.0.60'
     },
     devDependencies: {
-      // TypeScript is always included as 0x1 is TypeScript-only
-      typescript: '^5.3.3'
-    } as Record<string, string>
+      typescript: '^5.4.5'
+    } as Record<string, string>,
+    // Use Bun as the preferred package manager
+    packageManager: 'bun@1.0.17'
   };
   
   // Add Tailwind processing scripts if needed
@@ -1038,8 +1021,9 @@ async function createPackageJson(
 }
 
 /**
- * Create basic source files
- * Currently unused but kept for future template customization
+ * @private
+ * Create basic source files for template customization
+ * @internal This function is not currently used in the main flow
  */
 async function _createBasicSourceFiles(
   projectPath: string,
@@ -1051,7 +1035,7 @@ async function _createBasicSourceFiles(
   }
 ): Promise<void> {
   const { complexity } = options;
-  const ext = 'ts'; // TypeScript is now the only option
+  const ext = 'ts';
   const indexPath = 'index.html'; // Define indexPath variable
   
   if (complexity === 'full') {
@@ -1106,7 +1090,7 @@ async function _createBasicSourceFiles(
     );
   }
   
-  // Create app.ts at root level - TypeScript is now the only option
+  // Create app.ts at root level
   let appTsContent = "";
   
   if (complexity === 'full') {
@@ -1264,8 +1248,9 @@ ready(() => {
 }
 
 /**
- * Create configuration files
- * Currently unused but kept for future template customization
+ * @private
+ * Create configuration files for template customization
+ * @internal This function is not currently used in the main flow
  */
 async function _createConfigFiles(
   projectPath: string,
@@ -1286,7 +1271,7 @@ async function _createConfigFiles(
   
   logger.debug(`Creating config files for template type: ${template}`);
   
-  // TypeScript is now the only option
+  // Create TypeScript configuration
   const ext = 'ts';
   
   let configFiles = [
@@ -1342,7 +1327,7 @@ export default config;`;
     //     "./app.{js,ts}"
     //   ];
     // } else if (projectStructure === 'app') {
-      // Patterns for Next.js style app directory structure
+      // Patterns for modern app directory structure
       contentPatterns = [
         "./index.html",
         "./app/**/*.{js,ts,jsx,tsx}",
