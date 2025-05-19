@@ -42,7 +42,7 @@
 
 ### 🧩 Components Without Overhead
 - **TypeScript-Only**: Exclusively built for TypeScript with full type safety
-- **Simple API**: Modern component system with comprehensive TypeScript typing (Next.js-style/compatible, but without the bloat)
+- **Simple API**: Modern component system, Next15-style/compatible, but without the bloat
 - **Minimal abstractions**: Near-vanilla performance with type-checked templates
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
@@ -77,13 +77,14 @@ bun 0x1 new my-app --complexity=full
 - Progressive Web App (PWA) support
 - Service worker for offline capabilities
 
-### App Directory Structure
+### 📁 App Directory Structure
 
-**All 0x1 templates now use the app directory structure by default:**
+**All 0x1 templates now exclusively use the Next.js 15-compatible app directory structure:**
 - Modern app directory structure with file-based routing
 - Nested layouts with component co-location
 - Special file conventions for pages and layouts
 - Native support for `page.tsx`, `layout.tsx`, `loading.tsx`, `not-found.tsx`, etc.
+- Zero configuration required - works out of the box
 
 ### 📱 Progressive Web App Support
 - **Auto-generated PWA assets**: Icons, splash screens, and manifest
@@ -92,22 +93,26 @@ bun 0x1 new my-app --complexity=full
 - **Dark/light modes**: Theme support for your PWA
 - **Push notifications**: Ready infrastructure
 
-### 🔄 Built-in Router
-- **Zero-dependency**: No routing libraries needed
-- **Suspense-like API**: Async data loading
-- **Code-splitting**: Automatic lazy loading
-- **SPA navigation**: Fast page transitions
+### 🔁 Modern Routing & Data Flow
+- **Zero-dependency router**: No external routing libraries needed
 - **App directory routing**: Next.js 15-style file-based routing system
+- **Server-first architecture**: Emphasis on server components and actions
+- **Suspense-like API**: Async data loading with TypeScript safety
+- **Code-splitting**: Automatic lazy loading for optimal performance
+- **SPA navigation**: Fast page transitions without full reloads
 - **Nested layouts**: Support for shared UI across routes
 - **Special files**: Support for `page.tsx`, `layout.tsx`, `loading.tsx`, and `error.tsx`
+- **Type-safe data fetching**: Server components with built-in fetch utilities
 
 ### 🔨️ Developer Experience
-- **Hot reload**: Sub-second refresh times with bun's lightning-fast runtime
-- **Bun-powered**: Built on the fastest JS runtime available
-- **Tailwind integration**: Zero-config styling with built-in support
-- **TypeScript-native**: Full type safety with TypeScript-only codebase
-- **Smart defaults**: Sensible configurations out of the box
-- **Theme flexibility**: Light, dark and system theme modes
+- **Bun-first architecture**: Fully optimized for Bun's capabilities with zero compromises
+- **Lightning-fast hot reload**: Sub-second refresh times using Bun's native watch capabilities
+- **Bun-powered build system**: Takes full advantage of Bun's bundling and transpilation speed
+- **Native file operations**: Uses Bun's optimized file APIs for maximum performance
+- **Tailwind integration**: Zero-config styling with built-in support and automatic optimization
+- **TypeScript-exclusive**: Designed from the ground up for TypeScript with full type safety
+- **Smart defaults**: Sensible configurations out of the box with minimal boilerplate
+- **Theme flexibility**: Built-in support for light, dark and system theme modes
 
 ### 🚀 Deployment Options
 
@@ -327,7 +332,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.57**
+Current version: **0.0.58**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
