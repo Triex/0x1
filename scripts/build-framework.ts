@@ -117,12 +117,23 @@ async function buildFramework() {
     
     // Copy type definitions
     console.log('📄 Copying type definitions...');
-    // Use Bun's file APIs for copying
-    const typeDefSource = Bun.file(join(srcDir, '0x1.d.ts'));
-    await Bun.write(join(distDir, '0x1.d.ts'), await typeDefSource.text());
+    // Use Bun's file APIs for copying from the new consolidated types directory
+    const typesDir = join(rootDir, 'types');
     
-    // Copy types directory using Bun's spawn for recursive copy
-    Bun.spawnSync(['cp', '-r', join(srcDir, 'types'), join(distDir, 'types')]);
+    // Check if the types directory exists
+    if (await Bun.file(typesDir).exists()) {
+      // Copy the entire types directory to dist
+      Bun.spawnSync(['mkdir', '-p', join(distDir, 'types')]);
+      Bun.spawnSync(['cp', '-r', join(typesDir, '*'), join(distDir, 'types')]);
+      
+      // Also copy the main declaration file to the dist root for backward compatibility
+      const mainTypeDefSource = join(typesDir, '0x1.d.ts');
+      if (await Bun.file(mainTypeDefSource).exists()) {
+        await Bun.write(join(distDir, '0x1.d.ts'), await Bun.file(mainTypeDefSource).text());
+      }
+    } else {
+      console.warn('⚠️  Types directory not found at', typesDir);
+    }
     
     // Copy template files
     console.log('🧩 Copying templates...');
