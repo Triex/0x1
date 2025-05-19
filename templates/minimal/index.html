@@ -23,6 +23,8 @@
         this.notFoundComponent = options.notFoundComponent;
         this.transitionDuration = options.transitionDuration || 200;
         this.currentComponent = null;
+        
+        console.log('[Router] Initialized with mode:', this.mode);
 
         // Initialize router based on mode
         if (this.mode === 'history') {
@@ -32,11 +34,12 @@
         }
 
         // Initial route rendering
-        this.handleRouteChange();
+        setTimeout(() => this.handleRouteChange(), 0);
       }
 
       // Add a route to the router
       add(path, component) {
+        console.log('[Router] Adding route:', path);
         this.routes.set(path, component);
         return this;
       }
@@ -48,24 +51,36 @@
 
       // Get the current path based on routing mode
       getCurrentPath() {
+        let path;
         if (this.mode === 'history') {
-          return window.location.pathname.replace(this.basePath, '');
+          // Ensure we normalize empty paths to / for the root path
+          path = window.location.pathname.replace(this.basePath, '');
+          if (path === '') path = '/';
         } else {
-          let hash = window.location.hash.slice(1);
-          return hash || '/';
+          // For hash mode also normalize to /
+          path = window.location.hash.slice(1) || '/';
         }
+        console.log('[Router] Current path:', path);
+        return path;
       }
 
       // Handle route changes
       handleRouteChange() {
+        console.log('[Router] Handling route change');
         const path = this.getCurrentPath();
+        console.log('[Router] Available routes:', [...this.routes.keys()]);
         let component = this.routes.get(path);
-
-        // If route not found, use 404 component or show error
-        if (!component) {
+        
+        // Debug logging for route matching
+        if (component) {
+          console.log('[Router] Found component for path:', path);
+        } else {
+          console.log('[Router] No component found for path:', path);
           if (this.notFoundComponent) {
+            console.log('[Router] Using notFoundComponent');
             component = this.notFoundComponent;
           } else {
+            console.log('[Router] No notFoundComponent provided, showing error message');
             this.rootElement.innerHTML = `<div>Page not found: ${path}</div>`;
             return;
           }

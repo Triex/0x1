@@ -430,7 +430,8 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       if (path === '/core/navigation.js') {
         // Provide the router implementation
         const moduleContent = `
-          // 0x1 Router Implementation
+          // 0x1 Router Module - Browser Compatible Version
+          // Direct implementation for browser compatibility
           export class Router {
             constructor(options) {
               this.rootElement = options.root;
@@ -439,27 +440,46 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
               this.basePath = options.basePath || '';
               this.notFoundComponent = options.notFoundComponent || null;
               this.transitionDuration = options.transitionDuration || 0;
+              this.currentComponent = null;
               
-              // Setup event listeners for route changes
+              // Initialize router based on mode
               if (this.mode === 'history') {
                 window.addEventListener('popstate', () => this.handleRouteChange());
               } else {
                 window.addEventListener('hashchange', () => this.handleRouteChange());
               }
               
-              // Initialize on document ready
-              if (document.readyState === 'complete') {
-                this.handleRouteChange();
-              } else {
-                window.addEventListener('load', () => this.handleRouteChange());
-              }
+              // Initialize immediately after construction
+              setTimeout(() => this.handleRouteChange(), 0);
+              console.log('[Router] Initialized with mode:', this.mode);
             }
             
-            addRoute(path, component) {
+            // Add a route to the router
+            add(path, component) {
               this.routes.set(path, component);
               return this;
             }
             
+            // Alias for add method for compatibility
+            addRoute(path, component) {
+              return this.add(path, component);
+            }
+            
+            // Get the current path based on routing mode
+            getCurrentPath() {
+              let path;
+              if (this.mode === 'history') {
+                // Ensure we normalize empty paths to / for the root path
+                path = window.location.pathname.replace(this.basePath, '');
+                if (path === '') path = '/';
+              } else {
+                // For hash mode also normalize to /
+                path = window.location.hash.slice(1) || '/';
+              }
+              return path;
+            }
+            
+            // Navigate to a new route
             navigate(path) {
               const url = this.basePath + path;
               if (this.mode === 'history') {
@@ -470,38 +490,68 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
               }
             }
             
+            // Handle route changes
             handleRouteChange() {
-              const path = this.mode === 'history' 
-                ? window.location.pathname.replace(this.basePath, '') || '/' 
-                : window.location.hash.replace('#' + this.basePath, '') || '/';
+              // Get current path with root path handling
+              const path = this.getCurrentPath();
+              let component = this.routes.get(path);
               
-              const component = this.routes.get(path) || this.notFoundComponent;
-              
+              // If route not found, use 404 component
               if (!component) {
-                console.error(\`Route \${path} not found and no not-found component provided\`);
-                return;
+                component = this.notFoundComponent;
               }
               
-              // Clear previous content with animation
-              this.rootElement.style.opacity = '0';
+              // If we have a component, render it
+              if (component) {
+                this.renderComponent(component);
+              } else if (this.rootElement) {
+                // Show error message if no component found
+                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Page not found</h1><p>The requested path "' + path + '" was not found.</p></div>';
+              }
+            }
+            
+            // Render a component
+            renderComponent(component) {
+              if (!this.rootElement) return;
               
-              setTimeout(() => {
-                // Clear the root element
-                this.rootElement.innerHTML = '';
-                
-                // Render the component
-                const element = component.render();
-                this.rootElement.appendChild(element);
-                
-                // Call onMount if it exists
-                if (component.onMount) {
-                  component.onMount(element);
+              try {
+                if (component && typeof component.render === 'function') {
+                  // Apply transition if needed
+                  if (this.currentComponent && this.transitionDuration > 0) {
+                    this.rootElement.style.opacity = '0';
+                    
+                    setTimeout(() => {
+                      this.rootElement.innerHTML = '';
+                      const element = component.render();
+                      this.rootElement.appendChild(element);
+                      
+                      if (component.onMount) {
+                        component.onMount(element);
+                      }
+                      
+                      this.currentComponent = component;
+                      this.rootElement.style.opacity = '1';
+                      console.log('Rendered route: ' + this.getCurrentPath());
+                    }, this.transitionDuration);
+                  } else {
+                    // No transition needed
+                    this.rootElement.innerHTML = '';
+                    const element = component.render();
+                    this.rootElement.appendChild(element);
+                    
+                    if (component.onMount) {
+                      component.onMount(element);
+                    }
+                    
+                    this.currentComponent = component;
+                    console.log('Rendered route: ' + this.getCurrentPath());
+                  }
                 }
-                
-                // Restore visibility
-                this.rootElement.style.opacity = '1';
-                console.log('Rendered route: ' + path);
-              }, this.transitionDuration);
+              } catch (error) {
+                // Handle rendering errors safely
+                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Error rendering component</h1><p>Check the console for details.</p></div>';
+                console.error('[Router] Error rendering component:', error);
+              }
             }
             
             back() {
@@ -605,6 +655,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
                 this.basePath = options.basePath || '';
                 this.notFoundComponent = options.notFoundComponent || null;
                 this.transitionDuration = options.transitionDuration || 0;
+                this.currentComponent = null;
                 
                 // Setup event listeners for route changes
                 if (this.mode === 'history') {
@@ -613,20 +664,48 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
                   window.addEventListener('hashchange', () => this.handleRouteChange());
                 }
                 
-                // Initialize on document ready
-                if (document.readyState === 'complete') {
-                  this.handleRouteChange();
-                } else {
-                  window.addEventListener('load', () => this.handleRouteChange());
+                // Initialize immediately after construction
+                setTimeout(() => this.handleRouteChange(), 0);
+                
+                // Debug log only in development mode
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Initialized with mode:', this.mode);
                 }
               }
               
-              addRoute(path, component) {
+              add(path, component) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Registering route:', path);
+                }
                 this.routes.set(path, component);
                 return this;
               }
               
+              // Alias for add method
+              addRoute(path, component) {
+                return this.add(path, component);
+              }
+              
+              getCurrentPath() {
+                let path;
+                if (this.mode === 'history') {
+                  // Ensure we normalize empty paths to / for the root path
+                  path = window.location.pathname.replace(this.basePath, '');
+                  if (path === '') path = '/';
+                } else {
+                  // For hash mode also normalize to /
+                  path = window.location.hash.slice(1) || '/';
+                }
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Current path:', path);
+                }
+                return path;
+              }
+              
               navigate(path) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Navigating to:', path);
+                }
                 const url = this.basePath + path;
                 if (this.mode === 'history') {
                   window.history.pushState(null, '', url);
@@ -637,12 +716,130 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
               }
               
               handleRouteChange() {
-                const path = this.mode === 'history' 
-                  ? window.location.pathname.replace(this.basePath, '') || '/' 
-                  : window.location.hash.replace('#' + this.basePath, '') || '/';
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Handling route change');
+                }
+                const path = this.getCurrentPath();
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Available routes:', [...this.routes.keys()]);
+                }
+                let component = this.routes.get(path);
                 
-                const component = this.routes.get(path) || this.notFoundComponent;
+                // Debug logging for route matching
+                if (component) {
+                  if (process.env.NODE_ENV === 'development') {
+                    console.log('[Router] Found component for path:', path);
+                  }
+                } else {
+                  if (process.env.NODE_ENV === 'development') {
+                    console.log('[Router] No component found for path:', path, 'Using notFoundComponent');
+                  }
+                  component = this.notFoundComponent;
+                }
                 
+                // If we have a component to render, do it
+                if (component) {
+                  this.renderComponent(component);
+                } else if (this.rootElement) {
+                  // Show a helpful message if no component is found and no notFoundComponent is provided
+                  this.rootElement.innerHTML = '<div style="padding: 20px; font-family: system-ui, sans-serif;"><h1>Page not found: ' + path + '</h1><p>Please check your route configuration or provide a notFoundComponent.</p></div>';
+                }
+              }
+              
+              renderComponent(component) {
+                if (!this.rootElement) {
+                  console.error('[Router] Cannot render component: root element is not defined');
+                  return;
+                }
+                
+                try {
+                  // If the component exists and has a render method
+                  if (component && typeof component.render === 'function') {
+                    // First fade out if we have a current component
+                    if (this.currentComponent && this.transitionDuration > 0) {
+                      this.rootElement.style.opacity = '0';
+                      
+                      setTimeout(() => {
+                        this.rootElement.innerHTML = '';
+                        this.mountComponent(component);
+                        this.rootElement.style.opacity = '1';
+                      }, this.transitionDuration);
+                    } else {
+                      // No transition needed
+                      this.rootElement.innerHTML = '';
+                      this.mountComponent(component);
+                    }
+                  } else {
+                    console.error('[Router] Component does not have a render method:', component);
+                  }
+                } catch (error) {
+                  console.error('[Router] Error rendering component:', error);
+                  this.rootElement.innerHTML = '<div style="padding: 20px; font-family: system-ui, sans-serif;"><h1>Error rendering component</h1><pre>' + (error.message || 'Unknown error') + '</pre></div>';
+                }
+              }
+              
+              mountComponent(component) {
+                try {
+                  const el = component.render();
+                  if (el) {
+                    this.rootElement.appendChild(el);
+                    // Call onMount lifecycle method if it exists
+                    if (typeof component.onMount === 'function') {
+                      component.onMount(el);
+                    }
+                    // Store the current component
+                    this.currentComponent = component;
+                  } else {
+                    console.error('[Router] Component render method returned null or undefined');
+                  }
+                } catch (error) {
+                  console.error('[Router] Error mounting component:', error);
+                }
+              }
+              
+              back() {
+                window.history.back();
+              }
+              
+              forward() {
+                window.history.forward();
+              }
+            }
+            
+            export class Link {
+              constructor(options) {
+                this.to = options.to;
+                this.text = options.text;
+                this.className = options.className || '';
+              }
+              
+              render() {
+                const link = document.createElement('a');
+                link.href = this.to;
+                link.className = this.className;
+                link.textContent = this.text;
+                link.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  if (window.Router) {
+                    window.Router.navigate(this.to);
+                  }
+                });
+                return link;
+              }
+            }
+            
+            export class NavLink extends Link {
+              constructor(options) {
+                super(options);
+                this.activeClass = options.activeClass || 'active';
+              }
+            }
+            
+            export class Redirect {
+              constructor(options) {
+                this.to = options.to;
+              }
+              
               render() {
                 const div = document.createElement('div');
                 div.style.display = 'none';
