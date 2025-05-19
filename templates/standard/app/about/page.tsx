@@ -1,6 +1,6 @@
 /**
  * 0x1 Standard App - About Page
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 
 export default function AboutPage() {
@@ -30,7 +30,7 @@ export default function AboutPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               <div>
-                <span className="font-semibold">Next.js 15 App Directory Structure</span> - Modern file-based routing with nested layouts
+                <span className="font-semibold">App Directory Structure</span> - Modern file-based routing with nested layouts
               </div>
             </li>
             <li className="flex items-start">

@@ -42,7 +42,7 @@
 
 ### 🧩 Components Without Overhead
 - **TypeScript-Only**: Exclusively built for TypeScript with full type safety
-- **Simple API**: Modern component system with comprehensive TypeScript typing
+- **Simple API**: Modern component system with comprehensive TypeScript typing (Next.js-style/compatible, but without the bloat)
 - **Minimal abstractions**: Near-vanilla performance with type-checked templates
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
@@ -52,7 +52,7 @@
 0x1 offers three complexity levels for projects, all built with TypeScript:
 
 ```bash
-# Create a new project (all templates use Next.js 15 app directory structure)
+# Create a new project (all templates use app directory structure)
 bun 0x1 new my-app
 
 # Customize your project complexity
@@ -77,9 +77,9 @@ bun 0x1 new my-app --complexity=full
 - Progressive Web App (PWA) support
 - Service worker for offline capabilities
 
-### Next.js 15 App Directory Structure
+### App Directory Structure
 
-**All 0x1 templates now use the Next.js 15 app directory structure by default:**
+**All 0x1 templates now use the app directory structure by default:**
 - Modern app directory structure with file-based routing
 - Nested layouts with component co-location
 - Special file conventions for pages and layouts
@@ -299,9 +299,9 @@ bun install -g 0x1
 npm install -g 0x1
 ```
 
-### Important: Global CLI Access
+### Global CLI Access Troubleshooting
 
-After installing with `bun install -g`, you need to add Bun's bin directory to your PATH to use the `0x1` command:
+After installing with `bun install -g`, you may need to add Bun's bin directory to your PATH to use the `0x1` command if the auto-configuration fails due to your environment / edge cases:
 
 ```bash
 # Add these lines to your shell config (~/.bashrc, ~/.zshrc, etc.)
@@ -327,7 +327,7 @@ bunx 0x1 <command>
 
 ## 📦 Version Information
 
-Current version: **0.0.56**
+Current version: **0.0.57**
 
 This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
 
@@ -954,13 +954,13 @@ If you're experiencing issues with content not displaying in your browser when r
 
 ## 🗂️ Template Structure
 
-All templates now follow the Next.js 15 app directory structure with standardized organization patterns:
+All templates now follow the app directory structure with standardized organization patterns:
 
 ### Shared Structure Across All Templates
 
 ```
 project-name/
-├── app/              # Next.js 15 app directory structure
+├── app/              # app directory structure
 │   ├── layout.tsx    # Root layout wrapper (required)
 │   ├── page.tsx      # Home page component
 │   ├── not-found.tsx # 404 error page

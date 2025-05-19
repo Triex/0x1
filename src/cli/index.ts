@@ -99,6 +99,27 @@ interface Args {
   [key: string]: any;
 }
 
+// Commented as `update-version` does this
+// // Read package version from package.json at startup
+// let packageVersion = '0.0.56'; // Default fallback version
+// const readPackageVersion = async () => {
+//   try {
+//     // Resolve the package.json path relative to the current module
+//     const packageJsonPath = new URL('../package.json', import.meta.url).pathname;
+//     if (existsSync(packageJsonPath)) {
+//       const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
+//       if (packageJson.version) {
+//         packageVersion = packageJson.version;
+//       }
+//     }
+//   } catch (error) {
+//     // Silent fail, we'll use the default version
+//   }
+// };
+
+// // Try to read the version at startup
+// readPackageVersion().catch(() => {});
+
 // CLI banner
 const showBanner = () => {
   logger.banner([
@@ -109,7 +130,8 @@ const showBanner = () => {
     '╚██████╔╝ ██╔╝ ██╗  ██║',
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
-  logger.info(`Running 0x1 CLI v0.0.56 - The ultra-minimal TypeScript framework`);
+  logger.info(`Running 0x1 CLI v0.0.57 - The ultra-minimal TypeScript framework`);
+  // logger.info(`Running 0x1 CLI v${packageVersion} - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
 

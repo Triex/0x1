@@ -1,6 +1,6 @@
 /**
  * 0x1 Standard App - Root Layout
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 
 export default function RootLayout({ children }: { children: any }) {

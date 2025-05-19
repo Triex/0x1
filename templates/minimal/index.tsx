@@ -1,10 +1,10 @@
 /**
  * 0x1 Minimal App - Entry Point
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 import { Router } from '../../src/core/router';
 
-// Simple component registry - for Next.js 15 app directory structure
+// Simple component registry - for app directory structure
 const appComponents = {
   'app/page': { default: require('./app/page').default },
   'app/layout': { default: require('./app/layout').default },
@@ -60,7 +60,7 @@ ready(() => {
   // Initialize theme handling
   initializeTheme();
   
-  // Initialize the router with Next.js 15 app directory structure
+  // Initialize the router with app directory structure
   const router = new Router({
     rootElement: appContainer,
     mode: 'history',

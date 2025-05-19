@@ -1,6 +1,6 @@
 /**
  * 0x1 Standard App - Home Page
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 
 // Home page component
@@ -19,7 +19,7 @@ export default function HomePage() {
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <h2 className="text-2xl font-bold mb-4">Getting Started</h2>
             <p className="mb-4">
-              This template uses the Next.js 15 app directory structure with file-based routing.
+              This template uses the app directory structure with file-based routing.
             </p>
             <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
               <li>Edit <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">app/page.tsx</code> to modify this page</li>
@@ -31,7 +31,7 @@ export default function HomePage() {
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <h2 className="text-2xl font-bold mb-4">Features</h2>
             <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
-              <li>Next.js 15 app directory structure</li>
+              <li>app directory structure</li>
               <li>TypeScript support</li>
               <li>Tailwind CSS styling</li>
               <li>Dark mode support</li>

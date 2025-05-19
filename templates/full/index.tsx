@@ -1,6 +1,6 @@
 /**
  * 0x1 Full App - Entry Point
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 import type { Component } from '../../src/core/component';
 import { Router } from '../../src/core/router';
@@ -106,7 +106,7 @@ ready(() => {
   // Initialize navigation events
   initializeNavigation();
   
-  // Initialize the router with Next.js 15 app directory structure
+  // Initialize the router with app directory structure
   const router = new Router({
     rootElement: appContainer,
     mode: 'history',
@@ -116,5 +116,5 @@ ready(() => {
   
   router.init();
   
-  console.log('0x1 Full App started with Next.js 15 app directory structure!');
+  console.log('0x1 Full App started with app directory structure!');
 });

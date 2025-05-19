@@ -4,9 +4,9 @@
  */
 
 import chalk from 'chalk';
-import { existsSync, readdirSync } from 'fs';
-import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation compatibility
-import { join, resolve } from 'path';
+import { existsSync, readdirSync, statSync } from 'fs';
+import { mkdir } from 'fs/promises';
+import { dirname, join, resolve } from 'path';
 import prompts from 'prompts';
 import { logger } from '../utils/logger.js';
 import { addMITLicense, addNoLicense, addTDLLicense } from './license-utils.js';
@@ -182,20 +182,20 @@ export async function createNewProject(
   // Retrieve project options either from CLI args or interactive prompt
   const projectOptions = options.minimal
     ? {
-        template: 'custom', // Using custom for simplicity
-        tailwind: false,
+        template: 'standard', // Using standard as the template name to match valid type options
+        tailwind: typeof options.tailwind === 'boolean' ? options.tailwind : false,
         typescript: true, // TypeScript is now the only option
-        stateManagement: false,
-        licenseType: options.licenseType || 'tdl',
+        stateManagement: typeof options.stateManagement === 'boolean' ? options.stateManagement : false,
+        licenseType: options.licenseType || 'mit', // Default license to MIT
         pwa: false,
-        complexity: options.complexity || 'minimal',
-        themeMode: options.themeMode || 'system',
+        complexity: 'minimal',
+        themeMode: options.themeMode || 'dark', // Default to dark mode
         projectStructure: 'app', // Next.js 15 style app directory
         useNextStyle: true,
         // Default theme colors for PWA support
-        themeColor: '#0077cc',
-        secondaryColor: '#005fa3',
-        theme: 'light',
+        themeColor: options.themeColor || '#0077cc',
+        secondaryColor: options.secondaryColor || '#005fa3',
+        theme: options.theme || 'classic',
         statusBarStyle: 'black-translucent'
       }
     : await promptProjectOptions(options);
@@ -245,11 +245,11 @@ export async function createNewProject(
       
       // Copy template files
       await copyTemplate(
-        projectOptions.template, 
+        projectOptions.template as 'standard' | 'minimal' | 'full', 
         projectPath, 
         {
           useTailwind: projectOptions.tailwind,
-          complexity: projectOptions.complexity
+          complexity: projectOptions.complexity as 'minimal' | 'standard' | 'full'
         }
       );
       
@@ -438,7 +438,7 @@ interface NewProjectOptions {
 }
 
 async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<{
-  template: string;
+  template: 'standard' | 'minimal' | 'full'; // Match the specific template types we support
   tailwind: boolean;
   typescript: boolean; // Always true but kept for compatibility
   stateManagement: boolean;
@@ -488,12 +488,16 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     initial: 1
   });
 
-  // Ask about state management
+  // Ask about state management using select instead of confirm for consistency
   const stateResponse = await promptWithCancel({
-    type: "confirm",
+    type: "select",
     name: "stateManagement",
     message: "Would you like to include state management?",
-    initial: false
+    choices: [
+      { title: "Yes", value: true, description: "Include 0x1 state management" },
+      { title: "No", value: false, description: "Skip state management" }
+    ],
+    initial: 1
   });
 
   // Ask about license type
@@ -509,18 +513,17 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     initial: 1
   });
 
-  // Template complexity choice
+  // Template choice based on the actual templates we have (minimal, standard, full)
   const templatePrompt = await promptWithCancel({
     type: 'select',
     name: 'template',
     message: 'Which template would you like to use?',
     choices: [
-      { title: 'Default [Recommended]', value: 'default', description: 'Fully featured web application template' },
+      { title: 'Standard', value: 'standard', description: 'Recommended template with balanced features' },
       { title: 'Minimal', value: 'minimal', description: 'Bare-bones template with minimal features' },
-      { title: 'Full', value: 'full', description: 'Complete application with all features' },
-      { title: 'Next.js Style', value: 'next', description: 'App router pattern inspired by Next.js 15' }
+      { title: 'Full', value: 'full', description: 'Complete application with all features' }
     ],
-    initial: defaultOptions.template === 'next' ? 3 : defaultOptions.template === 'full' ? 2 : defaultOptions.template === 'minimal' ? 1 : 0
+    initial: defaultOptions.template === 'full' ? 2 : defaultOptions.template === 'minimal' ? 1 : 0
   });
 
   logger.spacer();
@@ -841,7 +844,13 @@ async function copyTemplate(
  */
 async function copyRecursive(src: string, dest: string): Promise<void> {
   try {
-    const stats = Bun.file(src).size !== null ? { isDirectory: () => false } : { isDirectory: () => true };
+    // First check if source exists
+    if (!existsSync(src)) {
+      throw new Error(`Source ${src} does not exist`);
+    }
+
+    // Use fs.statSync instead of Bun.file().size to reliably check if it's a directory
+    const stats = statSync(src);
     const isDirectory = stats.isDirectory();
     
     if (isDirectory) {
@@ -853,19 +862,20 @@ async function copyRecursive(src: string, dest: string): Promise<void> {
       // Read all entries in the source directory
       const entries = readdirSync(src);
       
-      // Use Promise.all for concurrent processing
-      await Promise.all(
-        entries
-          .filter(entry => !['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(entry))
-          .map(async entry => {
-            const srcPath = join(src, entry);
-            const destPath = join(dest, entry);
-            return copyRecursive(srcPath, destPath);
-          })
-      );
+      // Process files sequentially to avoid potential issues
+      for (const entry of entries) {
+        // Skip system files and directories
+        if (['node_modules', '.git', 'dist', 'bun.lockb', '.DS_Store'].includes(entry)) {
+          continue;
+        }
+        
+        const srcPath = join(src, entry);
+        const destPath = join(dest, entry);
+        await copyRecursive(srcPath, destPath);
+      }
     } else {
       // Create parent directory if it doesn't exist
-      const destDir = dest.split('/').slice(0, -1).join('/');
+      const destDir = dirname(dest);
       if (destDir && !existsSync(destDir)) {
         await mkdir(destDir, { recursive: true });
       }
@@ -890,62 +900,53 @@ async function copyTemplateFiles(
     useTailwind: boolean;
     complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
-    themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'root' | 'src' | 'app' | 'minimal';
+    themeMode?: string;
+    projectStructure?: 'app' | 'minimal' | 'root' | 'src'; 
     isMinimalStructure?: boolean;
   }
 ): Promise<void> {
-  // The sourceType should already include the language folder (typescript/javascript)
-  logger.info(`Copying template files from ${sourcePath} to ${destPath}`);
+  // Ensure options are properly set with defaults
+  const { projectStructure = 'app', isMinimalStructure = false } = options;
   
-  // Create the destination directory if it doesn't exist
-  await mkdir(destPath, { recursive: true });
-  
-  const { projectStructure = 'minimal', isMinimalStructure = false } = options;
+  logger.info(`💠 Copying template files from ${sourcePath} to ${destPath}`);
   
   try {
+    // Make sure destination directory exists
+    if (!existsSync(destPath)) {
+      await mkdir(destPath, { recursive: true });
+    }
+    
+    // Create app directory if using app directory structure
     if (projectStructure === 'app') {
-      // For app directory structure (Next.js 15 style)
       const appDir = join(destPath, 'app');
       if (!existsSync(appDir)) {
         await mkdir(appDir, { recursive: true });
       }
+    }
+    
+    // Use Bun's spawn to use native cp command for reliable directory copying
+    logger.debug(`Using native system command for directory copying`);
+    
+    try {
+      // Use cp -r command which is more reliable for directory copying
+      const result = await Bun.spawn(['cp', '-r', `${sourcePath}/.`, destPath], {
+        stdout: 'inherit',
+        stderr: 'pipe'
+      });
       
-      // Copy files to the app directory structure
-      await copyRecursive(sourcePath, appDir);
-        
-      // Move specific files back to root that shouldn't be in app directory
-      const rootFiles = [
-        '.gitignore',
-        'README.md',
-        'package.json',
-        'tsconfig.json',
-        'postcss.config.js',
-        'tailwind.config.js',
-        '0x1.config.js',
-        '0x1.config.ts'
-      ];
-      
-      for (const file of rootFiles) {
-        const appFilePath = join(appDir, file);
-        if (existsSync(appFilePath)) {
-          const rootFilePath = join(destPath, file);
-          await Bun.write(rootFilePath, Bun.file(appFilePath));
-          // Remove the file from app directory
-          try {
-            Bun.spawnSync(['rm', appFilePath], { cwd: destPath });
-          } catch (e) {
-            // Ignore errors, file may not exist
-          }
-        }
+      const error = await new Response(result.stderr).text();
+      if (result.exitCode !== 0 && error.trim().length > 0) {
+        throw new Error(`Error copying ${sourcePath} to ${destPath}: ${error}`);
       }
-    } else {
-      // For minimal structure, copy files directly to destination
-      await copyRecursive(sourcePath, destPath);
+      
+      logger.debug('Successfully copied template files');
+    } catch (error) {
+      logger.error(`Error copying template: ${error}`);
+      throw error;
     }
   } catch (error) {
-    logger.error(`Error copying template: ${error}`);
-    throw error;
+    logger.error(`Error copying template files: ${error}`);
+    throw new Error(`Error copying template: ${error}`);
   }
   
   // Create package.json with appropriate dependencies if it doesn't exist after copying
@@ -986,7 +987,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.56' // Use current version with caret for compatibility
+      "0x1": '^0.0.57' // Use current version with caret for compatibility
     },
     devDependencies: {
       // TypeScript is always included as 0x1 is TypeScript-only

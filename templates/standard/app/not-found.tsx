@@ -1,6 +1,6 @@
 /**
  * 0x1 Standard App - Not Found Page
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 
 export default function NotFound() {

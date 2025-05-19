@@ -41,19 +41,22 @@ async function updateTemplateVersions(version: string): Promise<void> {
   const templateTypes = ['minimal', 'standard', 'full'];
   const languageTypes = ['typescript', 'javascript'];
   
-  // Process all template directories
+  // Update all template package.json files
   for (const type of templateTypes) {
-    // First check if this is a new minimal structure (direct package.json)
+    // For each template type (minimal, standard, full), check for package.json
     const directTemplatePath = join(templatesDir, type);
     const directPackageJsonPath = join(directTemplatePath, 'package.json');
     
-    // Check for direct package.json (new minimal structure)
+    // Check for direct package.json in the template directory
     if (existsSync(directPackageJsonPath)) {
       console.log(`Updating ${type}/package.json (minimal structure)`);
       await updatePackageJsonDependencies(directPackageJsonPath, version);
+    } else {
+      console.log(`Warning: No package.json found at ${directPackageJsonPath}`);
     }
     
-    // Still check for templates/{type}/{language} structure (backwards compatibility)
+    // For backwards compatibility, also check legacy nested structure
+    // but log it so we're aware of old structures that might need updating
     for (const language of languageTypes) {
       const nestedTemplatePath = join(templatesDir, type, language);
       
@@ -61,7 +64,7 @@ async function updateTemplateVersions(version: string): Promise<void> {
         const packageJsonPath = join(nestedTemplatePath, 'package.json');
         
         if (existsSync(packageJsonPath)) {
-          console.log(`Updating ${type}/${language}/package.json`);
+          console.log(`Updating ${type}/${language}/package.json (legacy structure)`);
           await updatePackageJsonDependencies(packageJsonPath, version);
         }
       }

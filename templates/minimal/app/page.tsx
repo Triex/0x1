@@ -1,6 +1,6 @@
 /**
  * 0x1 Minimal App - Home Page
- * Using Next.js 15 app directory structure
+ * Using app directory structure
  */
 
 // Simple functional component for the home page

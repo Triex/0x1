@@ -302,7 +302,7 @@ async function processHtml(
 
 /**
  * bundle JavaScript/TypeScript with enhanced Bun APIs
- * Optimized for Next.js 15 app directory structure
+ * Optimized for app directory structure
  */
 async function bundleJavaScript(
   projectPath: string,
