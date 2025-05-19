@@ -189,7 +189,9 @@ export async function createNewProject(
   
   // Determine whether to use CLI options directly or prompt interactively
   const nonInteractiveMode = !process.stdout.isTTY;
-  const skipPrompts = nonInteractiveMode || options.template;
+  // Only skip prompts if we're in non-interactive mode OR if --template was explicitly provided as CLI arg
+  const templateProvidedAsCLIArg = process.argv.some(arg => arg.startsWith('--template=') || arg === '--template');
+  const skipPrompts = nonInteractiveMode || (templateProvidedAsCLIArg && options.template);
   
   // Define default options for consistency
   const defaultOptions = {
@@ -969,13 +971,13 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.60'
+      "0x1": '^0.0.61' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'
     } as Record<string, string>,
     // Use Bun as the preferred package manager
-    packageManager: 'bun@1.0.17'
+    packageManager: 'bun@1.2.13'
   };
   
   // Add Tailwind processing scripts if needed
