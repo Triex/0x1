@@ -130,7 +130,7 @@ const showBanner = () => {
     '╚██████╔╝ ██╔╝ ██╗  ██║',
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
-  logger.info(`Running 0x1 CLI v0.0.61 - The ultra-minimal TypeScript framework`);
+  logger.info(`Running 0x1 CLI v0.0.62 - The ultra-minimal TypeScript framework`);
   // logger.info(`Running 0x1 CLI v${packageVersion} - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
