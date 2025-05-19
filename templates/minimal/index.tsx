@@ -56,11 +56,10 @@ ready(() => {
   
   // Initialize the router with automatic app directory discovery
   const router = new Router({
-    rootElement: appContainer,
+    root: appContainer,
     mode: 'history',
-    transitionDuration: 150,
-    // Let 0x1 automatically discover components
-    autoDiscovery: true
+    transitionDuration: 150
+    // The router now automatically discovers components in the app directory
   });
   
   router.init();
