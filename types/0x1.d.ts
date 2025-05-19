@@ -29,18 +29,6 @@ declare module '0x1' {
   
   // HTML helpers
   export function html(strings: TemplateStringsArray, ...values: any[]): string;
-  
-  // Routing
-  export class Router {
-    constructor();
-    add(path: string, handler: () => void): Router;
-    notFound(handler: () => void): Router;
-    navigate(path: string): void;
-    start(): void;
-    updateActiveLinks(): void;
-  }
-  
-  export function Link(props: { href: string; children: any; className?: string }): string;
 
   // Configuration interface
   export interface Config {
@@ -87,7 +75,65 @@ declare module '0x1' {
   }
 }
 
-// Path-specific module declarations for templates
+// Clean import declarations for router module
+declare module '0x1/router' {
+  export interface RouteParams {
+    [key: string]: string;
+  }
+
+  export interface Page<T = any> {
+    render: (params?: RouteParams) => HTMLElement;
+    onMount?: (element: HTMLElement, params?: RouteParams) => void;
+    onUnmount?: (element: HTMLElement) => void;
+    getData?: () => Promise<T>;
+  }
+
+  export interface Component {
+    render: (props?: any) => HTMLElement;
+    onMount?: (element: HTMLElement, props?: any) => void;
+    onUnmount?: (element: HTMLElement) => void;
+  }
+
+  export class Router {
+    constructor(options: {
+      root: HTMLElement;
+      mode?: 'history' | 'hash';
+      basePath?: string;
+      notFoundComponent?: Page<any> | Component;
+      transitionDuration?: number;
+    });
+
+    addRoute(path: string, component: Page<any> | Component): void;
+    navigate(path: string): void;
+    back(): void;
+    forward(): void;
+  }
+
+  export class Link {
+    constructor(options: {
+      to: string;
+      text: string;
+      className?: string;
+    });
+    render(): HTMLElement;
+  }
+
+  export class NavLink extends Link {
+    constructor(options: {
+      to: string;
+      text: string;
+      activeClass?: string;
+      className?: string;
+    });
+  }
+
+  export class Redirect {
+    constructor(options: { to: string });
+    render(): HTMLElement;
+  }
+}
+
+// Legacy path-specific module declarations for backward compatibility
 declare module '0x1/core/router' {
   export interface RouterOptions {
     rootElement: HTMLElement;
