@@ -910,15 +910,30 @@ async function copyTemplateFiles(
     logger.debug(`Using native system command for directory copying`);
     
     try {
-      // Use cp -r command which is more reliable for directory copying
-      const result = await Bun.spawn(['cp', '-r', `${sourcePath}/.`, destPath], {
-        stdout: 'inherit',
-        stderr: 'pipe'
-      });
+      // First, create a list of all files and folders that need to be copied
+      // but explicitly exclude node_modules and other unwanted directories
+      const entries = readdirSync(sourcePath, { withFileTypes: true });
       
-      const error = await new Response(result.stderr).text();
-      if (result.exitCode !== 0 && error.trim().length > 0) {
-        throw new Error(`Error copying ${sourcePath} to ${destPath}: ${error}`);
+      for (const entry of entries) {
+        // Skip node_modules, dist, .git and other unwanted directories
+        if (['node_modules', 'dist', '.git', '.cache'].includes(entry.name)) {
+          continue;
+        }
+        
+        const srcPath = join(sourcePath, entry.name);
+        const destEntryPath = join(destPath, entry.name);
+        
+        // Use cp command for each entry instead of copying everything at once
+        logger.debug(`Copying ${srcPath} to ${destEntryPath}`);
+        const result = await Bun.spawn(['cp', '-r', srcPath, destEntryPath], {
+          stdout: 'inherit',
+          stderr: 'pipe'
+        });
+        
+        const error = await new Response(result.stderr).text();
+        if (result.exitCode !== 0 && error.trim().length > 0) {
+          throw new Error(`Error copying ${srcPath} to ${destEntryPath}: ${error}`);
+        }
       }
       
       logger.debug('Successfully copied template files');
@@ -971,7 +986,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.66' // Use current version with caret for compatibility
+      "0x1": '^0.0.67' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

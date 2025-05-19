@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.66",
+  "version": "0.0.67",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -14,6 +14,14 @@
     "templates",
     "bin",
     "LICENSE"
+  ],
+  "npmignore": [
+    "node_modules",
+    "templates/**/node_modules",
+    "**/node_modules",
+    "**/.git",
+    "**/dist",
+    "**/.cache"
   ],
   "scripts": {
     "dev": "bun run --watch src/cli/index.ts dev",
