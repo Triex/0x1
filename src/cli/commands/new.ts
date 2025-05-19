@@ -64,30 +64,27 @@ async function installDependencies(projectPath: string): Promise<void> {
   }
 }
 
+/**
+ * Options for creating a new 0x1 project
+ */
 interface NewProjectOptions {
-  template?: string;
-  tailwind?: boolean;
-  // TypeScript is now the only option, no longer optional
-  typescript?: boolean; // Keep for backwards compatibility but it's always true now
-  javascript?: boolean; // Keep for backwards compatibility but it's always false now
-  minimal?: boolean;
-  force?: boolean;
-  stateManagement?: boolean;
-  licenseType?: 'tdl' | 'mit' | 'none'; // New license type property
-  overwrite?: boolean;
-  complexity?: 'minimal' | 'standard' | 'full';
-  pwa?: boolean;
-  'no-pwa'?: boolean; // Add explicit no-pwa flag
-  themeMode?: 'light' | 'dark' | 'system'; // Theme mode selection
-  // Project structure support
-  useNextStyle?: boolean; // Use Next.js 15-style app directory structure (default true)
-  projectStructure?: 'minimal' | 'app' | 'root' | 'src';
+  // Project fundamentals
+  template?: 'minimal' | 'standard' | 'full'; // Template type/complexity level
+  tailwind?: boolean;                       // Include Tailwind CSS  
+  stateManagement?: boolean;                // Include state management
+  licenseType?: 'tdl' | 'mit' | 'none';     // License type
+  overwrite?: boolean;                       // Overwrite existing files
+  force?: boolean;                           // Force operation
+  
+  // UI and styling related
+  themeMode?: 'light' | 'dark' | 'system';   // Light/dark mode preference
   
   // PWA related properties
-  themeColor?: string;
-  secondaryColor?: string;
-  theme?: string;
-  statusBarStyle?: 'black-translucent' | 'default' | 'black';
+  pwa?: boolean;                             // Include PWA features
+  pwaTheme?: string;                         // PWA color theme name
+  themeColor?: string;                       // Primary PWA color
+  secondaryColor?: string;                   // Secondary PWA color
+  statusBarStyle?: 'black-translucent' | 'default' | 'black'; // PWA status bar style
 }
 
 /**
@@ -143,44 +140,55 @@ export async function createNewProject(
   }
   
   // Determine the complexity from options
-  let defaultComplexity: 'minimal' | 'standard' | 'full' = 'standard';
+  // Set template type if not already defined
+  // Use template directly since complexity was removed from the interface
+  if (!options.template) {
+    // Default to standard if not specified
+    options.template = 'standard';
+  } 
+  // Check if command line was invoked with --minimal flag (backward compatibility)
+  // Template takes precedence over any legacy flags
+  else if (options.hasOwnProperty('minimal') && (options as any).minimal === true) {
+    options.template = 'minimal';
+  } 
   
-  if (options.complexity === 'minimal') {
-    defaultComplexity = 'minimal';
-  } else if (options.complexity === 'standard' || options.complexity === 'full') {
-    defaultComplexity = options.complexity;
-  } 
-  // If --minimal flag is provided, set to minimal
-  else if (options.minimal) {
-    defaultComplexity = 'minimal';
-  } 
-  // If --template is provided, extract complexity from template path
+  // If --template is provided, ensure it's a valid template type
   else if (options.template) {
-    // Template format should be complexity/language (e.g., minimal/typescript)
-    const parts = options.template.split('/');
-    if (parts.length >= 1) {
-      if (parts[0] === 'minimal' || parts[0] === 'standard' || parts[0] === 'full') {
-        defaultComplexity = parts[0];
+    // Normalize template value to one of our valid options
+    if (typeof options.template === 'string') {
+      const templateValue = options.template.toLowerCase();
+      
+      // If path format is provided, extract just the template type
+      if (templateValue.includes('/')) {
+        const templateParts = templateValue.split('/');
+        const templateType = templateParts[0];
+        if (templateType === 'minimal' || templateType === 'standard' || templateType === 'full') {
+          options.template = templateType as 'minimal' | 'standard' | 'full';
+        } else {
+          // Default to standard if invalid template specified
+          options.template = 'standard';
+        }
+      } else if (['minimal', 'standard', 'full'].includes(templateValue)) {
+        options.template = templateValue as 'minimal' | 'standard' | 'full';
+      } else {
+        // Default to standard if invalid template specified
+        options.template = 'standard';
       }
-      // else: defaultComplexity remains 'standard' from initialization
     }
   }
-  // Default is already set to 'standard' in the initialization
 
   // Process CLI flags for consistency before passing to prompts
-  // TypeScript is now the only option, but we keep this for compatibility
-  options.typescript = true;
-  
-  // If --no-pwa is passed, make sure pwa is explicitly set to false
-  if (options['no-pwa'] === true) {
-    options.pwa = false;
+  // TypeScript is always enabled in current versionmake sure pwa  // Detect if PWA option is manually disabled via CLI flags
+  if (options.pwa === false) {
+    logger.debug('PWA features explicitly disabled via CLI flags');
   }
   
   // Debug log to show processed CLI options
   logger.debug(`Processed CLI options: pwa=${options.pwa}`);  
 
   // Retrieve project options either from CLI args or interactive prompt
-  const projectOptions = options.minimal
+  // Skip interactive prompts if we're running in non-interactive mode or with default options
+  const projectOptions = (options.template && !process.stdout.isTTY) || options.hasOwnProperty('minimal')
     ? {
         template: 'standard', // Using standard as the template name to match valid type options
         tailwind: typeof options.tailwind === 'boolean' ? options.tailwind : false,
@@ -188,14 +196,14 @@ export async function createNewProject(
         stateManagement: typeof options.stateManagement === 'boolean' ? options.stateManagement : false,
         licenseType: options.licenseType || 'mit', // Default license to MIT
         pwa: false,
-        complexity: 'minimal',
+        // Using template property instead of legacy complexity
         themeMode: options.themeMode || 'dark', // Default to dark mode
         projectStructure: 'app', // Next.js 15 style app directory
         useNextStyle: true,
         // Default theme colors for PWA support
         themeColor: options.themeColor || '#0077cc',
         secondaryColor: options.secondaryColor || '#005fa3',
-        theme: options.theme || 'classic',
+        pwaTheme: options.pwaTheme || 'classic',
         statusBarStyle: 'black-translucent'
       }
     : await promptProjectOptions(options);
@@ -204,7 +212,7 @@ export async function createNewProject(
   const projectStructure = 'app';
   logger.info('💡 Using modern app directory structure for Next.js 15 compatibility');
   
-  logger.debug(`Using template complexity: ${projectOptions.complexity}`);
+  logger.debug(`Using template type: ${projectOptions.template}`);
 
   // Store project options for use throughout the function
   // These variables are kept for documentation clarity but prefixed with _ to satisfy linting
@@ -249,7 +257,8 @@ export async function createNewProject(
         projectPath, 
         {
           useTailwind: projectOptions.tailwind,
-          complexity: projectOptions.complexity as 'minimal' | 'standard' | 'full'
+          useStateManagement: projectOptions.stateManagement,
+          themeMode: projectOptions.themeMode
         }
       );
       
@@ -261,7 +270,7 @@ export async function createNewProject(
     await _createBasicSourceFiles(projectPath, {
       useTailwind: projectOptions.tailwind || false,
       useStateManagement,
-      complexity: projectOptions.complexity as ('minimal' | 'standard' | 'full'),
+      complexity: projectOptions.template as ('minimal' | 'standard' | 'full'),
       projectStructure
     });
   }
@@ -292,7 +301,8 @@ export async function createNewProject(
       
       // Stage 3: Set up icons and PWA if requested
       // Generate basic project info for icon generation
-      const projectName = options.name || projectPath.split('/').pop() || '';
+      // Use the name parameter directly since it's already available
+      const projectName = name || projectPath.split('/').pop() || '';
       
       // Generate logo text based on project name
       // - For multi-word names: use first letters as acronym
@@ -336,7 +346,7 @@ export async function createNewProject(
             icons: true,
             offline: true,
             // Additional options for extended templating
-            theme: projectOptions.theme as string,
+            theme: projectOptions.pwaTheme as string,
             // Pass the iOS status bar style
             statusBarStyle: projectOptions.statusBarStyle as 'default' | 'black' | 'black-translucent' | undefined
           }, projectPath);
@@ -368,7 +378,7 @@ export async function createNewProject(
             logoText: logoText,
             themeColor: projectOptions.themeColor,
             backgroundColor: projectOptions.secondaryColor,
-            theme: projectOptions.theme as string,
+            theme: projectOptions.pwaTheme as string,
             projectStructure: projectStructure as 'root' | 'src' | 'app'
           });
           
@@ -418,40 +428,41 @@ To build for production:
 /**
  * Enhanced interactive prompt for project setup
  */
-interface NewProjectOptions {
-  template?: string;
-  tailwind?: boolean;
-  typescript?: boolean;
-  javascript?: boolean; // Add explicit JavaScript flag
-  stateManagement?: boolean;
-  tdlLicense?: boolean; // Legacy support
-  licenseType?: 'tdl' | 'mit' | 'none'; // New license type property
-  pwa?: boolean;
-  'no-pwa'?: boolean; // Add explicit no-pwa flag
-  themeColor?: string;
-  secondaryColor?: string;
-  textColor?: string;
-  theme?: string;
-  themeMode?: 'light' | 'dark' | 'system'; // Add theme mode selection
-  complexity?: 'minimal' | 'standard' | 'full';
+interface ProjectPromptOptions {
+  // Project fundamentals
+  template?: 'minimal' | 'standard' | 'full'; // Template type/complexity level
+  tailwind?: boolean;                       // Include Tailwind CSS  
+  stateManagement?: boolean;                // Include state management
+  licenseType?: 'tdl' | 'mit' | 'none';     // License type
+  
+  // UI and styling related
+  themeMode?: 'light' | 'dark' | 'system';   // Light/dark mode preference
+  
+  // PWA related properties
+  pwa?: boolean;                             // Include PWA features
+  pwaTheme?: string;                         // PWA color theme name
+  themeColor?: string;                       // Primary PWA color
+  secondaryColor?: string;                   // Secondary PWA color
+  
+  // For all other arbitrary options that might be passed
   [key: string]: any;
 }
 
-async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<{
-  template: 'standard' | 'minimal' | 'full'; // Match the specific template types we support
+async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promise<{
+  // Project fundamentals
+  template: 'standard' | 'minimal' | 'full'; // The selected template type
   tailwind: boolean;
-  typescript: boolean; // Always true but kept for compatibility
   stateManagement: boolean;
   licenseType: 'tdl' | 'mit' | 'none';
-  complexity: 'minimal' | 'standard' | 'full';
-  pwa: boolean;
+  
+  // UI and styling
   themeMode: 'light' | 'dark' | 'system';
-  projectStructure: 'app'; // Only app directory structure is supported now
-  useNextStyle: boolean; // Always true
+  
   // PWA related properties
-  themeColor: string;
-  secondaryColor: string;
-  theme: string;
+  pwa: boolean;
+  pwaTheme: string; // PWA color theme name
+  themeColor: string; // Primary color
+  secondaryColor: string; // Secondary color
   statusBarStyle: 'black-translucent' | 'default' | 'black';
 }> {
   // Create a wrapper for prompts that handles cancellation
@@ -475,17 +486,17 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   logger.info(chalk.bold('\nLanguage: TypeScript'));
   logger.info('0x1 now uses TypeScript exclusively for type-safe modern development');
 
-  // Prompt for other project settings
-  const complexityResponse = await promptWithCancel({
+  // Template selection - this is the only template prompt we'll show
+  const templateResponse = await promptWithCancel({
     type: "select",
-    name: "complexity",
-    message: "Select a template complexity level (or press Enter for standard):",
+    name: "template",
+    message: "Select a template complexity level:",
     choices: [
-      { value: "minimal", label: "Minimal - Basic setup with minimal dependencies" },
-      { value: "standard", label: "Standard - Common libraries and project structure" },
-      { value: "full", label: "Full - Complete setup with all recommended features" },
+      { title: "Minimal", value: "minimal", description: "Basic setup with minimal dependencies" },
+      { title: "Standard", value: "standard", description: "Common libraries and project structure" },
+      { title: "Full", value: "full", description: "Complete setup with all recommended features" },
     ],
-    initial: 1
+    initial: 1 // Default to Standard
   });
 
   // Ask about state management using select instead of confirm for consistency
@@ -506,33 +517,33 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     name: "licenseType",
     message: "Select a license type:",
     choices: [
-      { value: "mit", label: "MIT License" },
-      { value: "tdl", label: "TDL License (0x1 Default)" },
-      { value: "none", label: "No License" }
+      { title: "MIT License", value: "mit", description: "Standard MIT open source license" },
+      { title: "TDL License", value: "tdl", description: "0x1 Default License" },
+      { title: "No License", value: "none", description: "Skip license creation" }
     ],
     initial: 1
   });
 
-  // Template choice based on the actual templates we have (minimal, standard, full)
-  const templatePrompt = await promptWithCancel({
+  // UI design style selection
+  const uiDesignResponse = await promptWithCancel({
     type: 'select',
-    name: 'template',
-    message: 'Which template would you like to use?',
+    name: 'uiDesign',
+    message: '🎨 Choose a UI design style:',
     choices: [
-      { title: 'Standard', value: 'standard', description: 'Recommended template with balanced features' },
-      { title: 'Minimal', value: 'minimal', description: 'Bare-bones template with minimal features' },
-      { title: 'Full', value: 'full', description: 'Complete application with all features' }
+      { title: 'Classic', value: 'classic', description: 'Traditional modern UI design' },
+      { title: 'Minimalist', value: 'minimalist', description: 'Clean, distraction-free design' },
+      { title: 'Bold', value: 'bold', description: 'High-contrast, striking visuals' }
     ],
-    initial: defaultOptions.template === 'full' ? 2 : defaultOptions.template === 'minimal' ? 1 : 0
+    initial: 0
   });
 
   logger.spacer();
 
-  // Ask about project theme
-  const themeResponse = await promptWithCancel({
+  // PWA color theme selection
+  const pwaThemeResponse = await promptWithCancel({
     type: 'select',
-    name: 'theme',
-    message: '🎨 Choose a project theme:',
+    name: 'pwaTheme',
+    message: '🎨 Choose a PWA color theme:',
     choices: [
       { 
         title: 'Midnight Blue', 
@@ -610,7 +621,7 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
   // If not specified, default to No
   const pwaDefault = defaultOptions.pwa === true ? 0 : 1;
   
-  const pwaResponse = complexityResponse.complexity !== 'minimal' ? await promptWithCancel({
+  const pwaResponse = templateResponse.template !== 'minimal' ? await promptWithCancel({
     type: 'select',
     name: 'pwa',
     message: '📱 Add Progressive Web App (PWA) support?',
@@ -638,9 +649,9 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
     'classic': { primary: '#0077cc', secondary: '#ffffff', text: '#111827' }
   };
   
-  // Get colors based on selected theme
-  const themeKey = themeResponse.theme as string;
-  const selectedThemeColors = themeColorMap[themeKey] || themeColorMap['classic'];
+  // Get colors based on selected PWA theme
+  const pwaThemeKey = pwaThemeResponse.pwaTheme as string;
+  const selectedThemeColors = themeColorMap[pwaThemeKey] || themeColorMap['classic'];
   
   // Use theme color for PWA by default
   let pwaThemeColor = selectedThemeColors.primary;
@@ -712,36 +723,31 @@ async function promptProjectOptions(defaultOptions: NewProjectOptions): Promise<
 
   // State management is included by default in full template or can be specified
   const useStateManagement = defaultOptions.stateManagement ?? 
-                             (complexityResponse.complexity === 'full');
+                             (templateResponse.template === 'full');
 
   // Tailwind is enabled by default now
   const useTailwind = defaultOptions.tailwind ?? true;
   
-  // Construct the template path - Use the complexity to determine the template path - TypeScript is the only option now
-  const templatePath = `${complexityResponse.complexity}/typescript`;
-
-  // Determine appropriate values based on selected options
-  const tailwindOption = useTailwind;
-  const stateManagementOption = useStateManagement;
-  const useNextStyleOption = templatePrompt.template === 'next';
+  // Use the directly selected template type - no need to map it anymore since our
+  // template selection prompt directly matches our supported template types
+  const selectedTemplate = templateResponse.template as 'standard' | 'minimal' | 'full';
   
-  // Set project structure to 'app' if Next.js template is selected
-  const actualProjectStructure = templatePrompt.template === 'next' ? 'app' : projectStructure;
-  // Return the complete options object
+  // Return the complete options object with properly typed template
   return {
-    template: templatePrompt.template,
-    tailwind: tailwindOption,
-    typescript: true, // TypeScript is now the only option
-    stateManagement: stateManagementOption,
+    // Project fundamentals
+    template: selectedTemplate,
+    tailwind: useTailwind,
+    stateManagement: useStateManagement,
     licenseType: defaultOptions.licenseType || 'mit', // Default to MIT if undefined
-    complexity: complexityResponse.complexity,
-    pwa: pwaResponse.pwa,
+    
+    // UI and styling
     themeMode: themeModeResponse.themeMode,
-    projectStructure: 'app', // Fixed project structure for Next.js 15
-    useNextStyle: true, // Always use Next.js style app directory structure
+    
+    // PWA properties
+    pwa: pwaResponse.pwa,
+    pwaTheme: pwaThemeResponse.pwaTheme, // PWA color theme
     themeColor: pwaThemeColor,
     secondaryColor: pwaSecondaryColor,
-    theme: defaultPwaTheme.theme,
     statusBarStyle: pwaStatusBarStyle
   };
 };
@@ -754,87 +760,81 @@ async function copyTemplate(
   projectPath: string,
   options: {
     useTailwind: boolean;
-    complexity: 'minimal' | 'standard' | 'full';
     useStateManagement?: boolean;
     themeMode?: 'light' | 'dark' | 'system';
-    projectStructure?: 'app' | 'minimal' | 'root' | 'src';
   }
 ): Promise<void> {
-  const { useTailwind, complexity, themeMode = 'dark', projectStructure = 'minimal' } = options;
-  
-  // Get the current file's directory to use as base
-  const currentDir = import.meta.dirname || '';
-  logger.debug(`Current directory: ${currentDir}`);
-  
-  // Define possible template paths for the minimal structure
-  const minimalPaths = [
-    // Development path from source directory
-    join(currentDir, '../../../templates', complexity),
-    // Global installation path
-    join(currentDir, '../templates', complexity),
-    // Direct path from execution directory
-    join(process.cwd(), 'templates', complexity),
-    // Absolute path for global installation
-    join(currentDir, '../../templates', complexity),
-    // One level deeper for node_modules scenarios
-    join(currentDir, '../../../../templates', complexity)
-  ];
-  
-  // Define possible template paths for the legacy structure (templates/complexity/typescript)
-  const legacyPaths = minimalPaths.map(path => join(path, 'typescript'));
-  
-  logger.debug(`Checking template paths:\n${minimalPaths.join('\n')}`);
-  
-  // Find the first valid template path, preferring minimal structure
-  let templatePath = '';
-  let isMinimalStructure = false;
-  
-  // First try the minimal structure
-  for (const path of minimalPaths) {
-    if (existsSync(path)) {
-      templatePath = path;
-      isMinimalStructure = true;
-      logger.debug(`Using minimal template structure: ${templatePath}`);
-      break;
+  try {
+    // Set defaults and typed template name
+    const { useTailwind, useStateManagement = false, themeMode = 'dark' } = options;
+    const templateType = template as 'minimal' | 'standard' | 'full';
+
+    // Get the current file's directory to use as base
+    const currentDir = import.meta.dirname || '';
+    logger.debug(`Current directory: ${currentDir}`);
+
+    // Define possible template paths for the template
+    const templatePaths = [
+      // Development path from source directory
+      join(currentDir, '../../../templates', templateType),
+      // Global installation path
+      join(currentDir, '../templates', templateType),
+      // Direct path from execution directory
+      join(process.cwd(), 'templates', templateType),
+      // Absolute path for global installation
+      join(currentDir, '../../templates', templateType),
+      // One level deeper for node_modules scenarios
+      join(currentDir, '../templates/node_modules/0x1/templates', templateType),
+    ];
+
+    // Create project directory if it doesn't exist
+    if (existsSync(projectPath)) {
+      logger.warn(`Notice: Directory ${projectPath} already exists.`);
+    } else {
+      await mkdir(projectPath, { recursive: true });
     }
-  }
-  
-  // If minimal structure not found, try legacy structure
-  if (!templatePath) {
-    for (const path of legacyPaths) {
+
+    // Try each possible path and use the first one that exists
+    let sourcePath = '';
+    for (const path of templatePaths) {
       if (existsSync(path)) {
-        templatePath = path;
-        logger.debug(`Using legacy template structure: ${templatePath}`);
+        sourcePath = path;
+        logger.debug(`Found template at ${templatePaths.indexOf(path)}: ${path}`);
         break;
       }
     }
-  }
-  
-  // If no template path exists, throw an error
-  if (!templatePath) {
-    throw new Error(`Template path does not exist. Tried:\n${minimalPaths.join('\n')}`);
-  }
-  
-  // Copy template files from the detected template directory to project directory
-  await copyTemplateFiles(templatePath, projectPath, {
-    useTailwind,
-    complexity,
-    useStateManagement: options.useStateManagement,
-    themeMode,
-    projectStructure,
-    isMinimalStructure
-  });
-  
-  // Create package.json (only if not using minimal structure or package.json doesn't exist)
-  const projectPackageJsonPath = join(projectPath, 'package.json');
-  if (!isMinimalStructure || !existsSync(projectPackageJsonPath)) {
+
+    // Check if a valid template path was found
+    if (!sourcePath) {
+      throw new Error(`Template path not found for ${templateType}. Tried:\n${templatePaths.join('\n')}`);
+    }
+
+    // Copy template files from the detected template directory to project directory
+    await copyTemplateFiles(sourcePath, projectPath, {
+      useTailwind,
+      complexity: templateType,  // Use template type as complexity
+      useStateManagement,
+      themeMode,
+      isMinimalStructure: templateType === 'minimal',
+      projectStructure: 'app'  // Default to app directory structure
+    });
+    
+    // Create package.json with appropriate settings
     await createPackageJson(projectPath, {
       useTailwind,
-      useStateManagement: options.useStateManagement,
-      minimal: complexity === 'minimal',
-      projectStructure
+      useStateManagement,
+      minimal: templateType === 'minimal',
+      projectStructure: 'app'
     });
+    
+    logger.success(`Template files copied successfully to ${projectPath}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to copy template: ${errorMessage}`);
+    throw error;
   }
+  
+  // Note: Package.json creation is now handled inside the try block above
 }
 
 /**
