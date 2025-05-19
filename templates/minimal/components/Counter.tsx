@@ -58,8 +58,16 @@ export function Counter({
     }
   }
   
+  // Function to be called after the component is mounted to set up initial state
+  function onMount() {
+    // Delay to ensure DOM is ready
+    setTimeout(() => {
+      updateDisplay();
+    }, 0);
+  }
+  
   return (
-    <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
+    <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6" onMount={onMount}>
       <div className="flex items-center justify-center gap-4 mb-3">
         <button 
           id="decrement-btn"
@@ -73,7 +81,7 @@ export function Counter({
           id="counter-value" 
           className="text-2xl font-bold text-gray-900 dark:text-white"
         >
-          {initialValue}
+          {count}
         </span>
         <button 
           id="increment-btn"

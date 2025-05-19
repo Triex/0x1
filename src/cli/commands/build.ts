@@ -489,33 +489,142 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
 
       // Create 0x1 module for browser compatibility
       const framework0x1Dir = join(dirname(outputFile), '0x1');
+      
+      // Transform bare imports like 'import { createElement, Fragment } from "0x1"'
+      modifiedContent = modifiedContent.replace(
+        /from\s+["'](0x1)["']|import\s+["']0x1["']|import\(["']0x1["']\)/g,
+        (match) => {
+          return match.replace(/["']0x1["']/, '"/0x1/index.js"');
+        }
+      );
+      
+      // Handle submodule imports like 'import { Router } from "0x1/router"'
+      modifiedContent = modifiedContent.replace(
+        /from\s+["'](0x1\/[\w\/-]+)["']|import\s+["']0x1(\/[\w\/-]+)["']|import\(["']0x1(\/[\w\/-]+)["']\)/g,
+        (match, subpath1, subpath2, subpath3) => {
+          const subpath = subpath1 || subpath2 || subpath3;
+          return match.replace(/["']0x1(\/[\w\/-]+)["']/, '"/0x1' + subpath + '.js"');
+        }
+      );
+
       await mkdir(framework0x1Dir, { recursive: true });
-
+      
       // Create browser-compatible index module for non-router imports
-      const indexContent = `
-        // 0x1 Framework - Browser Compatible Version
-        export * from '../node_modules/0x1/dist/index.js';
-        import * as Core from '../node_modules/0x1/dist/index.js';
-        export default Core;
-      `;
-      await Bun.write(join(framework0x1Dir, 'index.js'), indexContent);
+      const indexJsContent = `
+// 0x1 Framework - Browser Compatible Version
 
-      // If we modified content for router imports, write it to a temporary file for bundling
-      if (modifiedContent !== fileContent) {
-        const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
-        await Bun.write(tempFile, modifiedContent);
-        // Use the temp file for bundling instead
-        // Note: We need to pass this separately to Bun.build below
-        // We don't actually modify entryFile directly as it could cause TypeScript errors
-      }
+// JSX Runtime for createElement and Fragment
+export function createElement(type, props, ...children) {
+  if (!props) props = {};
+  
+  // Handle children
+  if (children.length > 0) {
+    props.children = children.length === 1 ? children[0] : children;
+  }
+  
+  // Handle component functions
+  if (typeof type === 'function') {
+    return type(props);
+  }
+  
+  // Create DOM element
+  const element = document.createElement(type);
+  
+  // Apply props
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'children') continue;
+    
+    // Handle events
+    if (key.startsWith('on') && typeof value === 'function') {
+      const eventName = key.slice(2).toLowerCase();
+      element.addEventListener(eventName, value);
+      continue;
     }
+    
+    // Handle className
+    if (key === 'className') {
+      element.className = value;
+      continue;
+    }
+    
+    // Handle style
+    if (key === 'style' && typeof value === 'object') {
+      Object.assign(element.style, value);
+      continue;
+    }
+    
+    // Set attributes
+    element.setAttribute(key, value);
+  }
+  
+  // Append children
+  if (props.children) {
+    const appendChildren = (children) => {
+      if (Array.isArray(children)) {
+        children.forEach(appendChildren);
+      } else if (children !== null && children !== undefined) {
+        // Convert primitive values to text nodes
+        element.append(
+          children instanceof Node ? children : document.createTextNode(String(children))
+        );
+      }
+    };
+    
+    appendChildren(props.children);
+  }
+  
+  return element;
+}
 
+// Fragment for JSX fragments
+export const Fragment = (props) => {
+  const fragment = document.createDocumentFragment();
+  
+  if (props && props.children) {
+    const appendChildren = (children) => {
+      if (Array.isArray(children)) {
+        children.forEach(appendChildren);
+      } else if (children !== null && children !== undefined) {
+        fragment.append(
+          children instanceof Node ? children : document.createTextNode(String(children))
+        );
+      }
+    };
+    
+    appendChildren(props.children);
+  }
+  
+  return fragment;
+};
+
+// Export router components (available from HTML script)
+import { Router, Link, NavLink, Redirect } from '/0x1/router';
+export { Router, Link, NavLink, Redirect };
+
+// Export version
+export const version = '0.1.0';
+
+// Default export
+export default { 
+  createElement, 
+  Fragment,
+  Router, 
+  Link, 
+  NavLink, 
+  Redirect,
+  version
+};`;
+
+      await Bun.write(join(framework0x1Dir, 'index.js'), indexJsContent);
+    }
     // Create a temporary file path for modified content
     let actualEntryFile = entryFile;
     const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
     
     // If we modified the content, use the temp file for bundling
     if (modifiedContent !== fileContent) {
+      // Use the temp file for bundling instead
+      // Note: We don't actually modify entryFile directly as it could cause TypeScript errors
       await Bun.write(tempFile, modifiedContent);
       actualEntryFile = tempFile;
     }

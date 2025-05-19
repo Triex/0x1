@@ -7,23 +7,36 @@
 import { serve, spawn, type Server, type Subprocess } from 'bun';
 import { Dirent, existsSync, mkdirSync, readdirSync } from 'fs';
 import { watch } from 'fs/promises';
+import { fileURLToPath } from 'url';
 import os from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 import { build } from './build.js';
 
 /**
  * Transform code content to handle 0x1 bare imports
- * This converts imports like: import { Router } from '0x1/router' 
- * to browser-compatible: import { Router } from '/0x1/router'
+ * This converts imports like: import { Router } from '0x1' or import { Router } from '0x1/router' 
+ * to browser-compatible: import { Router } from '/node_modules/0x1' or import { Router } from '/node_modules/0x1/router'
  */
 function transformBareImports(content: string): string {
-  return content.replace(
-    /from\s+['"]0x1(\/[\w-]+)?['"]|import\s+['"]0x1(\/[\w-]+)?['"]|import\(['"]0x1(\/[\w-]+)?['"]\)/g,
+  // First replace exact '0x1' imports
+  let transformed = content.replace(
+    /from\s+['"]0x1['"]|import\s+['"]0x1['"]|import\(['"]0x1['"]\)/g,
     (match) => {
-      return match.replace(/['"]0x1\//, '"/0x1/');
+      return match.replace(/['"]0x1['"]/, '"/node_modules/0x1/index.js"');
     }
   );
+  
+  // Then handle subpath imports like '0x1/router'
+  transformed = transformed.replace(
+    /from\s+['"]0x1(\/[\w\/-]+)['"]|import\s+['"]0x1(\/[\w\/-]+)['"]|import\(['"]0x1(\/[\w\/-]+)['"]\)/g,
+    (match, subpath1, subpath2, subpath3) => {
+      const subpath = subpath1 || subpath2 || subpath3;
+      return match.replace(/['"]0x1(\/[\w\/-]+)['"]/, `"/node_modules/0x1${subpath}.js"`);
+    }
+  );
+  
+  return transformed;
 }
 
 /**
@@ -449,6 +462,159 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
             'Cache-Control': 'no-cache',
           },
         });
+      }
+      
+      // Handle 0x1 bare module imports (e.g., import { createElement } from '0x1')
+      if (path === '/node_modules/0x1/index.js') {
+        // Create a browser-compatible version with required exports
+        const moduleContent = `
+// 0x1 Framework - Browser Compatible Version
+
+// JSX Runtime for createElement and Fragment
+export function createElement(type, props, ...children) {
+  if (!props) props = {};
+  
+  // Handle children
+  if (children.length > 0) {
+    props.children = children.length === 1 ? children[0] : children;
+  }
+  
+  // Handle component functions
+  if (typeof type === 'function') {
+    return type(props);
+  }
+  
+  // Create DOM element
+  const element = document.createElement(type);
+  
+  // Apply props
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'children') continue;
+    
+    // Handle events
+    if (key.startsWith('on') && typeof value === 'function') {
+      const eventName = key.slice(2).toLowerCase();
+      element.addEventListener(eventName, value);
+      continue;
+    }
+    
+    // Handle className
+    if (key === 'className') {
+      element.className = value;
+      continue;
+    }
+    
+    // Handle style
+    if (key === 'style' && typeof value === 'object') {
+      Object.assign(element.style, value);
+      continue;
+    }
+    
+    // Set attributes
+    element.setAttribute(key, value);
+  }
+  
+  // Append children
+  if (props.children) {
+    const appendChildren = (children) => {
+      if (Array.isArray(children)) {
+        children.forEach(appendChildren);
+      } else if (children !== null && children !== undefined) {
+        // Convert primitive values to text nodes
+        element.append(
+          children instanceof Node ? children : document.createTextNode(String(children))
+        );
+      }
+    };
+    
+    appendChildren(props.children);
+  }
+  
+  return element;
+}
+
+// Fragment for JSX fragments
+export const Fragment = (props) => {
+  const fragment = document.createDocumentFragment();
+  
+  if (props && props.children) {
+    const appendChildren = (children) => {
+      if (Array.isArray(children)) {
+        children.forEach(appendChildren);
+      } else if (children !== null && children !== undefined) {
+        fragment.append(
+          children instanceof Node ? children : document.createTextNode(String(children))
+        );
+      }
+    };
+    
+    appendChildren(props.children);
+  }
+  
+  return fragment;
+};
+
+// State management - basic implementation
+export function useState(initialValue) {
+  let state = initialValue;
+  const setState = (newValue) => {
+    state = typeof newValue === 'function' ? newValue(state) : newValue;
+    return state;
+  };
+  return [state, setState];
+}
+
+// Router exports - making them available via the 0x1 package
+export const Router = window.Router;
+export const Link = window.Link;
+export const NavLink = window.NavLink;
+export const Redirect = window.Redirect;
+
+// Export version
+export const version = '0.1.0';
+
+// Default export
+export default { 
+  createElement, 
+  Fragment,
+  useState,
+  Router,
+  Link,
+  NavLink,
+  Redirect,
+  version
+};
+`;
+        
+        options.debug && logger.debug(`Serving browser-compatible 0x1 framework module`);
+        return new Response(moduleContent, {
+          headers: {
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache',
+          },
+        });
+      }
+      
+      // Handle 0x1 submodule imports (e.g., import { Router } from '0x1/router')
+      if (path.startsWith('/node_modules/0x1/') && path !== '/node_modules/0x1/index.js') {
+        const submodulePath = path.replace('/node_modules/0x1/', '');
+        const submoduleName = submodulePath.replace(/\.js$/, '');
+        
+        // Get 0x1 framework submodule path
+        const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+        const submoduleFile = resolve(frameworkRoot, '..', 'src', submoduleName + '.js');
+        
+        if (existsSync(submoduleFile)) {
+          const moduleContent = await Bun.file(submoduleFile).text();
+          options.debug && logger.debug(`Serving 0x1 submodule from ${submoduleFile}`);
+          
+          return new Response(moduleContent, {
+            headers: {
+              'Content-Type': 'application/javascript',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        }
       }
       
       // Handle framework core files
@@ -984,21 +1150,98 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         }
       }
       
-      // If still doesn't exist, see if it's an SPA route and serve index.html
+      // Check for component files without extension (e.g., import from './components/Counter')
       if (!fileExists && !path.includes('.')) {
-        filePath = join(srcDir, 'index.html');
-        fileExists = existsSync(filePath);
+        // Check common component extensions
+        const componentExtensions = ['.tsx', '.ts', '.jsx', '.js'];
+        let componentFound = false;
         
-        if (!fileExists) {
-          filePath = join(distDir, 'index.html');
+        for (const ext of componentExtensions) {
+          // Try src directory first
+          let componentPath = join(srcDir, `${path}${ext}`);
+          if (existsSync(componentPath)) {
+            filePath = componentPath;
+            fileExists = true;
+            componentFound = true;
+            logger.debug(`Found component at ${filePath}`);
+            break;
+          }
+          
+          // Also try with direct components path
+          if (path.startsWith('/components/')) {
+            componentPath = join(srcDir, `${path}${ext}`);
+            if (existsSync(componentPath)) {
+              filePath = componentPath;
+              fileExists = true;
+              componentFound = true;
+              logger.debug(`Found component with explicit path: ${filePath}`);
+              break;
+            }
+          }
+        }
+        
+        // If it's not a component, see if it's an SPA route and serve index.html
+        if (!componentFound) {
+          filePath = join(srcDir, 'index.html');
           fileExists = existsSync(filePath);
+          
+          if (!fileExists) {
+            filePath = join(distDir, 'index.html');
+            fileExists = existsSync(filePath);
+          }
         }
       }
       
       // If file exists, serve it
       if (fileExists) {
         const file = Bun.file(filePath);
-        const type = file.type;
+        // Determine the proper content type
+        let type = file.type;
+        
+        // Special handling for component requests without extensions
+        if (path.includes('/components/') && !path.includes('.')) {
+          // Check if it's a TypeScript component (tsx/ts)
+          if (filePath.endsWith('.tsx') || filePath.endsWith('.ts')) {
+            try {
+              // Read and transpile the component
+              const fileContent = await file.text();
+              
+              // Transform bare imports first
+              const transformedContent = transformBareImports(fileContent);
+              
+              // Create transpiler
+              const transpiler = new Bun.Transpiler({
+                loader: filePath.endsWith('.tsx') ? 'tsx' : 'ts',
+                define: {
+                  'process.env.NODE_ENV': '"development"',
+                },
+                macro: {
+                  jsxFactory: { jsx: 'createElement' },
+                  jsxFragment: { jsx: 'Fragment' },
+                },
+              });
+              
+              // Transpile to JS
+              const transpiled = transpiler.transformSync(transformedContent);
+              
+              logger.info(`200 OK (Transpiled Component): ${path}`);
+              
+              // Return as JavaScript module
+              return new Response(transpiled, {
+                headers: {
+                  'Content-Type': 'application/javascript',
+                  'Cache-Control': 'no-cache',
+                },
+              });
+            } catch (error) {
+              logger.error(`Error transpiling component ${filePath}: ${error}`);
+            }
+          } else {
+            // For JS/JSX components, just set the correct MIME type
+            type = 'application/javascript';
+            logger.debug(`Component request detected, setting content type to application/javascript for: ${path}`);
+          }
+        }
         
         // For HTML files, inject the live reload script
         if (path.endsWith('.html')) {
@@ -1077,6 +1320,36 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
           } catch (error) {
             logger.error(`Error transpiling ${filePath}: ${error}`);
             return new Response(`console.error('Failed to load ${path}: ${error}');`, {
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache',
+              },
+              status: 500,
+            });
+          }
+        }
+        
+        // For JavaScript files, transform bare imports
+        if (path.endsWith('.js') || path.endsWith('.jsx')) {
+          try {
+            // Read the file content
+            let fileContent = await file.text();
+            
+            // Transform bare imports for browser compatibility
+            fileContent = transformBareImports(fileContent);
+            
+            logger.info(`200 OK (Transformed JS): ${path}`);
+            
+            // Return transformed JavaScript
+            return new Response(fileContent, {
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache',
+              },
+            });
+          } catch (error) {
+            logger.error(`Error transforming ${filePath}: ${error}`);
+            return new Response(`console.error('Failed to transform ${path}: ${error}');`, {
               headers: {
                 'Content-Type': 'application/javascript',
                 'Cache-Control': 'no-cache',

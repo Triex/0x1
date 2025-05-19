@@ -6,6 +6,16 @@
   <title>0x1 App</title>
   <link rel="stylesheet" href="/styles/tailwind.css">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  
+  <!-- Import Map for bare imports - enables importing directly from '0x1' -->
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/": "/node_modules/0x1/"
+    }
+  }
+  </script>
 </head>
 <body>
   <!-- App Container - The app directory components from router.ts will render here -->
