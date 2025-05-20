@@ -38,9 +38,11 @@ export type {
 export {
   Link as BasicLink, // Rename to avoid conflict with Next.js-compatible Link
   NavLink,
-  Redirect, Router, type Page,
-  type RouteParams
+  Redirect, type Page
 } from './core/navigation.js';
+
+// Export the new router implementation
+export { Router, type RouteParams } from './core/router.js';
 
 // Export hooks
 export {

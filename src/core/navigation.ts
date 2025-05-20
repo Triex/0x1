@@ -93,37 +93,51 @@ export class Router {
     const paramNames: string[] = [];
     
     try {
-      // Start with proper escaping of all regex special characters
+      // Special case for root path
+      if (path === "/") {
+        this.routes.push({
+          path,
+          pattern: new RegExp("^/$"),
+          paramNames,
+          component,
+        });
+        return;
+      }
+      
+      // Step 1: Escape all regex special characters first
       let pattern = path
         .replace(/[\^\$\(\)\[\]\{\}\+\?\.]/g, "\\$&");
       
-      // Escape path separators (slashes)
+      // Step 2: Handle path-specific escaping
+      // Escape forward slashes (path separators)
       pattern = pattern.replace(/\//g, "\\/");
       
-      // Now handle parameter placeholders - replace the escaped colon we added above
+      // Step 3: Replace path pattern tokens with regex patterns
+      // Convert :param to capture groups (after escaping the colon)
       pattern = pattern.replace(/\\:([a-zA-Z0-9_]+)/g, (match, paramName) => {
         paramNames.push(paramName);
         return '([^/]+)';
       });
       
-      // Remove trailing slash if present (after escaping)
-      pattern = pattern.replace(/\\\/$/g, '');
+      // Handle wildcard routes (* was already escaped earlier)
+      pattern = pattern.replace(/\\\*/g, "(.*)");
       
-      // Handle wildcard routes (after escaping)
-      pattern = pattern.replace(/\\\/\\\*$/g, '(\\/.*)?');
+      // Step 4: Build the final regex with start/end anchors
+      // Allow optional trailing slash with /?$
+      const finalPattern = new RegExp(`^${pattern}/?$`);
       
       this.routes.push({
         path,
-        pattern: new RegExp(`^${pattern}$`),
+        pattern: finalPattern,
         paramNames,
         component,
       });
     } catch (error) {
       console.error(`Error creating route pattern for path '${path}':`, error);
-      // Create a fallback pattern that safely matches nothing
+      // Always provide a fallback in case of regex failures
       this.routes.push({
         path,
-        pattern: new RegExp('^$'),
+        pattern: new RegExp("^/.*$"), // Match any path as fallback
         paramNames,
         component,
       });

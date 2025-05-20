@@ -7,9 +7,9 @@
 import { serve, type Server, type Subprocess } from "bun";
 import { Dirent, existsSync, mkdirSync, readdirSync } from "fs";
 import { watch } from "fs/promises";
-import { fileURLToPath } from "url";
 import os from "os";
 import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
 import { build } from "./build.js";
 
@@ -1088,319 +1088,34 @@ export default {
             if (modulePath === "router" || modulePath === "router.js") {
               // Provide the router module directly instead of reimporting
               moduleContent = `
-            // 0x1 Router Module - Browser Compatible Version
-            // Direct implementation for browser compatibility
-            export class Router {
-              constructor(options) {
-                this.rootElement = options.root;
-                this.mode = options.mode || 'history';
-                this.routes = new Map();
-                // Process polyfill for browser environment
-                if (typeof process === 'undefined' || !process.env) {
-                  window.process = { env: { NODE_ENV: 'production' } };
-                }
-
-                // Don't reference path or component here as they're not defined yet
-                this.basePath = options.basePath || '';
-                this.notFoundComponent = options.notFoundComponent || null;
-              }
-
-              // Alias for add method
-              addRoute(routePath, component) {
-                return this.add(routePath, component);
-              }
-
-              // Add a route to the router
-              add(routePath, component) {
-                if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Registering route:', routePath);
-                }
-                this.routes.set(routePath, component);
-                return this;
-              }
-
-              start() {
-                // Initialize router functionality
-                if (this.mode === 'history') {
-                  // Handle initial route on page load
-                  this.navigate(this.getCurrentPath());
-
-                  // Add event listener for navigation
-                  window.addEventListener('popstate', () => {
-                    this.navigate(this.getCurrentPath());
-                  });
-
-                  // Intercept clicks on links
-                  document.addEventListener('click', (event) => {
-                    const target = event.target;
-                    // Check if clicked element is an anchor or is inside an anchor
-                    if (target && (target.tagName === 'A' || (target.closest && target.closest('a')))) {
-                      const element = target.tagName === 'A' ? target : target.closest('a');
-                      const href = element.getAttribute('href');
-
-                      // Only handle links that start with / (internal links)
-                      if (href && href.startsWith('/')) {
-                        event.preventDefault();
-                        this.navigate(href);
-                        window.history.pushState({}, '', href);
-                      }
-                    }
-                  });
-                }
-
-                return this;
-              }
-
-              // Navigate to a route
-              navigate(routePath) {
-                // Remove leading slash and handle empty path as root
-                const path = routePath === '/' ? '/' : routePath.replace(/(^\/)|(\/$)/g, '');
-
-                let component = this.routes.get(path) || this.routes.get('/');
-
-                // If component not found and we have a not found component
-                if (!component && this.notFoundComponent) {
-                  component = this.notFoundComponent;
-                } else if (!component) {
-                  // Fallback to a simple not found message
-                  component = () => {
-                    const el = document.createElement('div');
-                    // Use string concatenation instead of template literal for HTML
-                    el.innerHTML = '\n' +
-                      '  <div style="padding: 2rem; text-align: center;">\n' +
-                      '    <h1>404 Not Found</h1>\n' +
-                      '    <p>The page you requested could not be found.</p>\n' +
-                      '  </div>\n';
-                    return el;
-                  };
-                }
-
-                // Clear current root element content
-                if (this.rootElement) {
-                  // Save the transition duration for animation
-                  const duration = this.transitionDuration;
-
-                  // If we have a transition duration, add a fade effect
-                  if (duration > 0 && this.currentComponent) {
-                    const currentEl = this.rootElement.children[0];
-                    if (currentEl) {
-                      currentEl.style.transition = 'opacity ' + duration + 'ms ease-out';
-                      currentEl.style.opacity = '0';
-
-                      // Wait for transition before replacing
-                      setTimeout(() => {
-                        this.renderComponent(component);
-                      }, duration);
-                      return;
-                    }
+              // 0x1 Router Module - Browser Compatible Version
+              import { Router } from '../../core/router.js';
+              import { Link, NavLink, Redirect } from '../../core/navigation.js';
+              
+              // Factory function to create router with default options
+              export function createRouter(options = {}) {
+                const defaultOptions = {
+                  root: document.getElementById('app') || document.body,
+                  mode: 'history',
+                  transitionDuration: 200,
+                  notFoundComponent: () => {
+                    const div = document.createElement('div');
+                    div.textContent = '404 - Page Not Found';
+                    return div;
                   }
-
-                  // No transition or no current component
-                  this.renderComponent(component);
-                }
-
-                return this;
+                };
+                
+                // Merge options with defaults
+                const mergedOptions = { ...defaultOptions, ...options };
+                
+                // Create and return a router instance
+                return new Router(mergedOptions);
               }
-
-              // Render a component into the root element
-              renderComponent(component) {
-                if (!this.rootElement) return this;
-
-                // Clear current root element content
-                this.rootElement.innerHTML = '';
-
-                // Create and append new component
-                const el = component();
-                if (el) {
-                  this.rootElement.appendChild(el);
-
-                  // Store current component reference
-                  this.currentComponent = component;
-
-                  // If the component has transitions, set initial opacity
-                  if (this.transitionDuration > 0) {
-                    el.style.opacity = '0';
-                    el.style.transition = 'opacity ' + this.transitionDuration + 'ms ease-in';
-
-                    // Force reflow before setting opacity to 1
-                    void el.offsetWidth;
-                    el.style.opacity = '1';
-                  }
-                }
-
-                return this;
-              }
-
-              getCurrentPath() {
-                let path;
-                if (this.mode === 'history') {
-                  // Ensure we normalize empty paths to / for the root path
-                  path = window.location.pathname.replace(this.basePath, '');
-                  if (path === '') path = '/';
-                } else {
-                  // For hash mode also normalize to /
-                  path = window.location.hash.slice(1) || '/';
-                }
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Current path:', path);
-                }
-                return path;
-              }
-
-              navigate(path) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Navigating to:', path);
-                }
-                const url = this.basePath + path;
-                if (this.mode === 'history') {
-                  window.history.pushState(null, '', url);
-                  this.handleRouteChange();
-                } else {
-                  window.location.hash = url;
-                }
-              }
-
-              handleRouteChange() {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Handling route change');
-                }
-                const path = this.getCurrentPath();
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Available routes:', [...this.routes.keys()]);
-                }
-                let component = this.routes.get(path);
-
-                // Debug logging for route matching
-                if (component) {
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log('[Router] Found component for path:', path);
-                  }
-                } else {
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log('[Router] No component found for path:', path, 'Using notFoundComponent');
-                  }
-                  component = this.notFoundComponent;
-                }
-
-                // If we have a component to render, do it
-                if (component) {
-                  this.renderComponent(component);
-                } else if (this.rootElement) {
-                  // Show a helpful message if no component is found and no notFoundComponent is provided
-                  this.rootElement.innerHTML = '<div style="padding: 20px; font-family: system-ui, sans-serif;"><h1>Page not found: ' + path + '</h1><p>Please check your route configuration or provide a notFoundComponent.</p></div>';
-                }
-              }
-
-              renderComponent(component) {
-                if (!this.rootElement) {
-                  console.error('[Router] Cannot render component: root element is not defined');
-                  return;
-                }
-
-                try {
-                  // If the component exists and has a render method
-                  if (component && typeof component.render === 'function') {
-                    // First fade out if we have a current component
-                    if (this.currentComponent && this.transitionDuration > 0) {
-                      this.rootElement.style.opacity = '0';
-
-                      setTimeout(() => {
-                        this.rootElement.innerHTML = '';
-                        this.mountComponent(component);
-                        this.rootElement.style.opacity = '1';
-                      }, this.transitionDuration);
-                    } else {
-                      // No transition needed
-                      this.rootElement.innerHTML = '';
-                      this.mountComponent(component);
-                    }
-                  } else {
-                    console.error('[Router] Component does not have a render method:', component);
-                  }
-                } catch (error) {
-                  console.error('[Router] Error rendering component:', error);
-                  this.rootElement.innerHTML = '<div style="padding: 20px; font-family: system-ui, sans-serif;"><h1>Error rendering component</h1><pre>' + (error.message || 'Unknown error') + '</pre></div>';
-                }
-              }
-
-              mountComponent(component) {
-                try {
-                  const el = component.render();
-                  if (el) {
-                    this.rootElement.appendChild(el);
-                    // Call onMount lifecycle method if it exists
-                    if (typeof component.onMount === 'function') {
-                      component.onMount(el);
-                    }
-                    // Store the current component
-                    this.currentComponent = component;
-                  } else {
-                    console.error('[Router] Component render method returned null or undefined');
-                  }
-                } catch (error) {
-                  console.error('[Router] Error mounting component:', error);
-                }
-              }
-
-              back() {
-                window.history.back();
-              }
-
-              forward() {
-                window.history.forward();
-              }
-            }
-
-            export class Link {
-              constructor(options) {
-                this.to = options.to;
-                this.text = options.text;
-                this.className = options.className || '';
-              }
-
-              render() {
-                const link = document.createElement('a');
-                link.href = this.to;
-                link.className = this.className;
-                link.textContent = this.text;
-                link.addEventListener('click', (e) => {
-                  e.preventDefault();
-                  if (window.Router) {
-                    window.Router.navigate(this.to);
-                  }
-                });
-                return link;
-              }
-            }
-
-            export class NavLink extends Link {
-              constructor(options) {
-                super(options);
-                this.activeClass = options.activeClass || 'active';
-              }
-            }
-
-            export class Redirect {
-              constructor(options) {
-                this.to = options.to;
-              }
-
-              render() {
-                const div = document.createElement('div');
-                div.style.display = 'none';
-
-                // Redirect after render
-                setTimeout(() => {
-                  window.location.href = this.to;
-                }, 0);
-
-                return div;
-              }
-            }
-
-            // Default export for convenience
-            export default Router;
-          `;
+              
+              // Re-export components for convenience
+              export { Router, Link, NavLink, Redirect };
+              export default Router;
+              `;
             } else if (
               path === "/node_modules/0x1/jsx-runtime.js" ||
               path === "/node_modules/0x1/jsx-runtime/index.js"
@@ -1425,7 +1140,7 @@ export default {
               // Provide the main 0x1 module
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            import { Router, Link, NavLink, Redirect } from '/0x1/router';
+            import { Router, createRouter, Link, NavLink, Redirect } from '/0x1/router';
 
             // Export JSX factory function and fragment
             export function createElement(type, props, ...children) {
@@ -1435,8 +1150,8 @@ export default {
             export const Fragment = Symbol('Fragment');
 
             // Re-export everything
-            export { Router, Link, NavLink, Redirect };
-            export default { Router, Link, NavLink, Redirect, createElement, Fragment };
+            export { Router, createRouter, Link, NavLink, Redirect };
+            export default { Router, createRouter, Link, NavLink, Redirect, createElement, Fragment };
           `;
             }
 
@@ -1489,23 +1204,15 @@ export default {
 
   <!-- App entry point -->
   <script type="module">
-    // Import the app router
-    import { Router } from '0x1/router';
+    // Import the router factory and components
+    import { createRouter } from '0x1/router';
 
-    // Initialize router
-    const router = new Router({
-      root: document.getElementById('app'),
-      mode: 'history'
+    // Create router instance with default options
+    const router = createRouter({
+      root: document.getElementById('app')
     });
 
-    // Register app routes
-    router.add('/', async () => {
-      // Dynamically import the page component
-      const { default: Page } = await import('/app/page.js');
-      return Page();
-    });
-
-    // Also import and register components from the root components directory
+    // Load components
     try {
       const components = await fetch('/_components_list').then(res => res.json());
       for (const comp of components) {
@@ -1516,7 +1223,7 @@ export default {
     }
 
     // Start routing
-    router.start();
+    router.init();
   </script>
 </body>
 </html>`;
