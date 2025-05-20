@@ -1097,6 +1097,118 @@ export default {
                 this.routes.set(routePath, component);
                 return this;
               }
+              
+              start() {
+                // Initialize router functionality
+                if (this.mode === 'history') {
+                  // Handle initial route on page load
+                  this.navigate(this.getCurrentPath());
+                  
+                  // Add event listener for navigation
+                  window.addEventListener('popstate', () => {
+                    this.navigate(this.getCurrentPath());
+                  });
+                  
+                  // Intercept clicks on links
+                  document.addEventListener('click', (event) => {
+                    const target = event.target;
+                    // Check if clicked element is an anchor or is inside an anchor
+                    if (target && (target.tagName === 'A' || (target.closest && target.closest('a')))) {
+                      const element = target.tagName === 'A' ? target : target.closest('a');
+                      const href = element.getAttribute('href');
+                      
+                      // Only handle links that start with / (internal links)
+                      if (href && href.startsWith('/')) {
+                        event.preventDefault();
+                        this.navigate(href);
+                        window.history.pushState({}, '', href);
+                      }
+                    }
+                  });
+                }
+                
+                return this;
+              }
+              
+              // Navigate to a route
+              navigate(routePath) {
+                // Remove leading slash and handle empty path as root
+                const path = routePath === '/' ? '/' : routePath.replace(/^\/|\/$/, '');
+                
+                let component = this.routes.get(path) || this.routes.get('/');
+                
+                // If component not found and we have a not found component
+                if (!component && this.notFoundComponent) {
+                  component = this.notFoundComponent;
+                } else if (!component) {
+                  // Fallback to a simple not found message
+                  component = () => {
+                    const el = document.createElement('div');
+                    // Use string concatenation instead of template literal for HTML
+                    el.innerHTML = '\n' +
+                      '  <div style="padding: 2rem; text-align: center;">\n' +
+                      '    <h1>404 Not Found</h1>\n' +
+                      '    <p>The page you requested could not be found.</p>\n' +
+                      '  </div>\n';
+                    return el;
+                  };
+                }
+                
+                // Clear current root element content
+                if (this.rootElement) {
+                  // Save the transition duration for animation
+                  const duration = this.transitionDuration;
+                  
+                  // If we have a transition duration, add a fade effect
+                  if (duration > 0 && this.currentComponent) {
+                    const currentEl = this.rootElement.children[0];
+                    if (currentEl) {
+                      currentEl.style.transition = 'opacity ' + duration + 'ms ease-out';
+                      currentEl.style.opacity = '0';
+                      
+                      // Wait for transition before replacing
+                      setTimeout(() => {
+                        this.renderComponent(component);
+                      }, duration);
+                      return;
+                    }
+                  }
+                  
+                  // No transition or no current component
+                  this.renderComponent(component);
+                }
+                
+                return this;
+              }
+              
+              // Render a component into the root element
+              renderComponent(component) {
+                if (!this.rootElement) return this;
+                
+                // Clear current root element content
+                this.rootElement.innerHTML = '';
+                
+                // Create and append new component
+                const el = component();
+                if (el) {
+                  this.rootElement.appendChild(el);
+                  
+                  // Store current component reference
+                  this.currentComponent = component;
+                  
+                  // If the component has transitions, set initial opacity
+                  if (this.transitionDuration > 0) {
+                    el.style.opacity = '0';
+                    el.style.transition = 'opacity ' + this.transitionDuration + 'ms ease-in';
+                    
+                    // Force reflow before setting opacity to 1
+                    void el.offsetWidth;
+                    el.style.opacity = '1';
+                  }
+                }
+                
+                return this;
+              }
 
               getCurrentPath() {
                 let path;
