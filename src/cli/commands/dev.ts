@@ -562,23 +562,36 @@ async function createDevServer(options: {
     }
 
     if (!scriptFound) {
-      // If script not found, create a basic version inline
-      logger.warn(
-        "Live reload script not found in expected paths, using fallback"
-      );
+      // Fallback for live reload script
+      logger.warn("⚠️ Live reload script not found in expected paths, using fallback");
       liveReloadScript = `
-// Basic live reload script for 0x1 framework
+// Live reload client script
 (function() {
-  const source = new EventSource('/__0x1_live_reload');
-  source.addEventListener('message', function(e) {
-    if (e.data === 'update') {
-      console.log('[0x1] Page update detected, reloading...');
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  const socket = new WebSocket(protocol + '//' + host + '/__0x1_live_reload');
+  
+  socket.onmessage = function(event) {
+    if (event.data === 'reload') {
+      console.log('[0x1] Live reload triggered, refreshing page...');
       window.location.reload();
     }
-  });
-  console.log('[0x1] Live reload connected');
+  };
+  
+  socket.onopen = function() {
+    console.log('[0x1] Live reload connected');
+  };
+  
+  socket.onclose = function() {
+    console.log('[0x1] Live reload disconnected');
+    // Try to reconnect after 2 seconds
+    setTimeout(function() {
+      console.log('[0x1] Reconnecting to live reload...');
+      window.location.reload();
+    }, 2000);
+  };
 })();
-      `;
+`;
     }
   } catch (error) {
     logger.warn(
@@ -1061,16 +1074,28 @@ export default {
                 this.rootElement = options.root;
                 this.mode = options.mode || 'history';
                 this.routes = new Map();
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[Router] Registering route:', path);
+                // Process polyfill for browser environment
+                if (typeof process === 'undefined' || !process.env) {
+                  window.process = { env: { NODE_ENV: 'production' } };
                 }
-                this.routes.set(path, component);
-                return this;
+                
+                // Don't reference path or component here as they're not defined yet
+                this.basePath = options.basePath || '';
+                this.notFoundComponent = options.notFoundComponent || null;
               }
 
               // Alias for add method
-              addRoute(path, component) {
-                return this.add(path, component);
+              addRoute(routePath, component) {
+                return this.add(routePath, component);
+              }
+              
+              // Add a route to the router
+              add(routePath, component) {
+                if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
+                  console.log('[Router] Registering route:', routePath);
+                }
+                this.routes.set(routePath, component);
+                return this;
               }
 
               getCurrentPath() {
