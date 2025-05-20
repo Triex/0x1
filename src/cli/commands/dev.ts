@@ -964,30 +964,40 @@ export default {
                 // We need to completely separate the Router class and navigation components
                 // to avoid duplicate declarations
                 
-                // First process the router source
-                const cleanRouterSource = routerSource
-                  .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
-                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
+                // First process the router source - completely remove interfaces and only keep the Router class
+                let cleanRouterSource = routerSource
+                  // Remove all imports
+                  .replace(/import[^;]+;/g, '// Import removed')
+                  // Remove all type exports
+                  .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
                   // Convert `export class Router` to just `class Router` since we'll export it explicitly later
                   .replace(/export\s+class\s+Router/, 'class Router');
                   
-                // Then process navigation components separately
-                const cleanNavigationSource = navigationSource
-                  .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
-                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
-                  // Since we've already removed Router import/export from navigation.ts
-                  // we just need to handle the function exports
-                  .replace(/export\s+function\s+Link/, 'function Link')
-                  .replace(/export\s+function\s+NavLink/, 'function NavLink')
-                  .replace(/export\s+function\s+Redirect/, 'function Redirect');
+                // Then process navigation components - remove imports and handle function exports
+                let cleanNavigationSource = navigationSource
+                  // Remove all imports
+                  .replace(/import[^;]+;/g, '// Import removed')
+                  // Remove all interfaces and types
+                  .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
+                  // Handle the function exports
+                  .replace(/export\s+function\s+Link/g, 'function Link')
+                  .replace(/export\s+function\s+NavLink/g, 'function NavLink')
+                  .replace(/export\s+function\s+Redirect/g, 'function Redirect');
                 
                 // Provide a proper ESM module with the router implementation
                 moduleContent = `
 // 0x1 Router - Modern ESM Implementation
 // Directly from core source files
 
+// Define the RouteParams interface in the module scope to avoid duplicates
+interface RouteParams {
+  [key: string]: string;
+}
+
+// First the Router implementation
 ${cleanRouterSource}
 
+// Navigation components implementation
 ${cleanNavigationSource}
 
 // Factory function to create router with default options
@@ -1010,8 +1020,9 @@ export function createRouter(options = {}) {
   return new Router(mergedOptions);
 }
 
-// Re-export components for convenience
-export { Router, Link, NavLink, Redirect };
+// Export all components properly for consumption
+export { Router };
+export { Link, NavLink, Redirect };
 export default Router;
 `;
                 
