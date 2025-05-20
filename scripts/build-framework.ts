@@ -144,6 +144,123 @@ async function buildFramework() {
       Bun.spawnSync(['cp', '-r', templatesDir, join(distDir, 'templates')]);
     }
     
+    // Handle JSX runtime files - prioritize TypeScript version and build it
+    console.log('📄 Generating JSX runtime files...');
+    
+    // Define JSX runtime file paths - both regular and dev versions
+    const jsxRuntimeTS = join(srcDir, 'jsx-runtime.ts');
+    const jsxRuntimeJS = join(srcDir, 'jsx-runtime.js');
+    const jsxDevRuntimeTS = join(srcDir, 'jsx-dev-runtime.ts');
+    const jsxDevRuntimeJS = join(srcDir, 'jsx-dev-runtime.js');
+    
+    // Set up distribution paths for both files
+    const jsxRuntimeFileDist = join(distDir, 'jsx-runtime.js');
+    const jsxDevRuntimeFileDist = join(distDir, 'jsx-dev-runtime.js');
+    
+    const jsxRuntimeDir0x1 = join(distDir, '0x1');
+    const jsxRuntimeFile0x1 = join(jsxRuntimeDir0x1, 'jsx-runtime.js');
+    const jsxDevRuntimeFile0x1 = join(jsxRuntimeDir0x1, 'jsx-dev-runtime.js');
+    
+    // Create 0x1 directory for imports from '0x1' package
+    Bun.spawnSync(['mkdir', '-p', jsxRuntimeDir0x1]);
+    
+    let jsxRuntimeContent = '';
+    
+    // Try TypeScript version first (preferred - has proper typing)
+    if (await Bun.file(jsxRuntimeTS).exists()) {
+      try {
+        // Transpile TS to JS using Bun directly
+        console.log('Found TypeScript JSX runtime, transpiling it...');
+        
+        // Write to a temporary file for transpilation
+        const tempOutputFile = join(srcDir, '.temp-jsx-runtime.js');
+        
+        // Use Bun to build the TS file to JS
+        const bunBuildCmd = `bun build ${jsxRuntimeTS} --outfile ${tempOutputFile} --target browser`;
+        const buildResult = Bun.spawnSync(bunBuildCmd.split(' '));
+        
+        if (buildResult.exitCode === 0) {
+          jsxRuntimeContent = await Bun.file(tempOutputFile).text();
+          // Cleanup temp file
+          Bun.spawnSync(['rm', tempOutputFile]);
+        } else {
+          console.warn('⚠️ Failed to transpile TypeScript JSX runtime, falling back to JavaScript version');
+        }
+      } catch (error) {
+        console.warn('⚠️ Error transpiling TypeScript JSX runtime:', error.message);
+      }
+    }
+    
+    // Fallback to JavaScript version if TypeScript transpilation failed
+    if (!jsxRuntimeContent && await Bun.file(jsxRuntimeJS).exists()) {
+      console.log('Using JavaScript JSX runtime');
+      jsxRuntimeContent = await Bun.file(jsxRuntimeJS).text();
+    }
+    
+    // If we have JSX runtime content, write it to the distribution files
+    if (jsxRuntimeContent) {
+      // Copy to root dist
+      await Bun.write(jsxRuntimeFileDist, jsxRuntimeContent);
+      
+      // Copy to 0x1 subdirectory too
+      await Bun.write(jsxRuntimeFile0x1, jsxRuntimeContent);
+      
+      console.log('✅ JSX runtime generated and copied to dist and dist/0x1');
+    } else {
+      console.error('❌ No JSX runtime found - neither TypeScript nor JavaScript version exists');
+      throw new Error('Missing JSX runtime files');
+    }
+    
+    // Now handle the JSX dev runtime file using a similar approach
+    let jsxDevRuntimeContent = '';
+    
+    // Try TypeScript version of the JSX dev runtime
+    if (await Bun.file(jsxDevRuntimeTS).exists()) {
+      try {
+        console.log('Found TypeScript JSX dev runtime, transpiling it...');
+        
+        // Write to a temporary file for transpilation
+        const tempOutputFile = join(srcDir, '.temp-jsx-dev-runtime.js');
+        
+        // Use Bun to build the TS file to JS
+        const buildResult = Bun.spawnSync([
+          'bun', 'build', jsxDevRuntimeTS, 
+          '--outfile', tempOutputFile,
+          '--target', 'browser'
+        ]);
+        
+        if (buildResult.exitCode === 0) {
+          jsxDevRuntimeContent = await Bun.file(tempOutputFile).text();
+          // Cleanup temp file
+          Bun.spawnSync(['rm', tempOutputFile]);
+        } else {
+          console.warn('⚠️ Failed to transpile TypeScript JSX dev runtime, falling back to JavaScript version');
+        }
+      } catch (error) {
+        console.warn('⚠️ Error transpiling TypeScript JSX dev runtime:', error.message);
+      }
+    }
+    
+    // Fallback to JavaScript version if TypeScript transpilation failed
+    if (!jsxDevRuntimeContent && await Bun.file(jsxDevRuntimeJS).exists()) {
+      console.log('Using JavaScript JSX dev runtime');
+      jsxDevRuntimeContent = await Bun.file(jsxDevRuntimeJS).text();
+    }
+    
+    // If we have JSX dev runtime content, write it to the distribution files
+    if (jsxDevRuntimeContent) {
+      // Copy to root dist
+      await Bun.write(jsxDevRuntimeFileDist, jsxDevRuntimeContent);
+      
+      // Copy to 0x1 subdirectory too
+      await Bun.write(jsxDevRuntimeFile0x1, jsxDevRuntimeContent);
+      
+      console.log('✅ JSX dev runtime generated and copied to dist and dist/0x1');
+    } else {
+      // Just warn but don't fail the build if the dev runtime is missing
+      console.warn('⚠️ No JSX dev runtime found - will use regular JSX runtime');
+    }
+    
     console.log('🎉 Build completed successfully!');
   } catch (error) {
     console.error('❌ Build failed with error:', error);

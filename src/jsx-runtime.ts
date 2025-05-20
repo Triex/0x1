@@ -1,6 +1,6 @@
 /**
  * JSX Runtime for 0x1 Framework
- * Provides JSX factory functions for creating elements
+ * Provides JSX factory functions for creating elements and server-side rendering
  */
 
 // Types for the JSX elements
@@ -44,6 +44,36 @@ export const Fragment = (props: { children?: JSXChildren }): JSXNode => {
     children: props.children || []
   };
 };
+
+/**
+ * jsx function for the automatic JSX transform
+ */
+export function jsx(type: string | ComponentFunction, props: JSXAttributes, _key?: string): JSXNode {
+  // Handle children from props to match React's JSX transform
+  const { children, ...restProps } = props || {};
+  
+  return {
+    type,
+    props: restProps,
+    children: children ? (Array.isArray(children) ? children : [children]) : []
+  };
+}
+
+/**
+ * jsxs function for handling static children
+ */
+export function jsxs(type: string | ComponentFunction, props: JSXAttributes, _key?: string): JSXNode {
+  // jsxs is the same as jsx in our implementation
+  return jsx(type, props, _key);
+}
+
+/**
+ * jsxDEV function for development
+ */
+export function jsxDEV(type: string | ComponentFunction, props: JSXAttributes, _key?: string): JSXNode {
+  // For our implementation, jsxDEV is the same as jsx
+  return jsx(type, props, _key);
+}
 
 /**
  * Render JSX to HTML string

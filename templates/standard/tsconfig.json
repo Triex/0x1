@@ -4,6 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "jsx": "preserve",
+    "jsxFactory": "createElement",
+    "jsxFragmentFactory": "Fragment",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

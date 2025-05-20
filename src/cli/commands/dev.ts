@@ -1053,6 +1053,78 @@ export default {
         logger.debug(`Requested root path, looking for index.html`);
       }
       
+      // Handle requests for JS files that might exist as TS/TSX files
+      if (path.endsWith('.js') && !path.includes('node_modules')) {
+        // Check if there's a corresponding .ts or .tsx file
+        const basePath = path.replace(/\.js$/, '');
+        const tsPath = `${basePath}.ts`;
+        const tsxPath = `${basePath}.tsx`;
+        
+        let foundTsFile = false;
+        let tsFilePath = '';
+        
+        // Check for TS/TSX files in project root
+        if (existsSync(join(projectPath, tsxPath.substring(1)))) {
+          tsFilePath = join(projectPath, tsxPath.substring(1));
+          foundTsFile = true;
+        } else if (existsSync(join(projectPath, tsPath.substring(1)))) {
+          tsFilePath = join(projectPath, tsPath.substring(1));
+          foundTsFile = true;
+        }
+        
+        // If found, compile it on-the-fly
+        if (foundTsFile) {
+          try {
+            logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
+            const tsContent = await Bun.file(tsFilePath).text();
+            
+            // Use Bun to transpile TypeScript
+            const result = await Bun.build({
+              entrypoints: [tsFilePath],
+              target: 'browser',
+              format: 'esm',
+              minify: false,
+              sourcemap: 'inline',
+              loader: { '.tsx': 'tsx', '.ts': 'ts' }
+            });
+            
+            if (!result.success) {
+              logger.error(`Failed to transpile ${tsFilePath}`);
+              return new Response(`// Failed to compile ${path}\nconsole.error('Compilation failed');`, {
+                headers: {
+                  'Content-Type': 'application/javascript',
+                  'Cache-Control': 'no-cache'
+                },
+                status: 500
+              });
+            }
+            
+            // Get the output
+            const output = await result.outputs[0].text();
+            
+            // Transform any remaining bare imports
+            const transformedOutput = transformBareImports(output);
+            
+            logger.debug(`Successfully transpiled ${path}`);
+            return new Response(transformedOutput, {
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          } catch (error) {
+            logger.error(`Error transpiling ${tsFilePath}: ${error}`);
+            return new Response(`// Error transpiling ${path}\nconsole.error('${error}');`, {
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache'
+              },
+              status: 500
+            });
+          }
+        }
+      }
+      
       // Determine file path
       let filePath: string;
       let fileExists = false;

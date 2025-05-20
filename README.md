@@ -11,6 +11,7 @@
   <a href="#-features"><strong>Features</strong></a> ·
   <a href="#-getting-started"><strong>Getting Started</strong></a> ·
   <a href="#-philosophy"><strong>Philosophy</strong></a> ·
+  <a href="#%EF%B8%8F-custom-jsx-runtime"><strong>JSX Runtime</strong></a> ·
   <a href="#-cli-commands"><strong>CLI Commands</strong></a> ·
   <a href="#-pwa-features"><strong>PWA Support</strong></a>
 </p>
@@ -35,7 +36,7 @@
 ## ⚡ Features
 
 ### 💨 Extreme Performance
-- **Tiny runtime**: ~16kb total JS bundle size 
+- **Tiny runtime**: ~16kb total JS bundle size
 - **Zero hydration cost**: No client-side hydration overhead
 - **Native ESM**: Browser-native module loading without bundling
 - **Precomputed content**: Minimal JS for maximum speed
@@ -47,35 +48,15 @@
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
 
-### 🧪 Template Complexity Options
+### 🧩 Component System
 
-0x1 offers three complexity levels for projects, all built with TypeScript:
+0x1 offers a simple but powerful component system built with TypeScript:
 
-```bash
-# Create a new project (all templates use app directory structure)
-bun 0x1 new my-app
-
-# Customize your project complexity
-bun 0x1 new my-app --complexity=minimal
-bun 0x1 new my-app --complexity=standard
-bun 0x1 new my-app --complexity=full
-```
-
-#### Minimal Template
-- Basic structure with essential files only
-- Perfect for landing pages or simple sites
-- Extremely lightweight with minimal dependencies
-
-#### Standard Template
-- Complete structure with organized files
-- Router implementation with multi-page support
-- Component architecture for building UIs
-
-#### Full Template
-- Everything in Standard, plus:
-- Built-in state management system
-- Progressive Web App (PWA) support
-- Service worker for offline capabilities
+- Pure TypeScript components with full type safety
+- JSX syntax without React dependencies
+- Fast, lightweight rendering with minimal overhead
+- Automatic TypeScript transpilation
+- Support for component props and children
 
 ### 📁 App Directory Structure
 
@@ -163,14 +144,7 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 
 0x1 is licensed under the [TDL v1 License](https://github.com/Triex/0x1/blob/main/LICENSE).
 
-## 🏎️ Performance Comparison
 
-| Metric              | 0x1 | React | Vue  | Svelte | Next.js |
-|---------------------|-------|-------|------|--------|--------|
-| JS Size (gzip)      | 5kB   | 44kB  | 31kB | 21kB   | 80kB+   |
-| Time to Interactive | 0.3s  | 1.1s  | 0.7s | 0.6s   | 1.5s+   |
-| Memory Usage        | Low   | High  | Med  | Low    | High    |
-| Lighthouse Score    | 100   | 75-85 | 85-95| 90-95  | 70-85   |
 
 ## 💡 Philosophy
 
@@ -182,44 +156,25 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 4. **No dependencies**: Entire framework in one tiny package
 5. **Extreme performance**: Optimize for loaded page performance, not DX shortcuts
 
-## 🚀 Quick Start
-
-```bash
-# Create a new 0x1 app with Bun
-bun install -g 0x1
-
-# Create a new project (defaults to TypeScript)
-bun 0x1 new my-app
-
-# Or specify JavaScript explicitly
-bun 0x1 new my-app --javascript
-
-# Or use the CLI directly
-npx 0x1 new my-app
-
-# Navigate to the app directory
-cd my-app
-
-# Start development server
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 
 ## 📋 Template Options
 
 0x1 now offers a streamlined template selection process with three complexity levels, all built with TypeScript for maximum type safety and developer experience:
 
-### 🔍 Minimal Templates
+### Template Complexity Options
+
+0x1 offers three levels of complexity for your projects, all built with TypeScript for maximum performance and safety:
+
+#### 🔍 Minimal Template
 
 **Ideal for:** Small projects, landing pages, or developers who want full control
 
-- Basic project structure with essential files only
-- No routing or component architecture (just the basics)
+- Basic structure with essential files only
+- Perfect for landing pages or simple sites
 - Tailwind CSS included
 - Extremely lightweight with minimal dependencies
 
-### 🧩 Standard Templates
+#### 🧩 Standard Template
 
 **Ideal for:** Most web applications and sites
 
@@ -229,7 +184,7 @@ Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 - Tailwind CSS with dark mode support
 - Common utility functions and helpers
 
-### 🚀 Full Templates
+#### 🚀 Full Template
 
 **Ideal for:** Production applications with advanced features
 
@@ -241,31 +196,40 @@ Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 - Background sync for offline form submissions
 - Push notification infrastructure
 
-Create your project with the desired template using the CLI:
+Create your project using either of these commands:
 
 ```bash
+# Using create command
 bun create 0x1 my-app
-```
 
-The CLI will guide you through selecting your preferred template complexity and other project options. Build
+# Or with CLI (if installed globally)
+bun 0x1 new my-app
 
-```bash
-bun run build
+# Specify template complexity
+bun 0x1 new my-app --complexity=minimal|standard|full
 ```
 
 ## 🚀 Getting Started
 
+### Prerequisites
+
+- [Bun](https://bun.sh) v1.0.0 or higher (REQUIRED)
+
 ### Create a New Project
 
 ```bash
+# Using Bun directly (recommended)
 bun create 0x1 my-app
-```
 
-Or install 0x1 globally:
-
-```bash
+# Or if you installed 0x1 globally
 bun install -g 0x1
-0x1 new my-app
+bun 0x1 new my-app
+
+# With template complexity option
+bun 0x1 new my-app --complexity=minimal|standard|full
+
+# With other options
+bun 0x1 new my-app --javascript --theme="royal-purple" --pwa
 ```
 
 ### Development
@@ -275,38 +239,57 @@ cd my-app
 bun dev
 ```
 
+Open [http://localhost:3000](http://localhost:3000) to view your app in action!
+
+### Project Structure
+
+A standard 0x1 project includes these key files and folders:
+
+```
+my-app/
+├── app/                    # App directory structure (Next.js 15-compatible)
+│   ├── page.tsx            # Home page component
+│   └── layout.tsx          # Root layout
+├── components/             # Reusable components
+├── styles/                 # CSS styles
+├── public/                 # Static assets
+├── 0x1.config.ts           # 0x1 configuration
+├── package.json            # Project dependencies
+├── tailwind.config.js      # Tailwind configuration (optional)
+└── tsconfig.json           # TypeScript configuration
+```
+
 ### Production Build
 
 ```bash
 bun run build
 ```
 
-### Deploy 
-
-Deploy anywhere with a static hosting provider:
+### Deploy
 
 ```bash
-bun run deploy
+# Deploy to Vercel (recommended)
+bun 0x1 deploy --provider=vercel
+
+# Deploy to Netlify
+bun 0x1 deploy --provider=netlify
+
+# Custom deployment
+bun 0x1 build
+# Then deploy the 'dist' directory
 ```
 
-## 📦 Installation
+The framework is specially optimized for modern edge runtimes, providing the best possible performance.
 
-### Prerequisites
-- [Bun](https://bun.sh) v1.0.0 or higher (REQUIRED)
+## 📦 Version Information
 
-### Installation
+Current version: **0.0.71**
 
-```bash
-# Using bun (recommended)
-bun install -g 0x1
+This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
-# Or using npm
-npm install -g 0x1
-```
+### CLI Access Troubleshooting
 
-### Global CLI Access Troubleshooting
-
-After installing with `bun install -g`, you may need to add Bun's bin directory to your PATH to use the `0x1` command if the auto-configuration fails due to your environment / edge cases:
+After installing with `bun install -g`, you may need to add Bun's bin directory to your PATH:
 
 ```bash
 # Add these lines to your shell config (~/.bashrc, ~/.zshrc, etc.)
@@ -325,26 +308,45 @@ bunx 0x1 <command>
 > ```bash
 > # Instead of this
 > 0x1 new my-project
-> 
+>
 > # Use this
 > bun 0x1 new my-project
 > ```
 
-## 📦 Version Information
+## ⚛️ Custom JSX Runtime
 
-Current version: **0.0.70**
+0x1 includes its own custom JSX runtime that completely eliminates React dependencies while maintaining full JSX functionality:
 
-This initial release provides all core functionality with a stable API. You can install it directly with Bun (required):
+### Key Features
 
-## 💡 Philosophy
+- **Zero React dependencies**: Use JSX without installing React or any other framework
+- **Automatic JSX transforms**: JSX syntax is automatically converted to efficient function calls
+- **Development mode support**: Includes both production and development JSX runtimes with enhanced debugging
+- **Next.js 15 compatibility**: Works seamlessly with modern app directory structure
+- **TypeScript integration**: Full type safety for JSX components and their props
 
-0x1's philosophy is radically different from most modern frameworks:
+### Usage Example
 
-1. **Zero abstraction cost**: No virtual DOM or complex state tracking
-2. **Browser-native**: Leverage what browsers are good at
-3. **Minimal over comprehensive**: Focused feature set, exceptional at few things
-4. **No dependencies**: Entire framework in one tiny package
-5. **Extreme performance**: Optimize for loaded page performance, not DX shortcuts
+```tsx
+// No imports needed - JSX just works!
+export function MyComponent({ title, children }) {
+  return (
+    <div className="container">
+      <h1>{title}</h1>
+      <div className="content">{children}</div>
+    </div>
+  );
+}
+```
+
+### How It Works
+
+1. **Automatic Transpilation**: The 0x1 build system detects JSX files and transforms them using Bun's bundler
+2. **Runtime Functions**: JSX elements are converted to calls to `createElement` and `Fragment` from 0x1's runtime
+3. **Zero Configuration**: No need to configure JSX settings - the framework handles everything
+4. **Development Support**: Automatically switches between optimized production and enhanced dev runtimes
+
+The 0x1 JSX transpiler handles all imports and transformations automatically, generating extremely optimized code with zero runtime overhead. This allows you to use modern JSX syntax without the bloat of traditional frameworks.
 
 ## 🏎️ Performance Comparison
 
@@ -362,7 +364,7 @@ Expected out-of-the-box performance
 0x1's component system is intentionally simple but powerful:
 
 ```tsx
-import { Fragment } from '0x1';
+// No need to import React! 0x1 has its own JSX runtime
 
 // Define a component
 interface ButtonProps {
@@ -372,8 +374,8 @@ interface ButtonProps {
 
 export function Button({ onClick, label }: ButtonProps) {
   return (
-    <button 
-      className="btn" 
+    <button
+      className="btn"
       onClick={onClick}
     >
       {label}
@@ -385,9 +387,9 @@ export function Button({ onClick, label }: ButtonProps) {
 function App() {
   return (
     <div>
-      <Button 
-        onClick={() => console.log('Clicked!')} 
-        label="Click me" 
+      <Button
+        onClick={() => console.log('Clicked!')}
+        label="Click me"
       />
     </div>
   );
@@ -435,7 +437,7 @@ interface ProductPageProps {
 export function ProductPage({ params }: ProductPageProps) {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   useEffect(() => {
     async function loadProduct() {
       setLoading(true);
@@ -443,10 +445,10 @@ export function ProductPage({ params }: ProductPageProps) {
       setProduct(data);
       setLoading(false);
     }
-    
+
     loadProduct();
   }, [params.id]);
-  
+
   return (
     <div className="product-container">
       {loading ? (
@@ -777,7 +779,7 @@ During interactive project creation, you'll get these options:
 
 1. **Project theme selection** - Choose from several beautiful themes that affect both the application and PWA appearance:
    - Midnight Blue - Dark blue theme with modern accents
-   - Forest Green - Natural green theme with earthy tones 
+   - Forest Green - Natural green theme with earthy tones
    - Royal Purple - Rich purple theme with elegant styling
    - Slate Gray - Neutral gray theme with professional look
    - Classic - Default 0x1 styling
@@ -936,7 +938,7 @@ If you're experiencing issues with content not displaying in your browser when r
    ```html
    <!-- Use this for direct browser loading -->
    <script src="./app.js"></script>
-   
+
    <!-- Not this, unless bundling properly -->
    <!-- <script type="module" src="./app.js"></script> -->
    ```
@@ -950,7 +952,7 @@ If you're experiencing issues with content not displaying in your browser when r
    ```typescript
    // Instead of ES module imports:
    // import { something } from './somewhere';
-   
+
    // Use pattern that works in browsers:
    const { something } = window.globalNamespace;
    ```

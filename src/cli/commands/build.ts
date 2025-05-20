@@ -8,6 +8,7 @@ import { mkdir, readdir } from 'fs/promises'; // For directory operations
 // We'll use Bun.file() instead of readFile/writeFile for better performance
 import { dirname, join, relative, resolve } from 'path';
 import { logger } from '../utils/logger.js';
+import { handleJSXFile } from './jsx-transpiler'; // Import the JSX transpiler module
 
 // For dynamic imports
 // Prefixing with underscore to indicate this interface is used for type checking only
@@ -28,6 +29,8 @@ export interface BuildOptions {
  * Build the application for production
  */
 export async function build(options: BuildOptions = {}): Promise<void> {
+  // Start timing the build process
+  const startTime = performance.now();
   // Only show logs if not silent
   const log = options.silent ? 
     { 
@@ -124,10 +127,19 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   }
   
   // Output build info with beautiful formatting
-  log.spacer();
   log.box('Build Complete');
-  log.info('📦 Output directory: ' + log.highlight(outputPath));
-  log.info('🔧 Minification: ' + (minify ? log.highlight('enabled') : 'disabled'));
+  log.info(`📦 Output directory: ${log.highlight(outputPath)}`);
+  log.info(`🔧 Minification: ${minify ? 'enabled' : 'disabled'}`);
+  
+  // Calculate and display build time
+  const endTime = performance.now();
+  const buildTimeMs = endTime - startTime;
+  const formattedTime = buildTimeMs < 1000 ? 
+    `${buildTimeMs.toFixed(2)}ms` : 
+    `${(buildTimeMs / 1000).toFixed(2)}s`;
+  
+  log.spacer();
+  log.info(`⚡ Build completed in ${log.highlight(formattedTime)}`);
   
   // Watch mode if requested
   if (options.watch && !options.silent) {
@@ -318,6 +330,23 @@ async function bundleJavaScript(
   const mainEntryFile = findMainEntryFile(projectPath);
   if (mainEntryFile) {
     await processJSBundle(mainEntryFile, projectPath, { minify });
+    
+    // Ensure the temp index.js file is correctly moved to index.js
+    const tempIndexPath = join(outputPath, '.temp-index.js');
+    const finalIndexPath = join(outputPath, 'index.js');
+    
+    // Check if temp file exists but final doesn't
+    if (existsSync(tempIndexPath)) {
+      try {
+        // Read the content from temp file
+        const content = await Bun.file(tempIndexPath).text();
+        // Write to the final destination
+        await Bun.write(finalIndexPath, content);
+        logger.debug('Successfully created index.js from .temp-index.js');
+      } catch (error) {
+        logger.error(`Failed to copy .temp-index.js to index.js: ${error}`);
+      }
+    }
   } else {
     logger.warn('No main entry file found (index.tsx/ts/jsx/js). Project may not work correctly.');
   }
@@ -432,11 +461,21 @@ async function bundleJavaScript(
 /**
  * Process JavaScript/TypeScript file bundle
  */
-async function processJSBundle(entryFile: string, projectPath: string, options: { minify: boolean }): Promise<void> {
+async function processJSBundle(entryFile: string, projectPath: string, options: { minify: boolean }): Promise<boolean | void> {
+  // Use direct transpilation for .tsx files to avoid bundling issues
+  if (entryFile.endsWith('.tsx') || entryFile.endsWith('.jsx')) {
+    // Calculate output file path similar to how it's done for other files
+    const relativePath = relative(projectPath, entryFile);
+    const outputDir = join(projectPath, 'dist');
+    const baseName = relativePath.replace(/\\+/g, '/'); // Normalize path separators for Windows
+    const outputFile = join(outputDir, baseName.replace(/.(tsx|jsx|ts|js)$/, '.js'));
+    
+    // Call handleJSXFile with correct parameters
+    return await handleJSXFile(entryFile, outputFile, projectPath, options.minify);
+  }
   const { minify } = options;
   
-  // Check if this is a TypeScript file
-  const isTsx = entryFile.endsWith('.tsx') || entryFile.endsWith('.ts');
+  // Not needed to check for TypeScript file type since we handle all file types
   
   // Get the relative path to the entry file from the project root
   const relativePath = relative(projectPath, entryFile);
@@ -457,9 +496,13 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
     // Read the entry file content
     const fileContent = await Bun.file(entryFile).text();
 
-    // Configure Bun's bundler
-    const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } =
-      isTsx ? { '.tsx': 'tsx', '.jsx': 'jsx' } : {};
+    // Configure Bun's bundler with proper JSX handling
+    const loader: { [key: string]: 'tsx' | 'jsx' | 'js' | 'ts' } = {
+      '.tsx': 'tsx',
+      '.jsx': 'jsx',
+      '.ts': 'ts',
+      '.js': 'js'
+    };
 
     // Check for 0x1 framework imports
     const file0x1Imports = fileContent.match(/from\s+['"]0x1(\/[\w-]+)?['"]|import\s+['"]0x1(\/[\w-]+)?['"]/);
@@ -629,28 +672,97 @@ export default {
       actualEntryFile = tempFile;
     }
     
-    // Use Bun's built-in bundler
+    // Get base filename for naming configuration
+    const baseName = basename(entryFile).split('.')[0];
+
+    // Direct JSX handling approach using Bun's internal transpilation
+    // This minimizes external dependencies for better reliability
+    if (actualEntryFile.endsWith('.tsx') || actualEntryFile.endsWith('.jsx')) {
+      logger.info(`Processing JSX in ${basename(actualEntryFile)}...`);
+      
+      try {
+        // Create a simple JS file that directly imports our JSX runtime
+        // and uses Bun's native JSX handling
+        const tempJsFile = join(dirname(actualEntryFile), `.jsx-transpiled-${basename(actualEntryFile).replace(/\.tsx$|\.jsx$/, '.js')}`);
+        
+        // Create a temporary file that configures Bun's transpiler correctly
+        const tempTsConfigFile = join(dirname(actualEntryFile), `.temp-tsconfig-jsx.json`);
+        await Bun.write(tempTsConfigFile, JSON.stringify({
+          "compilerOptions": {
+            "target": "ESNext",
+            "module": "ESNext",
+            "jsx": "preserve",
+            "jsxFactory": "createElement",
+            "jsxFragmentFactory": "Fragment"
+          }
+        }));
+        
+        // Use Bun's built-in transpiler to handle JSX
+        const transpileResult = await Bun.spawn([
+          'bun', 'build', actualEntryFile,
+          '--outfile', tempJsFile,
+          '--tsconfig-override', tempTsConfigFile
+        ]);
+        
+        const exitCode = await transpileResult.exited;
+        if (exitCode === 0) {
+          logger.debug(`Successfully transpiled JSX in ${basename(actualEntryFile)}`);
+          
+          // Modify the transpiled file to ensure it imports our JSX runtime properly
+          let jsContent = await Bun.file(tempJsFile).text();
+          
+          // Add our JSX runtime imports at the top
+          const jsxRuntimeImport = `// Add JSX runtime imports\nimport { createElement, Fragment, jsx, jsxs, jsxDEV } from '/0x1/jsx-runtime.js';\n\n`;
+          
+          jsContent = jsxRuntimeImport + jsContent;
+          await Bun.write(tempJsFile, jsContent);
+          
+          // Use the pre-processed JS file for the main bundle
+          actualEntryFile = tempJsFile;
+        } else {
+          logger.error(`Failed to transpile JSX in ${basename(actualEntryFile)}`);
+        }
+      } catch (err) {
+        logger.error(`Error processing JSX: ${String(err)}`);
+      }
+    }
+    
+    // Create JSX runtime support files for the build
+    const jsxRuntimeDir = join(dirname(outputFile), '0x1');
+    await mkdir(jsxRuntimeDir, { recursive: true });
+    
+    // Write JSX runtime shim that re-exports from the framework
+    const jsxRuntimePath = join(jsxRuntimeDir, 'jsx-runtime.js');
+    const jsxRuntimeContent = `// 0x1 Framework - JSX Runtime shim
+// This exports all JSX runtime functions needed for components
+import { createElement, Fragment, jsx, jsxs } from '/0x1/jsx-runtime.js';
+
+// Export JSX runtime functions
+export { createElement, Fragment, jsx, jsxs };
+export const jsxDEV = jsx; // Development mode alias
+
+// Also export as default for module interop
+export default {
+  createElement, Fragment, jsx, jsxs, jsxDEV
+};
+`;
+    
+    await Bun.write(jsxRuntimePath, jsxRuntimeContent);
+    
+    // Define build options using Bun's API
     const result = await Bun.build({
       entrypoints: [actualEntryFile],
       outdir: dirname(outputFile),
-      target: 'browser',
-      format: 'esm',
-      splitting: true,
-      naming: {
-        entry: '[dir]/[name].[ext]',
-        chunk: '[name]-[hash].[ext]',
-        asset: 'assets/[name]-[hash].[ext]',
-      },
+      naming: `[dir]/[name]${baseName === 'index' ? '' : '.[name]'}.js`,
       loader,
-      plugins: [],
       // Apply minification based on options
       minify,
       // Add source maps for better debugging
       sourcemap: options.minify ? 'none' : 'external',
-      // Define environment variables
+      // Define environment variables and JSX handling
       define: {
         'process.env.NODE_ENV': options.minify ? '"production"' : '"development"',
-        'process.env.APP_DIR': existsSync(join(projectPath, 'app')) ? 'true' : 'false',
+        'process.env.APP_DIR': existsSync(join(projectPath, 'app')) ? 'true' : 'false'
       },
       // Improve module resolution and tree shaking
       // treeshake: options.minify, // Removing unsupported property
@@ -660,8 +772,32 @@ export default {
       // logLevel: 'error', // Removing unsupported property
     });
     
-    if (!result.success) {
-      throw new Error(`Build failed with ${result.logs.length} errors`);
+    try {
+      if (!result.success) {
+        // Enhanced error logging to diagnose the JSX transpilation issue
+        console.error('\n=============== BUILD ERROR DETAILS ===============');
+        console.error('Build logs:', result.logs?.join('\n'));
+        console.error('File being bundled:', actualEntryFile);
+        
+        // Try to read the file to see what might be causing the error
+        try {
+          const fileContent = await Bun.file(actualEntryFile).text();
+          console.error('\nFile content snippet (first 200 chars):', fileContent.substring(0, 200) + '...');
+        } catch (err) {
+          console.error('Could not read file content:', err);
+        }
+        
+        console.error('\n===============================================');
+        throw new Error(`Bundle failed: ${result.logs?.join('\n') || 'Unknown error'}`);
+      }
+    } catch (e) {
+      // Type assertion for better error handling
+      const error = e as Error;
+      logger.error(`Error during bundling of ${entryFile}: ${error.message || String(error)}`);
+      if (error.stack) {
+        logger.debug(`Stack trace: ${error.stack}`);
+      }
+      throw new Error(`Failed to bundle ${entryFile}: ${error.message || String(error)}`);
     }
     
     logger.debug(`Bundle generated: ${outputFile}`);
