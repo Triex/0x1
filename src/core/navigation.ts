@@ -3,12 +3,6 @@
  * Provides routing and page navigation components
  */
 
-// Import Router from router.ts file
-import { Router } from '../router.js';
-
-// Re-export Router
-export { Router };
-
 export interface Component {
   render: (props?: any) => HTMLElement;
   onMount?: () => void;

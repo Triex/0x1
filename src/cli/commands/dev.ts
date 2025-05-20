@@ -971,18 +971,15 @@ export default {
                   // Convert `export class Router` to just `class Router` since we'll export it explicitly later
                   .replace(/export\s+class\s+Router/, 'class Router');
                   
-                // Then process navigation components separately, removing any Router imports/references
+                // Then process navigation components separately
                 const cleanNavigationSource = navigationSource
                   .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
                   .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
-                  // Remove Router import from navigation.ts
-                  .replace(/import\s+\{\s*Router\s*\}\s+from\s+[\'\"]+.*[\'\"];?/g, '// Router import removed')
-                  // Remove Router re-export from navigation.ts
-                  .replace(/export\s+\{\s*Router\s*\};?/g, '// Router re-export removed')
-                  // Convert export declarations to just class/function declarations
-                  .replace(/export\s+class\s+Link/, 'class Link')
-                  .replace(/export\s+class\s+NavLink/, 'class NavLink')
-                  .replace(/export\s+class\s+Redirect/, 'class Redirect');
+                  // Since we've already removed Router import/export from navigation.ts
+                  // we just need to handle the function exports
+                  .replace(/export\s+function\s+Link/, 'function Link')
+                  .replace(/export\s+function\s+NavLink/, 'function NavLink')
+                  .replace(/export\s+function\s+Redirect/, 'function Redirect');
                 
                 // Provide a proper ESM module with the router implementation
                 moduleContent = `
@@ -1017,6 +1014,11 @@ export function createRouter(options = {}) {
 export { Router, Link, NavLink, Redirect };
 export default Router;
 `;
+                
+// FIXME: REMOVE LATER
+                // Debug the module content to see what's being sent to the browser
+                console.log('=== DEBUG: ROUTER MODULE CONTENT ===');
+                console.log(moduleContent.substring(0, 500) + '...');
               } catch (error) {
                 options.debug && logger.error(`Error loading router: ${error}`);
                 // Return an error instead of a fallback

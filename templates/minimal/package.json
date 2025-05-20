@@ -12,7 +12,7 @@
     "type-check": "bun --bun tsc --noEmit"
   },
   "dependencies": {
-    "0x1": "^0.0.110"
+    "0x1": "^0.0.111"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {
