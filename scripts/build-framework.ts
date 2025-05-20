@@ -110,10 +110,18 @@ async function buildFramework() {
         // Use a typed approach to get the content and write it
         const content = await Bun.file(sourceFile).text();
         await Bun.write(destFile, content);
-        // Also copy to 0x1 directory for public exports
-        await Bun.write(destFile0x1, content);
-        console.log(`Copied ${fileName} to dist/core/`);
-        console.log(`Copied ${fileName} to dist/0x1/`);
+        
+        // Create a symlink in the 0x1 directory pointing to the core file
+        // First, remove the file if it already exists
+        if (await Bun.file(destFile0x1).exists()) {
+          Bun.spawnSync(['rm', destFile0x1]);
+        }
+        
+        // Create a relative symlink
+        Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
+        
+        console.log(`Transpiled and copied ${fileName} to dist/core/`);
+        console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
       } else {
         // Try to look for the TypeScript version and transpile it
         const tsFile = sourceFile.replace(/\.js$/, '.ts');
@@ -133,7 +141,18 @@ async function buildFramework() {
             const jsContent = await Bun.file(tempOut).text();
             await Bun.write(destFile, jsContent);
             Bun.spawnSync(['rm', tempOut]);
+            
+            // Create a symlink in the 0x1 directory pointing to the core file
+            // First, remove the file if it already exists
+            if (await Bun.file(destFile0x1).exists()) {
+              Bun.spawnSync(['rm', destFile0x1]);
+            }
+            
+            // Create a relative symlink
+            Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
+            
             console.log(`Transpiled and copied ${fileName} to dist/core/`);
+            console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
           } else {
             console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
           }

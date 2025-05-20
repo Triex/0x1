@@ -150,9 +150,12 @@ export async function transpileJSX(
       let stderr = '';
       
       try {
-        // Use Bun.build API directly for more reliable transpilation
+        // First try to use Bun.build API directly which is faster
         try {
-          // Use Bun.build API directly for more reliable transpilation
+          logger.debug('Transpiling JSX with Bun.build API directly');
+          
+          // Direct API approach (works in newer Bun versions)
+          // Using type assertion because TypeScript definitions might not include all Bun build options
           const result = await Bun.build({
             entrypoints: [tempFile],
             outdir: dirname(outputFile),
@@ -164,10 +167,10 @@ export async function transpileJSX(
             define: {
               'process.env.NODE_ENV': JSON.stringify('production')
             },
-            target: 'browser'
-            // TypeScript doesn't recognize JSX config in Bun.build, but it works at runtime
-            // @ts-ignore - JSX config is supported at runtime
-          });
+            target: 'browser',
+            // TypeScript doesn't recognize these JSX config in type definitions
+            // but they work at runtime in Bun
+          } as any);
           
           // Check if build succeeded
           if (!result.success) {

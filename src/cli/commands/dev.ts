@@ -1088,11 +1088,11 @@ export default {
               // Get paths to source files
               const routerPath = resolve(
                 frameworkPath,
-                'src/core/router.ts'
+                'dist/core/router.js'
               );
               const navigationPath = resolve(
                 frameworkPath,
-                'src/core/navigation.ts'
+                'dist/core/navigation.js'
               );
               
               try {
