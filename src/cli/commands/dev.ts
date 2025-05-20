@@ -1085,15 +1085,37 @@ export default {
             
             // Serve the router module - ensure proper handling of regex patterns and routing
             if (modulePath === "router" || modulePath === "router.js") {
-              // Get paths to source files
-              const routerPath = resolve(
-                frameworkPath,
-                'dist/core/router.js'
-              );
-              const navigationPath = resolve(
-                frameworkPath,
-                'dist/core/navigation.js'
-              );
+              // Print more verbose debug logging
+              options.debug && logger.debug(`Loading router module for client-side rendering`);
+              
+              // Explicitly check for the router in both core and 0x1 directories
+              const possiblePaths = [
+                resolve(frameworkPath, 'dist/core/router.js'),
+                resolve(frameworkPath, 'dist/0x1/router.js'),
+                resolve(frameworkPath, 'src/core/router.ts')
+              ];
+              
+              let routerPath = null;
+              let navigationPath = null;
+              
+              // Find the first path that exists
+              for (const path of possiblePaths) {
+                if (await Bun.file(path).exists()) {
+                  routerPath = path;
+                  // Set navigation path based on the router location
+                  navigationPath = path.replace('router.js', 'navigation.js');
+                  if (path.endsWith('.ts')) {
+                    navigationPath = path.replace('router.ts', 'navigation.ts');
+                  }
+                  options.debug && logger.debug(`Found router at: ${routerPath}`);
+                  options.debug && logger.debug(`Associated navigation at: ${navigationPath}`);
+                  break;
+                }
+              }
+              
+              if (!routerPath || !navigationPath) {
+                throw new Error(`Cannot find router module in any expected location`);
+              }
               
               try {
                 // Use Bun to load both files in parallel for better performance

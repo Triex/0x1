@@ -186,21 +186,31 @@ export async function transpileJSX(
           
           // Enhanced command with better handling of CSS files
           // Explicitly ignore all CSS content and add extra flags
+          // Create a temporary config file for Bun build with all options
+          const configContent = JSON.stringify({
+            entrypoints: [tempFile],
+            outfile: outputFile,
+            minify: minify,
+            external: ['*.css', 'tailwind*', 'postcss*', '@tailwind*'],
+            target: 'browser',
+            jsx: 'automatic',
+            jsxImportSource: '0x1',
+            jsxFactory: 'createElement',
+            jsxFragment: 'Fragment',
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('production')
+            }
+          }, null, 2);
+          
+          // Write config to temp file
+          const configPath = join(dirname(tempFile), '.bun-build-config.json');
+          await Bun.write(configPath, configContent);
+          
+          // Use more stable command format
           const bunBuildProcess = Bun.spawn([
             'bun', 'build', tempFile,
             '--outfile', outputFile,
-            ...(minify ? ['--minify'] : []),
-            '--external:*.css',              // Ignore all CSS imports
-            '--external:tailwind*',          // Ignore Tailwind imports
-            '--external:postcss*',           // Ignore PostCSS imports
-            '--external:@tailwind*',         // Ignore @tailwind directives
-            '--no-bundle-nodejs-globals',    // Reduce bundle size
-            '--target=browser',              // Target browser environment
-            '--jsx=automatic',               // Use automatic JSX mode
-            '--jsx-import-source=0x1',       // Use 0x1 for JSX
-            '--jsx-factory=createElement',    // Use createElement for JSX
-            '--jsx-fragment=Fragment',       // Use Fragment for JSX
-            '--define:process.env.NODE_ENV="production"', // Production mode
+            '--config', configPath
           ], {
             cwd: dirname(tempFile),
             stdout: 'pipe',
