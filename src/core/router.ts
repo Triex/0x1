@@ -345,20 +345,34 @@ export class Router {
    * Convert a path pattern to a regular expression
    */
   private pathToRegex(path: string): RegExp {
-    // Handle special case for root path
+    // Special case for root path
     if (path === "/") return new RegExp("^/$");
 
-    // Escape all regex special characters except those we use for patterns
-    let pattern = path
-      .replace(/[\^\$\(\)\[\]\{\}\+\?\.]/g, "\\$&") // Escape special regex chars first
-      .replace(/\//g, "\\/"); // Escape slashes after other special chars
-
-    // Now replace our path pattern tokens
-    pattern = pattern
-      .replace(/:\w+/g, "([^/]+)") // Replace :param with capture groups
-      .replace(/\\\*/g, "(.*)"); // Handle catch-all routes (escaped * from earlier)
-
-    return new RegExp(`^${pattern}/?$`); // Allow optional trailing slash
+    try {
+      // Step 1: Escape all regex special characters
+      // Escape special characters that have meaning in regex
+      let pattern = path
+        .replace(/[\^\$\(\)\[\]\{\}\+\?\.]/g, "\\$&");
+      
+      // Step 2: Handle path-specific escaping
+      // Escape forward slashes (path separators)
+      pattern = pattern.replace(/\//g, "\\/");
+      
+      // Step 3: Replace our path pattern tokens with regex patterns
+      // Convert :param to capture groups
+      pattern = pattern.replace(/:\w+/g, "([^/]+)");
+      
+      // Handle wildcard routes (* was already escaped earlier)
+      pattern = pattern.replace(/\\\*/g, "(.*)");
+      
+      // Step 4: Create the final regex pattern with start/end anchors
+      // Allow optional trailing slash with /?$
+      return new RegExp(`^${pattern}/?$`);
+    } catch (error) {
+      // Fallback to a safe default regex if anything goes wrong
+      console.error(`Error creating regex from path pattern '${path}':`, error);
+      return new RegExp("^/.*$"); // Match any path as fallback
+    }
   }
 
   /**
