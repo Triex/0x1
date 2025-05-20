@@ -441,6 +441,13 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     // Try multiple possible paths for the live-reload script
     const currentDir = import.meta.dirname || '';
     const possiblePaths = [
+      // Direct paths from current project
+      resolve(projectPath, 'node_modules', '0x1', 'live-reload.js'),
+      resolve(projectPath, 'node_modules', '0x1', 'dist', 'live-reload.js'),
+      // Global paths that might be available
+      resolve(__dirname, '..', '..', '..', 'live-reload.js'),
+      resolve(__dirname, '..', '..', 'live-reload.js'),
+      // Original paths
       join(currentDir, '../../browser/live-reload.js'),
       join(currentDir, '../browser/live-reload.js'),
       join(currentDir, './live-reload.js'),
