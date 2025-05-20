@@ -1197,6 +1197,16 @@ export default {
   <link rel="icon" href="/favicon.ico">
   
   <!-- Import Map for bare imports - enables importing directly from '0x1' -->
+  <!-- Process polyfill for browser environment -->
+  <script>
+    // Define process object for browser environment
+    window.process = { 
+      env: { 
+        NODE_ENV: 'development' 
+      }
+    };
+  </script>
+  
   <script type="importmap">
   {
     "imports": {
