@@ -804,6 +804,20 @@ export default {
             }
           }
 
+          // // Serve static content from 'public' directory
+          // const staticFilePath = join(options.projectPath, 'public', path);
+          // if (existsSync(staticFilePath) && !isDirectory(staticFilePath)) {
+          //   // Handle static file from public directory
+          //   const fileContent = await Bun.file(staticFilePath).arrayBuffer();
+          //   const contentType = getContentType(staticFilePath);
+
+          //   options.debug && logger.debug(`Serving static file: ${staticFilePath}`);
+
+          //   return new Response(fileContent, {
+          //     headers: {
+          //       'Content-Type': contentType,
+          //       'Cache-Control': 'no-cache'
+
           // Handle framework core files
           if (path === "/core/navigation.js") {
             // Provide the router implementation
@@ -833,14 +847,17 @@ export default {
             }
 
             // Add a route to the router
-            add(path, component) {
-              this.routes.set(path, component);
+            add(routePath, component) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[Router] Registering route:', routePath);
+              }
+              this.routes.set(routePath, component);
               return this;
             }
 
             // Alias for add method for compatibility
-            addRoute(path, component) {
-              return this.add(path, component);
+            addRoute(routePath, component) {
+              return this.add(routePath, component);
             }
 
             // Get the current path based on routing mode
@@ -1287,12 +1304,12 @@ export default {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
   <link rel="icon" href="/favicon.ico">
-  
+
   <!-- Process polyfill for browser environment to fix 'process is not defined' errors -->
   <script>
     // Simple process.env polyfill that works in all browsers
-    window.process = window.process || { 
-      env: { 
+    window.process = window.process || {
+      env: {
         NODE_ENV: 'development'
       }
     };
