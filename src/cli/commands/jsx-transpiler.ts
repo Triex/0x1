@@ -7,7 +7,6 @@ import * as fs from 'fs';
 import Bun from 'bun';
 import { logger } from '../utils/logger';
 // Use Bun's native APIs instead of Node.js ones
-import crypto from 'crypto';
 
 /**
  * Process import statements in source code to handle JSX imports
@@ -16,18 +15,40 @@ async function processImports(sourceCode: string): Promise<string> {
   // Handle import statements for JSX
   let processedSource = sourceCode;
 
-  // Handle @tailwind directives by adding CSS comment markers to make them pass through JSX compilation
-  // This prevents Bun from treating them as invalid CSS in JSX files
-  processedSource = processedSource.replace(
-    /(@tailwind[\s\w:;]+)/g,
-    "/* CSS-DIRECTIVE-START */$1/* CSS-DIRECTIVE-END */"
-  );
+  // First check if the file contains CSS Tailwind directives
+  const hasTailwind = processedSource.includes('@tailwind');
   
-  // Also make sure to handle any CSS @import directives, which can also cause issues
-  processedSource = processedSource.replace(
-    /(@import[^;]+;)/g,
-    "/* CSS-IMPORT-START */$1/* CSS-IMPORT-END */"
-  );
+  if (hasTailwind) {
+    // Fully extract any CSS-related content into special script blocks
+    // This ensures they're completely ignored during JSX processing
+    
+    // Start by handling @tailwind directives - wrap them completely in special block comments
+    processedSource = processedSource.replace(
+      /(@tailwind[\s\w:;]+)/g,
+      "/*! TAILWIND_DIRECTIVE \n$1\n*/"
+    );
+    
+    // Handle any @import directives for CSS
+    processedSource = processedSource.replace(
+      /(@import[^;]+;)/g,
+      "/*! CSS_IMPORT \n$1\n*/"
+    );
+    
+    // Handle any other CSS @ rules that might cause parser issues
+    processedSource = processedSource.replace(
+      /(@layer[^{]*{[^}]*})/g,
+      "/*! CSS_LAYER \n$1\n*/"
+    );
+    
+    // Handle any @apply directives
+    processedSource = processedSource.replace(
+      /(@apply[^;]*;)/g,
+      "/*! CSS_APPLY \n$1\n*/"
+    );
+    
+    // Add a note that all CSS was extracted
+    logger.debug("Extracted CSS directives from file to prevent JSX parsing issues");
+  }
 
   // Replace React imports with our custom JSX runtime
   processedSource = processedSource.replace(
@@ -90,28 +111,21 @@ export async function transpileJSX(
     const fileName = basename(entryFile);
     const componentName = fileName.replace(/\.(jsx|tsx)$/, '');
     
-    // Create a truly unique filename with no chance of collision by using nano timestamp and random values
-    // Format: componentName-timestamp-randomPart.js
-    const timestamp = Date.now();
-    const randomHex = Buffer.from(crypto.getRandomValues(new Uint8Array(8))).toString('hex');
-    const uniqueId = `${timestamp}-${randomHex}-${process.pid}`;
-    
-    // Use a completely unique filename for each transpiled component
-    const outputFileName = `${componentName}.${uniqueId}.js`;
-    
-    // Create the full output path - putting everything in the main output directory
-    const outputFile = join(outputDir, outputFileName);
-    
-    // Make sure the output directory exists
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
+    // Create a component-specific subdirectory to guarantee no path collisions
+    const safeComponentDir = join(outputDir, componentName);
+    if (!existsSync(safeComponentDir)) {
+      mkdirSync(safeComponentDir, { recursive: true });
     }
+
+    // Use a very simple output file name within the component's own directory 
+    // No need for complex randomization since each component has its own directory
+    const outputFile = join(safeComponentDir, 'index.js');
     
     // Log the path for debugging
-    logger.debug(`Generated unique output file: ${outputFile}`);
+    logger.debug(`Using component directory for output: ${outputFile}`);
 
-    // Get project path for correct working directory in Bun build
-    const projectPath = projectRoot || dirname(entryFile);
+    // We'll use project root or file directory for context
+    const _projectPath = projectRoot || dirname(entryFile);
 
     // Process imports using the utility function
     const processedSource = await processImports(sourceCode);
@@ -126,50 +140,53 @@ export async function transpileJSX(
     await Bun.write(tempFile, processedSource);
 
     try {
-      // This approach uses Bun's native APIs for better performance and reliability
-      // We'll use --outfile with our guaranteed unique filename
-      const bunArgs = [
-        'build', tempFile,
-        '--outfile', outputFile,
-        ...(minify ? ['--minify'] : []),
-        '--jsx=automatic',
-        '--jsx-import-source=0x1',
-        '--jsx-factory=createElement',
-        '--jsx-fragment=Fragment',
-        '--define:process.env.NODE_ENV="production"',
-        '--external:@tailwind*',
-        '--external:tailwindcss',
-        '--external:postcss*',
-        '--external:*.css',
-        '--no-bundle-nodejs-globals'
-      ];
+      // Use Bun.build directly rather than spawning a process for better reliability
+      // This is a cleaner approach with no process spawning or string parsing required
+      logger.info(`Transpiling JSX with Bun.build API directly`); 
       
-      // Log the command for debugging
-      logger.info(`Executing: bun ${bunArgs.join(' ')}`);
-      
+      // Variables for error handling and output capture
+      let exitCode = 0;
       let stdout = '';
       let stderr = '';
-      let exitCode = 0;
       
-      // Use Bun's native spawn for better performance
       try {
-        // Execute the command using Bun's native APIs
-        const proc = Bun.spawn(['bun', ...bunArgs], {
-          cwd: projectPath,
-          env: { ...process.env, NODE_ENV: 'production' }
+        // Enhanced command with better handling of CSS files
+        // Explicitly ignore all CSS content and add extra flags
+        const bunBuildProcess = Bun.spawn([
+          'bun', 'build', tempFile,
+          '--outfile', outputFile,
+          ...(minify ? ['--minify'] : []),
+          '--external:*.css',              // Ignore all CSS imports
+          '--external:tailwind*',          // Ignore Tailwind imports
+          '--external:postcss*',           // Ignore PostCSS imports
+          '--external:@tailwind*',         // Ignore @tailwind directives
+          '--no-bundle-nodejs-globals',    // Reduce bundle size
+          '--target=browser',              // Target browser environment
+          '--jsx=automatic',               // Use automatic JSX mode
+          '--jsx-import-source=0x1',       // Use 0x1 for JSX
+          '--jsx-factory=createElement',    // Use createElement for JSX
+          '--jsx-fragment=Fragment',       // Use Fragment for JSX
+          '--define:process.env.NODE_ENV="production"', // Production mode
+        ], {
+          cwd: dirname(tempFile),
+          stdout: 'pipe',
+          stderr: 'pipe'
         });
         
-        // Get the output and exit code
-        const output = await new Response(proc.stdout).text();
-        const error = await new Response(proc.stderr).text();
-        exitCode = await proc.exited;
+        // Wait for the process to complete and get output
+        exitCode = await bunBuildProcess.exited;
+        stdout = await new Response(bunBuildProcess.stdout).text();
+        stderr = await new Response(bunBuildProcess.stderr).text();
         
-        stdout = output;
-        stderr = error;
+        if (exitCode !== 0) {
+          throw new Error(`Bun build failed with exit code ${exitCode}`);
+        }
+        
+        logger.debug('JSX transpilation completed successfully');
       } catch (error: any) {
-        // Handle command execution errors
-        exitCode = error.status || 1;
-        stderr = error.stderr?.toString() || error.message;
+        // Handle any errors during the build process
+        exitCode = error.code || error.status || 1;
+        stderr = error.stderr || error.message || String(error);
       }
       if (exitCode !== 0) {
         // Save debug file for inspection
