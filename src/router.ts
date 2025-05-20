@@ -3,6 +3,9 @@
  * Simplified exports for better developer experience
  */
 
-// Re-export Router from navigation for simpler imports
-export { Router, Link, NavLink, Redirect } from './core/navigation';
+// Export Router from its source file
+export { Router } from './core/router';
+
+// Export navigation components
+export { Link, NavLink, Redirect } from './core/navigation';
 export type { Page, RouteParams } from './core/navigation';

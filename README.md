@@ -353,7 +353,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.108**
+Current version: **0.0.109**
 
 This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
