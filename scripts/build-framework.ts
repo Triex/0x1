@@ -75,6 +75,82 @@ async function buildFramework() {
     
     // Build the JS files with Bun's build API using optimizations for smaller bundle size
     console.log('Building optimized bundle...');
+    
+    // First, copy all core modules to ensure they're available individually
+    const coreDir = join(srcDir, 'core');
+    const coreDistDir = join(distDir, 'core');
+    
+    // Create core directory in dist if it doesn't exist
+    if (!(await Bun.file(coreDistDir).exists())) {
+      Bun.spawnSync(['mkdir', '-p', coreDistDir]);
+    }
+    
+    // Copy critical files from core to dist directly to ensure they're available
+    const coreFiesList = [
+      'router.js',
+      'navigation.js',
+      'component.js',
+      'hooks.js',
+      'store.js'
+    ];
+    
+    for (const fileName of coreFiesList) {
+      const sourceFile = join(coreDir, fileName);
+      const destFile = join(coreDistDir, fileName);
+      
+      if (await Bun.file(sourceFile).exists()) {
+        // Use a typed approach to get the content and write it
+        const content = await Bun.file(sourceFile).text();
+        await Bun.write(destFile, content);
+        console.log(`Copied ${fileName} to dist/core/`);
+      } else {
+        // Try to look for the TypeScript version and transpile it
+        const tsFile = sourceFile.replace(/\.js$/, '.ts');
+        if (await Bun.file(tsFile).exists()) {
+          console.log(`Transpiling ${fileName.replace(/\.js$/, '.ts')} to JS...`);
+          const tempOut = join(srcDir, `.temp-${fileName}`);
+          
+          // Use Bun to transpile the TS file
+          const buildRes = Bun.spawnSync([
+            'bun', 'build', tsFile,
+            '--outfile', tempOut,
+            '--target', 'browser',
+            '--format', 'esm'
+          ]);
+          
+          if (buildRes.exitCode === 0) {
+            const jsContent = await Bun.file(tempOut).text();
+            await Bun.write(destFile, jsContent);
+            Bun.spawnSync(['rm', tempOut]);
+            console.log(`Transpiled and copied ${fileName} to dist/core/`);
+          } else {
+            console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
+          }
+        }
+      }
+    }
+    
+    // Create 0x1 subdirectory in dist for compatibility
+    const dist0x1Dir = join(distDir, '0x1');
+    if (!(await Bun.file(dist0x1Dir).exists())) {
+      Bun.spawnSync(['mkdir', '-p', dist0x1Dir]);
+    }
+    
+    // Copy the router and navigation to 0x1/ directory for direct imports
+    for (const fileName of ['router.js', 'navigation.js']) {
+      const sourceFile = join(coreDistDir, fileName);
+      const destFile = join(dist0x1Dir, fileName);
+      
+      if (await Bun.file(sourceFile).exists()) {
+        const content = await Bun.file(sourceFile).text();
+        await Bun.write(destFile, content);
+        console.log(`Copied ${fileName} to dist/0x1/`);
+      } else {
+        console.warn(`⚠️ Cannot copy ${fileName} to 0x1/ - source file not found`);
+      }
+    }
+    
+    // Now build the main bundle as before
     const result = await Bun.build({
       entrypoints: [join(srcDir, 'index.ts')],
       outdir: distDir,
