@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.101",
+  "version": "0.0.102",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -13,6 +13,18 @@
     "./link": {
       "import": "./dist/link.js",
       "types": "./dist/link.d.ts"
+    },
+    "./router": {
+      "import": "./dist/0x1/router.js"
+    },
+    "./navigation": {
+      "import": "./dist/0x1/navigation.js"
+    },
+    "./jsx-runtime": {
+      "import": "./dist/0x1/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "import": "./dist/0x1/jsx-dev-runtime.js"
     }
   },
   "bin": {

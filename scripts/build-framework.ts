@@ -94,15 +94,26 @@ async function buildFramework() {
       'store.js'
     ];
     
+    // Also ensure the 0x1 directory exists for public module exports
+    const frameworkDistDir = join(distDir, '0x1');
+    if (!(await Bun.file(frameworkDistDir).exists())) {
+      Bun.spawnSync(['mkdir', '-p', frameworkDistDir]);
+    }
+    
     for (const fileName of coreFiesList) {
       const sourceFile = join(coreDir, fileName);
       const destFile = join(coreDistDir, fileName);
+      // Also define the destination in the 0x1 directory for public exports
+      const destFile0x1 = join(frameworkDistDir, fileName);
       
       if (await Bun.file(sourceFile).exists()) {
         // Use a typed approach to get the content and write it
         const content = await Bun.file(sourceFile).text();
         await Bun.write(destFile, content);
+        // Also copy to 0x1 directory for public exports
+        await Bun.write(destFile0x1, content);
         console.log(`Copied ${fileName} to dist/core/`);
+        console.log(`Copied ${fileName} to dist/0x1/`);
       } else {
         // Try to look for the TypeScript version and transpile it
         const tsFile = sourceFile.replace(/\.js$/, '.ts');
