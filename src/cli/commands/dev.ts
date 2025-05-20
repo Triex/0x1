@@ -1087,12 +1087,12 @@ export default {
             if (modulePath === "router" || modulePath === "router.js") {
               // Get paths to source files
               const routerPath = resolve(
-                dirname(fileURLToPath(import.meta.url)),
-                '../../core/router.js'
+                frameworkPath,
+                'src/core/router.ts'
               );
               const navigationPath = resolve(
-                dirname(fileURLToPath(import.meta.url)),
-                '../../core/navigation.js'
+                frameworkPath,
+                'src/core/navigation.ts'
               );
               
               try {

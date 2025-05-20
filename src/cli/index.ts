@@ -131,7 +131,7 @@ const showBanner = () => {
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
   // Import from package.json at build time
-  const packageVersion = process.env.npm_package_version || '0.0.102';
+  const packageVersion = process.env.npm_package_version || '0.0.103';
   logger.info(`Running 0x1 CLI v${packageVersion} - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
