@@ -961,13 +961,20 @@ export default {
                 ]);
                 
                 // Process source files for browser compatibility
+                // Process source files - we need to remove TypeScript features and handle export declarations
                 const cleanRouterSource = routerSource
                   .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
-                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed');
+                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
+                  // Convert `export class Router` to just `class Router` since we'll export it explicitly later
+                  .replace(/export\s+class\s+Router/, 'class Router');
                   
                 const cleanNavigationSource = navigationSource
                   .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
-                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed');
+                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
+                  // Convert export declarations to just class/function declarations
+                  .replace(/export\s+class\s+Link/, 'class Link')
+                  .replace(/export\s+class\s+NavLink/, 'class NavLink')
+                  .replace(/export\s+class\s+Redirect/, 'class Redirect');
                 
                 // Provide a proper ESM module with the router implementation
                 moduleContent = `
@@ -1031,7 +1038,7 @@ export default Router;
               // Provide the main 0x1 module
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            import { Router, createRouter, Link, NavLink, Redirect } from '/0x1/router';
+            import { createRouter, Link, NavLink, Redirect } from '/0x1/router';
 
             // Export JSX factory function and fragment
             export function createElement(type, props, ...children) {
@@ -1040,9 +1047,10 @@ export default Router;
 
             export const Fragment = Symbol('Fragment');
 
-            // Re-export everything
-            export { Router, createRouter, Link, NavLink, Redirect };
-            export default { Router, createRouter, Link, NavLink, Redirect, createElement, Fragment };
+            // Only export the router module itself, avoid re-exporting individual identifiers
+            // This ensures we don't get 'already declared' conflicts
+            export { createRouter, Link, NavLink, Redirect };
+            export default { createRouter, Link, NavLink, Redirect, createElement, Fragment };
           `;
             }
 
