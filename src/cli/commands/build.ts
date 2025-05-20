@@ -118,6 +118,39 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Process CSS with appropriate icon
   const cssSpin = log.spinner('Processing CSS styles', 'css');
   try {
+    // Check for app/globals.css for Tailwind processing
+    const appGlobalsCss = join(projectPath, 'app', 'globals.css');
+    if (existsSync(appGlobalsCss)) {
+      log.info(`📂 Found app/globals.css - processing with Tailwind`);
+      // Make sure the public/styles directory exists
+      const outputStylesDir = join(outputPath, 'styles');
+      if (!existsSync(outputStylesDir)) {
+        await mkdir(outputStylesDir, { recursive: true });
+      }
+      
+      // Run Tailwind CSS build on globals.css using bun x (per user rules)
+      const tailwindResult = Bun.spawnSync([
+        'bun', 'x', 'tailwindcss',
+        '-i', appGlobalsCss,
+        '-o', join(outputStylesDir, 'tailwind.css'),
+        minify ? '--minify' : ''
+      ].filter(Boolean), { // Filter to remove empty string if minify is false
+        cwd: projectPath,
+        env: { ...process.env, NODE_ENV: 'production' },
+        stdout: 'pipe',
+        stderr: 'pipe'
+      });
+      
+      if (tailwindResult.exitCode !== 0) {
+        const errorOutput = new TextDecoder().decode(tailwindResult.stderr);
+        log.warn(`Tailwind processing warning: ${errorOutput}`); 
+        // Continue even if there's a warning - we'll handle CSS processing as a fallback
+      } else {
+        log.info('✅ Tailwind CSS processed successfully');
+      }
+    }
+    
+    // Process all other CSS files
     await processCssFiles(projectPath, outputPath, { minify, ignorePatterns });
     cssSpin.stop('success', 'CSS styles: processed and optimized');
   } catch (error) {

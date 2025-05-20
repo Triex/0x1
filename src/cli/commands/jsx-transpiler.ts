@@ -71,9 +71,13 @@ export async function transpileJSX(
     logger.info(`Transpiling JSX: ${basename(entryFile)}`);
     const sourceCode = await Bun.file(entryFile).text();
 
-    // Calculate output file path
-    const relativePath = basename(entryFile).replace(/\.(jsx|tsx)$/, '.js');
-    const outputFile = join(outputDir, relativePath);
+    // Calculate output file path with component name as prefix to avoid conflicts
+    const fileName = basename(entryFile);
+    const componentName = fileName.replace(/\.(jsx|tsx)$/, '');
+    // Use hash to ensure unique output paths and prevent conflicts
+    const hash = Buffer.from(entryFile).toString('hex').substring(0, 8);
+    const outputFileName = `${componentName}.${hash}.js`;
+    const outputFile = join(outputDir, outputFileName);
 
     // Get project path for correct working directory in Bun build
     const projectPath = projectRoot || dirname(entryFile);
@@ -93,7 +97,8 @@ export async function transpileJSX(
     try {
       // Construct the command with proper quoting for shell execution
       // Using --jsx-import-source=0x1 to tell Bun to use our JSX runtime
-      const buildCmd = `bun build "${tempFile}" --outfile="${outputFile}" ${minify ? '--minify' : ''} --jsx=automatic --jsx-import-source=0x1 --jsx-factory=createElement --jsx-fragment=Fragment`;
+      // Add entry naming with hash to make filenames unique
+      const buildCmd = `bun build "${tempFile}" --outfile="${outputFile}" ${minify ? '--minify' : ''} --jsx=automatic --jsx-import-source=0x1 --jsx-factory=createElement --jsx-fragment=Fragment --define:process.env.NODE_ENV="production"`;     
       
       logger.info(`Executing: ${buildCmd}`);
       

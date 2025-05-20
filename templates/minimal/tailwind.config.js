@@ -1,11 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    './*.html',
-    './index.tsx',
+    './app/**/*.{js,ts,jsx,tsx}',  // Modern app directory structure (Next.js style)
     './components/**/*.{js,ts,jsx,tsx}',
-    './app/**/*.{html,js,ts,jsx,tsx}',  // Include app directory files
-    './styles/**/*.css'
+    './*.html',
+    './index.tsx'
   ],
   darkMode: 'class',
   theme: {
