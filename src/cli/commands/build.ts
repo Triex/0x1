@@ -127,13 +127,13 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       if (!existsSync(outputStylesDir)) {
         await mkdir(outputStylesDir, { recursive: true });
       }
-      
+
       // Create the browser directory structure for live-reload script
       const outputBrowserDir = join(outputPath, 'browser');
       if (!existsSync(outputBrowserDir)) {
         await mkdir(outputBrowserDir, { recursive: true });
       }
-      
+
       // Copy the live-reload script to dist/browser for use in projects
       const liveReloadSrc = join(__dirname, '..', '..', 'src', 'browser', 'live-reload.js');
       const liveReloadDest = join(outputBrowserDir, 'live-reload.js');
@@ -143,7 +143,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       } else {
         logger.warn(`Could not find live-reload script at ${liveReloadSrc}`);
       }
-      
+
       // Run Tailwind CSS build on globals.css using bun x (per user rules)
       const tailwindResult = Bun.spawnSync([
         'bun', 'x', 'tailwindcss',
@@ -153,8 +153,8 @@ export async function build(options: BuildOptions = {}): Promise<void> {
         minify ? '--minify' : ''
       ].filter(Boolean), { // Filter to remove empty string if minify is false
         cwd: projectPath,
-        env: { 
-          ...process.env, 
+        env: {
+          ...process.env,
           NODE_ENV: 'production',
           // Add these environment variables to fix Tailwind CSS processing
           TAILWIND_MODE: 'build',
@@ -163,16 +163,16 @@ export async function build(options: BuildOptions = {}): Promise<void> {
         stdout: 'pipe',
         stderr: 'pipe'
       });
-      
+
       if (tailwindResult.exitCode !== 0) {
         const errorOutput = new TextDecoder().decode(tailwindResult.stderr);
-        log.warn(`Tailwind processing warning: ${errorOutput}`); 
+        log.warn(`Tailwind processing warning: ${errorOutput}`);
         // Continue even if there's a warning - we'll handle CSS processing as a fallback
       } else {
         log.info('✅ Tailwind CSS processed successfully');
       }
     }
-    
+
     // Process all other CSS files
     await processCssFiles(projectPath, outputPath, { minify, ignorePatterns });
     cssSpin.stop('success', 'CSS styles: processed and optimized');
@@ -783,11 +783,29 @@ export default {
           }
         }));
 
-        // Use Bun's built-in transpiler to handle JSX
-        const transpileResult = await Bun.spawn([
+        // Create a unique directory for the transpiled output
+        const uniqueOutDir = dirname(tempJsFile);
+        if (!existsSync(uniqueOutDir)) {
+          await mkdir(uniqueOutDir, { recursive: true });
+        }
+
+        // Use Bun's built-in transpiler to handle JSX with unique settings to avoid conflicts
+        // Create a completely unique output file to prevent collisions
+        const timestamp = Date.now();
+        const randomId = Math.random().toString(36).substring(2, 10);
+        const fileName = basename(actualEntryFile).replace(/\.tsx$/, '');
+        const uniqueOutFile = join(uniqueOutDir, `${fileName}.${timestamp}-${randomId}.js`);
+
+        // Use Bun's spawn for better performance and reliability
+        const transpileResult = Bun.spawn([
           'bun', 'build', actualEntryFile,
-          '--outfile', tempJsFile,
-          '--tsconfig-override', tempTsConfigFile
+          '--outfile', uniqueOutFile,
+          '--tsconfig-override', tempTsConfigFile,
+          '--external:@tailwind*',
+          '--external:tailwindcss',
+          '--external:postcss*',
+          '--external:*.css',
+          '--no-bundle-nodejs-globals'
         ]);
 
         const exitCode = await transpileResult.exited;
@@ -1077,11 +1095,11 @@ async function minifyCss(css: string): Promise<string> {
     const minifyScript = `
       const fs = require('fs');
       const css = fs.readFileSync('${tempFile}', 'utf8');
-      
+
       // Manual string-based CSS minification to avoid regex escaping issues
       let minified = '';
       let inComment = false;
-      
+
       // Manual parsing to remove comments and whitespace
       for (let i = 0; i < css.length; i++) {
         // Handle comments
@@ -1096,15 +1114,15 @@ async function minifyCss(css: string): Promise<string> {
           continue;
         }
         if (inComment) continue;
-        
+
         // Skip newlines and excessive whitespace
         if (css[i] === '\n') continue;
         if (css[i] === ' ' && (minified.endsWith(' ') || minified.endsWith('{') || minified.endsWith(':') || minified.endsWith(';'))) continue;
-        
+
         // Add current character
         minified += css[i];
       }
-      
+
       // Final fixes
       minified = minified.replace(/;}/g, '}');
         .trim();

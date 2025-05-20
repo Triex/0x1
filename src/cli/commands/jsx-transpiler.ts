@@ -1,11 +1,13 @@
 /**
  * JSX Transpiler - Uses Bun build command to transform JSX code
  */
-import { join, basename, dirname } from "path";
-import { existsSync, mkdirSync } from "fs";
-import { logger } from "../utils/logger";
-import * as fs from "fs";
-import { execSync } from "child_process";
+import { join, dirname, basename } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import * as fs from 'fs';
+import Bun from 'bun';
+import { logger } from '../utils/logger';
+// Use Bun's native APIs instead of Node.js ones
+import crypto from 'crypto';
 
 /**
  * Process import statements in source code to handle JSX imports
@@ -88,34 +90,25 @@ export async function transpileJSX(
     const fileName = basename(entryFile);
     const componentName = fileName.replace(/\.(jsx|tsx)$/, '');
     
-    // Generate a simple UUID-like string that's truly unique and contains only safe characters
-    const generateUUID = () => {
-      const segments = [
-        Date.now().toString(36),
-        Math.random().toString(36).substring(2, 15),
-        Math.random().toString(36).substring(2, 15),
-        process.pid.toString(36)
-      ];
-      return segments.join('_');
-    };
+    // Create a truly unique filename with no chance of collision by using nano timestamp and random values
+    // Format: componentName-timestamp-randomPart.js
+    const timestamp = Date.now();
+    const randomHex = Buffer.from(crypto.getRandomValues(new Uint8Array(8))).toString('hex');
+    const uniqueId = `${timestamp}-${randomHex}-${process.pid}`;
     
-    // Create a completely unique directory for each component to prevent collisions
-    // This is a foolproof approach since each component gets its own directory
-    const uniqueDir = join(outputDir, componentName, generateUUID());
+    // Use a completely unique filename for each transpiled component
+    const outputFileName = `${componentName}.${uniqueId}.js`;
     
-    // Make sure the unique directory exists
-    if (!existsSync(uniqueDir)) {
-      mkdirSync(uniqueDir, { recursive: true });
+    // Create the full output path - putting everything in the main output directory
+    const outputFile = join(outputDir, outputFileName);
+    
+    // Make sure the output directory exists
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
     }
     
-    // Use a simple filename without any hash, since it's in a unique directory
-    const outputFileName = `${componentName}.js`;
-    
-    // Create the full output path
-    const outputFile = join(uniqueDir, outputFileName);
-    
     // Log the path for debugging
-    logger.debug(`Generated unique output file in: ${outputFile}`);
+    logger.debug(`Generated unique output file: ${outputFile}`);
 
     // Get project path for correct working directory in Bun build
     const projectPath = projectRoot || dirname(entryFile);
@@ -133,36 +126,46 @@ export async function transpileJSX(
     await Bun.write(tempFile, processedSource);
 
     try {
-      // Construct the command with proper quoting for shell execution
-      // Use a completely different approach: output to a directory instead of a specific file
-      // This way Bun will generate unique hashes automatically
-      const buildCmd = `bun build "${tempFile}" \
-        --outdir="${dirname(outputFile)}" \
-        ${minify ? '--minify' : ''} \
-        --jsx=automatic \
-        --jsx-import-source=0x1 \
-        --jsx-factory=createElement \
-        --jsx-fragment=Fragment \
-        --define:process.env.NODE_ENV="production" \
-        --external:@tailwind* \
-        --external:tailwindcss \
-        --external:postcss* \
-        --external:*.css \
-        --no-bundle-nodejs-globals`;
+      // This approach uses Bun's native APIs for better performance and reliability
+      // We'll use --outfile with our guaranteed unique filename
+      const bunArgs = [
+        'build', tempFile,
+        '--outfile', outputFile,
+        ...(minify ? ['--minify'] : []),
+        '--jsx=automatic',
+        '--jsx-import-source=0x1',
+        '--jsx-factory=createElement',
+        '--jsx-fragment=Fragment',
+        '--define:process.env.NODE_ENV="production"',
+        '--external:@tailwind*',
+        '--external:tailwindcss',
+        '--external:postcss*',
+        '--external:*.css',
+        '--no-bundle-nodejs-globals'
+      ];
       
-      logger.info(`Executing: ${buildCmd}`);
+      // Log the command for debugging
+      logger.info(`Executing: bun ${bunArgs.join(' ')}`);
       
       let stdout = '';
       let stderr = '';
       let exitCode = 0;
       
-      // Use Node's execSync for better shell command handling
+      // Use Bun's native spawn for better performance
       try {
-        // Execute the command and capture output
-        stdout = execSync(buildCmd, {
+        // Execute the command using Bun's native APIs
+        const proc = Bun.spawn(['bun', ...bunArgs], {
           cwd: projectPath,
-          encoding: 'utf8'
-        }).toString();
+          env: { ...process.env, NODE_ENV: 'production' }
+        });
+        
+        // Get the output and exit code
+        const output = await new Response(proc.stdout).text();
+        const error = await new Response(proc.stderr).text();
+        exitCode = await proc.exited;
+        
+        stdout = output;
+        stderr = error;
       } catch (error: any) {
         // Handle command execution errors
         exitCode = error.status || 1;
