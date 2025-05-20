@@ -97,7 +97,7 @@ export class Router {
       if (path === "/") {
         this.routes.push({
           path,
-          pattern: new RegExp("^/$"),
+          pattern: new RegExp("^\\/$"),
           paramNames,
           component,
         });
@@ -124,7 +124,7 @@ export class Router {
       
       // Step 4: Build the final regex with start/end anchors
       // Allow optional trailing slash with /?$
-      const finalPattern = new RegExp(`^${pattern}/?$`);
+      const finalPattern = new RegExp(`^${pattern}\/?$`);
       
       this.routes.push({
         path,
@@ -137,7 +137,7 @@ export class Router {
       // Always provide a fallback in case of regex failures
       this.routes.push({
         path,
-        pattern: new RegExp("^/.*$"), // Match any path as fallback
+        pattern: new RegExp("^\\/.*$"), // Match any path as fallback
         paramNames,
         component,
       });

@@ -376,7 +376,7 @@ export class Router {
    */
   private pathToRegex(path: string): RegExp {
     // Special case for root path
-    if (path === "/") return new RegExp("^/$");
+    if (path === "/") return new RegExp("^\\/$");
 
     try {
       // Step 1: Escape all regex special characters
@@ -390,18 +390,18 @@ export class Router {
       
       // Step 3: Replace our path pattern tokens with regex patterns
       // Convert :param to capture groups
-      pattern = pattern.replace(/:\w+/g, "([^/]+)");
+      pattern = pattern.replace(/:\w+/g, "([^\\/]+)");
       
       // Handle wildcard routes (* was already escaped earlier)
       pattern = pattern.replace(/\\\*/g, "(.*)");
       
       // Step 4: Create the final regex pattern with start/end anchors
       // Allow optional trailing slash with /?$
-      return new RegExp(`^${pattern}/?$`);
+      return new RegExp(`^${pattern}\/?$`);
     } catch (error) {
       // Fallback to a safe default regex if anything goes wrong
       console.error(`Error creating regex from path pattern '${path}':`, error);
-      return new RegExp("^/.*$"); // Match any path as fallback
+      return new RegExp("^\\/.*$"); // Match any path as fallback
     }
   }
 

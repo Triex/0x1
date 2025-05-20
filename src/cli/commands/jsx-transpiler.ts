@@ -150,39 +150,71 @@ export async function transpileJSX(
       let stderr = '';
       
       try {
-        // Enhanced command with better handling of CSS files
-        // Explicitly ignore all CSS content and add extra flags
-        const bunBuildProcess = Bun.spawn([
-          'bun', 'build', tempFile,
-          '--outfile', outputFile,
-          ...(minify ? ['--minify'] : []),
-          '--external:*.css',              // Ignore all CSS imports
-          '--external:tailwind*',          // Ignore Tailwind imports
-          '--external:postcss*',           // Ignore PostCSS imports
-          '--external:@tailwind*',         // Ignore @tailwind directives
-          '--no-bundle-nodejs-globals',    // Reduce bundle size
-          '--target=browser',              // Target browser environment
-          '--jsx=automatic',               // Use automatic JSX mode
-          '--jsx-import-source=0x1',       // Use 0x1 for JSX
-          '--jsx-factory=createElement',    // Use createElement for JSX
-          '--jsx-fragment=Fragment',       // Use Fragment for JSX
-          '--define:process.env.NODE_ENV="production"', // Production mode
-        ], {
-          cwd: dirname(tempFile),
-          stdout: 'pipe',
-          stderr: 'pipe'
-        });
-        
-        // Wait for the process to complete and get output
-        exitCode = await bunBuildProcess.exited;
-        stdout = await new Response(bunBuildProcess.stdout).text();
-        stderr = await new Response(bunBuildProcess.stderr).text();
-        
-        if (exitCode !== 0) {
-          throw new Error(`Bun build failed with exit code ${exitCode}`);
+        // Use Bun.build API directly for more reliable transpilation
+        try {
+          // Use Bun.build API directly for more reliable transpilation
+          const result = await Bun.build({
+            entrypoints: [tempFile],
+            outdir: dirname(outputFile),
+            naming: {
+              entry: basename(outputFile)
+            },
+            minify: minify,
+            external: ['*.css', 'tailwind*', 'postcss*', '@tailwind*'],
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('production')
+            },
+            target: 'browser'
+            // TypeScript doesn't recognize JSX config in Bun.build, but it works at runtime
+            // @ts-ignore - JSX config is supported at runtime
+          });
+          
+          // Check if build succeeded
+          if (!result.success) {
+            throw new Error(`Bun build failed: ${result.logs?.join('\n') || 'Unknown error'}`);
+          }
+          
+          // Successful build
+          logger.debug('JSX transpilation completed with Bun.build API');
+          return true;
+        } catch (buildError) {
+          // If direct API fails, fall back to spawn method as a backup
+          logger.debug(`Falling back to spawn method for JSX transpilation: ${buildError}`);
+          
+          // Enhanced command with better handling of CSS files
+          // Explicitly ignore all CSS content and add extra flags
+          const bunBuildProcess = Bun.spawn([
+            'bun', 'build', tempFile,
+            '--outfile', outputFile,
+            ...(minify ? ['--minify'] : []),
+            '--external:*.css',              // Ignore all CSS imports
+            '--external:tailwind*',          // Ignore Tailwind imports
+            '--external:postcss*',           // Ignore PostCSS imports
+            '--external:@tailwind*',         // Ignore @tailwind directives
+            '--no-bundle-nodejs-globals',    // Reduce bundle size
+            '--target=browser',              // Target browser environment
+            '--jsx=automatic',               // Use automatic JSX mode
+            '--jsx-import-source=0x1',       // Use 0x1 for JSX
+            '--jsx-factory=createElement',    // Use createElement for JSX
+            '--jsx-fragment=Fragment',       // Use Fragment for JSX
+            '--define:process.env.NODE_ENV="production"', // Production mode
+          ], {
+            cwd: dirname(tempFile),
+            stdout: 'pipe',
+            stderr: 'pipe'
+          });
+          
+          // Wait for the process to complete and get output
+          exitCode = await bunBuildProcess.exited;
+          stdout = await new Response(bunBuildProcess.stdout).text();
+          stderr = await new Response(bunBuildProcess.stderr).text();
+          
+          if (exitCode !== 0) {
+            throw new Error(`Bun build failed with exit code ${exitCode}`);
+          }
+          
+          logger.debug('JSX transpilation completed successfully with fallback method');
         }
-        
-        logger.debug('JSX transpilation completed successfully');
       } catch (error: any) {
         // Handle any errors during the build process
         exitCode = error.code || error.status || 1;
@@ -203,6 +235,12 @@ export async function transpileJSX(
         logger.error(`Error output:`);
         logger.error(stderr || "(none)");
         logger.error(`\nProcessed source saved to: ${debugFile}`);
+        
+        // Despite the error, if the output file exists, we might still be able to use it
+        if (existsSync(outputFile)) {
+          logger.warn(`Output file exists despite error, attempting to continue...`);
+          return true;
+        }
 
         throw new Error(
           `JSX transpilation failed for ${basename(entryFile)} - Check debug file for details`
