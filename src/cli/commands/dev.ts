@@ -1081,46 +1081,97 @@ export default {
             } else if (path === "/router.js" || path === "/router") {
               modulePath = "router";
             }
-
-            // Map the module to its actual implementation
             let moduleContent = "";
-
+            
+            // Serve the router module - ensure proper handling of regex patterns and routing
             if (modulePath === "router" || modulePath === "router.js") {
-              // Provide the router module directly instead of reimporting
-              moduleContent = `
-              // 0x1 Router Module - Browser Compatible Version
-              import { Router } from '../../core/router.js';
-              import { Link, NavLink, Redirect } from '../../core/navigation.js';
+              // Get paths to source files
+              const routerPath = resolve(
+                dirname(fileURLToPath(import.meta.url)),
+                '../../core/router.js'
+              );
+              const navigationPath = resolve(
+                dirname(fileURLToPath(import.meta.url)),
+                '../../core/navigation.js'
+              );
               
-              // Factory function to create router with default options
-              export function createRouter(options = {}) {
-                const defaultOptions = {
-                  root: document.getElementById('app') || document.body,
-                  mode: 'history',
-                  transitionDuration: 200,
-                  notFoundComponent: () => {
-                    const div = document.createElement('div');
-                    div.textContent = '404 - Page Not Found';
-                    return div;
-                  }
-                };
+              try {
+                // Use Bun to load both files in parallel for better performance
+                const [routerSource, navigationSource] = await Promise.all([
+                  Bun.file(routerPath).text(),
+                  Bun.file(navigationPath).text()
+                ]);
                 
-                // Merge options with defaults
-                const mergedOptions = { ...defaultOptions, ...options };
+                // Process source files for browser compatibility
+                const cleanRouterSource = routerSource
+                  .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
+                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed');
+                  
+                const cleanNavigationSource = navigationSource
+                  .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
+                  .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed');
                 
-                // Create and return a router instance
-                return new Router(mergedOptions);
+                // Provide a proper ESM module with the router implementation
+                moduleContent = `
+// 0x1 Router - Modern ESM Implementation
+// Directly from core source files
+
+${cleanRouterSource}
+
+${cleanNavigationSource}
+
+// Factory function to create router with default options
+export function createRouter(options = {}) {
+  const defaultOptions = {
+    root: document.getElementById('app') || document.body,
+    mode: 'history',
+    transitionDuration: 200,
+    notFoundComponent: () => {
+      const div = document.createElement('div');
+      div.textContent = '404 - Page Not Found';
+      return div;
+    }
+  };
+  
+  // Merge options with defaults
+  const mergedOptions = { ...defaultOptions, ...options };
+  
+  // Create and return a router instance
+  return new Router(mergedOptions);
+}
+
+// Re-export components for convenience
+export { Router, Link, NavLink, Redirect };
+export default Router;
+`;
+              } catch (error) {
+                options.debug && logger.error(`Error loading router: ${error}`);
+                // Provide a minimal fallback implementation if source loading fails
+                moduleContent = `
+// 0x1 Router - Fallback Implementation
+export class Router {
+  constructor(options = {}) {
+    console.warn('Using fallback router implementation');
+    this.rootElement = options.root || document.body;
+    this.mode = options.mode || 'history';
+  }
+  
+  addRoute() {}
+  navigate() {}
+  init() {}
+}
+
+export function createRouter(options = {}) {
+  return new Router(options);
+}
+
+export const Link = () => document.createElement('a');
+export const NavLink = () => document.createElement('a');
+export const Redirect = () => null;
+export default Router;
+`;
               }
-              
-              // Re-export components for convenience
-              export { Router, Link, NavLink, Redirect };
-              export default Router;
-              `;
-            } else if (
-              path === "/node_modules/0x1/jsx-runtime.js" ||
-              path === "/node_modules/0x1/jsx-runtime/index.js"
-            ) {
-              // Provide JSX runtime for bundling
+            } else if (modulePath === "jsx-runtime") {
               moduleContent = await Bun.file(
                 join(frameworkPath, "dist/0x1/jsx-runtime.js")
               ).text();
