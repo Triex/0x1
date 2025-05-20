@@ -348,11 +348,15 @@ export class Router {
     // Handle special case for root path
     if (path === "/") return new RegExp("^/$");
 
-    // Safely convert path patterns to regex
-    const pattern = path
-      .replace(/\//g, "\\/") // Escape slashes properly
+    // Escape all regex special characters except those we use for patterns
+    let pattern = path
+      .replace(/[\^\$\(\)\[\]\{\}\+\?\.]/g, "\\$&") // Escape special regex chars first
+      .replace(/\//g, "\\/"); // Escape slashes after other special chars
+
+    // Now replace our path pattern tokens
+    pattern = pattern
       .replace(/:\w+/g, "([^/]+)") // Replace :param with capture groups
-      .replace(/\*/g, "(.*)"); // Handle catch-all routes
+      .replace(/\\\*/g, "(.*)"); // Handle catch-all routes (escaped * from earlier)
 
     return new RegExp(`^${pattern}/?$`); // Allow optional trailing slash
   }

@@ -1735,6 +1735,29 @@ export default {
               logger.debug(`Found in public directory: ${filePath}`);
             }
           }
+          
+          // Special handling for favicon.ico and other common static assets - check app directory
+          if (!fileExists && isAppDirStructure && appDir && 
+              (path === "/favicon.ico" || path === "/favicon.svg" || path === "/icon.svg" || path === "/apple-touch-icon.png")) {
+            const appStaticPath = join(appDir, path.substring(1)); // Remove leading slash
+            const publicStaticPath = join(publicDir, path.substring(1));
+            
+            // Check if we have the same static asset in both directories
+            const inAppDir = existsSync(appStaticPath);
+            const inPublicDir = existsSync(publicStaticPath);
+            
+            if (inAppDir && inPublicDir) {
+              // We found duplicates, warn the developer
+              logger.warn(`⚠️ Duplicate ${path.substring(1)} found in both app/ and public/ directories.`);
+              logger.warn(`   Using version from ${fileExists ? 'dist/' : 'public/'} directory. Consider removing one to avoid confusion.`);
+            }
+            
+            if (inAppDir) {
+              filePath = appStaticPath;
+              fileExists = true;
+              logger.debug(`Found static asset in app directory: ${filePath}`);
+            }
+          }
 
           // If app directory exists, check for app router-style components
           if (!fileExists && isAppDirStructure && appDir) {
