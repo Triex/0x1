@@ -376,56 +376,54 @@ export class Router {
    */
   private pathToRegex(path: string): RegExp {
     try {
-      // Handle special case for root path
+      // Handle root path separately for clarity
       if (path === "/") {
-        return new RegExp("^/$");
+        return new RegExp("^\/$/");
       }
-
-      // Build the pattern character by character to ensure proper escaping
+      
+      // Convert path pattern to regex by carefully handling special characters
       let finalPattern = "^";
       
-      // Process the path character by character for maximum safety
       for (let i = 0; i < path.length; i++) {
         const char = path[i];
         
-        if (char === '/') {
-          // Escape slashes
-          finalPattern += "/";
-        } else if (char === ':') {
-          // Handle parameter pattern
+        if (char === "/") {
+          // Escape forward slashes properly
+          finalPattern += "\\/";
+        } else if (char === ":") {
+          // Handle named parameters (e.g., :id, :name)
           let paramName = "";
           let j = i + 1;
-          // Extract the parameter name
+          
           while (j < path.length && /[\w\d]/.test(path[j])) {
             paramName += path[j];
             j++;
           }
-          // Add parameter capture group - will match anything except slashes
-          finalPattern += "([^/]+)";
-          // Skip ahead past the parameter name
+          
+          // Match any characters except forward slash
+          finalPattern += "([^\\/]+)";
           i = j - 1;
-        } else if (char === '*') {
-          // Handle wildcard pattern - will match anything including slashes
-          finalPattern += "(.*)"; 
-        } else if ("^$()[]{}+?.\\".indexOf(char) !== -1) {
-          // Escape special regex characters
+        } else if (char === "*") {
+          // Handle wildcard pattern
+          finalPattern += "(.*)";
+        } else if ("^$()[]{}+?.|\\*".indexOf(char) !== -1) {
+          // Escape all special regex characters
           finalPattern += "\\" + char;
         } else {
-          // Regular character, no special handling needed
+          // Add normal characters as-is
           finalPattern += char;
         }
       }
       
-      // Add end of pattern with optional trailing slash
-      finalPattern += "/?$";
+      // Make trailing slash optional
+      finalPattern += "\\/?$";
       
-      // Create and return the regex
+      // Create and return the RegExp object
       return new RegExp(finalPattern);
     } catch (error) {
-      // Fallback to a safe default if anything goes wrong
       console.error(`Error creating regex from path '${path}':`, error);
-      // This is a much safer fallback pattern
-      return new RegExp("^/.*$");
+      // Fallback to a very permissive regex
+      return new RegExp("^\\/.*$");
     }
   }
 
