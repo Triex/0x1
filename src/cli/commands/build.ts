@@ -122,10 +122,26 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     const appGlobalsCss = join(projectPath, 'app', 'globals.css');
     if (existsSync(appGlobalsCss)) {
       log.info(`📂 Found app/globals.css - processing with Tailwind`);
-      // Make sure the public/styles directory exists
+      // Make sure the public/styles directory exists for TailwindCSS output
       const outputStylesDir = join(outputPath, 'styles');
       if (!existsSync(outputStylesDir)) {
         await mkdir(outputStylesDir, { recursive: true });
+      }
+      
+      // Create the browser directory structure for live-reload script
+      const outputBrowserDir = join(outputPath, 'browser');
+      if (!existsSync(outputBrowserDir)) {
+        await mkdir(outputBrowserDir, { recursive: true });
+      }
+      
+      // Copy the live-reload script to dist/browser for use in projects
+      const liveReloadSrc = join(__dirname, '..', '..', 'src', 'browser', 'live-reload.js');
+      const liveReloadDest = join(outputBrowserDir, 'live-reload.js');
+      if (existsSync(liveReloadSrc)) {
+        logger.info(`Copying live-reload script to ${liveReloadDest}`);
+        await Bun.write(liveReloadDest, await Bun.file(liveReloadSrc).text());
+      } else {
+        logger.warn(`Could not find live-reload script at ${liveReloadSrc}`);
       }
       
       // Run Tailwind CSS build on globals.css using bun x (per user rules)
@@ -133,10 +149,17 @@ export async function build(options: BuildOptions = {}): Promise<void> {
         'bun', 'x', 'tailwindcss',
         '-i', appGlobalsCss,
         '-o', join(outputStylesDir, 'tailwind.css'),
+        '--postcss', // Add postcss flag to properly handle @tailwind directives
         minify ? '--minify' : ''
       ].filter(Boolean), { // Filter to remove empty string if minify is false
         cwd: projectPath,
-        env: { ...process.env, NODE_ENV: 'production' },
+        env: { 
+          ...process.env, 
+          NODE_ENV: 'production',
+          // Add these environment variables to fix Tailwind CSS processing
+          TAILWIND_MODE: 'build',
+          TAILWIND_DISABLE_TOUCH: '1'
+        },
         stdout: 'pipe',
         stderr: 'pipe'
       });

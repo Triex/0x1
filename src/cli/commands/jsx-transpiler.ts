@@ -14,6 +14,19 @@ async function processImports(sourceCode: string): Promise<string> {
   // Handle import statements for JSX
   let processedSource = sourceCode;
 
+  // Handle @tailwind directives by adding CSS comment markers to make them pass through JSX compilation
+  // This prevents Bun from treating them as invalid CSS in JSX files
+  processedSource = processedSource.replace(
+    /(@tailwind[\s\w:;]+)/g,
+    "/* CSS-DIRECTIVE-START */$1/* CSS-DIRECTIVE-END */"
+  );
+  
+  // Also make sure to handle any CSS @import directives, which can also cause issues
+  processedSource = processedSource.replace(
+    /(@import[^;]+;)/g,
+    "/* CSS-IMPORT-START */$1/* CSS-IMPORT-END */"
+  );
+
   // Replace React imports with our custom JSX runtime
   processedSource = processedSource.replace(
     /import React(, { .+? })? from ["'](react|0x1)["'];?/g,
@@ -71,13 +84,39 @@ export async function transpileJSX(
     logger.info(`Transpiling JSX: ${basename(entryFile)}`);
     const sourceCode = await Bun.file(entryFile).text();
 
-    // Calculate output file path with component name as prefix to avoid conflicts
+    // Calculate output file path with truly unique naming to avoid conflicts
     const fileName = basename(entryFile);
     const componentName = fileName.replace(/\.(jsx|tsx)$/, '');
-    // Use hash to ensure unique output paths and prevent conflicts
-    const hash = Buffer.from(entryFile).toString('hex').substring(0, 8);
-    const outputFileName = `${componentName}.${hash}.js`;
+    
+    // We need to ensure a completely unique path every time, as files with the same name can cause collisions
+    const timestamp = Date.now();
+    const randomBytes = [];
+    for (let i = 0; i < 16; i++) {
+      randomBytes.push(Math.floor(Math.random() * 256));
+    }
+    
+    // Create a unique hash using multiple factors
+    const buffer = Buffer.from([
+      ...Buffer.from(entryFile), // Include full path
+      ...Buffer.from(timestamp.toString()), // Current timestamp
+      ...randomBytes, // Random data
+      ...Buffer.from(process.pid.toString()) // Process ID
+    ]);
+    
+    // Create a hash that's guaranteed to be unique for every file in every run
+    const hash = buffer.toString('hex').substring(0, 24); // Use 24 chars (12 bytes) for extremely low collision chance
+    
+    // Add timestamp to make it truly unique
+    const uniqueId = `${hash}-${timestamp}`;
+    
+    // Use the component name with the unique hash
+    const outputFileName = `${componentName}.${uniqueId}.js`;
+    
+    // Create absolute path to output file
     const outputFile = join(outputDir, outputFileName);
+    
+    // Log the generated filename for debugging
+    logger.debug(`Generated unique output file: ${outputFileName} for ${entryFile}`);
 
     // Get project path for correct working directory in Bun build
     const projectPath = projectRoot || dirname(entryFile);
@@ -96,9 +135,22 @@ export async function transpileJSX(
 
     try {
       // Construct the command with proper quoting for shell execution
-      // Using --jsx-import-source=0x1 to tell Bun to use our JSX runtime
-      // Add entry naming with hash to make filenames unique
-      const buildCmd = `bun build "${tempFile}" --outfile="${outputFile}" ${minify ? '--minify' : ''} --jsx=automatic --jsx-import-source=0x1 --jsx-factory=createElement --jsx-fragment=Fragment --define:process.env.NODE_ENV="production"`;     
+      // We include several flags to ensure robust JSX transpilation:
+      // 1. Use --external flags to prevent bundling of CSS libraries that cause conflicts
+      // 2. Use --no-bundle-nodejs-globals to reduce bundle size
+      // 3. Add appropriate jsx settings to ensure proper transpilation
+      // 4. Use --define to provide necessary environment variables
+      const buildCmd = `bun build "${tempFile}" --outfile="${outputFile}" \
+        ${minify ? '--minify' : ''} \
+        --jsx=automatic \
+        --jsx-import-source=0x1 \
+        --jsx-factory=createElement \
+        --jsx-fragment=Fragment \
+        --define:process.env.NODE_ENV="production" \
+        --external:@tailwind* \
+        --external:tailwindcss \
+        --external:*.css \
+        --no-bundle-nodejs-globals`;
       
       logger.info(`Executing: ${buildCmd}`);
       

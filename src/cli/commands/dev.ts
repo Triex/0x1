@@ -297,7 +297,9 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
           // Stop server spinner and show success message
           serverSpin.stop(
             "success",
-            `Server started at ${logger.highlight(serverUrl.replace(/\s+/g, ""))}`
+            `Server started at ${logger.highlight(serverUrl)}`
+            // FIXME: Spaces still not being removed - commmented
+            // `Server started at ${logger.highlight(serverUrl.replace(/\s+/g, ""))}`
           );
           // If port changed due to conflict, show a helpful message
           if (actualPort !== port) {
@@ -525,22 +527,31 @@ async function createDevServer(options: {
   let liveReloadScript = "";
 
   try {
-    // Try multiple possible paths for the live-reload script
-    const currentDir = import.meta.dirname || "";
+    // Try multiple possible paths for the live-reload script with better prioritization
+    // We'll search in various locations to ensure we can find the script
     const possiblePaths = [
-      // Direct paths from current project
-      resolve(projectPath, "node_modules", "0x1", "live-reload.js"),
-      resolve(projectPath, "node_modules", "0x1", "dist", "live-reload.js"),
-      // Global paths that might be available
-      resolve(__dirname, "..", "..", "..", "live-reload.js"),
-      resolve(__dirname, "..", "..", "live-reload.js"),
-      // Original paths
-      join(currentDir, "../../browser/live-reload.js"),
-      join(currentDir, "../browser/live-reload.js"),
-      join(currentDir, "./live-reload.js"),
-      join(currentDir, "../../../browser/live-reload.js"),
+      // First prioritize our framework src/browser location
+      resolve(frameworkPath, "src", "browser", "live-reload.js"),
+
+      // Then check framework dist directory which is available in installed projects
+      resolve(frameworkPath, "dist", "browser", "live-reload.js"),
+
+      // Also try installed package locations (for projects using the framework)
+      resolve(projectPath, "node_modules", "0x1", "browser", "live-reload.js"),
+      resolve(projectPath, "node_modules", "0x1", "dist", "browser", "live-reload.js"),
+
+      // Check for linked package paths
       join(process.cwd(), "src/browser/live-reload.js"),
-      join(currentDir, "../../../../browser/live-reload.js"),
+      resolve(process.cwd(), "dist", "browser", "live-reload.js"),
+
+      // Check relative to current module directory
+      resolve(__dirname, "..", "..", "browser", "live-reload.js"),
+      resolve(__dirname, "..", "..", "..", "browser", "live-reload.js"),
+      resolve(__dirname, "..", "..", "..", "src", "browser", "live-reload.js"),
+
+      // Include common alternative paths
+      resolve(projectPath, "browser", "live-reload.js"),
+      resolve(projectPath, "src", "browser", "live-reload.js"),
     ];
 
     logger.debug(`Looking for live-reload.js in:\n${possiblePaths.join("\n")}`);
@@ -549,8 +560,8 @@ async function createDevServer(options: {
     let scriptFound = false;
     for (const path of possiblePaths) {
       try {
-        // FIXME: This is not finding the file
-        if (await Bun.file(path).exists()) {
+        // Check if file exists with more reliable method
+        if (existsSync(path)) {
           liveReloadScript = await Bun.file(path).text();
           logger.debug(`Found live-reload.js at: ${path}`);
           scriptFound = true;
@@ -563,35 +574,45 @@ async function createDevServer(options: {
 
     if (!scriptFound) {
       // Fallback for live reload script
-      logger.warn("⚠️ Live reload script not found in expected paths, using fallback");
+      logger.warn(
+        "Could not find live-reload.js - using fallback implementation"
+      );
+
+      // Define a better fallback implementation
       liveReloadScript = `
-// Live reload client script
-(function() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const socket = new WebSocket(protocol + '//' + host + '/__0x1_live_reload');
-  
-  socket.onmessage = function(event) {
-    if (event.data === 'reload') {
-      console.log('[0x1] Live reload triggered, refreshing page...');
-      window.location.reload();
-    }
-  };
-  
-  socket.onopen = function() {
-    console.log('[0x1] Live reload connected');
-  };
-  
-  socket.onclose = function() {
-    console.log('[0x1] Live reload disconnected');
-    // Try to reconnect after 2 seconds
-    setTimeout(function() {
-      console.log('[0x1] Reconnecting to live reload...');
-      window.location.reload();
-    }, 2000);
-  };
-})();
-`;
+      (function() {
+        console.log('[0x1] Live reload (fallback) enabled for ' + window.location.hostname);
+
+        function connect() {
+          const eventSource = new EventSource(location.protocol + '//' + location.host + '/__0x1_live_reload');
+
+          eventSource.onopen = function() {
+            console.log('[0x1] Live reload connected');
+          };
+
+          eventSource.onmessage = function(event) {
+            if (event.data === 'reload' || event.data === 'update') {
+              console.log('[0x1] Reloading page due to file changes...');
+              window.location.reload();
+            }
+          };
+
+          eventSource.addEventListener('update', function() {
+            console.log('[0x1] Reloading page due to file changes...');
+            window.location.reload();
+          });
+
+          eventSource.onerror = function() {
+            console.log('[0x1] Live reload connection error, reconnecting in 2s...');
+            eventSource.close();
+            setTimeout(connect, 2000);
+          };
+        }
+
+        // Start connection with a slight delay
+        setTimeout(connect, 500);
+      })();
+      `;
     }
   } catch (error) {
     logger.warn(
@@ -1078,7 +1099,7 @@ export default {
                 if (typeof process === 'undefined' || !process.env) {
                   window.process = { env: { NODE_ENV: 'production' } };
                 }
-                
+
                 // Don't reference path or component here as they're not defined yet
                 this.basePath = options.basePath || '';
                 this.notFoundComponent = options.notFoundComponent || null;
@@ -1088,7 +1109,7 @@ export default {
               addRoute(routePath, component) {
                 return this.add(routePath, component);
               }
-              
+
               // Add a route to the router
               add(routePath, component) {
                 if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
@@ -1097,18 +1118,18 @@ export default {
                 this.routes.set(routePath, component);
                 return this;
               }
-              
+
               start() {
                 // Initialize router functionality
                 if (this.mode === 'history') {
                   // Handle initial route on page load
                   this.navigate(this.getCurrentPath());
-                  
+
                   // Add event listener for navigation
                   window.addEventListener('popstate', () => {
                     this.navigate(this.getCurrentPath());
                   });
-                  
+
                   // Intercept clicks on links
                   document.addEventListener('click', (event) => {
                     const target = event.target;
@@ -1116,7 +1137,7 @@ export default {
                     if (target && (target.tagName === 'A' || (target.closest && target.closest('a')))) {
                       const element = target.tagName === 'A' ? target : target.closest('a');
                       const href = element.getAttribute('href');
-                      
+
                       // Only handle links that start with / (internal links)
                       if (href && href.startsWith('/')) {
                         event.preventDefault();
@@ -1126,17 +1147,17 @@ export default {
                     }
                   });
                 }
-                
+
                 return this;
               }
-              
+
               // Navigate to a route
               navigate(routePath) {
                 // Remove leading slash and handle empty path as root
                 const path = routePath === '/' ? '/' : routePath.replace(/^\/|\/$/, '');
-                
+
                 let component = this.routes.get(path) || this.routes.get('/');
-                
+
                 // If component not found and we have a not found component
                 if (!component && this.notFoundComponent) {
                   component = this.notFoundComponent;
@@ -1153,19 +1174,19 @@ export default {
                     return el;
                   };
                 }
-                
+
                 // Clear current root element content
                 if (this.rootElement) {
                   // Save the transition duration for animation
                   const duration = this.transitionDuration;
-                  
+
                   // If we have a transition duration, add a fade effect
                   if (duration > 0 && this.currentComponent) {
                     const currentEl = this.rootElement.children[0];
                     if (currentEl) {
                       currentEl.style.transition = 'opacity ' + duration + 'ms ease-out';
                       currentEl.style.opacity = '0';
-                      
+
                       // Wait for transition before replacing
                       setTimeout(() => {
                         this.renderComponent(component);
@@ -1173,40 +1194,40 @@ export default {
                       return;
                     }
                   }
-                  
+
                   // No transition or no current component
                   this.renderComponent(component);
                 }
-                
+
                 return this;
               }
-              
+
               // Render a component into the root element
               renderComponent(component) {
                 if (!this.rootElement) return this;
-                
+
                 // Clear current root element content
                 this.rootElement.innerHTML = '';
-                
+
                 // Create and append new component
                 const el = component();
                 if (el) {
                   this.rootElement.appendChild(el);
-                  
+
                   // Store current component reference
                   this.currentComponent = component;
-                  
+
                   // If the component has transitions, set initial opacity
                   if (this.transitionDuration > 0) {
                     el.style.opacity = '0';
                     el.style.transition = 'opacity ' + this.transitionDuration + 'ms ease-in';
-                    
+
                     // Force reflow before setting opacity to 1
                     void el.offsetWidth;
                     el.style.opacity = '1';
                   }
                 }
-                
+
                 return this;
               }
 
@@ -1968,8 +1989,8 @@ export default {
                 transpiled = transpiled
                   // Remove import statements for browser compatibility
                   .replace(
-                    /import\s+.*?from\s+['"](.*)['"](;)?\n?/g,
-                    "// ES module imports removed for browser compatibility\n"
+                    /import .+ from ["'](react\/jsx-(?:dev-)?runtime)["'];?/g,
+                    "// JSX runtime imports handled by transpiler"
                   )
                   // Remove export statements
                   .replace(/export\s+/g, "")
@@ -2306,7 +2327,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
       join(projectPath, "tailwind.config.mjs"),
       join(projectPath, "tailwind.config.cjs")
     ].find(path => existsSync(path));
-    
+
     const hasTailwindConfig = Boolean(tailwindConfigPath);
 
     if (!hasTailwind && !hasTailwindConfig) {
@@ -2337,11 +2358,13 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     // Construct the tailwind CLI command using bun (per user rules)
     const tailwindCommand = ["bun", "x", "tailwindcss"];
 
-    // Add the command options
+    // Add the command options and use the correct content paths
     tailwindCommand.push(
       "-i", inputCssPath,
       "-o", outputCssPath,
-      "--watch"
+      "--watch",
+      // Fix for @tailwind directives
+      "--postcss"
     );
 
     // Create a spinner for Tailwind CSS processing
@@ -2366,6 +2389,9 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
         NODE_ENV: "development",
         // Disable color output by default in CI environments
         NO_COLOR: process.env.CI ? "1" : "0",
+        // Tailwind CSS directives variables to fix processing issues
+        TAILWIND_MODE: "watch",
+        TAILWIND_DISABLE_TOUCH: "1",
       },
       stdin: "inherit", // Inherit stdin so that the process can receive signals
       stdout: "pipe", // Pipe stdout so we can parse it
@@ -2460,7 +2486,7 @@ async function findTailwindInputCss(
     logger.info(`💠 Found Tailwind CSS input at ${appGlobalsCss}`);
     return appGlobalsCss;
   }
-  
+
   // Fall back to common locations if app/globals.css doesn't exist
   const commonLocations = [
     // Next.js convention alternatives
