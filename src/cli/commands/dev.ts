@@ -854,202 +854,33 @@ export default {
 
           // Handle framework core files
           if (path === "/core/navigation.js") {
-            // Provide the router implementation
-            const moduleContent = `
-          // 0x1 Router Module - Browser Compatible Version
-          // Direct implementation for browser compatibility
-          export class Router {
-            constructor(options) {
-              this.rootElement = options.root;
-              this.mode = options.mode || 'history';
-              this.routes = new Map();
-              this.basePath = options.basePath || '';
-              this.notFoundComponent = options.notFoundComponent || null;
-              this.transitionDuration = options.transitionDuration || 0;
-              this.currentComponent = null;
-
-              // Initialize router based on mode
-              if (this.mode === 'history') {
-                window.addEventListener('popstate', () => this.handleRouteChange());
-              } else {
-                window.addEventListener('hashchange', () => this.handleRouteChange());
-              }
-
-              // Initialize immediately after construction
-              setTimeout(() => this.handleRouteChange(), 0);
-              console.log('[Router] Initialized with mode:', this.mode);
-            }
-
-            // Add a route to the router
-            add(routePath, component) {
-              if (process.env.NODE_ENV === 'development') {
-                console.log('[Router] Registering route:', routePath);
-              }
-              this.routes.set(routePath, component);
-              return this;
-            }
-
-            // Alias for add method for compatibility
-            addRoute(routePath, component) {
-              return this.add(routePath, component);
-            }
-
-            // Get the current path based on routing mode
-            getCurrentPath() {
-              let path;
-              if (this.mode === 'history') {
-                // Ensure we normalize empty paths to / for the root path
-                path = window.location.pathname.replace(this.basePath, '');
-                if (path === '') path = '/';
-              } else {
-                // For hash mode also normalize to /
-                path = window.location.hash.slice(1) || '/';
-              }
-              return path;
-            }
-
-            // Navigate to a new route
-            navigate(path) {
-              const url = this.basePath + path;
-              if (this.mode === 'history') {
-                window.history.pushState(null, '', url);
-                this.handleRouteChange();
-              } else {
-                window.location.hash = url;
-              }
-            }
-
-            // Handle route changes
-            handleRouteChange() {
-              // Get current path with root path handling
-              const path = this.getCurrentPath();
-              let component = this.routes.get(path);
-
-              // If route not found, use 404 component
-              if (!component) {
-                component = this.notFoundComponent;
-              }
-
-              // If we have a component, render it
-              if (component) {
-                this.renderComponent(component);
-              } else if (this.rootElement) {
-                // Show error message if no component found
-                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Page not found</h1><p>The requested path "' + path + '" was not found.</p></div>';
-              }
-            }
-
-            // Render a component
-            renderComponent(component) {
-              if (!this.rootElement) {
-                console.error('[Router] Cannot render component: root element is not defined');
-                return;
-              }
-
-              try {
-                // If the component exists and has a render method
-                if (component && typeof component.render === 'function') {
-                  // First fade out if we have a current component
-                  if (this.currentComponent && this.transitionDuration > 0) {
-                    this.rootElement.style.opacity = '0';
-
-                    setTimeout(() => {
-                      this.rootElement.innerHTML = '';
-                      this.mountComponent(component);
-                      this.rootElement.style.opacity = '1';
-                      console.log('Rendered route: ' + this.getCurrentPath());
-                    }, this.transitionDuration);
-                  } else {
-                    // No transition needed
-                    this.rootElement.innerHTML = '';
-                    this.mountComponent(component);
-                    console.log('Rendered route: ' + this.getCurrentPath());
-                  }
-                } else {
-                  console.error('[Router] Component does not have a render method:', component);
+            // Load the actual navigation module instead of using a hardcoded implementation
+            const navigationFilePath = resolve(
+              frameworkPath,
+              'dist/core/navigation.js'
+            );
+            
+            options.debug && logger.debug(`Serving navigation module from: ${navigationFilePath}`);
+            
+            // Check if the file exists
+            if (await Bun.file(navigationFilePath).exists()) {
+              const navigationContent = await Bun.file(navigationFilePath).text();
+              return new Response(navigationContent, {
+                headers: {
+                  "Content-Type": "application/javascript",
+                  "Cache-Control": "no-cache",
                 }
-              } catch (error) {
-                console.error('[Router] Error rendering component:', error);
-                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Error rendering component</h1><pre>' + (error.message || 'Unknown error') + '</pre></div>';
+              });
+            }
+            
+            // Return a clear error instead of a fallback
+            return new Response(
+              `console.error("[0x1] Navigation module not found at ${navigationFilePath}. This is a critical error.");`,
+              {
+                status: 500,
+                headers: { "Content-Type": "application/javascript" }
               }
-            }
-
-            mountComponent(component) {
-              try {
-                const el = component.render();
-                if (el) {
-                  this.rootElement.appendChild(el);
-                  // Call onMount lifecycle method if it exists
-                  if (typeof component.onMount === 'function') {
-                    component.onMount(el);
-                  }
-                  // Store the current component
-                  this.currentComponent = component;
-                } else {
-                  console.error('[Router] Component render method returned null or undefined');
-                }
-              } catch (error) {
-                console.error('[Router] Error mounting component:', error);
-              }
-            }
-
-            back() {
-              window.history.back();
-            }
-
-            forward() {
-              window.history.forward();
-            }
-          }
-
-          export class Link {
-            constructor(options) {
-              this.to = options.to;
-              this.text = options.text;
-              this.className = options.className || '';
-            }
-
-            render() {
-              const link = document.createElement('a');
-              link.href = this.to;
-              link.className = this.className;
-              link.textContent = this.text;
-              return link;
-            }
-          }
-
-          export class NavLink extends Link {
-            constructor(options) {
-              super(options);
-              this.activeClass = options.activeClass || 'active';
-            }
-          }
-
-          export class Redirect {
-            constructor(options) {
-              this.to = options.to;
-            }
-
-            render() {
-              const div = document.createElement('div');
-              div.style.display = 'none';
-
-              // Redirect after render
-              setTimeout(() => {
-                window.location.href = this.to;
-              }, 0);
-
-              return div;
-            }
-          }
-        `;
-
-            return new Response(moduleContent, {
-              headers: {
-                "Content-Type": "application/javascript",
-                "Cache-Control": "no-cache",
-              },
-            });
+            );
           }
 
           // Special handling for 0x1 framework imports (both as direct path and as import)
@@ -1088,12 +919,23 @@ export default {
               // Print more verbose debug logging
               options.debug && logger.debug(`Loading router module for client-side rendering`);
               
-              // Explicitly check for the router in both core and 0x1 directories
+              // Explicitly check for the router in all possible locations
               const possiblePaths = [
+                // Look in the standard framework paths
                 resolve(frameworkPath, 'dist/core/router.js'),
                 resolve(frameworkPath, 'dist/0x1/router.js'),
-                resolve(frameworkPath, 'src/core/router.ts')
+                resolve(frameworkPath, 'src/core/router.ts'),
+                // Check in global node_modules (for when installing from npm)
+                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/core/router.js'),
+                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/0x1/router.js'),
+                // Look in local node_modules as well
+                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
               ];
+              
+              // Debug the search paths
+              options.debug && logger.debug(`Searching for router in multiple locations:`);
+              options.debug && possiblePaths.forEach(path => logger.debug(` - ${path}`));
               
               let routerPath = null;
               let navigationPath = null;
@@ -1168,30 +1010,12 @@ export default Router;
 `;
               } catch (error) {
                 options.debug && logger.error(`Error loading router: ${error}`);
-                // Provide a minimal fallback implementation if source loading fails
+                // Return an error instead of a fallback
                 moduleContent = `
-// 0x1 Router - Fallback Implementation
-export class Router {
-  constructor(options = {}) {
-    console.warn('Using fallback router implementation');
-    this.rootElement = options.root || document.body;
-    this.mode = options.mode || 'history';
-  }
-  
-  addRoute() {}
-  navigate() {}
-  init() {}
-}
-
-export function createRouter(options = {}) {
-  return new Router(options);
-}
-
-export const Link = () => document.createElement('a');
-export const NavLink = () => document.createElement('a');
-export const Redirect = () => null;
-export default Router;
-`;
+                // 0x1 Router - Error
+                console.error('[0x1] Failed to load router module. This is a critical error that prevents the application from functioning properly.');
+                throw new Error('Router module failed to load');
+                `;
               }
             } else if (modulePath === "jsx-runtime") {
               moduleContent = await Bun.file(
