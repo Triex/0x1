@@ -897,8 +897,9 @@ async function copyTemplateFiles(
       await mkdir(destPath, { recursive: true });
     }
     
-    // We no longer need to create an app directory here as the template already has the correct structure
-    // The templates now have proper app directory structure by default
+    // Ensure we follow Next.js app directory structure conventions
+    // For modern templates, we use app/page.tsx, app/layout.tsx, app/globals.css
+    // and don't require index.html or index.tsx at the root
     
     // Use Bun's spawn to use native cp command for reliable directory copying
     logger.debug(`Using native system command for directory copying`);
@@ -980,7 +981,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.81' // Use current version with caret for compatibility
+      "0x1": '^0.0.82' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

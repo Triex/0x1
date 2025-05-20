@@ -3,8 +3,8 @@
  * Using 0x1's app directory structure with React/Next.js style components
  */
 import { createElement, Fragment } from '0x1';
-import { Counter } from './components/Counter';
-import { ThemeToggle } from './components/ThemeToggle';
+import { Counter } from '../components/Counter';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 // Home page component with proper Next.js style
 export default function HomePage() {

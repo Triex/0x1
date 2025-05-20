@@ -94,7 +94,7 @@ interface DeployOptions {
 }
 
 // Define Args interface with indexer for additional properties
-interface Args {
+interface _Args {
   _: string[];
   [key: string]: any;
 }
@@ -131,7 +131,7 @@ const showBanner = () => {
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
   // Import from package.json at build time
-  const packageVersion = process.env.npm_package_version || '0.0.81';
+  const packageVersion = process.env.npm_package_version || '0.0.82';
   logger.info(`Running 0x1 CLI v${packageVersion} - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };

@@ -13,6 +13,11 @@ import { dirname, join, resolve } from 'path';
 import { logger } from '../utils/logger.js';
 import { build } from './build.js';
 
+// Get the path to the framework files
+const currentFilePath = fileURLToPath(import.meta.url);
+const cliDir = dirname(currentFilePath);
+const frameworkPath = resolve(cliDir, '../../..');
+
 /**
  * Transform code content to handle 0x1 bare imports
  * This converts imports like: import { Router } from '0x1' or import { Router } from '0x1/router'
@@ -172,7 +177,35 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   const config = configPath ? await loadConfig(configPath) : {};
 
   // Set default options
-  const port = options.port || config.server?.port || 3000;
+  // Start with the specified port or default to 3000
+  let port = options.port || config.server?.port || 3000;
+
+  // Function to check if a port is available
+  const isPortAvailable = async (port: number): Promise<boolean> => {
+    try {
+      const server = Bun.serve({
+        port,
+        fetch: () => new Response("Port check"),
+      });
+
+      // If we can bind to the port, it's available
+      server.stop();
+      return true;
+    } catch (e) {
+      // If we get an error, the port is likely in use
+      return false;
+    }
+  };
+
+  // Try to find an available port, incrementing up to 10 times
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (await isPortAvailable(port)) {
+      break;
+    }
+    logger.warn(`Port ${port} is already in use, trying ${port + 1}...`);
+    port++;
+  }
+
   const host = options.host || config.server?.host || 'localhost';
   const _open = options.open ?? false;
   const ignorePatterns = options.ignore || config?.build?.ignore || ['node_modules', '.git', 'dist'];
@@ -195,12 +228,12 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   }
 
   // Check for Tailwind CSS configuration and start processing if needed
-  let tailwindProcess: Subprocess | null = null;
+  let _tailwindProcess: Subprocess | null = null;
   if (!options.skipTailwind) {
     const tailwindConfigPath = resolve(process.cwd(), 'tailwind.config.js');
     if (existsSync(tailwindConfigPath)) {
       const tailwindSpin = logger.spinner('Starting Tailwind CSS watcher', 'css');
-      tailwindProcess = await startTailwindProcessing();
+      _tailwindProcess = await startTailwindProcessing();
       tailwindSpin.stop('success', 'Tailwind CSS: watching for changes');
     } else {
       logger.info('Tailwind CSS configuration not found, skipping CSS processing');
@@ -220,8 +253,8 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       const maxRetries = 10;
       let serverCreated = false;
       let error: unknown;
-      let devServer: Server;
-      let watcher: { close: () => void };
+      let _devServer: Server;
+      let _watcher: { close: () => void };
 
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
@@ -237,8 +270,8 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
           });
 
           // Store server and watcher from the result
-          devServer = result.server;
-          watcher = result.watcher;
+          _devServer = result.server;
+          _watcher = result.watcher;
 
           // Server created successfully
           serverCreated = true;
@@ -277,7 +310,7 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       const finalServerUrl = `${protocol}://${host}:${actualPort}`;
 
       // Add link to open browser
-      if (!options.open) {
+      if (!_open) {
         logger.info(`Open ${logger.highlight(finalServerUrl)} in your browser`);
       } else {
         await openBrowser(finalServerUrl).catch((err) => {
@@ -512,7 +545,7 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         hostname: host,
         async fetch(req) {
       const url = new URL(req.url);
-      let path = url.pathname;
+      const path = url.pathname;
 
       // Handle SSE connection for live reload
       if (path === '/__0x1_live_reload' || path === '/events' || req.url === '/events') {
@@ -675,7 +708,8 @@ export default {
       }
 
       // Handle 0x1 submodule imports (e.g., import { Router } from '0x1/router')
-      if (path.startsWith('/node_modules/0x1/') && path !== '/node_modules/0x1/index.js') {
+      if (path.startsWith('/node_modules/0x1/') &&
+          path !== '/node_modules/0x1/index.js') {
         const submodulePath = path.replace('/node_modules/0x1/', '');
         const submoduleName = submodulePath.replace(/\.js$/, '');
 
@@ -782,45 +816,55 @@ export default {
 
             // Render a component
             renderComponent(component) {
-              if (!this.rootElement) return;
+              if (!this.rootElement) {
+                console.error('[Router] Cannot render component: root element is not defined');
+                return;
+              }
 
               try {
+                // If the component exists and has a render method
                 if (component && typeof component.render === 'function') {
-                  // Apply transition if needed
+                  // First fade out if we have a current component
                   if (this.currentComponent && this.transitionDuration > 0) {
                     this.rootElement.style.opacity = '0';
 
                     setTimeout(() => {
                       this.rootElement.innerHTML = '';
-                      const element = component.render();
-                      this.rootElement.appendChild(element);
-
-                      if (component.onMount) {
-                        component.onMount(element);
-                      }
-
-                      this.currentComponent = component;
+                      this.mountComponent(component);
                       this.rootElement.style.opacity = '1';
                       console.log('Rendered route: ' + this.getCurrentPath());
                     }, this.transitionDuration);
                   } else {
                     // No transition needed
                     this.rootElement.innerHTML = '';
-                    const element = component.render();
-                    this.rootElement.appendChild(element);
-
-                    if (component.onMount) {
-                      component.onMount(element);
-                    }
-
-                    this.currentComponent = component;
+                    this.mountComponent(component);
                     console.log('Rendered route: ' + this.getCurrentPath());
                   }
+                } else {
+                  console.error('[Router] Component does not have a render method:', component);
                 }
               } catch (error) {
-                // Handle rendering errors safely
-                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Error rendering component</h1><p>Check the console for details.</p></div>';
                 console.error('[Router] Error rendering component:', error);
+                this.rootElement.innerHTML = '<div style="padding: 20px; font-family: sans-serif;"><h1>Error rendering component</h1><pre>' + (error.message || 'Unknown error') + '</pre></div>';
+              }
+            }
+
+            mountComponent(component) {
+              try {
+                const el = component.render();
+                if (el) {
+                  this.rootElement.appendChild(el);
+                  // Call onMount lifecycle method if it exists
+                  if (typeof component.onMount === 'function') {
+                    component.onMount(el);
+                  }
+                  // Store the current component
+                  this.currentComponent = component;
+                } else {
+                  console.error('[Router] Component render method returned null or undefined');
+                }
+              } catch (error) {
+                console.error('[Router] Error mounting component:', error);
               }
             }
 
@@ -1104,15 +1148,28 @@ export default {
             // Default export for convenience
             export default Router;
           `;
+        } else if (path === '/node_modules/0x1/jsx-runtime.js' || path === '/node_modules/0x1/jsx-runtime/index.js') {
+          // Provide JSX runtime for bundling
+          moduleContent = await Bun.file(join(frameworkPath, 'dist/0x1/jsx-runtime.js')).text();
+        } else if (path === '/node_modules/0x1/jsx-dev-runtime.js' || path === '/node_modules/0x1/jsx-dev-runtime/index.js') {
+          // Provide JSX dev runtime for bundling
+          moduleContent = await Bun.file(join(frameworkPath, 'dist/0x1/jsx-dev-runtime.js')).text();
         } else if (modulePath === '' || modulePath === 'index.js' || path === '/node_modules/0x1/index.js') {
           // Provide the main 0x1 module
           moduleContent = `
             // 0x1 Framework - Browser Compatible Version
             import { Router, Link, NavLink, Redirect } from '/0x1/router';
-
+            
+            // Export JSX factory function and fragment
+            export function createElement(type, props, ...children) {
+              return { type, props: props || {}, children };
+            }
+            
+            export const Fragment = Symbol('Fragment');
+            
             // Re-export everything
             export { Router, Link, NavLink, Redirect };
-            export default { Router, Link, NavLink, Redirect };
+            export default { Router, Link, NavLink, Redirect, createElement, Fragment };
           `;
         }
 
@@ -1126,12 +1183,129 @@ export default {
         }
       }
 
-      // Default to index.html for root path
+      // Handle root path requests using modern app directory structure
       if (path === '/') {
-        path = '/index.html';
-        logger.debug(`Requested root path, looking for index.html`);
+        logger.debug(`Serving modern app directory structure root HTML`);
+        
+        // Create a dynamic HTML that imports the router and loads app/page
+        const dynamicHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <link rel="icon" href="/favicon.ico">
+  
+  <!-- Import Map for bare imports - enables importing directly from '0x1' -->
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/": "/node_modules/0x1/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- App Container -->
+  <div id="app"></div>
+
+  <!-- App entry point -->
+  <script type="module">
+    // Import the app router
+    import { Router } from '0x1/router';
+    
+    // Initialize router
+    const router = new Router({
+      root: document.getElementById('app'),
+      mode: 'history'
+    });
+    
+    // Register app routes
+    router.add('/', async () => {
+      // Dynamically import the page component
+      const { default: Page } = await import('/app/page.js');
+      return Page();
+    });
+    
+    // Also import and register components from the root components directory
+    try {
+      const components = await fetch('/_components_list').then(res => res.json());
+      for (const comp of components) {
+        await import('/components/' + comp);
+      }
+    } catch (e) {
+      console.log('No component manifest found');
+    }
+    
+    // Start routing
+    router.start();
+  </script>
+</body>
+</html>`;
+        
+        return new Response(dynamicHtml, {
+          headers: {
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache'
+          }
+        });
       }
 
+      // Special handling for index.js which is the entry point
+      if (path === '/index.js') {
+        // Check if we already have a bundled version in dist
+        const distIndexPath = join(distDir, 'index.js');
+        if (existsSync(distIndexPath)) {
+          try {
+            const content = await Bun.file(distIndexPath).text();
+            return new Response(content, {
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          } catch (error) {
+            logger.warn(`Error reading cached index.js: ${error}`);
+            // Continue to try transpiling below
+          }
+        }
+        
+        // If no cached version or read failed, try to transpile index.tsx
+        const indexTsxPath = join(projectPath, 'index.tsx');
+        if (existsSync(indexTsxPath)) {
+          try {
+            // Use the JSX transpiler to directly process and bundle the file
+            const { transpileJSX } = await import('./jsx-transpiler.js');
+            const output = await transpileJSX(indexTsxPath, distDir, true, projectPath);
+            
+            if (output) {
+              const outputPath = join(distDir, 'index.js');
+              if (existsSync(outputPath)) {
+                const content = await Bun.file(outputPath).text();
+                logger.info(`✅ Successfully served index.js from transpiled source`);
+                return new Response(content, {
+                  headers: {
+                    'Content-Type': 'application/javascript',
+                    'Cache-Control': 'no-cache'
+                  }
+                });
+              }
+            }
+          } catch (err) {
+            const error = err as Error;
+            logger.error(`❌ ❌ Error transpiling ${indexTsxPath}: ${error.message || 'Bundle failed'}`);
+            return new Response(`console.error('Failed to load application: ${error.message?.replace(/'/g, "\\'") || 'Bundle failed'}');`, {
+              status: 500,
+              headers: {
+                'Content-Type': 'application/javascript',
+                'Cache-Control': 'no-cache',
+              }
+            });
+          }
+        }
+      }
+      
       // Handle requests for JS files that might exist as TS/TSX files
       if (path.endsWith('.js') && !path.includes('node_modules')) {
         // Check if there's a corresponding .ts or .tsx file
@@ -1155,7 +1329,7 @@ export default {
         if (foundTsFile) {
           try {
             logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
-            const tsContent = await Bun.file(tsFilePath).text();
+            const _tsContent = await Bun.file(tsFilePath).text();
 
             // Use Bun to transpile TypeScript
             const result = await Bun.build({
@@ -1172,7 +1346,7 @@ export default {
               return new Response(`// Failed to compile ${path}\nconsole.error('Compilation failed');`, {
                 headers: {
                   'Content-Type': 'application/javascript',
-                  'Cache-Control': 'no-cache'
+                  'Cache-Control': 'no-cache',
                 },
                 status: 500
               });
@@ -1183,12 +1357,26 @@ export default {
 
             // Transform any remaining bare imports
             const transformedOutput = transformBareImports(output);
-
+            
+            // Write the transformed output to the dist directory to ensure it's available for future requests
+            try {
+              const distFilePath = join(distDir, path);
+              const distFileDir = dirname(distFilePath);
+              if (!existsSync(distFileDir)) {
+                mkdirSync(distFileDir, { recursive: true });
+              }
+              await Bun.write(distFilePath, transformedOutput);
+              logger.debug(`Successfully wrote transpiled file to ${distFilePath}`);
+            } catch (error) {
+              const writeError = error as Error;
+              logger.warn(`Warning: Unable to cache transpiled file: ${writeError.message || String(writeError)}`);
+            }
+            
             logger.debug(`Successfully transpiled ${path}`);
             return new Response(transformedOutput, {
               headers: {
                 'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache',
               }
             });
           } catch (error) {
@@ -1209,7 +1397,7 @@ export default {
             return new Response(`// Error transpiling ${path}\nconsole.error('Transpilation error: ${error}');\n// Check terminal for detailed error output`, {
               headers: {
                 'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache',
               },
               status: 500
             });

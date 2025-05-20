@@ -8,7 +8,7 @@ import { mkdir, readdir } from 'fs/promises'; // For directory operations
 // We'll use Bun.file() instead of readFile/writeFile for better performance
 import { dirname, join, relative, resolve } from 'path';
 import { logger } from '../utils/logger.js';
-import { handleJSXFile } from './jsx-transpiler'; // Import the JSX transpiler module
+import { transpileJSX } from './jsx-transpiler.js'; // Import the JSX transpiler module
 
 // For dynamic imports
 // Prefixing with underscore to indicate this interface is used for type checking only
@@ -32,12 +32,12 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Start timing the build process
   const startTime = performance.now();
   // Only show logs if not silent
-  const log = options.silent ? 
-    { 
-      info: () => {}, 
-      error: () => {}, 
-      warn: () => {}, 
-      section: () => {}, 
+  const log = options.silent ?
+    {
+      info: () => {},
+      error: () => {},
+      warn: () => {},
+      section: () => {},
       spinner: () => ({ stop: () => {} }),
       spacer: () => {}, // Add spacer method to silent logger
       success: () => {},
@@ -47,26 +47,26 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       command: () => {} // Add command method for silent logger
     } :
     logger;
-  
+
   // Get project path
   const projectPath = process.cwd();
-  
+
   // Load config file
-  const configPath = options.config ? 
-    resolve(projectPath, options.config) : 
+  const configPath = options.config ?
+    resolve(projectPath, options.config) :
     await findConfigFile(projectPath);
-  
+
   const config = configPath ? await loadConfig(configPath) : {};
-  
+
   // Set build options
   const outDir = options.outDir || config?.build?.outDir || 'dist';
   const minify = options.minify ?? config?.build?.minify ?? true;
   const ignorePatterns = options.ignore || config?.build?.ignore || ['node_modules', '.git', 'dist'];
-  
+
   // Start build with beautiful section header
   log.section('BUILDING APPLICATION');
   log.spacer();
-  
+
   // Log app structure detection
   const isAppDirStructure = existsSync(join(projectPath, 'app'));
   if (isAppDirStructure) {
@@ -74,11 +74,11 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   } else {
     log.info('📁 Classic structure detected - consider migrating to app directory structure');
   }
-  
+
   // Ensure output directory exists
   const outputPath = resolve(projectPath, outDir);
   await mkdir(outputPath, { recursive: true });
-  
+
   // Copy static assets with file icon
   const assetsSpin = log.spinner('Copying static assets', 'file');
   try {
@@ -90,7 +90,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     if (!options.silent) process.exit(1);
     return;
   }
-  
+
   // Process HTML files with prettier output
   const htmlSpin = log.spinner('Processing HTML templates', 'file');
   try {
@@ -102,7 +102,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     if (!options.silent) process.exit(1);
     return;
   }
-  
+
   // Bundle JavaScript/TypeScript with appropriate icons
   const bundleSpin = log.spinner('Bundling JavaScript/TypeScript modules', 'typescript');
   try {
@@ -114,7 +114,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     if (!options.silent) process.exit(1);
     return;
   }
-  
+
   // Process CSS with appropriate icon
   const cssSpin = log.spinner('Processing CSS styles', 'css');
   try {
@@ -125,28 +125,28 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     cssSpin.stop('warn', 'CSS processing skipped (not configured)');
     log.warn(`CSS processing error: ${error}`);
   }
-  
+
   // Output build info with beautiful formatting
   log.box('Build Complete');
   log.info(`📦 Output directory: ${log.highlight(outputPath)}`);
   log.info(`🔧 Minification: ${minify ? 'enabled' : 'disabled'}`);
-  
+
   // Calculate and display build time
   const endTime = performance.now();
   const buildTimeMs = endTime - startTime;
-  const formattedTime = buildTimeMs < 1000 ? 
-    `${buildTimeMs.toFixed(2)}ms` : 
+  const formattedTime = buildTimeMs < 1000 ?
+    `${buildTimeMs.toFixed(2)}ms` :
     `${(buildTimeMs / 1000).toFixed(2)}s`;
-  
+
   log.spacer();
   log.info(`⚡ Build completed in ${log.highlight(formattedTime)}`);
-  
+
   // Watch mode if requested
   if (options.watch && !options.silent) {
     log.spacer();
     log.info('👀 Watching for changes...');
     log.info('Press Ctrl+C to stop');
-    
+
     // Implementation of watch mode would go here
     // For now, this is a placeholder
   }
@@ -161,13 +161,13 @@ async function findConfigFile(projectPath: string): Promise<string | null> {
   if (existsSync(tsConfigPath)) {
     return tsConfigPath;
   }
-  
+
   // Then check for JavaScript config
   const jsConfigPath = join(projectPath, '0x1.config.js');
   if (existsSync(jsConfigPath)) {
     return jsConfigPath;
   }
-  
+
   // Look for package.json with 0x1 field
   const packageJsonPath = join(projectPath, 'package.json');
   if (existsSync(packageJsonPath)) {
@@ -180,7 +180,7 @@ async function findConfigFile(projectPath: string): Promise<string | null> {
       // Ignore errors in package.json parsing
     }
   }
-  
+
   return null;
 }
 
@@ -198,7 +198,7 @@ async function loadConfig(configPath: string): Promise<any> {
         logger.warn(`Failed to import config from ${configPath}: ${error}`);
         // Fallback to reading as text and evaluating
         const content = await Bun.file(configPath).text();
-        
+
         try {
           // Extract the config object literal from the file
           const match = content.match(/export\s+default\s+({[\s\S]*});?$/m);
@@ -217,7 +217,7 @@ async function loadConfig(configPath: string): Promise<any> {
       const packageJson = JSON.parse(await content);
       return packageJson['0x1'] || {};
     }
-    
+
     return {};
   } catch (error) {
     logger.warn(`Failed to load config from ${configPath}: ${error}`);
@@ -231,7 +231,7 @@ async function loadConfig(configPath: string): Promise<any> {
 async function copyStaticAssets(projectPath: string, outputPath: string): Promise<void> {
   // We'll consider anything in the public directory as static assets
   const publicDir = join(projectPath, 'public');
-  
+
   if (existsSync(publicDir)) {
     await copyDir(publicDir, outputPath);
   }
@@ -243,36 +243,36 @@ async function copyStaticAssets(projectPath: string, outputPath: string): Promis
 async function processHtmlFiles(projectPath: string, outputPath: string): Promise<void> {
   // Find HTML files in the project
   const htmlFiles = await findFiles(projectPath, '.html', ['node_modules', 'dist', '.git']);
-  
+
   // Process each HTML file
   for (const htmlFile of htmlFiles) {
     // Get the relative path to maintain directory structure
     const relativePath = relative(projectPath, htmlFile);
     const outputFile = join(outputPath, relativePath);
-    
+
     // Create output directory if needed
     await mkdir(dirname(outputFile), { recursive: true });
-    
+
     // Read the HTML file
     const content = await Bun.file(htmlFile).text();
-    
+
     // Process the HTML content
     const processedContent = await processHtml(content, {
       projectPath,
       outputPath,
       relativePath
     });
-    
+
     // Write the processed HTML file
     await Bun.write(outputFile, processedContent);
   }
-  
+
   // If no HTML files found, create a basic index.html
   if (htmlFiles.length === 0) {
     // Check for app entry point (app/page.tsx, app/page.jsx, app/page.js, etc.)
     const appDir = join(projectPath, 'app');
     const hasAppDir = existsSync(appDir);
-    
+
     if (hasAppDir) {
       // Using modern app router structure
       const indexHtml = `<!DOCTYPE html>
@@ -288,7 +288,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <script src="/app.js" type="module"></script>
 </body>
 </html>`;
-      
+
       await Bun.write(join(outputPath, 'index.html'), indexHtml);
     }
   }
@@ -308,7 +308,7 @@ async function processHtml(
   // - Minify HTML
   // - Add CSP headers
   // - etc.
-  
+
   return content;
 }
 
@@ -322,19 +322,19 @@ async function bundleJavaScript(
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
   const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
-  
+
   // File extensions to look for
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
-  
+
   // Main entry file - always required
   const mainEntryFile = findMainEntryFile(projectPath);
   if (mainEntryFile) {
     await processJSBundle(mainEntryFile, projectPath, { minify });
-    
+
     // Ensure the temp index.js file is correctly moved to index.js
     const tempIndexPath = join(outputPath, '.temp-index.js');
     const finalIndexPath = join(outputPath, 'index.js');
-    
+
     // Check if temp file exists but final doesn't
     if (existsSync(tempIndexPath)) {
       try {
@@ -350,54 +350,84 @@ async function bundleJavaScript(
   } else {
     logger.warn('No main entry file found (index.tsx/ts/jsx/js). Project may not work correctly.');
   }
-  
+
   // Helper function to find main entry file
   function findMainEntryFile(dir: string): string | null {
     const entryFileNames = ['index.js', 'index.ts', 'index.tsx', 'index.jsx', 'app.js', 'app.ts', 'app.tsx', 'app.jsx'];
-    
+
     for (const fileName of entryFileNames) {
       const entryPath = join(dir, fileName);
       if (existsSync(entryPath)) {
         return entryPath;
       }
     }
-    
+
     return null;
   }
-  
+
   // Modern app router structure component discovery
-  // Find all page, layout, and special component files
+  // Find all page, layout, special component files, and regular components
   async function findAppComponents(dir: string): Promise<string[]> {
     const components: string[] = [];
-    const entries = await readdir(dir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const path = join(dir, entry.name);
-      
-      // Skip ignored directories
-      if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
-        // Recursively search subdirectories
-        const subComponents = await findAppComponents(path);
-        components.push(...subComponents);
-      } else if (entry.isFile()) {
-        // Check for special app router components
-        for (const ext of fileExtensions) {
-          // Support for all app router special files
-          if (entry.name === `page${ext}` ||
-              entry.name === `layout${ext}` ||
-              entry.name === `loading${ext}` ||
-              entry.name === `error${ext}` ||
-              entry.name === `not-found${ext}`) {
-            components.push(path);
-            break;
+    // Also include normal components from root-level components directory
+    const projectRoot = dir.includes('/app') ? dir.split('/app')[0] : dir;
+    const rootComponentsDir = join(projectRoot, 'components');
+
+    // Process the app directory for page components
+    if (existsSync(dir)) {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const path = join(dir, entry.name);
+
+        // Skip ignored directories
+        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
+          // Recursively search subdirectories
+          const subComponents = await findAppComponents(path);
+          components.push(...subComponents);
+        } else if (entry.isFile()) {
+          // Check for special app router components
+          for (const ext of fileExtensions) {
+            // Support for all app router special files
+            if (entry.name === `page${ext}` ||
+                entry.name === `layout${ext}` ||
+                entry.name === `loading${ext}` ||
+                entry.name === `error${ext}` ||
+                entry.name === `not-found${ext}`) {
+              components.push(path);
+              break;
+            }
           }
         }
       }
     }
-    
+
+    // Add components from the root components directory
+    if (existsSync(rootComponentsDir)) {
+      const componentEntries = await readdir(rootComponentsDir, { withFileTypes: true });
+
+      for (const entry of componentEntries) {
+        const path = join(rootComponentsDir, entry.name);
+
+        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
+          // Recursively search subdirectories of components
+          const subComponents = await findAppComponents(path);
+          components.push(...subComponents);
+        } else if (entry.isFile()) {
+          // Add component files
+          for (const ext of fileExtensions) {
+            if (entry.name.endsWith(ext)) {
+              components.push(path);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     return components;
   }
-  
+
   // App directory processing - modern app router structure is required
   const appDir = join(projectPath, 'app');
   if (!existsSync(appDir)) {
@@ -406,54 +436,54 @@ async function bundleJavaScript(
   } else {
     // Find and process app router components
     const appComponents = await findAppComponents(appDir);
-    
+
     if (appComponents.length === 0) {
-      logger.warn('No app router components found in app directory.');  
-      logger.info('Create page.tsx, layout.tsx, and other components in the app directory.');  
+      logger.warn('No app router components found in app directory.');
+      logger.info('Create page.tsx, layout.tsx, and other components in the app directory.');
     } else {
-      logger.info(`Found ${appComponents.length} app router components.`);  
-      
+      logger.info(`Found ${appComponents.length} app router components.`);
+
       // Process each app router component
       for (const component of appComponents) {
         await processJSBundle(component, projectPath, { minify });
       }
-      
+
       // Generate component registry for autoDiscovery
       logger.info('Generating component registry for auto-discovery...');
-      
+
       // Create a component registry map for runtime auto-discovery
       const componentsMapPath = join(outputPath, 'components-map.js');
-      let componentsMapCode = `// Auto-generated component registry for 0x1 router\n`;
-      componentsMapCode += `// This file is auto-generated by the build process\n\n`;
-      componentsMapCode += `window.__0x1_components = {\n`;
-      
+      let componentsMapCode = '// Auto-generated component registry for 0x1 router\n';
+      componentsMapCode += '// This file is auto-generated by the build process\n\n';
+      componentsMapCode += 'window.__0x1_components = {\n';
+
       for (const component of appComponents) {
         // Get the relative path from project root to the component
         const relativePath = relative(projectPath, component);
-        
+
         // Create the component key - remove file extension and map to router path
         const componentKey = relativePath
           .replace(/\.\w+$/, '') // Remove extension
-          .replace(/\\+/g, '/'); // Normalize path separators for Windows
-          
+          .replace(/\\/g, '/'); // Normalize path separators for Windows
+
         // Import path relative to the output directory
         const importPath = `./${relativePath.replace(/\.\w+$/, '')}`;
         componentsMapCode += `  '${componentKey}': () => import('${importPath}'),\n`;
       }
-      
+
       // Close the components map object
       componentsMapCode += `};\n`;
-      
+
       // Write the component registry file
       await Bun.write(componentsMapPath, componentsMapCode);
       logger.info(`Component registry written to ${componentsMapPath}`);
     }
   }
-  
+
   // Add a client-side entry point if using app directory
   if (existsSync(join(projectPath, 'app'))) {
     const clientEntry = "// Auto-generated client entry point\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Import all pages components\n  const appRoot = document.getElementById('app');\n  if (appRoot) {\n    // In a real implementation, this would use client-side routing\n    console.log('0x1 App Started');\n  }\n});";
-    
+
     await Bun.write(join(outputPath, 'app.js'), clientEntry);
   }
 }
@@ -467,28 +497,28 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
     // Calculate output file path similar to how it's done for other files
     const relativePath = relative(projectPath, entryFile);
     const outputDir = join(projectPath, 'dist');
-    const baseName = relativePath.replace(/\\+/g, '/'); // Normalize path separators for Windows
-    const outputFile = join(outputDir, baseName.replace(/.(tsx|jsx|ts|js)$/, '.js'));
-    
-    // Call handleJSXFile with correct parameters
-    return await handleJSXFile(entryFile, outputFile, projectPath, options.minify);
+    const baseName = relativePath.replace(/\\/g, '/'); // Normalize path separators for Windows
+    const outputFile = join(outputDir, baseName.replace(/\.(tsx|jsx|ts|js)$/, '.js'));
+
+    // Call transpileJSX with correct parameters
+    return await transpileJSX(entryFile, dirname(outputFile), options.minify, projectPath);
   }
   const { minify } = options;
-  
+
   // Not needed to check for TypeScript file type since we handle all file types
-  
+
   // Get the relative path to the entry file from the project root
   const relativePath = relative(projectPath, entryFile);
-  
+
   // Calculate the output file path
   // Convert .tsx/.ts to .js
   const outputName = relativePath
     .replace(/\.tsx?$/, '.js')
     .replace(/\.jsx$/, '.js');
-  
+
   // Determine the output file path
   const outputFile = join(projectPath, 'dist', outputName);
-  
+
   try {
     // Ensure the output directory exists
     await mkdir(dirname(outputFile), { recursive: true });
@@ -514,7 +544,7 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
     // If we have router imports, replace them with global declarations
     if (routerImport) {
       logger.debug(`File ${relative(projectPath, entryFile)} contains router imports. Converting to global approach.`);
-      
+
       // Replace router imports with global declarations
       modifiedContent = modifiedContent.replace(
         /import\s+\{\s*(?:Router|Link|NavLink|Redirect)(?:\s*,\s*(?:Router|Link|NavLink|Redirect))*\s*\}\s+from\s+['"]0x1\/router['"];?/g,
@@ -525,14 +555,14 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
         'declare const Redirect: any;'
       );
     }
-    
+
     // For other 0x1 framework imports, we still need to set up browser compatibility
     if (file0x1Imports && !routerImport) {
       logger.debug(`File ${relative(projectPath, entryFile)} contains other 0x1 framework imports. Setting up browser compatibility.`);
 
       // Create 0x1 module for browser compatibility
       const framework0x1Dir = join(dirname(outputFile), '0x1');
-      
+
       // Transform bare imports like 'import { createElement, Fragment } from "0x1"'
       modifiedContent = modifiedContent.replace(
         /from\s+["'](0x1)["']|import\s+["']0x1["']|import\(["']0x1["']\)/g,
@@ -540,18 +570,18 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
           return match.replace(/["']0x1["']/, '"/0x1/index.js"');
         }
       );
-      
+
       // Handle submodule imports like 'import { Router } from "0x1/router"'
       modifiedContent = modifiedContent.replace(
-        /from\s+["'](0x1\/[\w\/-]+)["']|import\s+["']0x1(\/[\w\/-]+)["']|import\(["']0x1(\/[\w\/-]+)["']\)/g,
+        /from\s+["'](0x1\/[\w-]+)["']|import\s+["']0x1(\/[\w-]+)["']|import\(["']0x1(\/[\w-]+)["']\)/g,
         (match, subpath1, subpath2, subpath3) => {
           const subpath = subpath1 || subpath2 || subpath3;
-          return match.replace(/["']0x1(\/[\w\/-]+)["']/, '"/0x1' + subpath + '.js"');
+          return match.replace(/["']0x1(\/[\w-]+)["']/, '"/0x1' + subpath + '.js"');
         }
       );
 
       await mkdir(framework0x1Dir, { recursive: true });
-      
+
       // Create browser-compatible index module for non-router imports
       const indexJsContent = `
 // 0x1 Framework - Browser Compatible Version
@@ -559,47 +589,47 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
 // JSX Runtime for createElement and Fragment
 export function createElement(type, props, ...children) {
   if (!props) props = {};
-  
+
   // Handle children
   if (children.length > 0) {
     props.children = children.length === 1 ? children[0] : children;
   }
-  
+
   // Handle component functions
   if (typeof type === 'function') {
     return type(props);
   }
-  
+
   // Create DOM element
   const element = document.createElement(type);
-  
+
   // Apply props
   for (const [key, value] of Object.entries(props)) {
     if (key === 'children') continue;
-    
+
     // Handle events
     if (key.startsWith('on') && typeof value === 'function') {
       const eventName = key.slice(2).toLowerCase();
       element.addEventListener(eventName, value);
       continue;
     }
-    
+
     // Handle className
     if (key === 'className') {
       element.className = value;
       continue;
     }
-    
+
     // Handle style
     if (key === 'style' && typeof value === 'object') {
       Object.assign(element.style, value);
       continue;
     }
-    
+
     // Set attributes
     element.setAttribute(key, value);
   }
-  
+
   // Append children
   if (props.children) {
     const appendChildren = (children) => {
@@ -612,17 +642,17 @@ export function createElement(type, props, ...children) {
         );
       }
     };
-    
+
     appendChildren(props.children);
   }
-  
+
   return element;
 }
 
 // Fragment for JSX fragments
 export const Fragment = (props) => {
   const fragment = document.createDocumentFragment();
-  
+
   if (props && props.children) {
     const appendChildren = (children) => {
       if (Array.isArray(children)) {
@@ -633,10 +663,10 @@ export const Fragment = (props) => {
         );
       }
     };
-    
+
     appendChildren(props.children);
   }
-  
+
   return fragment;
 };
 
@@ -648,12 +678,12 @@ export { Router, Link, NavLink, Redirect };
 export const version = '0.1.0';
 
 // Default export
-export default { 
-  createElement, 
+export default {
+  createElement,
   Fragment,
-  Router, 
-  Link, 
-  NavLink, 
+  Router,
+  Link,
+  NavLink,
   Redirect,
   version
 };`;
@@ -663,7 +693,7 @@ export default {
     // Create a temporary file path for modified content
     let actualEntryFile = entryFile;
     const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
-    
+
     // If we modified the content, use the temp file for bundling
     if (modifiedContent !== fileContent) {
       // Use the temp file for bundling instead
@@ -671,7 +701,7 @@ export default {
       await Bun.write(tempFile, modifiedContent);
       actualEntryFile = tempFile;
     }
-    
+
     // Get base filename for naming configuration
     const baseName = basename(entryFile).split('.')[0];
 
@@ -679,12 +709,12 @@ export default {
     // This minimizes external dependencies for better reliability
     if (actualEntryFile.endsWith('.tsx') || actualEntryFile.endsWith('.jsx')) {
       logger.info(`Processing JSX in ${basename(actualEntryFile)}...`);
-      
+
       try {
         // Create a simple JS file that directly imports our JSX runtime
         // and uses Bun's native JSX handling
         const tempJsFile = join(dirname(actualEntryFile), `.jsx-transpiled-${basename(actualEntryFile).replace(/\.tsx$|\.jsx$/, '.js')}`);
-        
+
         // Create a temporary file that configures Bun's transpiler correctly
         const tempTsConfigFile = join(dirname(actualEntryFile), `.temp-tsconfig-jsx.json`);
         await Bun.write(tempTsConfigFile, JSON.stringify({
@@ -696,27 +726,27 @@ export default {
             "jsxFragmentFactory": "Fragment"
           }
         }));
-        
+
         // Use Bun's built-in transpiler to handle JSX
         const transpileResult = await Bun.spawn([
           'bun', 'build', actualEntryFile,
           '--outfile', tempJsFile,
           '--tsconfig-override', tempTsConfigFile
         ]);
-        
+
         const exitCode = await transpileResult.exited;
         if (exitCode === 0) {
           logger.debug(`Successfully transpiled JSX in ${basename(actualEntryFile)}`);
-          
+
           // Modify the transpiled file to ensure it imports our JSX runtime properly
           let jsContent = await Bun.file(tempJsFile).text();
-          
+
           // Add our JSX runtime imports at the top
           const jsxRuntimeImport = `// Add JSX runtime imports\nimport { createElement, Fragment, jsx, jsxs, jsxDEV } from '/0x1/jsx-runtime.js';\n\n`;
-          
+
           jsContent = jsxRuntimeImport + jsContent;
           await Bun.write(tempJsFile, jsContent);
-          
+
           // Use the pre-processed JS file for the main bundle
           actualEntryFile = tempJsFile;
         } else {
@@ -726,11 +756,11 @@ export default {
         logger.error(`Error processing JSX: ${String(err)}`);
       }
     }
-    
+
     // Create JSX runtime support files for the build
     const jsxRuntimeDir = join(dirname(outputFile), '0x1');
     await mkdir(jsxRuntimeDir, { recursive: true });
-    
+
     // Write JSX runtime shim that re-exports from the framework
     const jsxRuntimePath = join(jsxRuntimeDir, 'jsx-runtime.js');
     const jsxRuntimeContent = `// 0x1 Framework - JSX Runtime shim
@@ -746,9 +776,9 @@ export default {
   createElement, Fragment, jsx, jsxs, jsxDEV
 };
 `;
-    
+
     await Bun.write(jsxRuntimePath, jsxRuntimeContent);
-    
+
     // Define build options using Bun's API
     const result = await Bun.build({
       entrypoints: [actualEntryFile],
@@ -771,14 +801,14 @@ export default {
       // Enable better error messages
       // logLevel: 'error', // Removing unsupported property
     });
-    
+
     try {
       if (!result.success) {
         // Enhanced error logging to diagnose the JSX transpilation issue
         console.error('\n=============== BUILD ERROR DETAILS ===============');
         console.error('Build logs:', result.logs?.join('\n'));
         console.error('File being bundled:', actualEntryFile);
-        
+
         // Try to read the file to see what might be causing the error
         try {
           const fileContent = await Bun.file(actualEntryFile).text();
@@ -786,7 +816,7 @@ export default {
         } catch (err) {
           console.error('Could not read file content:', err);
         }
-        
+
         console.error('\n===============================================');
         throw new Error(`Bundle failed: ${result.logs?.join('\n') || 'Unknown error'}`);
       }
@@ -799,7 +829,7 @@ export default {
       }
       throw new Error(`Failed to bundle ${entryFile}: ${error.message || String(error)}`);
     }
-    
+
     logger.debug(`Bundle generated: ${outputFile}`);
   } catch (error: any) {
     logger.error(`Error during bundling of ${entryFile}: ${error.message || error}`);
@@ -819,19 +849,19 @@ async function processCssFiles(
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
   const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
-  
+
   // Get all css files
   const cssFiles = await findFiles(projectPath, '.css', ignorePatterns);
-  
+
   // Check for tailwind config files
   const hasTailwind = existsSync(join(projectPath, 'tailwind.config.js')) ||
     existsSync(join(projectPath, 'tailwind.config.ts'));
-  
+
   // Process Tailwind CSS if available
   if (hasTailwind) {
     // Create a combined CSS file for all CSS files
     let combinedCSS = '';
-    
+
     // First add Tailwind directives
     combinedCSS = `
       /* Tailwind Directives */
@@ -839,13 +869,13 @@ async function processCssFiles(
       @tailwind components;
       @tailwind utilities;
     `;
-    
+
     // Then add all other CSS files
     for (const cssFile of cssFiles) {
       const cssContent = await Bun.file(cssFile).text();
       combinedCSS += `\n/* From ${relative(projectPath, cssFile)} */\n${cssContent}`;
     }
-    
+
     try {
       // Use Bun's built-in process.spawn to run tailwind CLI instead of importing modules
       // This avoids TypeScript errors with missing type declarations
@@ -853,7 +883,7 @@ async function processCssFiles(
       // Write the combined CSS to a temporary file
       const tempCssPath = join(projectPath, '.temp-tailwind-input.css');
       await Bun.write(tempCssPath, combinedCSS);
-      
+
       // Use Bun to process Tailwind CSS
       try {
         // Using Bun to run tailwindcss for optimal performance
@@ -862,25 +892,25 @@ async function processCssFiles(
           '-i', tempCssPath,
           '-o', tailwindCssOutputPath
         ];
-        
+
         if (minify) {
           args.push('--minify');
         }
-        
+
         const result = Bun.spawnSync(args, {
           cwd: projectPath,
           env: process.env,
           stdout: 'pipe',
           stderr: 'pipe'
         });
-        
+
         // Clean up temporary file
         try {
           Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
         } catch (e) {
           // Ignore cleanup errors
         }
-        
+
         if (result.exitCode === 0) {
           logger.info('🎨 Tailwind CSS: processed successfully');
         } else {
@@ -901,7 +931,7 @@ async function processCssFiles(
     } catch (error) {
       logger.warn(`Failed to process Tailwind CSS: ${error}`);
       logger.info('Falling back to standard CSS processing');
-      
+
       // Fall back to standard CSS processing
       await processCssFilesStandard();
     }
@@ -909,43 +939,43 @@ async function processCssFiles(
     // Process CSS files without Tailwind
     await processCssFilesStandard();
   }
-  
+
   // Standard CSS processing
   async function processCssFilesStandard() {
     if (cssFiles.length === 0) {
       logger.info('No CSS files found');
-      
+
       // Create a minimal styles.css file with modern CSS resets
       const minimalCSS = `
         /* Modern CSS Reset */
         *, *::before, *::after {
           box-sizing: border-box;
         }
-        
+
         body, h1, h2, h3, h4, p, figure, blockquote, dl, dd {
           margin: 0;
         }
-        
+
         html:focus-within {
           scroll-behavior: smooth;
         }
-        
+
         body {
           min-height: 100vh;
           text-rendering: optimizeSpeed;
           line-height: 1.5;
           font-family: system-ui, sans-serif;
         }
-        
+
         img, picture {
           max-width: 100%;
           display: block;
         }
-        
+
         input, button, textarea, select {
           font: inherit;
         }
-        
+
         /* Basic styles for 0x1 app */
         #app {
           padding: 1rem;
@@ -953,25 +983,25 @@ async function processCssFiles(
           margin: 0 auto;
         }
       `;
-      
+
       const finalCSS = minify ? await minifyCss(minimalCSS) : minimalCSS;
       await Bun.write(join(outputPath, 'styles.css'), finalCSS);
       return;
     }
-    
+
     // Combine all CSS files
     let combinedCSS = '';
-    
+
     for (const cssFile of cssFiles) {
       const relativePath = relative(projectPath, cssFile);
       const cssContent = await Bun.file(cssFile).text();
-      
+
       combinedCSS += `\n/* From ${relativePath} */\n${cssContent}`;
     }
-    
+
     // Minify if needed
     const finalCSS = minify ? await minifyCss(combinedCSS) : combinedCSS;
-    
+
     // Write the combined CSS file
     await Bun.write(join(outputPath, 'styles.css'), finalCSS);
   }
@@ -986,35 +1016,58 @@ async function minifyCss(css: string): Promise<string> {
     // First attempt: Use Bun's temporary file approach for better performance
     const tempFile = join('/tmp', `temp-css-${Date.now()}.css`);
     await Bun.write(tempFile, css);
-    
+
     // Use Bun to process the CSS
     const minifyScript = `
       const fs = require('fs');
       const css = fs.readFileSync('${tempFile}', 'utf8');
-      // Effective CSS minification
-      const minified = css
-        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
-        .replace(/\n/g, '') // Remove newlines
-        .replace(/\s+/g, ' ') // Collapse whitespace
-        .replace(/\s*([{}:;,])\s*/g, '$1') // Remove spaces around symbols
-        .replace(/;}/, '}') // Remove trailing semicolons
+      
+      // Manual string-based CSS minification to avoid regex escaping issues
+      let minified = '';
+      let inComment = false;
+      
+      // Manual parsing to remove comments and whitespace
+      for (let i = 0; i < css.length; i++) {
+        // Handle comments
+        if (i < css.length - 1 && css[i] === '/' && css[i+1] === '*') {
+          inComment = true;
+          i++; // Skip the * character
+          continue;
+        }
+        if (inComment && i < css.length - 1 && css[i] === '*' && css[i+1] === '/') {
+          inComment = false;
+          i++; // Skip the / character
+          continue;
+        }
+        if (inComment) continue;
+        
+        // Skip newlines and excessive whitespace
+        if (css[i] === '\n') continue;
+        if (css[i] === ' ' && (minified.endsWith(' ') || minified.endsWith('{') || minified.endsWith(':') || minified.endsWith(';'))) continue;
+        
+        // Add current character
+        minified += css[i];
+      }
+      
+      // Final fixes
+      minified = minified.replace(/;}/g, '}');
         .trim();
       process.stdout.write(minified);
     `;
-    
+
     const result = await Bun.spawn(['bun', 'run', '-e', minifyScript]);
     const minified = await new Response(result.stdout).text();
-    
+
     // Clean up temp file
     await Bun.spawn(['rm', tempFile]);
-    
+
     if (minified && minified.length > 0) {
       return minified;
     }
   } catch (error) {
     logger.debug(`Error using Bun minification: ${error}. Falling back to basic minification.`);
   }
-  
+
   // Fallback: Basic CSS minification implementation if Bun approach fails
   return css
     .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
@@ -1026,12 +1079,10 @@ async function minifyCss(css: string): Promise<string> {
     .trim();
 }
 
-// This function has been removed as there's another more comprehensive implementation below
-
 /**
  * Helper function to find files with specific extensions
  */
-async function findFilesByExtension(dir: string, extensions: string[], ignorePatterns: string[] = ['node_modules', '.git', 'dist']): Promise<string[]> {
+async function _findFilesByExtension(dir: string, extensions: string[], ignorePatterns: string[] = ['node_modules', '.git', 'dist']): Promise<string[]> {
   // Directly use the comprehensive findFiles function below
   return findFiles(dir, extensions, ignorePatterns);
 }
@@ -1046,7 +1097,7 @@ async function copyDir(source: string, destination: string): Promise<void> {
   try {
     // Ensure destination exists
     await mkdir(destination, { recursive: true });
-    
+
     // Use cp -r for high-performance directory copying
     // This is faster than manually walking directories and copying files
     const result = Bun.spawnSync(['cp', '-r', `${source}/.`, destination], {
@@ -1056,7 +1107,7 @@ async function copyDir(source: string, destination: string): Promise<void> {
       stdout: 'ignore',
       stderr: 'pipe'
     });
-    
+
     if (result.exitCode !== 0) {
       // Handle copy errors more gracefully
       const error = new TextDecoder().decode(result.stderr);
@@ -1066,12 +1117,12 @@ async function copyDir(source: string, destination: string): Promise<void> {
     // Fallback to manual copying if the command fails
     // Get all files and subdirectories in the source directory
     const entries = await readdir(source, { withFileTypes: true });
-    
+
     // Copy each entry
     for (const entry of entries) {
       const sourcePath = join(source, entry.name);
       const destPath = join(destination, entry.name);
-      
+
       if (entry.isDirectory()) {
         // Recursively copy subdirectory
         await copyDir(sourcePath, destPath);
@@ -1090,7 +1141,7 @@ async function copyDir(source: string, destination: string): Promise<void> {
 async function findFiles(dir: string, extensions: string | string[], ignorePatterns: string[] = ['node_modules', '.git', 'dist']): Promise<string[]> {
   const extensionsArray = Array.isArray(extensions) ? extensions : [extensions];
   const result: string[] = [];
-  
+
   // Helper function to check if a path should be ignored
   function shouldIgnore(path: string): boolean {
     return ignorePatterns.some(pattern => {
@@ -1105,20 +1156,20 @@ async function findFiles(dir: string, extensions: string | string[], ignorePatte
       return path.includes(pattern);
     });
   }
-  
+
   // Recursive function to search directories
   async function searchDir(currentDir: string) {
     const entries = await readdir(currentDir, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const path = join(currentDir, entry.name);
       const relativePath = relative(dir, path);
-      
+
       // Skip ignored paths
       if (shouldIgnore(relativePath) || shouldIgnore(entry.name)) {
         continue;
       }
-      
+
       if (entry.isDirectory()) {
         await searchDir(path);
       } else if (extensionsArray.some(ext => entry.name.endsWith(ext))) {
@@ -1126,7 +1177,7 @@ async function findFiles(dir: string, extensions: string | string[], ignorePatte
       }
     }
   }
-  
+
   await searchDir(dir);
   return result;
 }

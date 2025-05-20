@@ -4,6 +4,7 @@
  */
 
 import { createElement, Fragment } from '0x1';
+import './globals.css';
 
 export default function RootLayout({ children }: { children: any }) {
   return (
@@ -13,7 +14,6 @@ export default function RootLayout({ children }: { children: any }) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>0x1 Minimal App</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        <link rel="stylesheet" href="/styles/tailwind.css" />
       </head>
       <body className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white transition-colors duration-200">
         <header className="bg-white dark:bg-gray-800 shadow py-4">

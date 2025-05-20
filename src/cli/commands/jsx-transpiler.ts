@@ -54,23 +54,34 @@ ${processedSource}`;
 
 /**
  * Handle transpilation of a JSX file
+ * @param entryFile - Path to the source JSX/TSX file
+ * @param outputDir - Directory where the output should be placed
+ * @param minify - Whether to minify the code
+ * @param projectRoot - Root directory of the project (for relative paths)
+ * @returns Promise<boolean> - Success status
  */
-export async function handleJSXFile(
+export async function transpileJSX(
   entryFile: string,
-  outputFile: string,
-  projectPath: string,
-  minify = false
+  outputDir: string,
+  minify = false,
+  projectRoot?: string
 ): Promise<boolean> {
   try {
     // Read the source file
     logger.info(`Transpiling JSX: ${basename(entryFile)}`);
-    const source = await Bun.file(entryFile).text();
+    const sourceCode = await Bun.file(entryFile).text();
 
-    // Process imports
-    const processedSource = await processImports(source);
+    // Calculate output file path
+    const relativePath = basename(entryFile).replace(/\.(jsx|tsx)$/, '.js');
+    const outputFile = join(outputDir, relativePath);
+
+    // Get project path for correct working directory in Bun build
+    const projectPath = projectRoot || dirname(entryFile);
+
+    // Process imports using the utility function
+    const processedSource = await processImports(sourceCode);
 
     // Ensure output directory exists
-    const outputDir = dirname(outputFile);
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }

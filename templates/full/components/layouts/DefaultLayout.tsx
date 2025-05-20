@@ -1,8 +1,8 @@
 /**
  * Default layout component for 0x1 applications
  */
-import { createElement, Fragment, JSXNode } from '../../lib/jsx-runtime';
-import { useTheme } from '../../lib/theme';
+import { createElement, Fragment, JSXNode } from '../../../lib/jsx-runtime';
+import { useTheme } from '../../../lib/theme';
 
 export interface DefaultLayoutProps {
   title: string;
@@ -13,9 +13,9 @@ export interface DefaultLayoutProps {
 
 export function DefaultLayout({ title, description, children, content }: DefaultLayoutProps) {
   const { theme } = useTheme();
-  
+
   const mainContent = children || content;
-  
+
   return (
     <Fragment>
       <head>
