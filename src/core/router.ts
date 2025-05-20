@@ -111,6 +111,33 @@ export class Router {
   }
 
   /**
+   * Replace current history state with new path (Next.js compatibility)
+   */
+  replaceState(path: string): void {
+    if (this.mode === "hash") {
+      // In hash mode, we can't replace state without triggering a navigation event
+      // But we can use the history API directly
+      const newUrl = window.location.href.replace(/#.*$/, '') + `#${path}`;
+      history.replaceState(null, "", newUrl);
+      this.handleRouteChange();
+    } else {
+      // In history mode, we can use the history API directly
+      history.replaceState(null, "", path);
+      this.handleRouteChange();
+    }
+  }
+
+  /**
+   * Prefetch a route (Next.js compatibility)
+   * This is a stub implementation for API compatibility
+   */
+  preload(path: string): void {
+    // In future versions, we can implement actual prefetching
+    // For now, this is just a placeholder for API compatibility
+    console.debug(`[0x1] Would prefetch path: ${path}`);
+  }
+
+  /**
    * Initialize the router
    */
   init(): void {
@@ -155,6 +182,9 @@ export class Router {
       // Handle initial route
       this.handleRouteChange();
     }
+
+    // Expose the router instance globally for the Link component
+    (window as any).__0x1_ROUTER__ = this;
   }
 
   /**

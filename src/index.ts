@@ -15,6 +15,9 @@ export {
   textElement,
   updateComponent
 } from './core/component.js';
+
+// Export Next.js-compatible Link component
+export { default as Link } from './components/link.js';
 export type { Component, ComponentProps } from './core/component.js';
 
 // Export JSX runtime for TSX support
@@ -33,7 +36,7 @@ export type {
 
 // Export router and navigation
 export {
-  Link,
+  Link as BasicLink, // Rename to avoid conflict with Next.js-compatible Link
   NavLink,
   Redirect, Router, type Page,
   type RouteParams

@@ -84,6 +84,7 @@
 - **Nested layouts**: Support for shared UI across routes
 - **Special files**: Support for `page.tsx`, `layout.tsx`, `loading.tsx`, and `error.tsx`
 - **Type-safe data fetching**: Server components with built-in fetch utilities
+- **Next.js-compatible Link component**: Drop-in replacement for Next.js `Link`
 
 ### 🔨️ Developer Experience
 - **Bun-first architecture**: Fully optimized for Bun's capabilities with zero compromises
@@ -352,7 +353,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.95**
+Current version: **0.0.96**
 
 This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
@@ -436,6 +437,84 @@ Expected out-of-the-box performance
 | Time to Interactive | 0.3s  | 1.1s  | 0.7s | 0.6s   | 1.5s+   |
 | Memory Usage        | Low   | High  | Med  | Low    | High    |
 | Lighthouse Score    | 100   | 75-85 | 85-95| 90-95  | 70-85   |
+
+## 🔗 Next.js-Compatible Link Component
+
+0x1 provides a fully Next.js-compatible `Link` component for client-side navigation, making migration from Next.js seamless. You can use the component in two ways:
+
+### Import Options
+
+1. **Simple import from the main package (recommended for new projects):**
+
+```tsx
+import { Link } from '0x1';
+
+function Navigation() {
+  return (
+    <nav>
+      <Link href="/">Home</Link>
+      <Link href="/about">About</Link>
+      <Link href="/contact">Contact</Link>
+    </nav>
+  );
+}
+```
+
+2. **Direct replacement for Next.js imports (perfect for migration):**
+
+```tsx
+import Link from '0x1/link';
+
+// Just change 'next/link' to '0x1/link' and everything works!
+function Navigation() {
+  return (
+    <nav>
+      <Link href="/">Home</Link>
+      <Link href="/contact">Contact</Link>
+    </nav>
+  );
+}
+```
+
+### Supported Features
+
+The Link component supports all core Next.js Link features:
+
+```tsx
+// Basic usage
+<Link href="/about">About</Link>
+
+// With query parameters
+<Link
+  href={{
+    pathname: '/products',
+    query: { category: 'electronics' }
+  }}
+>
+  Electronics
+</Link>
+
+// Replace instead of push to history
+<Link href="/dashboard" replace>Dashboard</Link>
+
+// Disable scrolling to top
+<Link href="/contact" scroll={false}>Contact</Link>
+
+// Disable prefetching (placeholder for API compatibility)
+<Link href="/gallery" prefetch={false}>Gallery</Link>
+```
+
+### Migration from Next.js
+
+To migrate from Next.js to 0x1, simply find and replace all import statements:
+
+```bash
+# Find all Next.js Link imports
+find ./src -type f -name "*.tsx" -exec grep -l "next/link" {} \;
+
+# Replace in all files
+sed -i 's/next\/link/0x1\/link/g' **/*.tsx
+```
 
 ## 🧩 Component System
 

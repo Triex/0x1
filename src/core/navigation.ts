@@ -89,24 +89,45 @@ export class Router {
    * Add a route
    */
   addRoute(path: string, component: Page<any> | Component): void {
-    // Convert path pattern to regex (e.g., '/users/:id' -> /^\/users\/([^\/]+)$/)
+    // Convert path pattern to regex (e.g., '/users/:id' -> /^/users/([^/]+)$/)
     const paramNames: string[] = [];
     
-    const pattern = path
-      .replace(/:[a-zA-Z0-9_]+/g, (match) => {
-        const paramName = match.slice(1);
+    try {
+      // Start with proper escaping of all regex special characters
+      let pattern = path
+        .replace(/[\^\$\(\)\[\]\{\}\+\?\.]/g, "\\$&");
+      
+      // Escape path separators (slashes)
+      pattern = pattern.replace(/\//g, "\\/");
+      
+      // Now handle parameter placeholders - replace the escaped colon we added above
+      pattern = pattern.replace(/\\:([a-zA-Z0-9_]+)/g, (match, paramName) => {
         paramNames.push(paramName);
         return '([^/]+)';
-      })
-      .replace(/\/$/, '') // Remove trailing slash
-      .replace(/\/\*$/, '(/.*)?'); // Handle wildcard routes
-    
-    this.routes.push({
-      path,
-      pattern: new RegExp(`^${pattern}$`),
-      paramNames,
-      component,
-    });
+      });
+      
+      // Remove trailing slash if present (after escaping)
+      pattern = pattern.replace(/\\\/$/g, '');
+      
+      // Handle wildcard routes (after escaping)
+      pattern = pattern.replace(/\\\/\\\*$/g, '(\\/.*)?');
+      
+      this.routes.push({
+        path,
+        pattern: new RegExp(`^${pattern}$`),
+        paramNames,
+        component,
+      });
+    } catch (error) {
+      console.error(`Error creating route pattern for path '${path}':`, error);
+      // Create a fallback pattern that safely matches nothing
+      this.routes.push({
+        path,
+        pattern: new RegExp('^$'),
+        paramNames,
+        component,
+      });
+    }
   }
 
   /**
