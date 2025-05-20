@@ -961,25 +961,25 @@ export default {
                 ]);
                 
                 // Process source files for browser compatibility
-                // We need to completely separate the Router class and navigation components
-                // to avoid duplicate declarations
+                // We need a completely fresh approach to avoid any circular dependencies
+                // or duplicate declarations
                 
-                // First process the router source - completely remove interfaces and only keep the Router class
+                // First process the router module - we'll only keep the Router class implementation
                 let cleanRouterSource = routerSource
                   // Remove all imports
                   .replace(/import[^;]+;/g, '// Import removed')
-                  // Remove all type exports
+                  // Remove all interfaces and types
                   .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
-                  // Convert `export class Router` to just `class Router` since we'll export it explicitly later
+                  // Remove export keyword from Router class
                   .replace(/export\s+class\s+Router/, 'class Router');
                   
-                // Then process navigation components - remove imports and handle function exports
+                // Then process navigation components separately - we only want the function implementations
                 let cleanNavigationSource = navigationSource
                   // Remove all imports
                   .replace(/import[^;]+;/g, '// Import removed')
                   // Remove all interfaces and types
                   .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
-                  // Handle the function exports
+                  // Remove export keyword from function definitions
                   .replace(/export\s+function\s+Link/g, 'function Link')
                   .replace(/export\s+function\s+NavLink/g, 'function NavLink')
                   .replace(/export\s+function\s+Redirect/g, 'function Redirect');
@@ -1015,9 +1015,14 @@ export function createRouter(options = {}) {
   return new Router(mergedOptions);
 }
 
-// Export all components properly for consumption
+// Export components individually to avoid conflicts
 export { Router };
-export { Link, NavLink, Redirect };
+// Only export the navigation functions from this module
+// This avoids conflicts with imports from other modules
+const LinkExport = Link;
+const NavLinkExport = NavLink;
+const RedirectExport = Redirect;
+export { LinkExport as Link, NavLinkExport as NavLink, RedirectExport as Redirect };
 export default Router;
 `;
                 
