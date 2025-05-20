@@ -961,16 +961,24 @@ export default {
                 ]);
                 
                 // Process source files for browser compatibility
-                // Process source files - we need to remove TypeScript features and handle export declarations
+                // We need to completely separate the Router class and navigation components
+                // to avoid duplicate declarations
+                
+                // First process the router source
                 const cleanRouterSource = routerSource
                   .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
                   .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
                   // Convert `export class Router` to just `class Router` since we'll export it explicitly later
                   .replace(/export\s+class\s+Router/, 'class Router');
                   
+                // Then process navigation components separately, removing any Router imports/references
                 const cleanNavigationSource = navigationSource
                   .replace(/import\s+type\s+[^;]+;/g, '// Type import removed')
                   .replace(/export\s+type\s+[^{]+\{[^}]+\};/g, '// Type export removed')
+                  // Remove Router import from navigation.ts
+                  .replace(/import\s+\{\s*Router\s*\}\s+from\s+[\'\"]+.*[\'\"];?/g, '// Router import removed')
+                  // Remove Router re-export from navigation.ts
+                  .replace(/export\s+\{\s*Router\s*\};?/g, '// Router re-export removed')
                   // Convert export declarations to just class/function declarations
                   .replace(/export\s+class\s+Link/, 'class Link')
                   .replace(/export\s+class\s+NavLink/, 'class NavLink')
