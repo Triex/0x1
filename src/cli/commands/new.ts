@@ -897,13 +897,8 @@ async function copyTemplateFiles(
       await mkdir(destPath, { recursive: true });
     }
     
-    // Create app directory if using app directory structure
-    if (projectStructure === 'app') {
-      const appDir = join(destPath, 'app');
-      if (!existsSync(appDir)) {
-        await mkdir(appDir, { recursive: true });
-      }
-    }
+    // We no longer need to create an app directory here as the template already has the correct structure
+    // The templates now have proper app directory structure by default
     
     // Use Bun's spawn to use native cp command for reliable directory copying
     logger.debug(`Using native system command for directory copying`);
@@ -985,7 +980,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.79' // Use current version with caret for compatibility
+      "0x1": '^0.0.80' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

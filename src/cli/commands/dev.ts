@@ -244,8 +244,7 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
           serverCreated = true;
 
           // Stop server spinner and show success message
-          serverSpin.stop('success', `Server started at ${logger.highlight(serverUrl)}`);
-
+          serverSpin.stop('success', `Server started at ${logger.highlight(serverUrl.replace(/\s+/g, ''))}`);
           // If port changed due to conflict, show a helpful message
           if (actualPort !== port) {
             logger.info(`Port ${port} was already in use, using port ${actualPort} instead`);
@@ -1193,8 +1192,21 @@ export default {
               }
             });
           } catch (error) {
-            logger.error(`Error transpiling ${tsFilePath}: ${error}`);
-            return new Response(`// Error transpiling ${path}\nconsole.error('${error}');`, {
+            const err = error as Error;
+            logger.error(`❌ Error transpiling ${tsFilePath}: ${err.message || 'Unknown error'}`);
+            
+            // Log detailed error information with proper typing
+            if (err.stack) logger.debug(`Stack trace: ${err.stack}`);
+            if ('cause' in err) logger.debug(`Caused by: ${(err as any).cause}`);
+            if ('errors' in err) logger.debug(`Errors: ${JSON.stringify((err as any).errors, null, 2)}`);
+            
+            // When in debug mode, show full error details
+            if (options.debug) {
+              console.error('Full error object:', err);
+            }
+            // Already handled detailed error information above
+            
+            return new Response(`// Error transpiling ${path}\nconsole.error('Transpilation error: ${error}');\n// Check terminal for detailed error output`, {
               headers: {
                 'Content-Type': 'application/javascript',
                 'Cache-Control': 'no-cache'

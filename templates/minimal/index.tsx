@@ -12,8 +12,8 @@ declare const NavLink: any;
 declare const Redirect: any;
 
 // Import components
-import { Counter } from './components/Counter.js';
-import { Header } from './components/Header.js'; // Note: .js extension for browser compatibility
+import { Counter } from './app/components/Counter.js';
+import { Header } from './app/components/Header.js'; // Note: .js extension for browser compatibility
 
 // DOM ready function
 function ready(callback: () => void): void {
