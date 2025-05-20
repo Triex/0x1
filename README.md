@@ -144,7 +144,9 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 
 0x1 is licensed under the [TDL v1 License](https://github.com/Triex/0x1/blob/main/LICENSE).
 
-
+---
+---
+---
 
 ## 💡 Philosophy
 
@@ -218,7 +220,7 @@ bun 0x1 new my-app --complexity=minimal|standard|full
 ### Create a New Project
 
 ```bash
-# Using Bun directly 
+# Using Bun directly
 bun create 0x1 my-app
 
 # Or install globally (recommended)
@@ -239,9 +241,14 @@ bun install -g 0x1
 ```bash
 cd my-app
 0x1 dev
+
+# Start with a specific port
+0x1 dev --port=8080
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view your app in action!
+
+> **Port Management:** If the specified port (default: 3000) is already in use, the dev server will automatically try the next available port and notify you. This ensures seamless development without manual port configuration.
 
 ### Project Structure
 
@@ -285,7 +292,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.72**
+Current version: **0.0.74**
 
 This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
@@ -711,10 +718,6 @@ export default {
 - **Zero dependencies**: No supply chain vulnerabilities
 - **Exceptionally small**: Tiny bundle size
 - **Browser-native**: Uses what browsers are good at
-
-## 📝 License
-
-0x1 is licensed under the TriexDev License v1 (TDL v1) - see the [LICENSE](LICENSE) file for details.
 
 ## 📦 Contributing
 
