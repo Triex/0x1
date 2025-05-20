@@ -773,11 +773,8 @@ export function useState(initialValue) {
   return [state, setState];
 }
 
-// Router exports - making them available via the 0x1 package
-export const Router = window.Router;
-export const Link = window.Link;
-export const NavLink = window.NavLink;
-export const Redirect = window.Redirect;
+// REMOVED: Direct Router exports which were causing naming conflicts
+// These exports should come only from the router module, not from here
 
 // Export version
 export const version = '0.1.0';
@@ -787,10 +784,7 @@ export default {
   createElement,
   Fragment,
   useState,
-  Router,
-  Link,
-  NavLink,
-  Redirect,
+  // Router-related exports removed to avoid naming conflicts
   version
 };
 `;
