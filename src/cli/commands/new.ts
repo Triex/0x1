@@ -492,6 +492,18 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
     initial: 1
   });
 
+  // Ask about Tailwind CSS
+  const tailwindResponse = await promptWithCancel({
+    type: "select",
+    name: "tailwind",
+    message: "Would you like to include Tailwind CSS?",
+    choices: [
+      { title: "Yes", value: true, description: "Add Tailwind CSS for styling" },
+      { title: "No", value: false, description: "Skip Tailwind CSS" }
+    ],
+    initial: 1 // Default to No
+  });
+
   // Ask about license type
   const licenseResponse = await promptWithCancel({
     type: "select",
@@ -701,23 +713,13 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
     }
   }
 
-  // State management is included by default in full template or can be specified
-  const useStateManagement = defaultOptions.stateManagement ?? 
-                             (templateResponse.template === 'full');
-
-  // Tailwind is enabled by default now
-  const useTailwind = defaultOptions.tailwind ?? true;
-  
-  // Use the directly selected template type - no need to map it anymore since our
-  // template selection prompt directly matches our supported template types
-  const selectedTemplate = templateResponse.template as 'standard' | 'minimal' | 'full';
+  // No need for intermediary variables - use prompt responses directly
   
   // Return the complete options object with properly typed template
   return {
-    // Project fundamentals
-    template: selectedTemplate,
-    tailwind: useTailwind,
-    stateManagement: useStateManagement,
+    template: templateResponse.template,
+    stateManagement: stateResponse.stateManagement,
+    tailwind: tailwindResponse.tailwind, // Use the response from the Tailwind prompt
     licenseType: defaultOptions.licenseType || 'mit', // Default to MIT if undefined
     
     // UI and styling
@@ -981,7 +983,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.83' // Use current version with caret for compatibility
+      "0x1": '^0.0.84' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

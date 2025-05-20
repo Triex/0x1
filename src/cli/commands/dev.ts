@@ -4,19 +4,19 @@
  * Automatically detects and processes Tailwind CSS in parallel
  */
 
-import { serve, spawn, type Server, type Subprocess } from 'bun';
-import { Dirent, existsSync, mkdirSync, readdirSync } from 'fs';
-import { watch } from 'fs/promises';
-import { fileURLToPath } from 'url';
-import os from 'os';
-import { dirname, join, resolve } from 'path';
-import { logger } from '../utils/logger.js';
-import { build } from './build.js';
+import { serve, spawn, type Server, type Subprocess } from "bun";
+import { Dirent, existsSync, mkdirSync, readdirSync } from "fs";
+import { watch } from "fs/promises";
+import { fileURLToPath } from "url";
+import os from "os";
+import { dirname, join, resolve } from "path";
+import { logger } from "../utils/logger.js";
+import { build } from "./build.js";
 
 // Get the path to the framework files
 const currentFilePath = fileURLToPath(import.meta.url);
 const cliDir = dirname(currentFilePath);
-const frameworkPath = resolve(cliDir, '../../..');
+const frameworkPath = resolve(cliDir, "../../..");
 
 /**
  * Transform code content to handle 0x1 bare imports
@@ -37,7 +37,10 @@ function transformBareImports(content: string): string {
     /from\s+['"]0x1\/[\w-]+['"]|import\s+['"]0x1\/[\w-]+['"]|import\(['"]0x1\/[\w-]+['"]\)/g,
     (match, subpath1, subpath2, subpath3) => {
       const subpath = subpath1 || subpath2 || subpath3;
-      return match.replace(/['"](0x1)\/[\w-]+['"]/, `"/node_modules/0x1${subpath}.js"`);
+      return match.replace(
+        /['"](0x1)\/[\w-]+['"]/,
+        `"/node_modules/0x1${subpath}.js"`
+      );
     }
   );
 
@@ -50,9 +53,9 @@ function transformBareImports(content: string): string {
 async function openBrowser(url: string): Promise<void> {
   // Use Bun's native capabilities instead of external dependencies
   const openUrl = (url: string) => {
-    return Bun.spawn(['open', url], {
-      stdout: 'inherit',
-      stderr: 'inherit'
+    return Bun.spawn(["open", url], {
+      stdout: "inherit",
+      stderr: "inherit",
     });
   };
   await openUrl(url);
@@ -71,14 +74,14 @@ function getLocalIP(): string {
 
       for (const net of interfaces) {
         // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
-        if (net.family === 'IPv4' && !net.internal) {
+        if (net.family === "IPv4" && !net.internal) {
           return net.address;
         }
       }
     }
-    return 'localhost'; // Fallback
+    return "localhost"; // Fallback
   } catch (err) {
-    return 'localhost';
+    return "localhost";
   }
 }
 
@@ -104,30 +107,35 @@ export interface DevOptions {
 /**
  * Handle exit signals with robust process termination
  * */
-function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subprocess | null, devServer: Server, port: number) {
+function shutdownServer(
+  watcher: { close: () => void },
+  tailwindProcess: Subprocess | null,
+  devServer: Server,
+  port: number
+) {
   let isShuttingDown = false;
 
   async function cleanup() {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    logger.info('💠 Shutting down development server...');
+    logger.info("💠 Shutting down development server...");
 
     // First close file watcher to prevent new events
-    if (watcher && typeof watcher.close === 'function') {
+    if (watcher && typeof watcher.close === "function") {
       try {
         watcher.close();
-        logger.info('File watcher closed');
+        logger.info("File watcher closed");
       } catch (error) {
         logger.error(`Error closing file watcher: ${error}`);
       }
     }
 
     // Kill tailwind process if it exists
-    if (tailwindProcess && typeof tailwindProcess.kill === 'function') {
+    if (tailwindProcess && typeof tailwindProcess.kill === "function") {
       try {
         tailwindProcess.kill(9); // Use SIGKILL for immediate termination
-        logger.info('Tailwind process terminated');
+        logger.info("Tailwind process terminated");
       } catch (error) {
         logger.error(`Error killing Tailwind process: ${error}`);
       }
@@ -137,7 +145,7 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
     if (devServer) {
       try {
         devServer.stop(); // Stop the server
-        logger.info('Server stopped');
+        logger.info("Server stopped");
       } catch (error) {
         logger.error(`Error stopping server: ${error}`);
       }
@@ -146,17 +154,21 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
     // Force kill any process using our port
     try {
       // Make sure we have a valid port number before trying to kill processes
-      if (port && typeof port === 'number' && port > 0) {
-        const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
+      if (port && typeof port === "number" && port > 0) {
+        const killPort = Bun.spawn([
+          "sh",
+          "-c",
+          `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`,
+        ]);
         await killPort.exited;
       } else {
-        logger.debug('No valid port specified for cleanup');
+        logger.debug("No valid port specified for cleanup");
       }
     } catch (e) {
       // Ignore errors
     }
 
-    logger.success('Server shutdown complete');
+    logger.success("Server shutdown complete");
 
     // Force exit after a short timeout to ensure cleanup is complete
     setTimeout(() => process.exit(0), 100);
@@ -170,9 +182,9 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
  */
 export async function startDevServer(options: DevOptions = {}): Promise<void> {
   // Load configuration
-  const configPath = options.config ?
-    resolve(process.cwd(), options.config) :
-    findConfigFile();
+  const configPath = options.config
+    ? resolve(process.cwd(), options.config)
+    : findConfigFile();
 
   const config = configPath ? await loadConfig(configPath) : {};
 
@@ -206,23 +218,24 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
     port++;
   }
 
-  const host = options.host || config.server?.host || 'localhost';
+  const host = options.host || config.server?.host || "localhost";
   const _open = options.open ?? false;
-  const ignorePatterns = options.ignore || config?.build?.ignore || ['node_modules', '.git', 'dist'];
+  const ignorePatterns = options.ignore ||
+    config?.build?.ignore || ["node_modules", ".git", "dist"];
 
   // We'll track the actual port used in case the requested port is unavailable
   let actualPort = port;
 
-  logger.section('DEVELOPMENT SERVER');
+  logger.section("DEVELOPMENT SERVER");
   logger.spacer();
 
   // Run initial build to make sure everything is ready
-  const initialBuild = logger.spinner('Running initial build', 'build');
+  const initialBuild = logger.spinner("Running initial build", "build");
   try {
     await build({ watch: false, silent: true, ignore: ignorePatterns });
-    initialBuild.stop('success', 'Initial build: completed successfully');
+    initialBuild.stop("success", "Initial build: completed successfully");
   } catch (error) {
-    initialBuild.stop('error', 'Initial build failed');
+    initialBuild.stop("error", "Initial build failed");
     logger.error(`Build error: ${error}`);
     return;
   }
@@ -230,24 +243,29 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
   // Check for Tailwind CSS configuration and start processing if needed
   let _tailwindProcess: Subprocess | null = null;
   if (!options.skipTailwind) {
-    const tailwindConfigPath = resolve(process.cwd(), 'tailwind.config.js');
+    const tailwindConfigPath = resolve(process.cwd(), "tailwind.config.js");
     if (existsSync(tailwindConfigPath)) {
-      const tailwindSpin = logger.spinner('Starting Tailwind CSS watcher', 'css');
+      const tailwindSpin = logger.spinner(
+        "Starting Tailwind CSS watcher",
+        "css"
+      );
       _tailwindProcess = await startTailwindProcessing();
-      tailwindSpin.stop('success', 'Tailwind CSS: watching for changes');
+      tailwindSpin.stop("success", "Tailwind CSS: watching for changes");
     } else {
-      logger.info('Tailwind CSS configuration not found, skipping CSS processing');
+      logger.info(
+        "Tailwind CSS configuration not found, skipping CSS processing"
+      );
     }
   }
 
   // Start the development server with beautiful styling
   // Use a single spinner for better UX
-  const serverSpin = logger.spinner('Starting 0x1 development server');
+  const serverSpin = logger.spinner("Starting 0x1 development server");
 
   try {
     try {
       // Define protocol for server URL
-      const protocol = options.https ? 'https' : 'http';
+      const protocol = options.https ? "https" : "http";
 
       // Try to create the server with automatic port increment
       const maxRetries = 10;
@@ -277,10 +295,15 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
           serverCreated = true;
 
           // Stop server spinner and show success message
-          serverSpin.stop('success', `Server started at ${logger.highlight(serverUrl.replace(/\s+/g, ''))}`);
+          serverSpin.stop(
+            "success",
+            `Server started at ${logger.highlight(serverUrl.replace(/\s+/g, ""))}`
+          );
           // If port changed due to conflict, show a helpful message
           if (actualPort !== port) {
-            logger.info(`Port ${port} was already in use, using port ${actualPort} instead`);
+            logger.info(
+              `Port ${port} was already in use, using port ${actualPort} instead`
+            );
           }
 
           // Break out of the retry loop since we succeeded
@@ -288,8 +311,14 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
         } catch (err: unknown) {
           error = err;
           // Check if the error is due to the port being in use (type guard for error)
-          if (err instanceof Error && err.message && err.message.includes('already in use')) {
-            logger.debug(`Port ${actualPort} is already in use, trying port ${actualPort + 1}`);
+          if (
+            err instanceof Error &&
+            err.message &&
+            err.message.includes("already in use")
+          ) {
+            logger.debug(
+              `Port ${actualPort} is already in use, trying port ${actualPort + 1}`
+            );
             actualPort++;
           } else {
             // This is not a port conflict error, so exit the retry loop
@@ -300,11 +329,15 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
 
       // If we couldn't create a server after all retries, throw the error
       if (!serverCreated) {
-        throw error || new Error('Failed to start server after multiple retries');
+        throw (
+          error || new Error("Failed to start server after multiple retries")
+        );
       }
 
       // Add file watcher info
-      logger.info(`Watching for file changes in ${logger.highlight(process.cwd())}`);
+      logger.info(
+        `Watching for file changes in ${logger.highlight(process.cwd())}`
+      );
 
       // Create server URL for browser opening and display
       const finalServerUrl = `${protocol}://${host}:${actualPort}`;
@@ -315,7 +348,9 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       } else {
         await openBrowser(finalServerUrl).catch((err) => {
           logger.warn(`Failed to open browser: ${err.message}`);
-          logger.info(`Open ${logger.highlight(finalServerUrl)} in your browser`);
+          logger.info(
+            `Open ${logger.highlight(finalServerUrl)} in your browser`
+          );
         });
       }
       // Show a beautiful interface info box
@@ -324,45 +359,45 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
         `🚀 0x1 Dev Server Running
 
 ` +
-        `Local:            ${logger.highlight(finalServerUrl)}
+          `Local:            ${logger.highlight(finalServerUrl)}
 ` +
-        `Network:          ${logger.highlight(`${protocol}://${getLocalIP()}:${actualPort}`)}
+          `Network:          ${logger.highlight(`${protocol}://${getLocalIP()}:${actualPort}`)}
 
 ` +
-        `Powered by Bun   v${Bun.version}`
+          `Powered by Bun   v${Bun.version}`
       );
 
-
       // Register the shutdown handler for various signals
-      process.on('SIGINT', shutdownServer);
-      process.on('SIGTERM', shutdownServer);
-      process.on('SIGHUP', shutdownServer);
+      process.on("SIGINT", shutdownServer);
+      process.on("SIGTERM", shutdownServer);
+      process.on("SIGHUP", shutdownServer);
 
-      logger.info('Ready for development. Press Ctrl+C to stop.');
-
+      // Display a success message on server start
+      logger.info("Ready for development. Press Ctrl+C to stop.");
     } catch (error) {
-      serverSpin.stop('error', 'Failed to start development server');
+      serverSpin.stop("error", "Failed to start development server");
       logger.error(`Failed to start development server: ${error}`);
 
       // Check if the port is already in use
-      if ((error as Error).message?.includes('EADDRINUSE')) {
-        logger.info(`Port ${port} is already in use. Try using a different port with --port option.`);
+      if ((error as Error).message?.includes("EADDRINUSE")) {
+        logger.info(
+          `Port ${port} is already in use. Try using a different port with --port option.`
+        );
       }
 
       process.exit(1);
     }
 
     // These handlers are now registered inside the try block
-
-    logger.info('Ready for development. Press Ctrl+C to stop.');
-
   } catch (error) {
-    serverSpin.stop('error', 'Failed to start development server');
+    serverSpin.stop("error", "Failed to start development server");
     logger.error(`${error}`);
 
     // Check if the port is already in use
-    if ((error as Error).message?.includes('EADDRINUSE')) {
-      logger.info(`Port ${port} is already in use. Try using a different port with --port option.`);
+    if ((error as Error).message?.includes("EADDRINUSE")) {
+      logger.info(
+        `Port ${port} is already in use. Try using a different port with --port option.`
+      );
     }
 
     process.exit(1);
@@ -372,12 +407,21 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
 /**
  * Create the development server
  */
-async function createDevServer(options: { port: number; host: string; ignorePatterns?: string[]; debug?: boolean }): Promise<{ server: Server; watcher: { close: () => void } }> {
-  const { port, host, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
+async function createDevServer(options: {
+  port: number;
+  host: string;
+  ignorePatterns?: string[];
+  debug?: boolean;
+}): Promise<{ server: Server; watcher: { close: () => void } }> {
+  const {
+    port,
+    host,
+    ignorePatterns = ["node_modules", ".git", "dist"],
+  } = options;
 
   // Determine source and public directories based on project structure
   const projectPath = process.cwd();
-  const customStructureFile = resolve(projectPath, 'structure.js');
+  const customStructureFile = resolve(projectPath, "structure.js");
   const hasCustomStructure = existsSync(customStructureFile);
 
   let srcDir: string;
@@ -387,73 +431,84 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
   let isAppDirStructure = false;
 
   // Check for app directory (modern app router structure)
-  const appDirectory = resolve(projectPath, 'app');
+  const appDirectory = resolve(projectPath, "app");
   // Also check if app is in src directory
-  const srcAppDirectory = resolve(projectPath, 'src/app');
+  const srcAppDirectory = resolve(projectPath, "src/app");
 
   if (existsSync(appDirectory)) {
     // App directory in project root
     isAppDirStructure = true;
     appDir = appDirectory;
     srcDir = projectPath;
-    publicDir = resolve(projectPath, 'public');
-    distDir = resolve(projectPath, 'dist');
-    logger.info('Detected app router structure at project root');
+    publicDir = resolve(projectPath, "public");
+    distDir = resolve(projectPath, "dist");
+    logger.info("Detected app router structure at project root");
   } else if (existsSync(srcAppDirectory)) {
     // App directory in src folder
     isAppDirStructure = true;
     appDir = srcAppDirectory;
-    srcDir = resolve(projectPath, 'src');
-    publicDir = resolve(projectPath, 'public');
-    distDir = resolve(projectPath, 'dist');
-    logger.info('Detected app router structure in src folder');
+    srcDir = resolve(projectPath, "src");
+    publicDir = resolve(projectPath, "public");
+    distDir = resolve(projectPath, "dist");
+    logger.info("Detected app router structure in src folder");
   } else if (hasCustomStructure) {
     try {
       // Load custom structure configuration
       const structureConfigModule = await import(customStructureFile);
-      const structureConfig = structureConfigModule.default || structureConfigModule;
+      const structureConfig =
+        structureConfigModule.default || structureConfigModule;
       if (structureConfig.sourceDirs) {
         // Use the root directory as source
         srcDir = projectPath;
         // Use custom paths if specified
-        publicDir = resolve(projectPath, structureConfig.sourceDirs.public || 'public');
-        distDir = resolve(projectPath, structureConfig.buildPaths?.output || 'dist');
+        publicDir = resolve(
+          projectPath,
+          structureConfig.sourceDirs.public || "public"
+        );
+        distDir = resolve(
+          projectPath,
+          structureConfig.buildPaths?.output || "dist"
+        );
 
         // Check for app directory in custom structure
         if (structureConfig.sourceDirs.app) {
           appDir = resolve(projectPath, structureConfig.sourceDirs.app);
           isAppDirStructure = existsSync(appDir);
           if (isAppDirStructure) {
-            logger.info('Using custom app directory structure from configuration');
+            logger.info(
+              "Using custom app directory structure from configuration"
+            );
           }
         }
 
-        logger.info('Using custom project structure for development server');
+        logger.info("Using custom project structure for development server");
       } else {
         // Fall back to standard directories
-        srcDir = resolve(projectPath, 'src');
-        publicDir = resolve(projectPath, 'public');
-        distDir = resolve(projectPath, 'dist');
+        srcDir = resolve(projectPath, "src");
+        publicDir = resolve(projectPath, "public");
+        distDir = resolve(projectPath, "dist");
       }
     } catch (error) {
-      logger.warn(`Failed to load custom structure from ${customStructureFile}. Using default directories.`);
-      srcDir = resolve(projectPath, 'src');
-      publicDir = resolve(projectPath, 'public');
-      distDir = resolve(projectPath, 'dist');
+      logger.warn(
+        `Failed to load custom structure from ${customStructureFile}. Using default directories.`
+      );
+      srcDir = resolve(projectPath, "src");
+      publicDir = resolve(projectPath, "public");
+      distDir = resolve(projectPath, "dist");
     }
   } else {
     // Check if src directory exists, if not use project root
-    const standardSrcDir = resolve(projectPath, 'src');
+    const standardSrcDir = resolve(projectPath, "src");
 
     if (existsSync(standardSrcDir)) {
       srcDir = standardSrcDir;
-      publicDir = resolve(projectPath, 'public');
-      distDir = resolve(projectPath, 'dist');
+      publicDir = resolve(projectPath, "public");
+      distDir = resolve(projectPath, "dist");
     } else {
       // Use project root if no src directory
       srcDir = projectPath;
-      publicDir = resolve(projectPath, 'public');
-      distDir = resolve(projectPath, 'dist');
+      publicDir = resolve(projectPath, "public");
+      distDir = resolve(projectPath, "dist");
     }
   }
 
@@ -467,28 +522,28 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
     }
   }
 
-  let liveReloadScript = '';
+  let liveReloadScript = "";
 
   try {
     // Try multiple possible paths for the live-reload script
-    const currentDir = import.meta.dirname || '';
+    const currentDir = import.meta.dirname || "";
     const possiblePaths = [
       // Direct paths from current project
-      resolve(projectPath, 'node_modules', '0x1', 'live-reload.js'),
-      resolve(projectPath, 'node_modules', '0x1', 'dist', 'live-reload.js'),
+      resolve(projectPath, "node_modules", "0x1", "live-reload.js"),
+      resolve(projectPath, "node_modules", "0x1", "dist", "live-reload.js"),
       // Global paths that might be available
-      resolve(__dirname, '..', '..', '..', 'live-reload.js'),
-      resolve(__dirname, '..', '..', 'live-reload.js'),
+      resolve(__dirname, "..", "..", "..", "live-reload.js"),
+      resolve(__dirname, "..", "..", "live-reload.js"),
       // Original paths
-      join(currentDir, '../../browser/live-reload.js'),
-      join(currentDir, '../browser/live-reload.js'),
-      join(currentDir, './live-reload.js'),
-      join(currentDir, '../../../browser/live-reload.js'),
-      join(process.cwd(), 'src/browser/live-reload.js'),
-      join(currentDir, '../../../../browser/live-reload.js')
+      join(currentDir, "../../browser/live-reload.js"),
+      join(currentDir, "../browser/live-reload.js"),
+      join(currentDir, "./live-reload.js"),
+      join(currentDir, "../../../browser/live-reload.js"),
+      join(process.cwd(), "src/browser/live-reload.js"),
+      join(currentDir, "../../../../browser/live-reload.js"),
     ];
 
-    logger.debug(`Looking for live-reload.js in:\n${possiblePaths.join('\n')}`);
+    logger.debug(`Looking for live-reload.js in:\n${possiblePaths.join("\n")}`);
 
     // Try each path until we find the script
     let scriptFound = false;
@@ -508,7 +563,9 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
 
     if (!scriptFound) {
       // If script not found, create a basic version inline
-      logger.warn('Live reload script not found in expected paths, using fallback');
+      logger.warn(
+        "Live reload script not found in expected paths, using fallback"
+      );
       liveReloadScript = `
 // Basic live reload script for 0x1 framework
 (function() {
@@ -524,8 +581,10 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
       `;
     }
   } catch (error) {
-    logger.warn('Failed to load live reload script, hot reloading will be disabled');
-    liveReloadScript = '// Live reload not available';
+    logger.warn(
+      "Failed to load live reload script, hot reloading will be disabled"
+    );
+    liveReloadScript = "// Live reload not available";
   }
 
   // Create connected clients set for live reload
@@ -544,42 +603,46 @@ async function createDevServer(options: { port: number; host: string; ignorePatt
         port: currentPort,
         hostname: host,
         async fetch(req) {
-      const url = new URL(req.url);
-      const path = url.pathname;
+          const url = new URL(req.url);
+          const path = url.pathname;
 
-      // Handle SSE connection for live reload
-      if (path === '/__0x1_live_reload' || path === '/events' || req.url === '/events') {
-        // Add client to connected clients
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
+          // Handle SSE connection for live reload
+          if (
+            path === "/__0x1_live_reload" ||
+            path === "/events" ||
+            req.url === "/events"
+          ) {
+            // Add client to connected clients
+            const { readable, writable } = new TransformStream();
+            const writer = writable.getWriter();
 
-        // Store the client
-        connectedClients.add(writer);
+            // Store the client
+            connectedClients.add(writer);
 
-        // Set up auto-cleanup when response is closed
-        return new Response(readable, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
+            // Set up auto-cleanup when response is closed
+            return new Response(readable, {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              },
+            });
           }
-        });
-      }
 
-      // Handle live reload script
-      if (path === '/__0x1_live_reload.js') {
-        return new Response(liveReloadScript, {
-          headers: {
-            'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache',
-          },
-        });
-      }
+          // Handle live reload script
+          if (path === "/__0x1_live_reload.js") {
+            return new Response(liveReloadScript, {
+              headers: {
+                "Content-Type": "application/javascript",
+                "Cache-Control": "no-cache",
+              },
+            });
+          }
 
-      // Handle 0x1 bare module imports (e.g., import { createElement } from '0x1')
-      if (path === '/node_modules/0x1/index.js') {
-        // Create a browser-compatible version with required exports
-        const moduleContent = `
+          // Handle 0x1 bare module imports (e.g., import { createElement } from '0x1')
+          if (path === "/node_modules/0x1/index.js") {
+            // Create a browser-compatible version with required exports
+            const moduleContent = `
 // 0x1 Framework - Browser Compatible Version
 
 // JSX Runtime for createElement and Fragment
@@ -698,42 +761,53 @@ export default {
 };
 `;
 
-        options.debug && logger.debug(`Serving browser-compatible 0x1 framework module`);
-        return new Response(moduleContent, {
-          headers: {
-            'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache',
-          },
-        });
-      }
+            options.debug &&
+              logger.debug(`Serving browser-compatible 0x1 framework module`);
+            return new Response(moduleContent, {
+              headers: {
+                "Content-Type": "application/javascript",
+                "Cache-Control": "no-cache",
+              },
+            });
+          }
 
-      // Handle 0x1 submodule imports (e.g., import { Router } from '0x1/router')
-      if (path.startsWith('/node_modules/0x1/') &&
-          path !== '/node_modules/0x1/index.js') {
-        const submodulePath = path.replace('/node_modules/0x1/', '');
-        const submoduleName = submodulePath.replace(/\.js$/, '');
+          // Handle 0x1 submodule imports (e.g., import { Router } from '0x1/router')
+          if (
+            path.startsWith("/node_modules/0x1/") &&
+            path !== "/node_modules/0x1/index.js"
+          ) {
+            const submodulePath = path.replace("/node_modules/0x1/", "");
+            const submoduleName = submodulePath.replace(/\.js$/, "");
 
-        // Get 0x1 framework submodule path
-        const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-        const submoduleFile = resolve(frameworkRoot, '..', 'src', submoduleName + '.js');
+            // Get 0x1 framework submodule path
+            const frameworkRoot = dirname(
+              dirname(fileURLToPath(import.meta.url))
+            );
+            const submoduleFile = resolve(
+              frameworkRoot,
+              "..",
+              "src",
+              submoduleName + ".js"
+            );
 
-        if (existsSync(submoduleFile)) {
-          const moduleContent = await Bun.file(submoduleFile).text();
-          options.debug && logger.debug(`Serving 0x1 submodule from ${submoduleFile}`);
+            if (existsSync(submoduleFile)) {
+              const moduleContent = await Bun.file(submoduleFile).text();
+              options.debug &&
+                logger.debug(`Serving 0x1 submodule from ${submoduleFile}`);
 
-          return new Response(moduleContent, {
-            headers: {
-              'Content-Type': 'application/javascript',
-              'Cache-Control': 'no-cache',
-            },
-          });
-        }
-      }
+              return new Response(moduleContent, {
+                headers: {
+                  "Content-Type": "application/javascript",
+                  "Cache-Control": "no-cache",
+                },
+              });
+            }
+          }
 
-      // Handle framework core files
-      if (path === '/core/navigation.js') {
-        // Provide the router implementation
-        const moduleContent = `
+          // Handle framework core files
+          if (path === "/core/navigation.js") {
+            // Provide the router implementation
+            const moduleContent = `
           // 0x1 Router Module - Browser Compatible Version
           // Direct implementation for browser compatibility
           export class Router {
@@ -919,46 +993,50 @@ export default {
           }
         `;
 
-        return new Response(moduleContent, {
-          headers: {
-            'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache',
-          },
-        });
-      }
-
-      // Special handling for 0x1 framework imports (both as direct path and as import)
-      // This allows clean imports to work even though they're not natively supported in browsers
-      // We've moved to a direct script injection approach in index.html, but this handler remains
-      // for backward compatibility with existing projects that might still use import statements
-      if (path.startsWith('/0x1/') ||
-          path.includes('/node_modules/0x1/') ||
-          path === '/router.js' ||
-          path === '/router' ||
-          path.includes('/node_modules/0x1/dist/router.js')) {
-        // Extract the module path - handle different import patterns
-        let modulePath = '';
-
-        // Handle all possible import patterns for the router
-        if (path.startsWith('/0x1/')) {
-          modulePath = path.replace('/0x1/', '');
-        } else if (path.includes('/node_modules/0x1/')) {
-          // Extract 'router' from any path containing '/node_modules/0x1/'
-          if (path.includes('router')) {
-            modulePath = 'router';
-          } else {
-            modulePath = path.substring(path.lastIndexOf('/') + 1).replace('.js', '');
+            return new Response(moduleContent, {
+              headers: {
+                "Content-Type": "application/javascript",
+                "Cache-Control": "no-cache",
+              },
+            });
           }
-        } else if (path === '/router.js' || path === '/router') {
-          modulePath = 'router';
-        }
 
-        // Map the module to its actual implementation
-        let moduleContent = '';
+          // Special handling for 0x1 framework imports (both as direct path and as import)
+          // This allows clean imports to work even though they're not natively supported in browsers
+          // We've moved to a direct script injection approach in index.html, but this handler remains
+          // for backward compatibility with existing projects that might still use import statements
+          if (
+            path.startsWith("/0x1/") ||
+            path.includes("/node_modules/0x1/") ||
+            path === "/router.js" ||
+            path === "/router" ||
+            path.includes("/node_modules/0x1/dist/router.js")
+          ) {
+            // Extract the module path - handle different import patterns
+            let modulePath = "";
 
-        if (modulePath === 'router' || modulePath === 'router.js') {
-          // Provide the router module directly instead of reimporting
-          moduleContent = `
+            // Handle all possible import patterns for the router
+            if (path.startsWith("/0x1/")) {
+              modulePath = path.replace("/0x1/", "");
+            } else if (path.includes("/node_modules/0x1/")) {
+              // Extract 'router' from any path containing '/node_modules/0x1/'
+              if (path.includes("router")) {
+                modulePath = "router";
+              } else {
+                modulePath = path
+                  .substring(path.lastIndexOf("/") + 1)
+                  .replace(".js", "");
+              }
+            } else if (path === "/router.js" || path === "/router") {
+              modulePath = "router";
+            }
+
+            // Map the module to its actual implementation
+            let moduleContent = "";
+
+            if (modulePath === "router" || modulePath === "router.js") {
+              // Provide the router module directly instead of reimporting
+              moduleContent = `
             // 0x1 Router Module - Browser Compatible Version
             // Direct implementation for browser compatibility
             export class Router {
@@ -1148,47 +1226,61 @@ export default {
             // Default export for convenience
             export default Router;
           `;
-        } else if (path === '/node_modules/0x1/jsx-runtime.js' || path === '/node_modules/0x1/jsx-runtime/index.js') {
-          // Provide JSX runtime for bundling
-          moduleContent = await Bun.file(join(frameworkPath, 'dist/0x1/jsx-runtime.js')).text();
-        } else if (path === '/node_modules/0x1/jsx-dev-runtime.js' || path === '/node_modules/0x1/jsx-dev-runtime/index.js') {
-          // Provide JSX dev runtime for bundling
-          moduleContent = await Bun.file(join(frameworkPath, 'dist/0x1/jsx-dev-runtime.js')).text();
-        } else if (modulePath === '' || modulePath === 'index.js' || path === '/node_modules/0x1/index.js') {
-          // Provide the main 0x1 module
-          moduleContent = `
+            } else if (
+              path === "/node_modules/0x1/jsx-runtime.js" ||
+              path === "/node_modules/0x1/jsx-runtime/index.js"
+            ) {
+              // Provide JSX runtime for bundling
+              moduleContent = await Bun.file(
+                join(frameworkPath, "dist/0x1/jsx-runtime.js")
+              ).text();
+            } else if (
+              path === "/node_modules/0x1/jsx-dev-runtime.js" ||
+              path === "/node_modules/0x1/jsx-dev-runtime/index.js"
+            ) {
+              // Provide JSX dev runtime for bundling
+              moduleContent = await Bun.file(
+                join(frameworkPath, "dist/0x1/jsx-dev-runtime.js")
+              ).text();
+            } else if (
+              modulePath === "" ||
+              modulePath === "index.js" ||
+              path === "/node_modules/0x1/index.js"
+            ) {
+              // Provide the main 0x1 module
+              moduleContent = `
             // 0x1 Framework - Browser Compatible Version
             import { Router, Link, NavLink, Redirect } from '/0x1/router';
-            
+
             // Export JSX factory function and fragment
             export function createElement(type, props, ...children) {
               return { type, props: props || {}, children };
             }
-            
+
             export const Fragment = Symbol('Fragment');
-            
+
             // Re-export everything
             export { Router, Link, NavLink, Redirect };
             export default { Router, Link, NavLink, Redirect, createElement, Fragment };
           `;
-        }
+            }
 
-        if (moduleContent) {
-          return new Response(moduleContent, {
-            headers: {
-              'Content-Type': 'application/javascript',
-              'Cache-Control': 'no-cache',
-            },
-          });
-        }
-      }
+            if (moduleContent) {
+              return new Response(moduleContent, {
+                headers: {
+                  "Content-Type": "application/javascript",
+                  "Cache-Control": "no-cache",
+                },
+              });
+            }
+          }
 
-      // Handle root path requests using modern app directory structure
-      if (path === '/') {
-        logger.debug(`Serving modern app directory structure root HTML`);
-        
-        // Create a dynamic HTML that imports the router and loads app/page
-        const dynamicHtml = `<!DOCTYPE html>
+          // Handle root path requests using modern app directory structure
+          if (path === "/") {
+            logger.debug(`Serving modern app directory structure root HTML`);
+
+            // Create a dynamic HTML that imports the router and loads app/page
+            const dynamicHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -1196,17 +1288,17 @@ export default {
   <title>0x1 App</title>
   <link rel="icon" href="/favicon.ico">
   
-  <!-- Import Map for bare imports - enables importing directly from '0x1' -->
-  <!-- Process polyfill for browser environment -->
+  <!-- Process polyfill for browser environment to fix 'process is not defined' errors -->
   <script>
-    // Define process object for browser environment
-    window.process = { 
+    // Simple process.env polyfill that works in all browsers
+    window.process = window.process || { 
       env: { 
-        NODE_ENV: 'development' 
+        NODE_ENV: 'development'
       }
     };
+    console.log('[0x1] Running in development mode', window.location.hostname);
   </script>
-  
+
   <script type="importmap">
   {
     "imports": {
@@ -1224,20 +1316,20 @@ export default {
   <script type="module">
     // Import the app router
     import { Router } from '0x1/router';
-    
+
     // Initialize router
     const router = new Router({
       root: document.getElementById('app'),
       mode: 'history'
     });
-    
+
     // Register app routes
     router.add('/', async () => {
       // Dynamically import the page component
       const { default: Page } = await import('/app/page.js');
       return Page();
     });
-    
+
     // Also import and register components from the root components directory
     try {
       const components = await fetch('/_components_list').then(res => res.json());
@@ -1247,542 +1339,606 @@ export default {
     } catch (e) {
       console.log('No component manifest found');
     }
-    
+
     // Start routing
     router.start();
   </script>
 </body>
 </html>`;
-        
-        return new Response(dynamicHtml, {
-          headers: {
-            'Content-Type': 'text/html',
-            'Cache-Control': 'no-cache'
-          }
-        });
-      }
 
-      // Special handling for index.js which is the entry point
-      if (path === '/index.js') {
-        // Check if we already have a bundled version in dist
-        const distIndexPath = join(distDir, 'index.js');
-        if (existsSync(distIndexPath)) {
-          try {
-            const content = await Bun.file(distIndexPath).text();
-            return new Response(content, {
+            return new Response(dynamicHtml, {
               headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache'
-              }
+                "Content-Type": "text/html",
+                "Cache-Control": "no-cache",
+              },
             });
-          } catch (error) {
-            logger.warn(`Error reading cached index.js: ${error}`);
-            // Continue to try transpiling below
           }
-        }
-        
-        // If no cached version or read failed, try to transpile index.tsx
-        const indexTsxPath = join(projectPath, 'index.tsx');
-        if (existsSync(indexTsxPath)) {
-          try {
-            // Use the JSX transpiler to directly process and bundle the file
-            const { transpileJSX } = await import('./jsx-transpiler.js');
-            const output = await transpileJSX(indexTsxPath, distDir, true, projectPath);
-            
-            if (output) {
-              const outputPath = join(distDir, 'index.js');
-              if (existsSync(outputPath)) {
-                const content = await Bun.file(outputPath).text();
-                logger.info(`✅ Successfully served index.js from transpiled source`);
+
+          // Special handling for index.js which is the entry point
+          if (path === "/index.js") {
+            // Check if we already have a bundled version in dist
+            const distIndexPath = join(distDir, "index.js");
+            if (existsSync(distIndexPath)) {
+              try {
+                const content = await Bun.file(distIndexPath).text();
                 return new Response(content, {
                   headers: {
-                    'Content-Type': 'application/javascript',
-                    'Cache-Control': 'no-cache'
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "no-cache",
+                  },
+                });
+              } catch (error) {
+                logger.warn(`Error reading cached index.js: ${error}`);
+                // Continue to try transpiling below
+              }
+            }
+
+            // If no cached version or read failed, try to transpile index.tsx
+            const indexTsxPath = join(projectPath, "index.tsx");
+            if (existsSync(indexTsxPath)) {
+              try {
+                // Use the JSX transpiler to directly process and bundle the file
+                const { transpileJSX } = await import("./jsx-transpiler.js");
+                const output = await transpileJSX(
+                  indexTsxPath,
+                  distDir,
+                  true,
+                  projectPath
+                );
+
+                if (output) {
+                  const outputPath = join(distDir, "index.js");
+                  if (existsSync(outputPath)) {
+                    const content = await Bun.file(outputPath).text();
+                    logger.info(
+                      `✅ Successfully served index.js from transpiled source`
+                    );
+                    return new Response(content, {
+                      headers: {
+                        "Content-Type": "application/javascript",
+                        "Cache-Control": "no-cache",
+                      },
+                    });
                   }
+                }
+              } catch (err) {
+                const error = err as Error;
+                logger.error(
+                  `❌ ❌ Error transpiling ${indexTsxPath}: ${error.message || "Bundle failed"}`
+                );
+                return new Response(
+                  `console.error('Failed to load application: ${error.message?.replace(/'/g, "\\'") || "Bundle failed"}');`,
+                  {
+                    status: 500,
+                    headers: {
+                      "Content-Type": "application/javascript",
+                      "Cache-Control": "no-cache",
+                    },
+                  }
+                );
+              }
+            }
+          }
+
+          // Handle requests for JS files that might exist as TS/TSX files
+          if (path.endsWith(".js") && !path.includes("node_modules")) {
+            // Check if there's a corresponding .ts or .tsx file
+            const basePath = path.replace(/\.js$/, "");
+            const tsPath = `${basePath}.ts`;
+            const tsxPath = `${basePath}.tsx`;
+
+            let foundTsFile = false;
+            let tsFilePath = "";
+
+            // Check for TS/TSX files in project root
+            if (existsSync(join(projectPath, tsxPath.substring(1)))) {
+              tsFilePath = join(projectPath, tsxPath.substring(1));
+              foundTsFile = true;
+            } else if (existsSync(join(projectPath, tsPath.substring(1)))) {
+              tsFilePath = join(projectPath, tsPath.substring(1));
+              foundTsFile = true;
+            }
+
+            // If found, compile it on-the-fly
+            if (foundTsFile) {
+              try {
+                logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
+                const _tsContent = await Bun.file(tsFilePath).text();
+
+                // Use Bun to transpile TypeScript
+                const result = await Bun.build({
+                  entrypoints: [tsFilePath],
+                  target: "browser",
+                  format: "esm",
+                  minify: false,
+                  sourcemap: "inline",
+                  loader: { ".tsx": "tsx", ".ts": "ts" },
+                });
+
+                if (!result.success) {
+                  logger.error(`Failed to transpile ${tsFilePath}`);
+                  return new Response(
+                    `// Failed to compile ${path}\nconsole.error('Compilation failed');`,
+                    {
+                      headers: {
+                        "Content-Type": "application/javascript",
+                        "Cache-Control": "no-cache",
+                      },
+                      status: 500,
+                    }
+                  );
+                }
+
+                // Get the output
+                const output = await result.outputs[0].text();
+
+                // Transform any remaining bare imports
+                const transformedOutput = transformBareImports(output);
+
+                // Write the transformed output to the dist directory to ensure it's available for future requests
+                try {
+                  const distFilePath = join(distDir, path);
+                  const distFileDir = dirname(distFilePath);
+                  if (!existsSync(distFileDir)) {
+                    mkdirSync(distFileDir, { recursive: true });
+                  }
+                  await Bun.write(distFilePath, transformedOutput);
+                  logger.debug(
+                    `Successfully wrote transpiled file to ${distFilePath}`
+                  );
+                } catch (error) {
+                  const writeError = error as Error;
+                  logger.warn(
+                    `Warning: Unable to cache transpiled file: ${writeError.message || String(writeError)}`
+                  );
+                }
+
+                logger.debug(`Successfully transpiled ${path}`);
+                return new Response(transformedOutput, {
+                  headers: {
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "no-cache",
+                  },
+                });
+              } catch (error) {
+                const err = error as Error;
+                logger.error(
+                  `❌ Error transpiling ${tsFilePath}: ${err.message || "Unknown error"}`
+                );
+
+                // Log detailed error information with proper typing
+                if (err.stack) logger.debug(`Stack trace: ${err.stack}`);
+                if ("cause" in err)
+                  logger.debug(`Caused by: ${(err as any).cause}`);
+                if ("errors" in err)
+                  logger.debug(
+                    `Errors: ${JSON.stringify((err as any).errors, null, 2)}`
+                  );
+
+                // When in debug mode, show full error details
+                if (options.debug) {
+                  console.error("Full error object:", err);
+                }
+                // Already handled detailed error information above
+
+                return new Response(
+                  `// Error transpiling ${path}\nconsole.error('Transpilation error: ${error}');\n// Check terminal for detailed error output`,
+                  {
+                    headers: {
+                      "Content-Type": "application/javascript",
+                      "Cache-Control": "no-cache",
+                    },
+                    status: 500,
+                  }
+                );
+              }
+            }
+          }
+
+          // Determine file path
+          let filePath: string;
+          let fileExists = false;
+
+          // Log directory paths we're checking
+          logger.debug(`Looking for ${path} in the following directories:`);
+          logger.debug(`- Dist: ${distDir}`);
+          logger.debug(`- Public: ${publicDir}`);
+          logger.debug(`- Source: ${srcDir}`);
+
+          // Check if the file exists in the dist directory first (for processed files)
+          filePath = join(distDir, path);
+          fileExists = existsSync(filePath);
+          if (fileExists) {
+            logger.debug(`Found in dist directory: ${filePath}`);
+          }
+
+          // If not in dist, check public directory
+          if (!fileExists) {
+            filePath = join(publicDir, path);
+            fileExists = existsSync(filePath);
+            if (fileExists) {
+              logger.debug(`Found in public directory: ${filePath}`);
+            }
+          }
+
+          // If app directory exists, check for app router-style components
+          if (!fileExists && isAppDirStructure && appDir) {
+            // Check for app router routing paths
+            // For example, /posts becomes /app/posts/page.tsx
+
+            // Remove leading slash if present
+            const routePath = path.startsWith("/") ? path.substring(1) : path;
+
+            // Create potential app directory file patterns to check
+            const possibleAppPaths = [
+              // Direct page component match
+              join(appDir, routePath, "page.tsx"),
+              join(appDir, routePath, "page.jsx"),
+              join(appDir, routePath, "page.ts"),
+              join(appDir, routePath, "page.js"),
+
+              // For route segments
+              join(appDir, routePath + ".tsx"),
+              join(appDir, routePath + ".jsx"),
+              join(appDir, routePath + ".ts"),
+              join(appDir, routePath + ".js"),
+
+              // Index pages
+              join(appDir, routePath, "index.tsx"),
+              join(appDir, routePath, "index.jsx"),
+              join(appDir, routePath, "index.ts"),
+              join(appDir, routePath, "index.js"),
+            ];
+
+            // Try each possible path in the app directory
+            for (const possiblePath of possibleAppPaths) {
+              if (existsSync(possiblePath)) {
+                filePath = possiblePath;
+                fileExists = true;
+                logger.debug(`Found in app directory: ${filePath}`);
+                break;
+              }
+            }
+          }
+
+          // If not in app dir, check src directory
+          if (!fileExists) {
+            filePath = join(srcDir, path);
+            fileExists = existsSync(filePath);
+            if (fileExists) {
+              logger.debug(`Found in src directory: ${filePath}`);
+            }
+          }
+
+          // If not found, check the project root as a last resort
+          if (!fileExists && path.endsWith(".html")) {
+            filePath = join(projectPath, path.substring(1)); // Remove leading slash
+            fileExists = existsSync(filePath);
+            if (fileExists) {
+              logger.debug(`Found in project root: ${filePath}`);
+            }
+          }
+
+          // If file doesn't exist, try adding .html extension for clean URLs
+          if (!fileExists && !path.endsWith(".html")) {
+            const htmlPath = `${path}.html`;
+
+            filePath = join(distDir, htmlPath);
+            fileExists = existsSync(filePath);
+
+            if (!fileExists) {
+              filePath = join(srcDir, htmlPath);
+              fileExists = existsSync(filePath);
+            }
+          }
+
+          // Check for component files without extension (e.g., import from './components/Counter')
+          if (!fileExists && !path.includes(".")) {
+            // Check common component extensions
+            const componentExtensions = [".tsx", ".ts", ".jsx", ".js"];
+            let componentFound = false;
+
+            for (const ext of componentExtensions) {
+              // Try src directory first
+              let componentPath = join(srcDir, `${path}${ext}`);
+              if (existsSync(componentPath)) {
+                filePath = componentPath;
+                fileExists = true;
+                componentFound = true;
+                logger.debug(`Found component at ${filePath}`);
+                break;
+              }
+
+              // Also try with direct components path
+              if (path.startsWith("/components/")) {
+                componentPath = join(srcDir, `${path}${ext}`);
+                if (existsSync(componentPath)) {
+                  filePath = componentPath;
+                  fileExists = true;
+                  componentFound = true;
+                  logger.debug(
+                    `Found component with explicit path: ${filePath}`
+                  );
+                  break;
+                }
+              }
+            }
+
+            // If it's not a component, see if it's an SPA route and serve index.html
+            if (!componentFound) {
+              filePath = join(srcDir, "index.html");
+              fileExists = existsSync(filePath);
+
+              if (!fileExists) {
+                filePath = join(distDir, "index.html");
+                fileExists = existsSync(filePath);
+              }
+            }
+          }
+
+          // If file exists, serve it
+          if (fileExists) {
+            const file = Bun.file(filePath);
+            // Determine the proper content type
+            let type = file.type;
+
+            // Special handling for component requests without extensions
+            if (path.includes("/components/") && !path.includes(".")) {
+              // Check if it's a TypeScript component (tsx/ts)
+              if (filePath.endsWith(".tsx") || filePath.endsWith(".ts")) {
+                try {
+                  // Read and transpile the component
+                  const fileContent = await file.text();
+
+                  // Transform bare imports first
+                  const transformedContent = transformBareImports(fileContent);
+
+                  // Create transpiler
+                  const transpiler = new Bun.Transpiler({
+                    loader: filePath.endsWith(".tsx") ? "tsx" : "ts",
+                    define: {
+                      "process.env.NODE_ENV": '"development"',
+                    },
+                    macro: {
+                      jsxFactory: { jsx: "createElement" },
+                      jsxFragment: { jsx: "Fragment" },
+                    },
+                  });
+
+                  // Transpile to JS
+                  const transpiled =
+                    transpiler.transformSync(transformedContent);
+
+                  logger.info(`200 OK (Transpiled Component): ${path}`);
+
+                  // Return as JavaScript module
+                  return new Response(transpiled, {
+                    headers: {
+                      "Content-Type": "application/javascript",
+                      "Cache-Control": "no-cache",
+                    },
+                  });
+                } catch (error) {
+                  logger.error(
+                    `Error transpiling component ${filePath}: ${error}`
+                  );
+                }
+              } else {
+                // For JS/JSX components, just set the correct MIME type
+                type = "application/javascript";
+                logger.debug(
+                  `Component request detected, setting content type to application/javascript for: ${path}`
+                );
+              }
+            }
+
+            // For HTML files, inject the live reload script
+            if (path.endsWith(".html")) {
+              try {
+                // Inject live reload script into HTML files
+                let content = await file.text();
+
+                if (!content.includes("__0x1_live_reload.js")) {
+                  content = content.replace(
+                    "</head>",
+                    '<script src="/__0x1_live_reload.js"></script></head>'
+                  );
+                }
+
+                // Log successful HTML connection
+                logger.info(`200 OK: ${path}`);
+
+                return new Response(content, {
+                  headers: {
+                    "Content-Type": "text/html",
+                    "Cache-Control": "no-cache",
+                  },
+                });
+              } catch (error) {
+                logger.error(
+                  `Error processing HTML file ${filePath}: ${error}`
+                );
+                return new Response(`Error processing HTML: ${error}`, {
+                  status: 500,
                 });
               }
             }
-          } catch (err) {
-            const error = err as Error;
-            logger.error(`❌ ❌ Error transpiling ${indexTsxPath}: ${error.message || 'Bundle failed'}`);
-            return new Response(`console.error('Failed to load application: ${error.message?.replace(/'/g, "\\'") || 'Bundle failed'}');`, {
-              status: 500,
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
+
+            // For TypeScript files, transpile them on the fly using Bun.Transpiler
+            if (path.endsWith(".ts") || path.endsWith(".tsx")) {
+              try {
+                // Transform source for better browser compatibility
+                let fileContent = await file.text();
+
+                // First transform bare imports (0x1/router) to browser-compatible paths
+                fileContent = transformBareImports(fileContent);
+
+                // Create transpiler with better browser compatibility
+                const transpiler = new Bun.Transpiler({
+                  loader: path.endsWith(".tsx") ? "tsx" : "ts",
+                  // Bun transpiler uses these options
+                  define: {
+                    "process.env.NODE_ENV": '"development"',
+                  },
+                  // Handle jsx/tsx content
+                  macro: {
+                    // Convert JSX to createElement calls
+                    // Using Record<string, string> format for type compatibility
+                    jsxFactory: { jsx: "createElement" },
+                    jsxFragment: { jsx: "Fragment" },
+                  },
+                });
+
+                // Transpile the TypeScript code with improved error handling
+                let transpiled;
+                try {
+                  transpiled = transpiler.transformSync(fileContent);
+                  // Log successful transpilation
+                  logger.debug(`Successfully transpiled ${path}`);
+                } catch (transpileError) {
+                  // Log detailed error and provide fallback
+                  logger.error(`Error transpiling ${path}: ${transpileError}`);
+                  return new Response(
+                    `/* Error transpiling ${path}: ${transpileError} */`,
+                    {
+                      status: 500,
+                      headers: {
+                        "Content-Type": "application/javascript",
+                        "Cache-Control": "no-cache",
+                      },
+                    }
+                  );
+                }
+
+                // Post-process the result to ensure browser compatibility
+                transpiled = transpiled
+                  // Remove import statements for browser compatibility
+                  .replace(
+                    /import\s+.*?from\s+['"](.*)['"](;)?\n?/g,
+                    "// ES module imports removed for browser compatibility\n"
+                  )
+                  // Remove export statements
+                  .replace(/export\s+/g, "")
+                  // Add a comment explaining what happened
+                  .replace(
+                    /\/\*(.*)\*\//s,
+                    "/* $1\n * Note: Transpiled with Bun.Transpiler for optimal performance */\n"
+                  );
+
+                logger.info(`200 OK (Transpiled TS → Browser JS): ${path}`);
+
+                // Return transpiled JavaScript with proper MIME type
+                return new Response(transpiled, {
+                  headers: {
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "no-cache",
+                  },
+                });
+              } catch (error) {
+                logger.error(`Error transpiling ${filePath}: ${error}`);
+                return new Response(
+                  `console.error('Failed to load ${path}: ${error}');`,
+                  {
+                    headers: {
+                      "Content-Type": "application/javascript",
+                      "Cache-Control": "no-cache",
+                    },
+                    status: 500,
+                  }
+                );
               }
-            });
-          }
-        }
-      }
-      
-      // Handle requests for JS files that might exist as TS/TSX files
-      if (path.endsWith('.js') && !path.includes('node_modules')) {
-        // Check if there's a corresponding .ts or .tsx file
-        const basePath = path.replace(/\.js$/, '');
-        const tsPath = `${basePath}.ts`;
-        const tsxPath = `${basePath}.tsx`;
-
-        let foundTsFile = false;
-        let tsFilePath = '';
-
-        // Check for TS/TSX files in project root
-        if (existsSync(join(projectPath, tsxPath.substring(1)))) {
-          tsFilePath = join(projectPath, tsxPath.substring(1));
-          foundTsFile = true;
-        } else if (existsSync(join(projectPath, tsPath.substring(1)))) {
-          tsFilePath = join(projectPath, tsPath.substring(1));
-          foundTsFile = true;
-        }
-
-        // If found, compile it on-the-fly
-        if (foundTsFile) {
-          try {
-            logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
-            const _tsContent = await Bun.file(tsFilePath).text();
-
-            // Use Bun to transpile TypeScript
-            const result = await Bun.build({
-              entrypoints: [tsFilePath],
-              target: 'browser',
-              format: 'esm',
-              minify: false,
-              sourcemap: 'inline',
-              loader: { '.tsx': 'tsx', '.ts': 'ts' }
-            });
-
-            if (!result.success) {
-              logger.error(`Failed to transpile ${tsFilePath}`);
-              return new Response(`// Failed to compile ${path}\nconsole.error('Compilation failed');`, {
-                headers: {
-                  'Content-Type': 'application/javascript',
-                  'Cache-Control': 'no-cache',
-                },
-                status: 500
-              });
             }
 
-            // Get the output
-            const output = await result.outputs[0].text();
+            // For JavaScript files, transform bare imports
+            if (path.endsWith(".js") || path.endsWith(".jsx")) {
+              try {
+                // Read the file content
+                let fileContent = await file.text();
 
-            // Transform any remaining bare imports
-            const transformedOutput = transformBareImports(output);
-            
-            // Write the transformed output to the dist directory to ensure it's available for future requests
-            try {
-              const distFilePath = join(distDir, path);
-              const distFileDir = dirname(distFilePath);
-              if (!existsSync(distFileDir)) {
-                mkdirSync(distFileDir, { recursive: true });
+                // Transform bare imports for browser compatibility
+                fileContent = transformBareImports(fileContent);
+
+                logger.info(`200 OK (Transformed JS): ${path}`);
+
+                // Return transformed JavaScript
+                return new Response(fileContent, {
+                  headers: {
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "no-cache",
+                  },
+                });
+              } catch (error) {
+                logger.error(`Error transforming ${filePath}: ${error}`);
+                return new Response(
+                  `console.error('Failed to transform ${path}: ${error}');`,
+                  {
+                    headers: {
+                      "Content-Type": "application/javascript",
+                      "Cache-Control": "no-cache",
+                    },
+                    status: 500,
+                  }
+                );
               }
-              await Bun.write(distFilePath, transformedOutput);
-              logger.debug(`Successfully wrote transpiled file to ${distFilePath}`);
-            } catch (error) {
-              const writeError = error as Error;
-              logger.warn(`Warning: Unable to cache transpiled file: ${writeError.message || String(writeError)}`);
-            }
-            
-            logger.debug(`Successfully transpiled ${path}`);
-            return new Response(transformedOutput, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              }
-            });
-          } catch (error) {
-            const err = error as Error;
-            logger.error(`❌ Error transpiling ${tsFilePath}: ${err.message || 'Unknown error'}`);
-            
-            // Log detailed error information with proper typing
-            if (err.stack) logger.debug(`Stack trace: ${err.stack}`);
-            if ('cause' in err) logger.debug(`Caused by: ${(err as any).cause}`);
-            if ('errors' in err) logger.debug(`Errors: ${JSON.stringify((err as any).errors, null, 2)}`);
-            
-            // When in debug mode, show full error details
-            if (options.debug) {
-              console.error('Full error object:', err);
-            }
-            // Already handled detailed error information above
-            
-            return new Response(`// Error transpiling ${path}\nconsole.error('Transpilation error: ${error}');\n// Check terminal for detailed error output`, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              },
-              status: 500
-            });
-          }
-        }
-      }
-
-      // Determine file path
-      let filePath: string;
-      let fileExists = false;
-
-      // Log directory paths we're checking
-      logger.debug(`Looking for ${path} in the following directories:`);
-      logger.debug(`- Dist: ${distDir}`);
-      logger.debug(`- Public: ${publicDir}`);
-      logger.debug(`- Source: ${srcDir}`);
-
-      // Check if the file exists in the dist directory first (for processed files)
-      filePath = join(distDir, path);
-      fileExists = existsSync(filePath);
-      if (fileExists) {
-        logger.debug(`Found in dist directory: ${filePath}`);
-      }
-
-      // If not in dist, check public directory
-      if (!fileExists) {
-        filePath = join(publicDir, path);
-        fileExists = existsSync(filePath);
-        if (fileExists) {
-          logger.debug(`Found in public directory: ${filePath}`);
-        }
-      }
-
-      // If app directory exists, check for app router-style components
-      if (!fileExists && isAppDirStructure && appDir) {
-        // Check for app router routing paths
-        // For example, /posts becomes /app/posts/page.tsx
-
-        // Remove leading slash if present
-        const routePath = path.startsWith('/') ? path.substring(1) : path;
-
-        // Create potential app directory file patterns to check
-        const possibleAppPaths = [
-          // Direct page component match
-          join(appDir, routePath, 'page.tsx'),
-          join(appDir, routePath, 'page.jsx'),
-          join(appDir, routePath, 'page.ts'),
-          join(appDir, routePath, 'page.js'),
-
-          // For route segments
-          join(appDir, routePath + '.tsx'),
-          join(appDir, routePath + '.jsx'),
-          join(appDir, routePath + '.ts'),
-          join(appDir, routePath + '.js'),
-
-          // Index pages
-          join(appDir, routePath, 'index.tsx'),
-          join(appDir, routePath, 'index.jsx'),
-          join(appDir, routePath, 'index.ts'),
-          join(appDir, routePath, 'index.js'),
-        ];
-
-        // Try each possible path in the app directory
-        for (const possiblePath of possibleAppPaths) {
-          if (existsSync(possiblePath)) {
-            filePath = possiblePath;
-            fileExists = true;
-            logger.debug(`Found in app directory: ${filePath}`);
-            break;
-          }
-        }
-      }
-
-      // If not in app dir, check src directory
-      if (!fileExists) {
-        filePath = join(srcDir, path);
-        fileExists = existsSync(filePath);
-        if (fileExists) {
-          logger.debug(`Found in src directory: ${filePath}`);
-        }
-      }
-
-      // If not found, check the project root as a last resort
-      if (!fileExists && path.endsWith('.html')) {
-        filePath = join(projectPath, path.substring(1)); // Remove leading slash
-        fileExists = existsSync(filePath);
-        if (fileExists) {
-          logger.debug(`Found in project root: ${filePath}`);
-        }
-      }
-
-      // If file doesn't exist, try adding .html extension for clean URLs
-      if (!fileExists && !path.endsWith('.html')) {
-        const htmlPath = `${path}.html`;
-
-        filePath = join(distDir, htmlPath);
-        fileExists = existsSync(filePath);
-
-        if (!fileExists) {
-          filePath = join(srcDir, htmlPath);
-          fileExists = existsSync(filePath);
-        }
-      }
-
-      // Check for component files without extension (e.g., import from './components/Counter')
-      if (!fileExists && !path.includes('.')) {
-        // Check common component extensions
-        const componentExtensions = ['.tsx', '.ts', '.jsx', '.js'];
-        let componentFound = false;
-
-        for (const ext of componentExtensions) {
-          // Try src directory first
-          let componentPath = join(srcDir, `${path}${ext}`);
-          if (existsSync(componentPath)) {
-            filePath = componentPath;
-            fileExists = true;
-            componentFound = true;
-            logger.debug(`Found component at ${filePath}`);
-            break;
-          }
-
-          // Also try with direct components path
-          if (path.startsWith('/components/')) {
-            componentPath = join(srcDir, `${path}${ext}`);
-            if (existsSync(componentPath)) {
-              filePath = componentPath;
-              fileExists = true;
-              componentFound = true;
-              logger.debug(`Found component with explicit path: ${filePath}`);
-              break;
-            }
-          }
-        }
-
-        // If it's not a component, see if it's an SPA route and serve index.html
-        if (!componentFound) {
-          filePath = join(srcDir, 'index.html');
-          fileExists = existsSync(filePath);
-
-          if (!fileExists) {
-            filePath = join(distDir, 'index.html');
-            fileExists = existsSync(filePath);
-          }
-        }
-      }
-
-      // If file exists, serve it
-      if (fileExists) {
-        const file = Bun.file(filePath);
-        // Determine the proper content type
-        let type = file.type;
-
-        // Special handling for component requests without extensions
-        if (path.includes('/components/') && !path.includes('.')) {
-          // Check if it's a TypeScript component (tsx/ts)
-          if (filePath.endsWith('.tsx') || filePath.endsWith('.ts')) {
-            try {
-              // Read and transpile the component
-              const fileContent = await file.text();
-
-              // Transform bare imports first
-              const transformedContent = transformBareImports(fileContent);
-
-              // Create transpiler
-              const transpiler = new Bun.Transpiler({
-                loader: filePath.endsWith('.tsx') ? 'tsx' : 'ts',
-                define: {
-                  'process.env.NODE_ENV': '"development"',
-                },
-                macro: {
-                  jsxFactory: { jsx: 'createElement' },
-                  jsxFragment: { jsx: 'Fragment' },
-                },
-              });
-
-              // Transpile to JS
-              const transpiled = transpiler.transformSync(transformedContent);
-
-              logger.info(`200 OK (Transpiled Component): ${path}`);
-
-              // Return as JavaScript module
-              return new Response(transpiled, {
-                headers: {
-                  'Content-Type': 'application/javascript',
-                  'Cache-Control': 'no-cache',
-                },
-              });
-            } catch (error) {
-              logger.error(`Error transpiling component ${filePath}: ${error}`);
-            }
-          } else {
-            // For JS/JSX components, just set the correct MIME type
-            type = 'application/javascript';
-            logger.debug(`Component request detected, setting content type to application/javascript for: ${path}`);
-          }
-        }
-
-        // For HTML files, inject the live reload script
-        if (path.endsWith('.html')) {
-          try {
-            // Inject live reload script into HTML files
-            let content = await file.text();
-
-            if (!content.includes('__0x1_live_reload.js')) {
-              content = content.replace(
-                '</head>',
-                '<script src="/__0x1_live_reload.js"></script></head>'
-              );
             }
 
-            // Log successful HTML connection
+            // For all other file types, serve directly
+            // Log successful connection
             logger.info(`200 OK: ${path}`);
 
-            return new Response(content, {
+            return new Response(file, {
               headers: {
-                'Content-Type': 'text/html',
-                'Cache-Control': 'no-cache',
+                "Content-Type": type,
+                "Cache-Control": path.includes("hash.")
+                  ? "max-age=31536000"
+                  : "no-cache",
               },
-            });
-          } catch (error) {
-            logger.error(`Error processing HTML file ${filePath}: ${error}`);
-            return new Response(`Error processing HTML: ${error}`, { status: 500 });
-          }
-        }
-
-        // For TypeScript files, transpile them on the fly using Bun.Transpiler
-        if (path.endsWith('.ts') || path.endsWith('.tsx')) {
-          try {
-            // Transform source for better browser compatibility
-            let fileContent = await file.text();
-
-            // First transform bare imports (0x1/router) to browser-compatible paths
-            fileContent = transformBareImports(fileContent);
-
-            // Create transpiler with better browser compatibility
-            const transpiler = new Bun.Transpiler({
-              loader: path.endsWith('.tsx') ? 'tsx' : 'ts',
-              // Bun transpiler uses these options
-              define: {
-                'process.env.NODE_ENV': '"development"',
-              },
-              // Handle jsx/tsx content
-              macro: {
-                // Convert JSX to createElement calls
-                // Using Record<string, string> format for type compatibility
-                jsxFactory: { jsx: 'createElement' },
-                jsxFragment: { jsx: 'Fragment' },
-              },
-            });
-
-            // Transpile the TypeScript code with improved error handling
-            let transpiled;
-            try {
-              transpiled = transpiler.transformSync(fileContent);
-              // Log successful transpilation
-              logger.debug(`Successfully transpiled ${path}`);
-            } catch (transpileError) {
-              // Log detailed error and provide fallback
-              logger.error(`Error transpiling ${path}: ${transpileError}`);
-              return new Response(`/* Error transpiling ${path}: ${transpileError} */`, {
-                status: 500,
-                headers: {
-                  'Content-Type': 'application/javascript',
-                  'Cache-Control': 'no-cache',
-                }
-              });
-            }
-
-            // Post-process the result to ensure browser compatibility
-            transpiled = transpiled
-              // Remove import statements for browser compatibility
-              .replace(/import\s+.*?from\s+['"](.*)['"](;)?\n?/g, '// ES module imports removed for browser compatibility\n')
-              // Remove export statements
-              .replace(/export\s+/g, '')
-              // Add a comment explaining what happened
-              .replace(/\/\*(.*)\*\//s, '/* $1\n * Note: Transpiled with Bun.Transpiler for optimal performance */\n');
-
-            logger.info(`200 OK (Transpiled TS → Browser JS): ${path}`);
-
-            // Return transpiled JavaScript with proper MIME type
-            return new Response(transpiled, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              },
-            });
-          } catch (error) {
-            logger.error(`Error transpiling ${filePath}: ${error}`);
-            return new Response(`console.error('Failed to load ${path}: ${error}');`, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              },
-              status: 500,
             });
           }
-        }
 
-        // For JavaScript files, transform bare imports
-        if (path.endsWith('.js') || path.endsWith('.jsx')) {
-          try {
-            // Read the file content
-            let fileContent = await file.text();
+          // If file doesn't exist, return 404
+          logger.debug(`404 Not Found: ${path}`);
+          return new Response("Not Found", { status: 404 });
+        },
+        error(error) {
+          logger.error(`Server error: ${error}`);
+          return new Response("Server Error", { status: 500 });
+        },
+      });
 
-            // Transform bare imports for browser compatibility
-            fileContent = transformBareImports(fileContent);
-
-            logger.info(`200 OK (Transformed JS): ${path}`);
-
-            // Return transformed JavaScript
-            return new Response(fileContent, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              },
-            });
-          } catch (error) {
-            logger.error(`Error transforming ${filePath}: ${error}`);
-            return new Response(`console.error('Failed to transform ${path}: ${error}');`, {
-              headers: {
-                'Content-Type': 'application/javascript',
-                'Cache-Control': 'no-cache',
-              },
-              status: 500,
-            });
-          }
-        }
-
-        // For all other file types, serve directly
-        // Log successful connection
-        logger.info(`200 OK: ${path}`);
-
-        return new Response(file, {
-          headers: {
-            'Content-Type': type,
-            'Cache-Control': path.includes('hash.') ? 'max-age=31536000' : 'no-cache',
-          },
-        });
+      // Server started successfully, exit the retry loop
+      break;
+    } catch (error) {
+      // Check if the error is related to the port being in use
+      if (
+        error instanceof Error &&
+        error.message &&
+        error.message.includes("already in use")
+      ) {
+        logger.debug(
+          `Port ${currentPort} is already in use, trying port ${currentPort + 1}`
+        );
+        currentPort++;
+      } else {
+        // Not a port conflict error, rethrow
+        throw error;
       }
-
-      // If file doesn't exist, return 404
-      logger.debug(`404 Not Found: ${path}`);
-      return new Response('Not Found', { status: 404 });
-    },
-    error(error) {
-      logger.error(`Server error: ${error}`);
-      return new Response('Server Error', { status: 500 });
-    },
-  });
-
-  // Server started successfully, exit the retry loop
-  break;
-} catch (error) {
-  // Check if the error is related to the port being in use
-  if (error instanceof Error && error.message && error.message.includes('already in use')) {
-    logger.debug(`Port ${currentPort} is already in use, trying port ${currentPort + 1}`);
-    currentPort++;
-  } else {
-    // Not a port conflict error, rethrow
-    throw error;
+    }
   }
-}
-}
 
-// If we tried all ports and couldn't start the server
-if (!server) {
-  throw new Error(`Could not find an available port after trying ${maxPortRetries} ports starting from ${port}`);
-}
+  // If we tried all ports and couldn't start the server
+  if (!server) {
+    throw new Error(
+      `Could not find an available port after trying ${maxPortRetries} ports starting from ${port}`
+    );
+  }
 
   /**
    * Notify all clients of changes
    */
   function notifyClients() {
     // Create message
-    const message = new TextEncoder().encode('data: update\n\n');
+    const message = new TextEncoder().encode("data: update\n\n");
 
     // Send reload message to all clients
     for (const client of connectedClients) {
@@ -1826,12 +1982,12 @@ if (!server) {
     function shouldIgnore(path: string): boolean {
       if (!path) return false;
 
-      return ignorePatterns.some(pattern => {
+      return ignorePatterns.some((pattern) => {
         // Convert pattern to regex if it has wildcards
-        if (pattern.includes('*')) {
+        if (pattern.includes("*")) {
           const regexPattern = pattern
-            .replace(/\./g, '\\.')
-            .replace(/\*/g, '.*');
+            .replace(/\./g, "\\.")
+            .replace(/\*/g, ".*");
           const regex = new RegExp(`^${regexPattern}$`);
           return regex.test(path);
         }
@@ -1841,14 +1997,16 @@ if (!server) {
 
     // Watch src and public directories
     const srcWatcher = watch(srcDir, { recursive: true });
-    const publicWatcher = existsSync(publicDir) ? watch(publicDir, { recursive: true }) : null;
+    const publicWatcher = existsSync(publicDir)
+      ? watch(publicDir, { recursive: true })
+      : null;
 
     // Process file change events
     (async () => {
       try {
         for await (const event of srcWatcher) {
           // Skip ignored patterns
-          if (shouldIgnore(event.filename || '')) {
+          if (shouldIgnore(event.filename || "")) {
             continue;
           }
 
@@ -1865,7 +2023,7 @@ if (!server) {
         try {
           for await (const event of publicWatcher) {
             // Skip ignored patterns
-            if (shouldIgnore(event.filename || '')) {
+            if (shouldIgnore(event.filename || "")) {
               continue;
             }
 
@@ -1888,8 +2046,8 @@ if (!server) {
 
         // Actual AbortController usage would be implemented in the watch function
         // This is a placeholder until we can refactor the file watching logic
-        logger.debug('Closing file watchers');
-      }
+        logger.debug("Closing file watchers");
+      },
     };
   }
 
@@ -1904,11 +2062,7 @@ if (!server) {
  * Find configuration file in project directory
  */
 function findConfigFile(): string | null {
-  const possibleConfigs = [
-    '0x1.config.ts',
-    '0x1.config.js',
-    '0x1.config.mjs',
-  ];
+  const possibleConfigs = ["0x1.config.ts", "0x1.config.js", "0x1.config.mjs"];
 
   for (const config of possibleConfigs) {
     const configPath = resolve(process.cwd(), config);
@@ -2145,24 +2299,26 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
  * Find the input CSS file for Tailwind processing
  * Searches in common locations and checks the tailwind.config.js for hints
  */
-async function findTailwindInputCss(projectPath: string): Promise<string | null> {
+async function findTailwindInputCss(
+  projectPath: string
+): Promise<string | null> {
   // Common locations for CSS input files
   const commonLocations = [
-    join(projectPath, 'styles', 'main.css'),
-    join(projectPath, 'src', 'styles', 'main.css'),
-    join(projectPath, 'css', 'main.css'),
-    join(projectPath, 'src', 'css', 'main.css'),
-    join(projectPath, 'assets', 'css', 'main.css'),
-    join(projectPath, 'src', 'assets', 'css', 'main.css'),
+    join(projectPath, "styles", "main.css"),
+    join(projectPath, "src", "styles", "main.css"),
+    join(projectPath, "css", "main.css"),
+    join(projectPath, "src", "css", "main.css"),
+    join(projectPath, "assets", "css", "main.css"),
+    join(projectPath, "src", "assets", "css", "main.css"),
     // Using 'input.css' naming convention (Tailwind docs example)
-    join(projectPath, 'styles', 'input.css'),
-    join(projectPath, 'src', 'styles', 'input.css'),
+    join(projectPath, "styles", "input.css"),
+    join(projectPath, "src", "styles", "input.css"),
     // Looking for any CSS file in standard locations
-    join(projectPath, 'styles', 'style.css'),
-    join(projectPath, 'src', 'styles', 'style.css'),
+    join(projectPath, "styles", "style.css"),
+    join(projectPath, "src", "styles", "style.css"),
     // Global CSS naming (Next.js convention)
-    join(projectPath, 'styles', 'globals.css'),
-    join(projectPath, 'src', 'styles', 'globals.css')
+    join(projectPath, "styles", "globals.css"),
+    join(projectPath, "src", "styles", "globals.css"),
   ];
 
   // Check common locations first
@@ -2174,7 +2330,7 @@ async function findTailwindInputCss(projectPath: string): Promise<string | null>
 
   // If not found in common locations, try to parse the tailwind.config.js
   // to look for hints about the input file
-  const tailwindConfigPath = join(projectPath, 'tailwind.config.js');
+  const tailwindConfigPath = join(projectPath, "tailwind.config.js");
   if (existsSync(tailwindConfigPath)) {
     try {
       // Use Bun's native file API for better performance
@@ -2199,7 +2355,7 @@ async function findTailwindInputCss(projectPath: string): Promise<string | null>
 
     const dirEntries = readdirSync(projectPath, { withFileTypes: true });
     const cssFiles = dirEntries
-      .filter((entry: Dirent) => entry.isFile() && entry.name.endsWith('.css'))
+      .filter((entry: Dirent) => entry.isFile() && entry.name.endsWith(".css"))
       .map((entry: Dirent) => join(projectPath, entry.name));
 
     if (cssFiles.length > 0) {
