@@ -1154,7 +1154,7 @@ export default {
               // Navigate to a route
               navigate(routePath) {
                 // Remove leading slash and handle empty path as root
-                const path = routePath === '/' ? '/' : routePath.replace(/^\/|\/$/, '');
+                const path = routePath === '/' ? '/' : routePath.replace(/(^\/)|(\/$)/g, '');
 
                 let component = this.routes.get(path) || this.routes.get('/');
 

@@ -88,35 +88,34 @@ export async function transpileJSX(
     const fileName = basename(entryFile);
     const componentName = fileName.replace(/\.(jsx|tsx)$/, '');
     
-    // We need to ensure a completely unique path every time, as files with the same name can cause collisions
-    const timestamp = Date.now();
-    const randomBytes = [];
-    for (let i = 0; i < 16; i++) {
-      randomBytes.push(Math.floor(Math.random() * 256));
+    // Generate a simple UUID-like string that's truly unique and contains only safe characters
+    const generateUUID = () => {
+      const segments = [
+        Date.now().toString(36),
+        Math.random().toString(36).substring(2, 15),
+        Math.random().toString(36).substring(2, 15),
+        process.pid.toString(36)
+      ];
+      return segments.join('_');
+    };
+    
+    // Create a completely unique directory for each component to prevent collisions
+    // This is a foolproof approach since each component gets its own directory
+    const uniqueDir = join(outputDir, componentName, generateUUID());
+    
+    // Make sure the unique directory exists
+    if (!existsSync(uniqueDir)) {
+      mkdirSync(uniqueDir, { recursive: true });
     }
     
-    // Create a unique hash using multiple factors
-    const buffer = Buffer.from([
-      ...Buffer.from(entryFile), // Include full path
-      ...Buffer.from(timestamp.toString()), // Current timestamp
-      ...randomBytes, // Random data
-      ...Buffer.from(process.pid.toString()) // Process ID
-    ]);
+    // Use a simple filename without any hash, since it's in a unique directory
+    const outputFileName = `${componentName}.js`;
     
-    // Create a hash that's guaranteed to be unique for every file in every run
-    const hash = buffer.toString('hex').substring(0, 24); // Use 24 chars (12 bytes) for extremely low collision chance
+    // Create the full output path
+    const outputFile = join(uniqueDir, outputFileName);
     
-    // Add timestamp to make it truly unique
-    const uniqueId = `${hash}-${timestamp}`;
-    
-    // Use the component name with the unique hash
-    const outputFileName = `${componentName}.${uniqueId}.js`;
-    
-    // Create absolute path to output file
-    const outputFile = join(outputDir, outputFileName);
-    
-    // Log the generated filename for debugging
-    logger.debug(`Generated unique output file: ${outputFileName} for ${entryFile}`);
+    // Log the path for debugging
+    logger.debug(`Generated unique output file in: ${outputFile}`);
 
     // Get project path for correct working directory in Bun build
     const projectPath = projectRoot || dirname(entryFile);
@@ -135,12 +134,10 @@ export async function transpileJSX(
 
     try {
       // Construct the command with proper quoting for shell execution
-      // We include several flags to ensure robust JSX transpilation:
-      // 1. Use --external flags to prevent bundling of CSS libraries that cause conflicts
-      // 2. Use --no-bundle-nodejs-globals to reduce bundle size
-      // 3. Add appropriate jsx settings to ensure proper transpilation
-      // 4. Use --define to provide necessary environment variables
-      const buildCmd = `bun build "${tempFile}" --outfile="${outputFile}" \
+      // Use a completely different approach: output to a directory instead of a specific file
+      // This way Bun will generate unique hashes automatically
+      const buildCmd = `bun build "${tempFile}" \
+        --outdir="${dirname(outputFile)}" \
         ${minify ? '--minify' : ''} \
         --jsx=automatic \
         --jsx-import-source=0x1 \
@@ -149,6 +146,7 @@ export async function transpileJSX(
         --define:process.env.NODE_ENV="production" \
         --external:@tailwind* \
         --external:tailwindcss \
+        --external:postcss* \
         --external:*.css \
         --no-bundle-nodejs-globals`;
       
