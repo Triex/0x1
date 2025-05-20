@@ -109,7 +109,7 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
     logger.info('💠 Shutting down development server...');
 
     // First close file watcher to prevent new events
-    if (watcher) {
+    if (watcher && typeof watcher.close === 'function') {
       try {
         watcher.close();
         logger.info('File watcher closed');
@@ -119,7 +119,7 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
     }
 
     // Kill tailwind process if it exists
-    if (tailwindProcess) {
+    if (tailwindProcess && typeof tailwindProcess.kill === 'function') {
       try {
         tailwindProcess.kill(9); // Use SIGKILL for immediate termination
         logger.info('Tailwind process terminated');
@@ -140,8 +140,13 @@ function shutdownServer(watcher: { close: () => void }, tailwindProcess: Subproc
 
     // Force kill any process using our port
     try {
-      const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
-      await killPort.exited;
+      // Make sure we have a valid port number before trying to kill processes
+      if (port && typeof port === 'number' && port > 0) {
+        const killPort = Bun.spawn(['sh', '-c', `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`]);
+        await killPort.exited;
+      } else {
+        logger.debug('No valid port specified for cleanup');
+      }
     } catch (e) {
       // Ignore errors
     }
@@ -1436,8 +1441,23 @@ export default {
               },
             });
 
-            // Transpile the TypeScript code
-            let transpiled = transpiler.transformSync(fileContent);
+            // Transpile the TypeScript code with improved error handling
+            let transpiled;
+            try {
+              transpiled = transpiler.transformSync(fileContent);
+              // Log successful transpilation
+              logger.debug(`Successfully transpiled ${path}`);
+            } catch (transpileError) {
+              // Log detailed error and provide fallback
+              logger.error(`Error transpiling ${path}: ${transpileError}`);
+              return new Response(`/* Error transpiling ${path}: ${transpileError} */`, {
+                status: 500,
+                headers: {
+                  'Content-Type': 'application/javascript',
+                  'Cache-Control': 'no-cache',
+                }
+              });
+            }
 
             // Post-process the result to ensure browser compatibility
             transpiled = transpiled
@@ -1739,7 +1759,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     const projectPath = process.cwd();
 
     // Check for tailwindcss in package.json
-    const packageJsonPath = join(projectPath, 'package.json');
+    const packageJsonPath = join(projectPath, "package.json");
     let hasTailwind = false;
 
     if (existsSync(packageJsonPath)) {
@@ -1748,18 +1768,22 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
         const packageJson = JSON.parse(packageJsonContent);
 
         // Check if tailwindcss is in dependencies or devDependencies
-        hasTailwind = (
+        hasTailwind =
           (packageJson.dependencies && packageJson.dependencies.tailwindcss) ||
-          (packageJson.devDependencies && packageJson.devDependencies.tailwindcss)
-        );
+          (packageJson.devDependencies &&
+            packageJson.devDependencies.tailwindcss);
       } catch (error) {
         logger.error(`Failed to parse package.json: ${error}`);
       }
     }
 
     if (!hasTailwind) {
-      logger.warn('Tailwind CSS configuration detected, but tailwindcss package not found in dependencies.');
-      logger.warn('Install tailwindcss to enable automatic CSS processing: bun add -d tailwindcss postcss autoprefixer');
+      logger.warn(
+        "Tailwind CSS configuration detected, but tailwindcss package not found in dependencies."
+      );
+      logger.warn(
+        "Install tailwindcss to enable automatic CSS processing: bun add -d tailwindcss postcss autoprefixer"
+      );
       return null;
     }
 
@@ -1767,18 +1791,20 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     const inputCssFile = await findTailwindInputCss(projectPath);
 
     if (!inputCssFile) {
-      logger.warn('Could not find input CSS file for Tailwind processing.');
-      logger.warn('Create a CSS file in styles/main.css or src/styles/main.css');
+      logger.warn("Could not find input CSS file for Tailwind processing.");
+      logger.warn(
+        "Create a CSS file in styles/main.css or src/styles/main.css"
+      );
       return null;
     }
 
     // Ensure the output directory exists
-    const outputDir = join(projectPath, 'public', 'styles');
+    const outputDir = join(projectPath, "public", "styles");
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
 
-    const outputCssFile = join(outputDir, 'tailwind.css');
+    const outputCssFile = join(outputDir, "tailwind.css");
 
     // Log the detected files
     logger.info(`Detected Tailwind CSS configuration`);
@@ -1786,14 +1812,22 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     logger.info(`Output: ${outputCssFile}`);
 
     // Start the Tailwind process with Bun's optimized --watch flag for efficient hot reloading
-    const tailwindSpin = logger.spinner('Starting Tailwind CSS processing');
+    const tailwindSpin = logger.spinner("Starting Tailwind CSS processing");
 
     // Use Bun's bunx to run tailwindcss for optimal performance with hot reloading
     const tailwindProcess = spawn({
-      cmd: ['bunx', 'tailwindcss', '-i', inputCssFile, '-o', outputCssFile, '--watch'],
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: process.env
+      cmd: [
+        "bunx",
+        "tailwindcss",
+        "-i",
+        inputCssFile,
+        "-o",
+        outputCssFile,
+        "--watch",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
     });
 
     // Flag to track CSS processing status
@@ -1801,13 +1835,17 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     let _cssProcessed = false;
 
     // Set up completion handler
-    tailwindProcess.exited.then((result) => {
-      if (result !== 0) {
-        logger.error(`Tailwind process exited unexpectedly with code ${result}`);
-      }
-    }).catch(error => {
-      logger.error(`Tailwind process error: ${error}`);
-    });
+    tailwindProcess.exited
+      .then((result) => {
+        if (result !== 0) {
+          logger.error(
+            `Tailwind process exited unexpectedly with code ${result}`
+          );
+        }
+      })
+      .catch((error) => {
+        logger.error(`Tailwind process error: ${error}`);
+      });
 
     // Handle output from the Tailwind process with enhanced hot reload feedback
     let didShowSuccess = false;
@@ -1823,15 +1861,18 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
 
           const output = new TextDecoder().decode(value);
 
-          if (output.includes('Done in') || output.includes('Rebuilt')) {
+          if (output.includes("Done in") || output.includes("Rebuilt")) {
             if (!didShowSuccess) {
-              tailwindSpin.stop('success', 'Tailwind CSS processed successfully');
+              tailwindSpin.stop(
+                "success",
+                "Tailwind CSS processed successfully"
+              );
               logger.info(`CSS file generated at ${outputCssFile}`);
               _cssProcessed = true;
               didShowSuccess = true;
             } else {
               // Hot reload message for file changes
-              logger.info('🔄 Tailwind CSS hot reloaded');
+              logger.info("🔄 Tailwind CSS hot reloaded");
             }
           }
         }
@@ -1853,10 +1894,10 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
 
           const output = new TextDecoder().decode(value);
 
-          if (output.includes('Error')) {
-            tailwindSpin.stop('error', 'Tailwind CSS processing failed');
+          if (output.includes("Error")) {
+            tailwindSpin.stop("error", "Tailwind CSS processing failed");
             logger.error(output);
-          } else if (output.includes('warn')) {
+          } else if (output.includes("warn")) {
             // Just print warnings without stopping the spinner
             logger.warn(output.trim());
           }
@@ -1871,7 +1912,7 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     // Consider process successful after a reasonable timeout
     setTimeout(() => {
       if (!didShowSuccess) {
-        tailwindSpin.stop('success', 'Tailwind CSS ready');
+        tailwindSpin.stop("success", "Tailwind CSS ready");
         didShowSuccess = true;
       }
     }, 5000);
