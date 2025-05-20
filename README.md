@@ -8,12 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="#-quickstart"><strong>Quickstart</strong></a> ·
   <a href="#-features"><strong>Features</strong></a> ·
-  <a href="#-getting-started"><strong>Getting Started</strong></a> ·
-  <a href="#-philosophy"><strong>Philosophy</strong></a> ·
-  <a href="#%EF%B8%8F-custom-jsx-runtime"><strong>JSX Runtime</strong></a> ·
-  <a href="#-cli-commands"><strong>CLI Commands</strong></a> ·
-  <a href="#-pwa-features"><strong>PWA Support</strong></a>
+  <a href="#-cli-commands"><strong>CLI</strong></a> ·
+  <a href="#-component-system"><strong>Components</strong></a> ·
+  <a href="#-app-directory-structure"><strong>App Structure</strong></a> ·
+  <a href="#-philosophy"><strong>Philosophy</strong></a>
 </p>
 
 <p align="center">
@@ -95,6 +95,62 @@
 - **Smart defaults**: Sensible configurations out of the box with minimal boilerplate
 - **Theme flexibility**: Built-in support for light, dark and system theme modes
 
+
+## 🚀 Quickstart
+
+### Installation
+
+```bash
+# Install globally (recommended)
+bun install -g 0x1
+
+# Or use npx for one-off commands
+npx 0x1@latest new my-app
+```
+
+### Create a New Project
+
+```bash
+# Create a new project with default options
+0x1 new my-app
+
+# Select template complexity
+0x1 new my-app --complexity=minimal|standard|full
+
+# With additional options
+0x1 new my-app --javascript --theme="royal-purple" --pwa
+```
+
+### Development
+
+```bash
+# Navigate to your project
+cd my-app
+
+# Start the development server
+0x1 dev
+
+# Start with a specific port
+0x1 dev --port=8080
+```
+
+Open [http://localhost:3000](http://localhost:3000) to view your app in action!
+
+> **Port Management:** If the specified port (default: 3000) is already in use, the dev server will automatically try the next available port and notify you. This ensures seamless development without manual port configuration.
+
+### Build and Deploy
+
+```bash
+# Create a production build
+0x1 build
+
+# Preview your production build locally
+0x1 preview
+
+# Deploy to production (various providers)
+0x1 deploy
+```
+
 ### 🚀 Deployment Options
 
 0x1 projects are optimized for modern hosting platforms:
@@ -147,6 +203,10 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 ---
 ---
 ---
+
+# Expanded Documentation
+
+_(to organise / work into website docs & full README appropriately)_
 
 ## 💡 Philosophy
 
@@ -292,7 +352,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.74**
+Current version: **0.0.75**
 
 This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
