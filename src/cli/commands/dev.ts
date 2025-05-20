@@ -989,11 +989,6 @@ export default {
 // 0x1 Router - Modern ESM Implementation
 // Directly from core source files
 
-// Define the RouteParams interface in the module scope to avoid duplicates
-interface RouteParams {
-  [key: string]: string;
-}
-
 // First the Router implementation
 ${cleanRouterSource}
 
@@ -1026,10 +1021,6 @@ export { Link, NavLink, Redirect };
 export default Router;
 `;
                 
-// FIXME: REMOVE LATER
-                // Debug the module content to see what's being sent to the browser
-                console.log('=== DEBUG: ROUTER MODULE CONTENT ===');
-                console.log(moduleContent.substring(0, 500) + '...');
               } catch (error) {
                 options.debug && logger.error(`Error loading router: ${error}`);
                 // Return an error instead of a fallback

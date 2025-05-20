@@ -4,10 +4,7 @@
  * Fully compatible with modern app router component structure
  */
 
-// Parameters for route components
-export interface RouteParams {
-  [key: string]: string;
-}
+import type { RouteParams } from "./router";
 
 // Define possible return types for components
 export type ComponentReturn = HTMLElement | DocumentFragment | string | Node | null;
