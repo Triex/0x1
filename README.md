@@ -101,13 +101,13 @@
 
 ```bash
 # Deploy to Vercel (recommended)
-bun 0x1 deploy --provider=vercel
+0x1 deploy --provider=vercel
 
 # Deploy to Netlify
-bun 0x1 deploy --provider=netlify
+0x1 deploy --provider=netlify
 
 # Custom deployment
-bun 0x1 build
+0x1 build
 # Then deploy the 'dist' directory
 ```
 
@@ -218,25 +218,27 @@ bun 0x1 new my-app --complexity=minimal|standard|full
 ### Create a New Project
 
 ```bash
-# Using Bun directly (recommended)
+# Using Bun directly 
 bun create 0x1 my-app
 
-# Or if you installed 0x1 globally
+# Or install globally (recommended)
 bun install -g 0x1
-bun 0x1 new my-app
+
+# Then create new projects with the CLI
+0x1 new my-app
 
 # With template complexity option
-bun 0x1 new my-app --complexity=minimal|standard|full
+0x1 new my-app --complexity=minimal|standard|full
 
 # With other options
-bun 0x1 new my-app --javascript --theme="royal-purple" --pwa
+0x1 new my-app --javascript --theme="royal-purple" --pwa
 ```
 
 ### Development
 
 ```bash
 cd my-app
-bun dev
+0x1 dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view your app in action!
@@ -262,20 +264,20 @@ my-app/
 ### Production Build
 
 ```bash
-bun run build
+0x1 build
 ```
 
 ### Deploy
 
 ```bash
 # Deploy to Vercel (recommended)
-bun 0x1 deploy --provider=vercel
+0x1 deploy --provider=vercel
 
 # Deploy to Netlify
-bun 0x1 deploy --provider=netlify
+0x1 deploy --provider=netlify
 
 # Custom deployment
-bun 0x1 build
+0x1 build
 # Then deploy the 'dist' directory
 ```
 
@@ -283,35 +285,44 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.71**
+Current version: **0.0.72**
 
 This release provides all core functionality with a stable API, including the custom JSX runtime system.
 
-### CLI Access Troubleshooting
+### CLI Access Notes
 
-After installing with `bun install -g`, you may need to add Bun's bin directory to your PATH:
-
-```bash
-# Add these lines to your shell config (~/.bashrc, ~/.zshrc, etc.)
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-```
-
-Alternatively, you can always use 0x1 without modifying your PATH:
+When you install 0x1 globally with `bun install -g`, the installer automatically adds it to your PATH, allowing you to use the `0x1` command directly:
 
 ```bash
-bunx 0x1 <command>
+# Install globally
+bun install -g 0x1
+
+# Then use directly
+0x1 new my-project
 ```
 
-> **Note:** When installed globally, you may need to run the CLI using `bun 0x1` instead of just `0x1`. This is due to how Bun handles global binary installations.
->
-> ```bash
-> # Instead of this
-> 0x1 new my-project
->
-> # Use this
-> bun 0x1 new my-project
-> ```
+#### Troubleshooting
+
+If you encounter issues with the `0x1` command not being found, you have these options:
+
+1. **Use with bun directly:**
+   ```bash
+   bun 0x1 new my-project
+   ```
+
+2. **Use with bunx:**
+   ```bash
+   bunx 0x1 new my-project
+   ```
+
+3. **Manually update your PATH** (rarely needed):
+   ```bash
+   # Add these lines to your shell config (~/.bashrc, ~/.zshrc, etc.)
+   export BUN_INSTALL="$HOME/.bun"
+   export PATH="$BUN_INSTALL/bin:$PATH"
+   ```
+
+The automatic PATH configuration should work for most users, and you'll only need these alternatives in special circumstances.
 
 ## ⚛️ Custom JSX Runtime
 
