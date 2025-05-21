@@ -135,7 +135,19 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       }
 
       // Copy the live-reload script to dist/browser for use in projects
-      const liveReloadSrc = join(__dirname, '..', '..', 'src', 'browser', 'live-reload.js');
+      // Check if __dirname already includes 'src' to avoid src/src duplication
+      const baseDir = join(__dirname, '..', '..');
+      const dirnameEndsWithSrc = baseDir.endsWith('/src') || baseDir.endsWith('\\src');
+      
+      // Create the path based on whether we already have 'src' in the path
+      const liveReloadSrc = dirnameEndsWithSrc
+        ? join(baseDir, 'browser', 'live-reload.js')
+        : join(baseDir, 'src', 'browser', 'live-reload.js');
+      
+      // Add debug logging
+      logger.debug(`Base directory: ${baseDir}`);
+      logger.debug(`Live reload src path: ${liveReloadSrc}`);
+      
       const liveReloadDest = join(outputBrowserDir, 'live-reload.js');
       if (existsSync(liveReloadSrc)) {
         logger.info(`Copying live-reload script to ${liveReloadDest}`);

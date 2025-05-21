@@ -574,7 +574,16 @@ async function createDevServer(options: {
     // These are all the possible locations we might find the live-reload script
     
     // 1. Direct path to the source file (highest priority) - this is the actual implementation
-    const actualImplementationPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+    // Check if frameworkPath already ends with 'src' to avoid duplication
+    const pathEndsWithSrc = frameworkPath.endsWith('/src') || frameworkPath.endsWith('\\src');
+    const actualImplementationPath = pathEndsWithSrc 
+      ? resolve(frameworkPath, 'browser', 'live-reload.js')
+      : resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+    
+    if (options.debug) {
+      logger.debug(`Framework path: ${frameworkPath}`);
+      logger.debug(`actualImplementationPath: ${actualImplementationPath}`);
+    }
     
     // 2. Path in the dist directory
     const frameworkDistBrowserPath = resolve(frameworkDistPath, 'browser', 'live-reload.js');
