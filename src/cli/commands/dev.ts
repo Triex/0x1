@@ -1002,17 +1002,22 @@ export default {
                   
                 // Rename Redirect to avoid conflicts
                 cleanNavigationSource = cleanNavigationSource
-                  .replace(/export\s+function\s+Redirect/g, 'function BrowserRedirect');
-                
-                // Create a COMPLETELY isolated router module to fix duplicate exports once and for all
-                let clientContent = `
-// ===== ROUTER MODULE =====
-// Ensure we're using Bun for better performance
-${routerSource}
+                  // Serve the router module as a proper ES module with correct MIME type
+                  // This ensures it can be loaded as a module by the browser
 
-// ===== NAVIGATION MODULE =====
-// Careful handling to avoid duplicate Link identifiers
-${navigationSource}
+                // Create a proper ES module with exports for the router and navigation
+                let clientContent = `
+// Properly formatted ES module with necessary exports
+// @ts-nocheck - Runtime browser code
+
+// Core router implementation
+${routerSource.replace(/export\s+{[^}]+}/g, '')}
+
+// Navigation implementation with renamed components to avoid conflicts
+${navigationSource.replace(/export\s+{[^}]+}/g, '')}
+
+// Export the Router class as a proper ESM module with named export
+export { Router };
 
 // Initialize router on page load with enhanced error handling
 document.addEventListener('DOMContentLoaded', () => {
@@ -1035,15 +1040,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return notFound;
       }
     });
-    root: document.getElementById('app') || document.body,
-    mode: 'history',
-    transitionDuration: 200,
-    notFoundComponent: () => {
-      const div = document.createElement('div');
-      div.textContent = '404 - Page Not Found';
-      return div;
-    }
-  };
+    
+    // Initialize the router
+    router.init();
+  } catch (error) {
+    console.error('[0x1] Error initializing router:', error);
+  }
+});
   
   // Merge options with defaults
   const mergedOptions = { ...defaultOptions, ...options };
@@ -1259,8 +1262,10 @@ export const Redirect = BrowserRedirect;
                     );
                     return new Response(content, {
                       headers: {
-                        "Content-Type": "application/javascript",
-                        "Cache-Control": "no-cache",
+                        "Content-Type": "application/javascript; charset=utf-8",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
                       },
                     });
                   }
@@ -1750,8 +1755,10 @@ export const Redirect = BrowserRedirect;
                 // Return transformed JavaScript
                 return new Response(fileContent, {
                   headers: {
-                    "Content-Type": "application/javascript",
-                    "Cache-Control": "no-cache",
+                    "Content-Type": "application/javascript; charset=utf-8",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
                   },
                 });
               } catch (error) {

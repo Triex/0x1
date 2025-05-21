@@ -83,9 +83,12 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
   // Special handling for layout components - they often need more comprehensive JSX runtime support
   if (isLayout) {
     logger.debug(`Enhanced JSX runtime imports for layout component: ${fileName}`);
+    // Make sure we explicitly force all required imports for layouts
     processedSource = `// Auto-injected JSX runtime imports for layout component
 import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
-// Ensure Link component is properly handled
+// Import createElement directly to ensure it's available
+import { createElement } from "0x1/jsx-runtime.js";
+// Ensure Link component is properly handled (required for navigation)
 import { Link } from "0x1";
 
 ${processedSource}`;
