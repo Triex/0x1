@@ -658,3 +658,11 @@ export class Router {
     return wrappedComponent;
   }
 }
+
+/**
+ * Factory function to create a router instance
+ * This allows for a more ergonomic API: createRouter() instead of new Router()
+ */
+export function createRouter(options: RouterOptions): Router {
+  return new Router(options);
+}
