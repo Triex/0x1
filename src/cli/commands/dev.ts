@@ -528,35 +528,58 @@ async function createDevServer(options: {
   let liveReloadScript = "";
 
   try {
-    // Try multiple possible paths for the live-reload script with better prioritization
-    // We'll search in various locations to ensure we can find the script
-    const possiblePaths = [
-      // First prioritize our framework src/browser location
-      resolve(frameworkPath, "src", "browser", "live-reload.js"),
+    // COMPREHENSIVE FIX: Try multiple possible paths for the live-reload script with improved detection
+    // We'll search in various locations to ensure we can find the script, with better path resolution
 
-      // Then check framework dist directory which is available in installed projects
-      resolve(frameworkPath, "dist", "browser", "live-reload.js"),
-
-      // Also try installed package locations (for projects using the framework)
-      resolve(projectPath, "node_modules", "0x1", "browser", "live-reload.js"),
-      resolve(projectPath, "node_modules", "0x1", "dist", "browser", "live-reload.js"),
-
-      // Check for linked package paths
-      join(process.cwd(), "browser/live-reload.js"),
-      resolve(process.cwd(), "dist", "browser", "live-reload.js"),
-
-      // Check relative to current module directory
-      resolve(__dirname, "..", "..", "browser", "live-reload.js"),
-      resolve(__dirname, "..", "..", "..", "browser", "live-reload.js"),
-      resolve(__dirname, "..", "..", "..", "src", "browser", "live-reload.js"),
-
-      // Include common alternative paths
-      resolve(projectPath, "browser", "live-reload.js"),
-      resolve(projectPath, "src", "browser", "live-reload.js"),
-    ];
-
-    logger.debug(`Looking for live-reload.js in:\n${possiblePaths.join("\n")}`);
-
+    // Helper function to get framework root directories
+    const getPossibleFrameworkRoots = () => {
+      const roots = [];
+      
+      // Current directory and direct parent (for local development)
+      roots.push(process.cwd());
+      roots.push(resolve(process.cwd(), '..'));
+      
+      // Relative to CLI location
+      const cliDir = dirname(fileURLToPath(import.meta.url));
+      roots.push(resolve(cliDir, '..'));
+      roots.push(resolve(cliDir, '..', '..'));
+      
+      // Installed as dependency
+      roots.push(resolve(process.cwd(), 'node_modules', '0x1'));
+      
+      // Framework specific paths
+      if (frameworkPath) roots.push(frameworkPath);
+      if (projectPath) roots.push(projectPath);
+      
+      return roots.filter(Boolean); // Remove any undefined values
+    };
+    
+    const possiblePaths = [];
+    const frameworkRoots = getPossibleFrameworkRoots();
+    
+    // For each possible root, add various path combinations
+    for (const root of frameworkRoots) {
+      // Source directory paths
+      possiblePaths.push(resolve(root, 'src', 'browser', 'live-reload.js'));
+      possiblePaths.push(resolve(root, 'browser', 'live-reload.js'));
+      
+      // Distribution paths
+      possiblePaths.push(resolve(root, 'dist', 'browser', 'live-reload.js'));
+    }
+    
+    // Also add a few additional special paths
+    possiblePaths.push(resolve(__dirname, '..', '..', '..', 'browser', 'live-reload.js'));
+    possiblePaths.push(resolve(__dirname, '..', '..', '..', 'src', 'browser', 'live-reload.js'));
+    possiblePaths.push(resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js'));
+    
+    // Debug output to help diagnose path issues
+    if (options.debug) {
+      logger.debug(`Looking for live-reload.js in the following locations:`);
+      for (const path of possiblePaths) {
+        logger.debug(`- ${path} ${existsSync(path) ? '✅ EXISTS' : '❌ NOT FOUND'}`);
+      }
+    }
+    
     // Try each path until we find the script
     let scriptFound = false;
     for (const path of possiblePaths) {
@@ -1110,64 +1133,101 @@ export default {
             path.startsWith("/node_modules/0x1/") &&
             path !== "/node_modules/0x1/index.js"
           ) {
-            // CRITICAL FIX: Special handling for router.js to ensure correct MIME type
+            // ULTRA-ENHANCED FIX: Special handling for router.js to ensure correct MIME type
             if (path.includes('router') && !path.endsWith('.map')) {
               options.debug && logger.debug(`Ensuring correct MIME type for router module: ${path}`);
-              // CRITICAL FIX: Get 0x1 framework root path with more robust detection
-              // This ensures we correctly find the framework root regardless of installation method
-              const cliDir = dirname(fileURLToPath(import.meta.url));
-              const possibleFrameworkRoots = [
-                resolve(cliDir, '../..'), // Standard path from CLI dir
-                resolve(cliDir, '../../..'), // Some installations
-                resolve(process.cwd()), // Current project (if it's the framework itself)
-                resolve(process.cwd(), 'node_modules/0x1') // Installed as dependency
-              ];
               
-              // Find the first valid framework root that has a src or dist directory
-              let frameworkRoot = '';
+              // ULTRA-ENHANCED: Create a comprehensive list of all possible framework roots
+              // This greatly improves the robustness of framework resolution
+              const getPossibleFrameworkRoots = () => {
+                const roots = [];
+                
+                // CLI directory relative paths (most common case)
+                const cliDir = dirname(fileURLToPath(import.meta.url));
+                roots.push(resolve(cliDir, '../..'));
+                roots.push(resolve(cliDir, '../../..'));
+                
+                // Project root based paths
+                roots.push(resolve(process.cwd())); 
+                roots.push(resolve(process.cwd(), '..')); 
+                
+                // Node modules paths for when installed as dependency
+                roots.push(resolve(process.cwd(), 'node_modules/0x1'));
+                
+                // Specific paths from known environment variables 
+                if (process.env.FRAMEWORK_ROOT) {
+                  roots.push(process.env.FRAMEWORK_ROOT);
+                }
+                
+                // If frameworkPath is defined, use it
+                if (frameworkPath) {
+                  roots.push(frameworkPath);
+                }
+                
+                return roots;
+              };
+              
+              const possibleFrameworkRoots = getPossibleFrameworkRoots();
+              
+              // Find all valid framework roots that have core files
+              const validFrameworkRoots: string[] = [];
               for (const root of possibleFrameworkRoots) {
-                if (
-                  existsSync(resolve(root, 'src/core')) || 
-                  existsSync(resolve(root, 'dist/core'))
-                ) {
-                  frameworkRoot = root;
-                  break;
+                if (root && (
+                  existsSync(resolve(root, 'dist/core')) || 
+                  existsSync(resolve(root, 'src/core')) ||
+                  existsSync(resolve(root, 'dist/0x1')) ||
+                  existsSync(resolve(root, 'src/0x1'))
+                )) {
+                  validFrameworkRoots.push(root);
                 }
               }
               
-              options.debug && logger.debug(`Framework root resolved to: ${frameworkRoot || 'Not found'}`);
+              // Debug logging for better diagnostics
+              if (options.debug) {
+                logger.debug(`Possible framework roots:`);
+                possibleFrameworkRoots.forEach(root => {
+                  if (root) logger.debug(`- ${root} ${validFrameworkRoots.includes(root) ? '✅ VALID' : '❌ INVALID'}`);
+                });
+              }
               
-              // CRITICAL FIX: Comprehensive search for router module
+              // ULTRA-ENHANCED: Comprehensive search for router module
               // We search in all possible locations where the router module might be
               const routerPaths: string[] = [];
               
               // Helper to add all possible router paths for a given root
               const addRouterPathsForRoot = (root: string) => {
-                // Core paths (most common)
+                if (!root) return;
+                
+                // Core directory paths - highest priority
                 routerPaths.push(resolve(root, 'dist/core/router.js'));
                 routerPaths.push(resolve(root, 'src/core/router.js'));
+                
+                // Public 0x1 export directory
+                routerPaths.push(resolve(root, 'dist/0x1/router.js'));
+                routerPaths.push(resolve(root, 'src/0x1/router.js'));
                 
                 // Direct paths in root
                 routerPaths.push(resolve(root, 'dist/router.js'));
                 routerPaths.push(resolve(root, 'src/router.js'));
                 
-                // 0x1 subdirectory paths
-                routerPaths.push(resolve(root, 'dist/0x1/router.js'));
-                routerPaths.push(resolve(root, 'src/0x1/router.js'));
-                
-                // Check for transpiled files without .js extension
+                // Handle different extensions and special cases
                 routerPaths.push(resolve(root, 'dist/core/router'));
-                routerPaths.push(resolve(root, 'dist/router'));
+                routerPaths.push(resolve(root, 'src/core/router.ts'));
+                routerPaths.push(resolve(root, 'core/router.js'));
+                routerPaths.push(resolve(root, 'router.js'));
               };
               
-              // Add paths for the detected framework root
-              if (frameworkRoot) {
-                addRouterPathsForRoot(frameworkRoot);
+              // Add paths for the detected framework roots
+              for (const root of validFrameworkRoots) {
+                addRouterPathsForRoot(root);
               }
               
-              // Also try the current directory and node_modules
-              addRouterPathsForRoot(process.cwd());
-              addRouterPathsForRoot(resolve(process.cwd(), 'node_modules/0x1'));
+              // Also try absolute path matches from the request path
+              const requestPathParts = path.split('/');
+              if (requestPathParts.length > 2) {
+                const possibleRouterPath = resolve('/', ...requestPathParts.slice(0, -1)); 
+                routerPaths.push(possibleRouterPath);
+              }
               
               // Enhanced debugging to show all paths being checked
               if (options.debug) {
@@ -1198,11 +1258,16 @@ export default {
               
               // If no router.js found, try to compile router.ts on the fly
               // Try all possible TypeScript router file locations
-              const routerTsPaths = [
-                resolve(frameworkRoot, 'src/core/router.ts'),
-                resolve(process.cwd(), 'src/core/router.ts'),
-                resolve(process.cwd(), 'node_modules/0x1/src/core/router.ts')
-              ];
+              const routerTsPaths: string[] = [];
+              
+              // Add TypeScript paths from all valid framework roots
+              for (const root of validFrameworkRoots) {
+                routerTsPaths.push(resolve(root, 'src/core/router.ts'));
+              }
+              
+              // Also add standard locations
+              routerTsPaths.push(resolve(process.cwd(), 'src/core/router.ts'));
+              routerTsPaths.push(resolve(process.cwd(), 'node_modules/0x1/src/core/router.ts'));
               
               const existingRouterTsPath = routerTsPaths.find(p => existsSync(p));
               
