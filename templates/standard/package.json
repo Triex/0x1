@@ -11,7 +11,7 @@
     "format": "prettier --write '**/*.{ts,tsx,css,html}'"
   },
   "dependencies": {
-    "0x1": "^0.0.121"
+    "0x1": "^0.0.122"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {

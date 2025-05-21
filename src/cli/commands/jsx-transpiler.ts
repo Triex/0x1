@@ -136,10 +136,22 @@ export async function transpileJSX(
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
+    
+    // Automatically inject JSX runtime imports for layout files
+    const isLayoutComponent = entryFile.includes('layout.');
+    let finalSource = processedSource;
+    
+    // Only inject the import if it's not already there
+    if (isLayoutComponent && !finalSource.includes('jsx-runtime')) {
+      logger.debug('Automatically injecting JSX runtime imports for layout component');
+      finalSource = `// Auto-injected by 0x1 JSX transpiler
+import { jsx, jsxs, Fragment } from '0x1/jsx-runtime';
+${finalSource}`;
+    }
 
     // Write processed source to a temporary file
     const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
-    await Bun.write(tempFile, processedSource);
+    await Bun.write(tempFile, finalSource);
 
     try {
       // Use Bun.build directly rather than spawning a process for better reliability

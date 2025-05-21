@@ -1022,25 +1022,17 @@ const _createRouter = (options = {}) => {
 };
 
 // ===== MODULE EXPORTS =====
-// Single, isolated export object to completely prevent duplicate exports
-const exports = {
-  // Router components from this module
-  Router,
-  createRouter: _createRouter,
-  // Navigation components with clear browser-specific names
-  Link: BrowserLink,
-  NavLink: BrowserNavLink,
-  Redirect: BrowserRedirect
-};
+// Completely flattened exports to prevent any duplicate declarations
 
 // Default export is the Router class
-export default exports.Router;
+export default Router;
 
-// Named exports, explicit and isolated
-export const createRouter = exports.createRouter;
-export const Link = exports.Link;
-export const NavLink = exports.NavLink;
-export const Redirect = exports.Redirect;
+// Named exports - direct references without intermediate objects
+// This completely prevents duplicate declarations
+export const createRouter = _createRouter;
+export const Link = BrowserLink;
+export const NavLink = BrowserNavLink;
+export const Redirect = BrowserRedirect;
 `;
                 
               } catch (error) {
