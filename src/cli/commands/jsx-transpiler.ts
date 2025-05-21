@@ -1,19 +1,22 @@
 /**
  * JSX Transpiler - Uses Bun build command to transform JSX code
  */
-import { join, dirname, basename } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import * as fs from 'fs';
 import Bun from 'bun';
+import * as fs from 'fs';
+import { existsSync, mkdirSync } from 'fs';
+import { basename, dirname, join } from 'path';
 import { logger } from '../utils/logger';
 // Use Bun's native APIs instead of Node.js ones
 
 /**
  * Process import statements in source code to handle JSX imports
  */
-async function processImports(sourceCode: string): Promise<string> {
+async function processImports(sourceCode: string, fileName: string = ''): Promise<string> {
   // Handle import statements for JSX
   let processedSource = sourceCode;
+  
+  // Special handling for layout files
+  const isLayout = fileName.toLowerCase().includes('layout');
 
   // First check if the file contains CSS Tailwind directives
   const hasTailwind = processedSource.includes('@tailwind');
@@ -79,11 +82,20 @@ async function processImports(sourceCode: string): Promise<string> {
     "// JSX runtime imports handled by transpiler"
   );
   
-  // Add direct import of our JSX runtime at the top of the file
-  processedSource = `// Auto-injected JSX runtime imports
+  // For layout files, we need to ensure correct import of children prop handling
+  if (isLayout) {
+    processedSource = `// Auto-injected JSX runtime imports for layout component
+import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
+// Ensure proper layout component handling for children
+import type { LayoutProps } from "0x1/core/component.js";
+
+${processedSource}`;
+  } else {
+    processedSource = `// Auto-injected JSX runtime imports
 import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
 
 ${processedSource}`;
+  }
 
   return processedSource;
 }
@@ -104,7 +116,16 @@ export async function transpileJSX(
 ): Promise<boolean> {
   try {
     // Read the source file
-    logger.info(`Transpiling JSX: ${basename(entryFile)}`);
+    const fileBasename = basename(entryFile);
+    const isLayout = fileBasename.includes('layout');
+    
+    // Special handling and logging for layout files
+    if (isLayout) {
+      logger.info(`Transpiling Layout JSX: ${fileBasename} (special handling)`); 
+    } else {
+      logger.info(`Transpiling JSX: ${fileBasename}`);
+    }
+    
     const sourceCode = await Bun.file(entryFile).text();
 
     // Calculate output file path with truly unique naming to avoid conflicts
@@ -127,8 +148,8 @@ export async function transpileJSX(
     // We'll use project root or file directory for context
     const _projectPath = projectRoot || dirname(entryFile);
 
-    // Process imports using the utility function
-    const processedSource = await processImports(sourceCode);
+    // Now preprocess the source to handle JSX imports
+    const processedSource = await processImports(sourceCode, fileBasename);
 
     // Ensure output directory exists
     if (!existsSync(outputDir)) {
@@ -152,25 +173,44 @@ export async function transpileJSX(
       try {
         // First try to use Bun.build API directly which is faster
         try {
-          logger.debug('Transpiling JSX with Bun.build API directly');
+          logger.debug(`Using Bun.build API directly${isLayout ? ' with layout optimizations' : ''}`);
           
-          // Direct API approach (works in newer Bun versions)
-          // Using type assertion because TypeScript definitions might not include all Bun build options
-          const result = await Bun.build({
+          // Build options with special handling for layout components
+          const buildOptions: any = {
             entrypoints: [tempFile],
             outdir: dirname(outputFile),
             naming: {
-              entry: basename(outputFile)
+              entry: '[dir]/[name].js'
             },
             minify: minify,
-            external: ['*.css', 'tailwind*', 'postcss*', '@tailwind*'],
+            sourcemap: 'none',
+            external: ['*.css', '*.scss', 'tailwind*', '@tailwind*'],
+            jsx: 'automatic',
+            jsxImportSource: '0x1',
             define: {
               'process.env.NODE_ENV': JSON.stringify('production')
             },
-            target: 'browser',
-            // TypeScript doesn't recognize these JSX config in type definitions
-            // but they work at runtime in Bun
-          } as any);
+            target: 'browser'
+          };
+          
+          // Special options for layout files to ensure they work correctly
+          if (isLayout) {
+            buildOptions.loader = { 
+              '.tsx': 'tsx',
+              '.ts': 'ts',
+              '.jsx': 'jsx',
+              '.js': 'js' 
+            };
+            buildOptions.plugins = [{
+              name: 'layout-resolver',
+              setup(build: any) {
+                // Add special handling for imports in layout files if needed
+              }
+            }];
+          }
+          
+          // Run the build with configured options
+          const result = await Bun.build(buildOptions);
           
           // Check if build succeeded
           if (!result.success) {

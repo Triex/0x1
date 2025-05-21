@@ -378,7 +378,7 @@ export class Router {
     try {
       // Handle root path separately for clarity
       if (path === "/") {
-        return new RegExp("^\\/\$");
+        return new RegExp("^\\/\\/?$");
       }
       
       // Convert path pattern to regex by carefully handling special characters
