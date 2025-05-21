@@ -690,10 +690,13 @@ export class Router {
   constructor(options) { this.options = options || {}; }
   init() {}
   navigate(path) { window.location.href = path; }
-  // CRITICAL FIX: Fixed root path regex pattern that was causing SyntaxError
+  
+  // Simple fixed implementation for the root path regex issue
   pathToRegex(path) { 
-    // Using a simpler pattern that correctly matches / or empty path
-    return path === "/" ? new RegExp("^\\/?$") : new RegExp(path.replace(/\//g, "\\/")); 
+    // Just handle root path specially - the critical fix
+    if (path === "/") return new RegExp("^/?$");
+    // For all other paths, create a simple regex
+    return new RegExp("^" + path + "$");
   }
 }
 
