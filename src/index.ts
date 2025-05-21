@@ -75,4 +75,4 @@ export { clearElement, patchElement, setAttributes, setStyles } from './utils/do
 export type { _0x1Config } from '../types/config.js';
 
 // Version info
-export const version = '0.0.123';
+export const version = '0.0.125';

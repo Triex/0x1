@@ -85,9 +85,11 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
     logger.debug(`Enhanced JSX runtime imports for layout component: ${fileName}`);
     // Make sure we explicitly force all required imports for layouts
     processedSource = `// Auto-injected JSX runtime imports for layout component
-import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
+import { jsx, jsxs, Fragment } from "0x1/jsx-runtime.js";
 // Import createElement directly to ensure it's available
 import { createElement } from "0x1/jsx-runtime.js";
+// Add React-compatible aliases for JSX transformations
+const React = { createElement, Fragment };
 // Ensure Link component is properly handled (required for navigation)
 import { Link } from "0x1";
 
@@ -208,8 +210,19 @@ export async function transpileJSX(
           // Special handling for layout files to ensure proper transpilation
           if (tempFile.includes('layout.tsx') || tempFile.includes('layout.jsx')) {
             logger.debug('Enhanced transpilation for layout component');
-            // Add layout-specific configuration
-            buildOptions.define['process.env.__0X1_LAYOUT'] = 'true';
+            // Add layout-specific configuration and prepare proper JSX runtime imports
+            buildOptions.define = {
+              ...buildOptions.define,
+              'process.env.__0X1_LAYOUT': 'true',
+              'process.env.RUNTIME_MODE': '"development"',
+              'process.env.NODE_ENV': minify ? '"production"' : '"development"'
+            };
+            
+            // Ensure jsx factory and fragment are properly configured
+            buildOptions.jsx = 'automatic';
+            buildOptions.jsxImportSource = '0x1';
+            buildOptions.jsxFactory = 'jsx';
+            buildOptions.jsxFragment = 'Fragment';
             
             // For layouts, add special plugin to handle Link imports
             buildOptions.plugins = [

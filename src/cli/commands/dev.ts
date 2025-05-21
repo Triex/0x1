@@ -640,6 +640,62 @@ async function createDevServer(options: {
           const url = new URL(req.url);
           const path = url.pathname;
 
+          // Special handling for direct router module requests to fix MIME type issues
+          if (path === "/router" || path === "/router.js") {
+            options.debug && logger.debug(`Direct router.js request - serving with proper MIME type`);
+            
+            // Get 0x1 framework root path
+            const frameworkRootPath = dirname(dirname(fileURLToPath(import.meta.url)));
+            
+            // Try multiple possible router locations in priority order
+            const possibleRouterPaths = [
+              resolve(frameworkRootPath, 'dist/0x1/router.js'),
+              resolve(frameworkRootPath, 'dist/router.js'),
+              resolve(frameworkRootPath, 'dist/core/router.js'),
+              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),
+              resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
+            ];
+            
+            // Find the first router path that exists
+            let routerPath = null;
+            for (const path of possibleRouterPaths) {
+              if (existsSync(path)) {
+                routerPath = path;
+                break;
+              }
+            }
+            
+            if (routerPath) {
+              options.debug && logger.debug(`Found router at ${routerPath}`);
+              const routerContent = await Bun.file(routerPath).text();
+              return new Response(routerContent, {
+                headers: {
+                  "Content-Type": "application/javascript; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  "X-0x1-Module": "router"
+                },
+              });
+            } else {
+              // Fallback to generating a minimal router module if we can't find one
+              options.debug && logger.debug(`Could not find router module, generating minimal version`);
+              const minimalRouter = `// 0x1 minimal router (fallback)
+export class Router { 
+  constructor(options) { this.options = options; }
+  init() { console.log('[0x1] Minimal router initialized'); }
+  navigate(path) { window.location.href = path; }
+}
+`;
+              
+              return new Response(minimalRouter, {
+                headers: {
+                  "Content-Type": "application/javascript; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  "X-0x1-Module": "router"
+                },
+              });
+            }
+          }
+
           // Handle SSE connection for live reload
           if (
             path === "/__0x1_live_reload" ||
@@ -811,27 +867,48 @@ export default {
             const frameworkRoot = dirname(
               dirname(fileURLToPath(import.meta.url))
             );
-            const submoduleFile = resolve(
-              frameworkRoot,
-              "..",
-              "src",
-              submoduleName + ".js"
-            );
-
-            if (existsSync(submoduleFile)) {
-              const moduleContent = await Bun.file(submoduleFile).text();
-              options.debug &&
-                logger.debug(`Serving 0x1 submodule from ${submoduleFile}`);
+            
+            // Critical fix: Check explicitly for jsx-runtime.js which needs special handling
+            if (submoduleName === 'jsx-runtime' || submoduleName === 'jsx-runtime.js') {
+              const jsxRuntimePath = resolve(frameworkRoot, 'dist/0x1/jsx-runtime.js');
+              if (existsSync(jsxRuntimePath)) {
+                const jsxContent = await Bun.file(jsxRuntimePath).text();
+                options.debug && logger.debug(`Serving JSX runtime module from ${jsxRuntimePath}`);
+                
+                return new Response(jsxContent, {
+                  headers: {
+                    "Content-Type": "application/javascript; charset=utf-8",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "X-0x1-Module": "jsx-runtime"
+                  },
+                });
+              }
+            }
+            
+            // Check both in dist/ and src/ directories for modules
+            const distSubmodulePath = resolve(frameworkRoot, 'dist/0x1', submoduleName + '.js');
+            const srcSubmodulePath = resolve(frameworkRoot, '..', 'src', submoduleName + '.js');
+            
+            let modulePath = null;
+            if (existsSync(distSubmodulePath)) {
+              modulePath = distSubmodulePath;
+            } else if (existsSync(srcSubmodulePath)) {
+              modulePath = srcSubmodulePath;
+            }
+            
+            if (modulePath) {
+              const moduleContent = await Bun.file(modulePath).text();
+              options.debug && logger.debug(`Serving 0x1 submodule from ${modulePath}`);
 
               return new Response(moduleContent, {
                 headers: {
-                  "Content-Type": "application/javascript",
-                  "Cache-Control": "no-cache",
+                  "Content-Type": "application/javascript; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  "X-0x1-Module": submoduleName
                 },
               });
             }
           }
-
           // // Serve static content from 'public' directory
           // const staticFilePath = join(options.projectPath, 'public', path);
           // if (existsSync(staticFilePath) && !isDirectory(staticFilePath)) {
@@ -905,6 +982,8 @@ export default {
               }
             } else if (path === "/router.js" || path === "/router") {
               modulePath = "router";
+              // Set up special handling for direct router.js requests - these need the proper MIME type
+              options.debug && logger.debug('Direct router module request detected, handling with special care');
             }
             let moduleContent = "";
             
@@ -1752,7 +1831,7 @@ export const Redirect = BrowserRedirect;
 
                 logger.info(`200 OK (Transformed JS): ${path}`);
 
-                // Return transformed JavaScript
+                // Return transformed JavaScript with proper MIME type for all modules
                 return new Response(fileContent, {
                   headers: {
                     "Content-Type": "application/javascript; charset=utf-8",
@@ -1794,8 +1873,8 @@ export const Redirect = BrowserRedirect;
           logger.debug(`404 Not Found: ${path}`);
           return new Response("Not Found", { status: 404 });
         },
-        error(error) {
-          logger.error(`Server error: ${error}`);
+        error(error: Error) {
+          logger.error(`Server error: ${error.message}`);
           return new Response("Server Error", { status: 500 });
         },
       });

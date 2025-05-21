@@ -774,13 +774,13 @@ export default {
       }
     }
 
-    // Create JSX runtime support files for the build
-    const jsxRuntimeDir = join(dirname(outputFile), '0x1');
+    // Create JSX runtime support files for the build - focused on modern approach
+    const jsxRuntimeDir = dirname(outputFile);
     await mkdir(jsxRuntimeDir, { recursive: true });
 
     // Write JSX runtime shim that re-exports from the framework
     const jsxRuntimePath = join(jsxRuntimeDir, 'jsx-runtime.js');
-    const jsxRuntimeContent = `// 0x1 Framework - JSX Runtime shim
+    const jsxRuntimeContent = `// 0x1 Framework - JSX Runtime
 // This exports all JSX runtime functions needed for components
 import { createElement, Fragment, jsx, jsxs } from '/0x1/jsx-runtime.js';
 
@@ -796,6 +796,13 @@ export default {
 
     await Bun.write(jsxRuntimePath, jsxRuntimeContent);
 
+    // Create dev runtime variant
+    const jsxDevRuntimePath = join(jsxRuntimeDir, 'jsx-dev-runtime.js');
+    const jsxDevRuntimeContent = jsxRuntimeContent.replace(/jsx-runtime\.js/g, 'jsx-dev-runtime.js');
+    await Bun.write(jsxDevRuntimePath, jsxDevRuntimeContent);
+    
+    logger.info('✅ JSX runtime files created for modern imports');
+    
     // Define build options using Bun's API
     const result = await Bun.build({
       entrypoints: [actualEntryFile],
