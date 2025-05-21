@@ -570,35 +570,38 @@ async function createDevServer(options: {
       possiblePaths.push(resolve(cleanRoot, 'browser', 'live-reload.js'));
     }
     
-    // Add framework paths relative to the current file location - fixed path resolution
-    // Correctly pointing to the exact location of live-reload.js
-    const frameworkBrowserPath = resolve(frameworkDistPath, 'browser', 'live-reload.js');
+    // CRITICAL FIX: Use distinct paths to avoid src/src duplication issues
+    // These are all the possible locations we might find the live-reload script
     
-    // CRITICAL FIX: There was a path resolution error with duplicate 'src' folder
-    // This correctly points to the actual location of the script
-    const frameworkSrcBrowserPath = resolve(frameworkPath, 'browser', 'live-reload.js');
-    
-    // Add the framework paths if they exist
-    if (existsSync(frameworkBrowserPath)) {
-      possiblePaths.push(frameworkBrowserPath);
-    }
-    if (existsSync(frameworkSrcBrowserPath)) {
-      possiblePaths.push(frameworkSrcBrowserPath);
-    }
-    
-    // Add node_modules path as a fallback
-    const nodeModulesPath = resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js');
-    if (existsSync(nodeModulesPath)) {
-      possiblePaths.push(nodeModulesPath);
-    }
-    
-    // Direct path to the actual implementation - this should always be prioritized
+    // 1. Direct path to the source file (highest priority) - this is the actual implementation
     const actualImplementationPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
     
-    // Always prioritize the actual implementation if it exists
+    // 2. Path in the dist directory
+    const frameworkDistBrowserPath = resolve(frameworkDistPath, 'browser', 'live-reload.js');
+    
+    // 3. Alternative path directly in the browser directory (in case of custom structure)
+    const frameworkBrowserPath = resolve(frameworkPath, 'browser', 'live-reload.js');
+    
+    // 4. Node modules path as a fallback
+    const nodeModulesPath = resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js');
+    
+    // Add paths to our search array only if they exist
     if (existsSync(actualImplementationPath)) {
-      possiblePaths.unshift(actualImplementationPath); // Add to beginning of array to prioritize
+      // Add the actual implementation at the beginning for highest priority
+      possiblePaths.unshift(actualImplementationPath);
+      
+      // Log for debugging if we found the actual implementation
+      if (options.debug) {
+        logger.debug(`Found actual implementation at: ${actualImplementationPath}`);
+      }
     }
+    
+    // Add all other paths if they exist
+    if (existsSync(frameworkDistBrowserPath)) possiblePaths.push(frameworkDistBrowserPath);
+    if (existsSync(frameworkBrowserPath)) possiblePaths.push(frameworkBrowserPath);
+    if (existsSync(nodeModulesPath)) possiblePaths.push(nodeModulesPath);
+    
+    // The actual implementation has already been prioritized above
     
     let liveReloadScript: string | null = null;
     let scriptFound = false;
@@ -636,8 +639,8 @@ async function createDevServer(options: {
 
       // Using the actual implementation from the repo as a string instead of a fallback
       try {
-        // Try to read the actual implementation from the repo directly
-        const actualImplementationPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+        // Try to read the actual implementation that we already defined above
+        // Reusing the existing actualImplementationPath to avoid duplication
         if (existsSync(actualImplementationPath)) {
           liveReloadScript = await Bun.file(actualImplementationPath).text();
           logger.info(`Using actual live-reload implementation from ${actualImplementationPath}`);
