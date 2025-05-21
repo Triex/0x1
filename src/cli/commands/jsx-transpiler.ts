@@ -14,9 +14,6 @@ import { logger } from '../utils/logger';
 async function processImports(sourceCode: string, fileName: string = ''): Promise<string> {
   // Handle import statements for JSX
   let processedSource = sourceCode;
-  
-  // Special handling for layout files
-  const isLayout = fileName.toLowerCase().includes('layout');
 
   // First check if the file contains CSS Tailwind directives
   const hasTailwind = processedSource.includes('@tailwind');
@@ -82,20 +79,11 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
     "// JSX runtime imports handled by transpiler"
   );
   
-  // For layout files, we need to ensure correct import of children prop handling
-  if (isLayout) {
-    processedSource = `// Auto-injected JSX runtime imports for layout component
-import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
-// Ensure proper layout component handling for children
-import type { LayoutProps } from "0x1/core/component.js";
-
-${processedSource}`;
-  } else {
-    processedSource = `// Auto-injected JSX runtime imports
+  // Add standard JSX runtime imports for all component types
+  processedSource = `// Auto-injected JSX runtime imports
 import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
 
 ${processedSource}`;
-  }
 
   return processedSource;
 }
@@ -117,14 +105,7 @@ export async function transpileJSX(
   try {
     // Read the source file
     const fileBasename = basename(entryFile);
-    const isLayout = fileBasename.includes('layout');
-    
-    // Special handling and logging for layout files
-    if (isLayout) {
-      logger.info(`Transpiling Layout JSX: ${fileBasename} (special handling)`); 
-    } else {
-      logger.info(`Transpiling JSX: ${fileBasename}`);
-    }
+    logger.info(`Transpiling JSX: ${fileBasename}`);
     
     const sourceCode = await Bun.file(entryFile).text();
 
@@ -173,9 +154,9 @@ export async function transpileJSX(
       try {
         // First try to use Bun.build API directly which is faster
         try {
-          logger.debug(`Using Bun.build API directly${isLayout ? ' with layout optimizations' : ''}`);
+          logger.debug('Using Bun.build API directly');
           
-          // Build options with special handling for layout components
+          // Build options with Next.js-inspired configurations
           const buildOptions: any = {
             entrypoints: [tempFile],
             outdir: dirname(outputFile),
@@ -185,29 +166,28 @@ export async function transpileJSX(
             minify: minify,
             sourcemap: 'none',
             external: ['*.css', '*.scss', 'tailwind*', '@tailwind*'],
-            jsx: 'automatic',
-            jsxImportSource: '0x1',
+            jsx: 'automatic', // Use automatic JSX runtime like Next.js
+            jsxImportSource: '0x1', // Use our framework's JSX runtime
+            jsxFactory: 'jsx',  // Default JSX factory
+            jsxFragment: 'Fragment', // Fragment implementation
             define: {
               'process.env.NODE_ENV': JSON.stringify('production')
             },
             target: 'browser'
           };
           
-          // Special options for layout files to ensure they work correctly
-          if (isLayout) {
-            buildOptions.loader = { 
-              '.tsx': 'tsx',
-              '.ts': 'ts',
-              '.jsx': 'jsx',
-              '.js': 'js' 
-            };
-            buildOptions.plugins = [{
-              name: 'layout-resolver',
-              setup(build: any) {
-                // Add special handling for imports in layout files if needed
-              }
-            }];
-          }
+          // Standard loader configuration for all component types
+          buildOptions.loader = { 
+            '.tsx': 'tsx',
+            '.ts': 'ts',
+            '.jsx': 'jsx',
+            '.js': 'js' 
+          };
+          
+          // Add better module resolution to match Next.js behavior
+          buildOptions.resolve = {
+            extensions: ['.tsx', '.ts', '.jsx', '.js'],
+          };
           
           // Run the build with configured options
           const result = await Bun.build(buildOptions);

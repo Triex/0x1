@@ -638,109 +638,50 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
 
       await mkdir(framework0x1Dir, { recursive: true });
 
-      // Create browser-compatible index module for non-router imports
+      // Create browser-compatible index module for the 0x1 framework
       const indexJsContent = `
 // 0x1 Framework - Browser Compatible Version
 
-// JSX Runtime for createElement and Fragment
-export function createElement(type, props, ...children) {
-  if (!props) props = {};
+// Import JSX runtime components
+import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
-  // Handle children
-  if (children.length > 0) {
-    props.children = children.length === 1 ? children[0] : children;
-  }
-
-  // Handle component functions
-  if (typeof type === 'function') {
-    return type(props);
-  }
-
-  // Create DOM element
-  const element = document.createElement(type);
-
-  // Apply props
-  for (const [key, value] of Object.entries(props)) {
-    if (key === 'children') continue;
-
-    // Handle events
-    if (key.startsWith('on') && typeof value === 'function') {
-      const eventName = key.slice(2).toLowerCase();
-      element.addEventListener(eventName, value);
-      continue;
-    }
-
-    // Handle className
-    if (key === 'className') {
-      element.className = value;
-      continue;
-    }
-
-    // Handle style
-    if (key === 'style' && typeof value === 'object') {
-      Object.assign(element.style, value);
-      continue;
-    }
-
-    // Set attributes
-    element.setAttribute(key, value);
-  }
-
-  // Append children
-  if (props.children) {
-    const appendChildren = (children) => {
-      if (Array.isArray(children)) {
-        children.forEach(appendChildren);
-      } else if (children !== null && children !== undefined) {
-        // Convert primitive values to text nodes
-        element.append(
-          children instanceof Node ? children : document.createTextNode(String(children))
-        );
-      }
-    };
-
-    appendChildren(props.children);
-  }
-
-  return element;
-}
-
-// Fragment for JSX fragments
-export const Fragment = (props) => {
-  const fragment = document.createDocumentFragment();
-
-  if (props && props.children) {
-    const appendChildren = (children) => {
-      if (Array.isArray(children)) {
-        children.forEach(appendChildren);
-      } else if (children !== null && children !== undefined) {
-        fragment.append(
-          children instanceof Node ? children : document.createTextNode(String(children))
-        );
-      }
-    };
-
-    appendChildren(props.children);
-  }
-
-  return fragment;
-};
-
-// Export router components (available from HTML script)
-import { Router, Link, NavLink, Redirect } from '/0x1/router';
-export { Router, Link, NavLink, Redirect };
+// Import router components
+import { Router, Link, NavLink, RouterRedirect } from '/0x1/router';
 
 // Export version
 export const version = '0.1.0';
 
-// Default export
-export default {
-  createElement,
+// Export all components and utilities
+// Use consistent naming with RouterRedirect as Redirect to avoid collisions
+export {
+  // JSX Runtime exports
+  jsx,
+  jsxs,
   Fragment,
+  createElement,
+  
+  // Router exports
+  Router,
+  Link, 
+  NavLink,
+  RouterRedirect as Redirect
+};
+
+// Default export for easy access to all components
+export default {
+  // JSX Runtime
+  jsx,
+  jsxs,
+  Fragment,
+  createElement,
+  
+  // Router components
   Router,
   Link,
   NavLink,
-  Redirect,
+  Redirect: RouterRedirect,
+  
+  // Version
   version
 };`;
 

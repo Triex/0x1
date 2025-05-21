@@ -1018,11 +1018,11 @@ export function createRouter(options = {}) {
 // Export components individually to avoid conflicts
 export { Router };
 // Only export the navigation functions from this module
-// This avoids conflicts with imports from other modules
+// renamed to avoid conflicts with any imports from other modules
 const LinkExport = Link;
 const NavLinkExport = NavLink;
 const RedirectExport = Redirect;
-export { LinkExport as Link, NavLinkExport as NavLink, RedirectExport as Redirect };
+export { LinkExport as Link, NavLinkExport as NavLink, RedirectExport as RouterRedirect };
 export default Router;
 `;
                 
@@ -1052,22 +1052,35 @@ export default Router;
               modulePath === "index.js" ||
               path === "/node_modules/0x1/index.js"
             ) {
-              // Provide the main 0x1 module
+              // Provide the main 0x1 module - simplified to avoid duplicate exports
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            import { createRouter, Link, NavLink, Redirect } from '/0x1/router';
+            import { createRouter, Link, NavLink, RouterRedirect as Redirect } from '/0x1/router';
+            import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
-            // Export JSX factory function and fragment
-            export function createElement(type, props, ...children) {
-              return { type, props: props || {}, children };
-            }
-
-            export const Fragment = Symbol('Fragment');
-
-            // Only export the router module itself, avoid re-exporting individual identifiers
-            // This ensures we don't get 'already declared' conflicts
-            export { createRouter, Link, NavLink, Redirect };
-            export default { createRouter, Link, NavLink, Redirect, createElement, Fragment };
+            // Export everything through a single export statement to avoid duplication
+            export { 
+              createRouter, 
+              Link, 
+              NavLink, 
+              Redirect,
+              jsx, 
+              jsxs, 
+              Fragment, 
+              createElement 
+            };
+            
+            // Default export for convenience
+            export default { 
+              createRouter, 
+              Link, 
+              NavLink, 
+              Redirect,
+              jsx, 
+              jsxs, 
+              Fragment, 
+              createElement 
+            };
           `;
             }
 

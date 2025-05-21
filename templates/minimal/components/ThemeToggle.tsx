@@ -3,8 +3,6 @@
  * Toggles between light and dark mode
  */
 
-import { createElement, Fragment } from '0x1';
-
 export function ThemeToggle() {
   // This will be processed by the framework at runtime
   // using a client-side hydration approach similar to React

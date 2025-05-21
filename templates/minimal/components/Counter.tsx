@@ -3,8 +3,6 @@
  * A reusable interactive counter with increment/decrement functionality
  */
 
-import { createElement, Fragment } from '0x1';
-
 interface CounterProps {
   initialValue?: number;
   minValue?: number;

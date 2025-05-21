@@ -1,7 +1,6 @@
 /**
  * Header Component with 0x1 Logo and Theme Toggle
  */
-import { createElement, Fragment } from '0x1';
 import { ThemeToggle } from './ThemeToggle';
 
 export function Header() {

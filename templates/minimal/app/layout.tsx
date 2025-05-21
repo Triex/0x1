@@ -3,7 +3,6 @@
  * Using app directory structure
  */
 
-import { createElement, Fragment } from '0x1';
 import './globals.css';
 
 export default function RootLayout({ children }: { children: any }) {
