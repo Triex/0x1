@@ -557,34 +557,40 @@ async function createDevServer(options: {
     const possiblePaths = [];
     const frameworkRoots = getPossibleFrameworkRoots();
     
-    // FIXED: For each possible root, add various path combinations without duplicating src
+    // For each possible root, add various path combinations without duplicating src
     for (const root of frameworkRoots) {
-      // Carefully handle path combinations to avoid src/src duplication
-      // First check if root path already contains 'src' to avoid duplication
-      const rootHasSrc = root.includes('/src') || root.endsWith('src');
+      // Clean up the root path to avoid any path traversal issues
+      const cleanRoot = root.replace(/\/+/g, '/').replace(/\/$/, '');
       
-      // Source directory paths - avoid adding 'src' if already in path
-      if (!rootHasSrc) {
-        possiblePaths.push(resolve(root, 'src', 'browser', 'live-reload.js'));
+      // Add the direct path first (most likely location in development)
+      possiblePaths.push(resolve(cleanRoot, 'browser', 'live-reload.js'));
+      
+      // Add src path only if it's not already in the path
+      if (!cleanRoot.endsWith('src')) {
+        possiblePaths.push(resolve(cleanRoot, 'src', 'browser', 'live-reload.js'));
       }
-      possiblePaths.push(resolve(root, 'browser', 'live-reload.js'));
       
-      // Distribution paths
-      possiblePaths.push(resolve(root, 'dist', 'browser', 'live-reload.js'));
+      // Add dist path
+      possiblePaths.push(resolve(cleanRoot, 'dist', 'browser', 'live-reload.js'));
     }
     
-    // Also add a few additional special paths, but normalized to prevent src/src issues
-    // First create path without src, then add it if needed
-    const baseDir = resolve(__dirname, '..', '..', '..');
-    possiblePaths.push(resolve(baseDir, 'browser', 'live-reload.js'));
+    // Add framework paths relative to the current file location
+    const frameworkBrowserPath = resolve(frameworkPath, 'browser', 'live-reload.js');
+    const frameworkSrcBrowserPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
     
-    // Only add src path if it's not already in the baseDir
-    if (!baseDir.includes('/src') && !baseDir.endsWith('src')) {
-      possiblePaths.push(resolve(baseDir, 'src', 'browser', 'live-reload.js'));
+    // Add the framework paths if they exist
+    if (existsSync(frameworkBrowserPath)) {
+      possiblePaths.push(frameworkBrowserPath);
+    }
+    if (existsSync(frameworkSrcBrowserPath)) {
+      possiblePaths.push(frameworkSrcBrowserPath);
     }
     
-    // Node modules path is less likely to have duplication
-    possiblePaths.push(resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js'));
+    // Add node_modules path as a fallback
+    const nodeModulesPath = resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js');
+    if (existsSync(nodeModulesPath)) {
+      possiblePaths.push(nodeModulesPath);
+    }
     
     // Debug output to help diagnose path issues
     if (options.debug) {

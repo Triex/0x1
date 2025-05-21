@@ -3,22 +3,26 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "rootDir": ".",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
+    "jsx": "preserve",
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": true,
-    "useDefineForClassFields": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "0x1",
-    "types": ["bun-types"],
-    "lib": ["DOM", "DOM.Iterable", "ESNext"]
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "0x1/*": ["node_modules/0x1/dist/*"]
+    },
+    "typeRoots": [
+      "./node_modules/@types",
+      "./types"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "types/config.ts", "types/execa.d.ts", "types/jsx.d.ts", "types/prompts.d.ts"],
-  "exclude": ["node_modules", "dist", "templates"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

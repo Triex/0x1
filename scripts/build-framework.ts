@@ -293,7 +293,8 @@ async function buildFramework() {
           console.warn('⚠️ Failed to transpile TypeScript JSX runtime, falling back to JavaScript version');
         }
       } catch (error) {
-        console.warn('⚠️ Error transpiling TypeScript JSX runtime:', error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn('⚠️ Error transpiling TypeScript JSX runtime:', errorMessage);
       }
     }
     
@@ -343,7 +344,8 @@ async function buildFramework() {
           console.warn('⚠️ Failed to transpile TypeScript JSX dev runtime, falling back to JavaScript version');
         }
       } catch (error) {
-        console.warn('⚠️ Error transpiling TypeScript JSX dev runtime:', error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn('⚠️ Error transpiling TypeScript JSX dev runtime:', errorMessage);
       }
     }
     
