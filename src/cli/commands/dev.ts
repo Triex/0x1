@@ -560,21 +560,14 @@ async function createDevServer(options: {
     const possiblePaths = [];
     const frameworkRoots = getPossibleFrameworkRoots();
     
-    // For each possible root, add various path combinations without duplicating src
+    // For exact path matching, we need to use the path without duplication
+    // The top priority is the actual live-reload.js from the source
     for (const root of frameworkRoots) {
       // Clean up the root path to avoid any path traversal issues
       const cleanRoot = root.replace(/\/+/g, '/').replace(/\/$/, '');
       
       // Add the direct path first (most likely location in development)
       possiblePaths.push(resolve(cleanRoot, 'browser', 'live-reload.js'));
-      
-      // Add src path only if it's not already in the path
-      if (!cleanRoot.endsWith('src')) {
-        possiblePaths.push(resolve(cleanRoot, 'src', 'browser', 'live-reload.js'));
-      }
-      
-      // Add dist path
-      possiblePaths.push(resolve(cleanRoot, 'dist', 'browser', 'live-reload.js'));
     }
     
     // Add framework paths relative to the current file location - fixed path resolution
@@ -599,24 +592,36 @@ async function createDevServer(options: {
       possiblePaths.push(nodeModulesPath);
     }
     
-    // Debug output to help diagnose path issues
-    if (options.debug) {
-      logger.debug(`Looking for live-reload.js in the following locations:`);
-      for (const path of possiblePaths) {
-        logger.debug(`- ${path} ${existsSync(path) ? '✅ EXISTS' : '❌ NOT FOUND'}`);
-      }
+    // Direct path to the actual implementation - this should always be prioritized
+    const actualImplementationPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+    
+    // Always prioritize the actual implementation if it exists
+    if (existsSync(actualImplementationPath)) {
+      possiblePaths.unshift(actualImplementationPath); // Add to beginning of array to prioritize
     }
     
-    // Try each path until we find the script
+    let liveReloadScript: string | null = null;
     let scriptFound = false;
+    
+    // Try each possible path until we find one that exists
+    if (options.debug) {
+      logger.debug(`Looking for live-reload.js in the following locations:`);
+      possiblePaths.forEach(path => {
+        logger.debug(` - ${path} ${existsSync(path) ? '(FOUND)' : '(NOT FOUND)'}`); 
+      });
+    }
+    
+    // Try each path until we find the script - start with the actual implementation
+    // which was pushed to the front of the array
     for (const path of possiblePaths) {
       try {
-        // Check if file exists with more reliable method
         if (existsSync(path)) {
           liveReloadScript = await Bun.file(path).text();
-          logger.debug(`Found live-reload.js at: ${path}`);
-          scriptFound = true;
-          break;
+          if (liveReloadScript) {
+            logger.debug(`Found live-reload.js at: ${path}`);
+            scriptFound = true;
+            break;
+          }
         }
       } catch (err) {
         // Ignore errors and try next path
@@ -629,41 +634,57 @@ async function createDevServer(options: {
         "Could not find live-reload.js - using fallback implementation"
       );
 
-      // Define a better fallback implementation
-      liveReloadScript = `
-      (function() {
-        console.log('[0x1] Live reload (fallback) enabled for ' + window.location.hostname);
+      // Using the actual implementation from the repo as a string instead of a fallback
+      try {
+        // Try to read the actual implementation from the repo directly
+        const actualImplementationPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+        if (existsSync(actualImplementationPath)) {
+          liveReloadScript = await Bun.file(actualImplementationPath).text();
+          logger.info(`Using actual live-reload implementation from ${actualImplementationPath}`);
+          scriptFound = true;
+        } else {
+          throw new Error('Could not find actual implementation');
+        }
+      } catch (err) {
+        // Fall back to a simplified version if we can't read the actual implementation
+        logger.warn("Could not read actual live-reload implementation - using minimal fallback");
+        liveReloadScript = `
+          (function() {
+            console.log('[0x1] Live reload (fallback) enabled for ' + window.location.hostname);
 
-        function connect() {
-          const eventSource = new EventSource(location.protocol + '//' + location.host + '/__0x1_live_reload');
+            function connect() {
+              const eventSource = new EventSource(location.protocol + '//' + location.host + '/__0x1_live_reload');
 
-          eventSource.onopen = function() {
-            console.log('[0x1] Live reload connected');
-          };
+              eventSource.onopen = function() {
+                console.log('[0x1] Live reload connected');
+              };
 
-          eventSource.onmessage = function(event) {
-            if (event.data === 'reload' || event.data === 'update') {
+              eventSource.onmessage = function(event) {
+                if (event.data === 'reload' || event.data === 'update') {
+                  console.log('[0x1] Reloading page due to file changes...');
+                  window.location.reload();
+                }
+              };
+                      }
+            };
+
+            eventSource.addEventListener('update', function() {
               console.log('[0x1] Reloading page due to file changes...');
               window.location.reload();
-            }
-          };
+            });
 
-          eventSource.addEventListener('update', function() {
-            console.log('[0x1] Reloading page due to file changes...');
-            window.location.reload();
-          });
+            eventSource.onerror = function() {
+              console.log('[0x1] Live reload connection error, reconnecting in 2s...');
+              eventSource.close();
+              setTimeout(connect, 2000);
+            };
+          }
 
-          eventSource.onerror = function() {
-            console.log('[0x1] Live reload connection error, reconnecting in 2s...');
-            eventSource.close();
-            setTimeout(connect, 2000);
-          };
-        }
-
-        // Start connection with a slight delay
-        setTimeout(connect, 500);
-      })();
-      `;
+          // Start connection with a slight delay
+          setTimeout(connect, 500);
+        })();
+        `;
+      }
     }
   } catch (error) {
     logger.warn(
