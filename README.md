@@ -353,9 +353,14 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.122**
+Current version: **0.0.123**
 
-This release provides all core functionality with a stable API, including the custom JSX runtime system.
+This release provides all core functionality with a stable API, including:
+- Fixed router regex pattern for robust routing
+- Enhanced module loading with improved resolution for Next.js compatibility
+- Automatic JSX runtime imports for layout components
+- Optimized Tailwind CSS detection for app directory structure
+- Clean export structure to prevent duplicates
 
 ### CLI Access Notes
 

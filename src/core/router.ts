@@ -376,8 +376,10 @@ export class Router {
    */
   private pathToRegex(path: string): RegExp {
     try {
-      // Handle root path separately for clarity
+      // Handle root path separately to avoid regex issues
       if (path === "/") {
+        // Fix for the SyntaxError with the root path regex
+        // Use a simple pattern that matches / or an empty path
         return new RegExp("^\\/?$");
       }
       
@@ -388,23 +390,25 @@ export class Router {
         const char = path[i];
         
         if (char === "/") {
-          // Escape forward slashes properly
+          // Escape forward slashes properly with a single backslash in the regex
           finalPattern += "\\/";
         } else if (char === ":") {
           // Handle named parameters (e.g., :id, :name)
           let paramName = "";
           let j = i + 1;
           
+          // Extract parameter name
           while (j < path.length && /[\w\d]/.test(path[j])) {
             paramName += path[j];
             j++;
           }
           
           // Match any characters except forward slash
+          // This ensures parameters don't consume multiple path segments
           finalPattern += "([^\\/]+)";
           i = j - 1;
         } else if (char === "*") {
-          // Handle wildcard pattern
+          // Handle wildcard/catch-all pattern (matches anything, including slashes)
           finalPattern += "(.*)";
         } else if ("^$()[]{}+?.|\\*".indexOf(char) !== -1) {
           // Escape all special regex characters
@@ -415,14 +419,23 @@ export class Router {
         }
       }
       
-      // Make trailing slash optional
+      // Make trailing slash optional (Next.js compatibility)
       finalPattern += "\\/?$";
+      
+      // Validate the regex pattern before creating the RegExp
+      // This helps catch malformed patterns early
+      try {
+        new RegExp(finalPattern);
+      } catch (regexErr) {
+        console.error(`Invalid regex pattern created: ${finalPattern}`, regexErr);
+        return new RegExp("^\\/.*$"); // Fallback to permissive regex
+      }
       
       // Create and return the RegExp object
       return new RegExp(finalPattern);
     } catch (error) {
       console.error(`Error creating regex from path '${path}':`, error);
-      // Fallback to a very permissive regex
+      // Fallback to a very permissive regex that matches any path
       return new RegExp("^\\/.*$");
     }
   }

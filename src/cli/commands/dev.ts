@@ -913,29 +913,45 @@ export default {
               // Print more verbose debug logging
               options.debug && logger.debug(`Loading router module for client-side rendering`);
               
-              // Explicitly check for the router in all possible locations
-              const possiblePaths = [
-                // Look in the standard framework paths
+              // Try to locate the router module
+              const routerImportPaths = [
+                // Check for dist/src/router.js first (new structure)
+                resolve(frameworkPath, 'dist/src/router.js'),
+                
+                // Check for dist/src/core/router.js (correct module structure)
+                resolve(frameworkPath, 'dist/src/core/router.js'),
+                
+                // Try all the traditional dist locations
+                resolve(frameworkPath, 'dist/router.js'),
                 resolve(frameworkPath, 'dist/core/router.js'),
                 resolve(frameworkPath, 'dist/0x1/router.js'),
+                
+                // Check for development source files
+                resolve(frameworkPath, 'src/router.js'),
+                resolve(frameworkPath, 'src/router.ts'),
+                resolve(frameworkPath, 'src/core/router.js'),
                 resolve(frameworkPath, 'src/core/router.ts'),
-                // Check in global node_modules (for when installing from npm)
+                
+                // Try global installations
                 resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/core/router.js'),
+                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/src/router.js'),
                 resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/0x1/router.js'),
-                // Look in local node_modules as well
+                
+                // Try node_modules in current project
                 resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/src/router.js'),
                 resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
               ];
               
               // Debug the search paths
               options.debug && logger.debug(`Searching for router in multiple locations:`);
-              options.debug && possiblePaths.forEach(path => logger.debug(` - ${path}`));
+              options.debug && routerImportPaths.forEach(path => logger.debug(` - ${path}`));
               
               let routerPath = null;
               let navigationPath = null;
               
               // Find the first path that exists
-              for (const path of possiblePaths) {
+              for (const path of routerImportPaths) {
                 if (await Bun.file(path).exists()) {
                   routerPath = path;
                   // Set navigation path based on the router location
@@ -2016,16 +2032,20 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
       return null;
     }
 
-    // Find the input CSS file
+    // Find the input CSS file - prioritizing Next.js app directory structure
     const inputCssPath = await findTailwindInputCss(projectPath);
     if (!inputCssPath) {
       logger.info("No Tailwind CSS input file found");
       return null;
     }
 
-    // Ensure the public/styles directory exists
+    // Ensure the public/styles directory exists for output
     const outputDir = join(projectPath, "public", "styles");
     const outputCssPath = join(outputDir, "tailwind.css");
+  
+    // Log for clarity where we're processing from/to
+    logger.debug(`Using Tailwind input: ${inputCssPath}`);
+    logger.debug(`Using Tailwind output: ${outputCssPath}`);
 
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
@@ -2037,16 +2057,17 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
     }
 
     // Construct the tailwind CLI command using bun (per user rules)
-    const tailwindCommand = ["bun", "x", "tailwindcss"];
-
-    // Add the command options and use the correct content paths
-    tailwindCommand.push(
-      "-i", inputCssPath,
-      "-o", outputCssPath,
+    const tailwindCommand = [
+      "bun",
+      "x",
+      "tailwindcss",
+      "-i",
+      inputCssPath,
+      "-o",
+      outputCssPath,
       "--watch",
-      // Fix for @tailwind directives
       "--postcss"
-    );
+    ];
 
     // Create a spinner for Tailwind CSS processing
     const tailwindSpin = logger.spinner(
@@ -2156,23 +2177,59 @@ async function startTailwindProcessing(): Promise<Subprocess | null> {
 
 /**
  * Find the input CSS file for Tailwind processing
- * Searches in common locations and checks the tailwind.config.js for hints
+ * Prioritizes Next.js app directory structure and supports Tailwind v4
  */
 async function findTailwindInputCss(
   projectPath: string
 ): Promise<string | null> {
-  // Prioritize app/globals.css (Next.js convention) which is our preferred structure
-  const appGlobalsCss = join(projectPath, "app", "globals.css");
-  if (existsSync(appGlobalsCss)) {
-    logger.info(`💠 Found Tailwind CSS input at ${appGlobalsCss}`);
-    return appGlobalsCss;
+  // Modern Next.js app directory structure locations (prioritized)
+  const nextJsAppDirLocations = [
+    join(projectPath, "app", "globals.css"),    // Next.js standard
+    join(projectPath, "app", "global.css"),     // Alternative naming
+    join(projectPath, "src", "app", "globals.css"), // src/app structure
+    join(projectPath, "app", "tailwind.css"),   // Alternative naming
+  ];
+  
+  // Check Next.js app directory locations first (preferred modern structure)
+  for (const location of nextJsAppDirLocations) {
+    if (existsSync(location)) {
+      logger.info(`💠 Found Tailwind CSS input in app directory at ${location}`);
+      return location;
+    }
   }
 
-  // Fall back to common locations if app/globals.css doesn't exist
-  const commonLocations = [
-    // Next.js convention alternatives
-    join(projectPath, "app", "global.css"),
-    join(projectPath, "app", "tailwind.css"),
+  // If no app directory CSS file found, check for tailwind.config.js/mjs for hints
+  const tailwindConfigPaths = [
+    join(projectPath, "tailwind.config.js"),
+    join(projectPath, "tailwind.config.mjs"),
+    join(projectPath, "tailwind.config.ts")
+  ].filter(existsSync);
+  
+  if (tailwindConfigPaths.length > 0) {
+    try {
+      // Read tailwind config to look for stylesheet hints
+      const configContent = await Bun.file(tailwindConfigPaths[0]).text();
+      // Look for content or stylesheet references
+      const cssPathMatches = configContent.match(/['"](.+?\.css)['"]/);
+      if (cssPathMatches && cssPathMatches[1]) {
+        const cssPath = cssPathMatches[1];
+        // Convert relative path to absolute
+        const absoluteCssPath = cssPath.startsWith('./') || cssPath.startsWith('../') 
+          ? join(projectPath, cssPath)
+          : join(projectPath, cssPath.startsWith('/') ? cssPath.slice(1) : cssPath);
+          
+        if (existsSync(absoluteCssPath)) {
+          logger.info(`💠 Found Tailwind CSS input from config at ${absoluteCssPath}`);
+          return absoluteCssPath;
+        }
+      }
+    } catch (error) {
+      // Silently continue if we can't parse the config
+    }
+  }
+
+  // Fall back to common locations if app directory structures don't exist
+  const legacyLocations = [
     // Legacy/alternative locations
     join(projectPath, "styles", "main.css"),
     join(projectPath, "src", "styles", "main.css"),
@@ -2183,10 +2240,10 @@ async function findTailwindInputCss(
     join(projectPath, "assets", "css", "main.css"),
   ];
 
-  // Check common locations
-  for (const location of commonLocations) {
+  // Check legacy locations as a last resort
+  for (const location of legacyLocations) {
     if (existsSync(location)) {
-      logger.info(`💠 Found Tailwind CSS input at ${location}`);
+      logger.info(`💠 Found Tailwind CSS input at legacy location ${location}`);
       return location;
     }
   }
