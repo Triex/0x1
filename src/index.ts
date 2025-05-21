@@ -34,11 +34,12 @@ export type {
   JSXChildren, JSXNode
 } from './jsx-runtime.js';
 
-// Export router and navigation
+// Export router and navigation with consistent naming
 export {
   Link as BasicLink, // Rename to avoid conflict with Next.js-compatible Link
-  NavLink,
-  Redirect, type Page
+  NavLink as RouterNavLink, // Renamed to avoid duplicate exports
+  Redirect as RouterRedirect, // Renamed to avoid duplicate exports
+  type Page
 } from './core/navigation.js';
 
 // Export the new router implementation

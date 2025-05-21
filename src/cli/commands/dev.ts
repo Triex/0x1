@@ -980,9 +980,15 @@ export default {
                   // Remove all interfaces and types
                   .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
                   // Remove export keyword from function definitions
-                  .replace(/export\s+function\s+Link/g, 'function Link')
-                  .replace(/export\s+function\s+NavLink/g, 'function NavLink')
-                  .replace(/export\s+function\s+Redirect/g, 'function Redirect');
+                  .replace(/export\s+function\s+Link/g, 'function Link');
+                  
+                // Rename NavLink to BrowserNavLink to avoid duplicate exports
+                cleanNavigationSource = cleanNavigationSource
+                  .replace(/export\s+function\s+NavLink/g, 'function BrowserNavLink');
+                  
+                // Rename Redirect to avoid conflicts
+                cleanNavigationSource = cleanNavigationSource
+                  .replace(/export\s+function\s+Redirect/g, 'function BrowserRedirect');
                 
                 // Provide a proper ESM module with the router implementation
                 moduleContent = `
@@ -1015,14 +1021,21 @@ export function createRouter(options = {}) {
   return new Router(mergedOptions);
 }
 
-// Export components individually to avoid conflicts
-export { Router };
-// Only export the navigation functions from this module
-// renamed to avoid conflicts with any imports from other modules
+// Export components with consistent naming to avoid conflicts
 const LinkExport = Link;
-const NavLinkExport = NavLink;
-const RedirectExport = Redirect;
-export { LinkExport as Link, NavLinkExport as NavLink, RedirectExport as RouterRedirect };
+// Use our renamed functions for exports
+const NavLinkExport = BrowserNavLink;
+const RedirectExport = BrowserRedirect;
+
+// Use explicit naming pattern to avoid duplicate exports
+export { 
+  Router,
+  LinkExport as Link, 
+  NavLinkExport as RouterNavLink, // Export as RouterNavLink to avoid duplicate NavLink export
+  RedirectExport as RouterRedirect 
+};
+
+// Default export
 export default Router;
 `;
                 
@@ -1055,13 +1068,16 @@ export default Router;
               // Provide the main 0x1 module - simplified to avoid duplicate exports
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
+            // Import with consistent naming from router
             import { createRouter, Link, RouterNavLink, RouterRedirect } from '/0x1/router';
             import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
             // Export everything through a single export statement to avoid duplication
+            // IMPORTANT: Using consistent export pattern to prevent duplicate exports
             export { 
               createRouter, 
               Link, 
+              // Use the imported RouterNavLink as NavLink (not re-exporting NavLink directly)
               RouterNavLink as NavLink, 
               RouterRedirect as Redirect,
               jsx, 
