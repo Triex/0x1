@@ -640,8 +640,12 @@ async function createDevServer(options: {
           const url = new URL(req.url);
           const path = url.pathname;
 
-          // Special handling for direct router module requests to fix MIME type issues
-          if (path === "/router" || path === "/router.js") {
+          // CRITICAL FIX: Comprehensive handling for all router module requests
+          // This catches router module requests in any format to ensure correct MIME type
+          if (path === "/router" || path === "/router.js" || 
+              path.includes('/router.js') || 
+              (path.includes('router') && !path.includes('.map') && 
+               !path.includes('.jsx') && !path.includes('.tsx') && !path.includes('.d.ts'))) {
             options.debug && logger.debug(`Direct router.js request - serving with proper MIME type`);
             
             // CRITICAL FIX: Always return JavaScript modules with the correct MIME type
@@ -683,10 +687,34 @@ async function createDevServer(options: {
               options.debug && logger.debug(`Could not find router module, generating minimal version`);
               const minimalRouter = `// 0x1 minimal router (fallback)
 export class Router { 
-  constructor(options) { this.options = options; }
-  init() { console.log('[0x1] Minimal router initialized'); }
+  constructor(options) { this.options = options || {}; }
+  init() {}
   navigate(path) { window.location.href = path; }
+  // CRITICAL FIX: Fixed root path regex pattern that was causing SyntaxError
+  pathToRegex(path) { 
+    // Using a simpler pattern that correctly matches / or empty path
+    return path === "/" ? new RegExp("^\\/?$") : new RegExp(path.replace(/\//g, "\\/")); 
+  }
 }
+
+export function createRouter(options) {
+  return new Router(options);
+}
+
+export const Link = ({ href, children }) => {
+  const a = document.createElement('a');
+  a.href = href;
+  a.appendChild(typeof children === 'string' ? document.createTextNode(children) : children);
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.history.pushState({}, '', href);
+    window.dispatchEvent(new Event('popstate'));
+  });
+  return a;
+};
+
+export const NavLink = Link;
+export const Redirect = ({ to }) => { window.location.href = to; return document.createTextNode(''); };
 `;
               
               return new Response(minimalRouter, {
@@ -902,6 +930,34 @@ export default {
             path.startsWith("/node_modules/0x1/") &&
             path !== "/node_modules/0x1/index.js"
           ) {
+            // CRITICAL FIX: Special handling for router.js to ensure correct MIME type
+            if (path.includes('router') && !path.endsWith('.map')) {
+              options.debug && logger.debug(`Ensuring correct MIME type for router module: ${path}`);
+              // Get 0x1 framework root path
+              const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+              
+              // Try to find the router module in various locations
+              const routerPaths = [
+                resolve(frameworkRoot, 'dist/core/router.js'),
+                resolve(frameworkRoot, 'dist/0x1/router.js'),
+                resolve(frameworkRoot, 'dist/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
+              ];
+              
+              for (const routerPath of routerPaths) {
+                if (existsSync(routerPath)) {
+                  // Found a valid router module - serve it with the correct MIME type
+                  const routerContent = await Bun.file(routerPath).text();
+                  return new Response(routerContent, {
+                    headers: {
+                      "Content-Type": "application/javascript; charset=utf-8",
+                      "Cache-Control": "no-cache, no-store, must-revalidate"
+                    },
+                  });
+                }
+              }
+            }
             const submodulePath = path.replace("/node_modules/0x1/", "");
             const submoduleName = submodulePath.replace(/\.js$/, "");
 

@@ -355,6 +355,146 @@ export async function transpileJSX(
             }
           }
           
+          // Special handling for page components too, as they need similar JSX runtime handling
+          if (tempFile.includes('page.tsx') || tempFile.includes('page.jsx')) {
+            logger.debug('Enhanced transpilation for page component');
+            
+            // Read the original file first
+            const fileContent = await Bun.file(tempFile).text();
+            
+            // Use the same comprehensive approach for page components
+            const pageSpecificOptions = {
+              entrypoints: [tempFile],
+              outdir: buildOptions.outdir,
+              minify: minify,
+              target: 'browser' as const,
+              format: 'esm' as const,
+              sourcemap: 'external' as const,
+              define: {
+                'process.env.RUNTIME_MODE': '"development"',
+                'process.env.NODE_ENV': minify ? '"production"' : '"development"'
+              },
+              // Critical: Force automatic JSX with our runtime
+              jsx: 'automatic',
+              jsxImportSource: '0x1',
+              jsxFactory: 'jsx',
+              jsxFragment: 'Fragment',
+              // Enhanced loader configuration
+              loader: { 
+                '.tsx': 'tsx' as const,
+                '.ts': 'ts' as const,
+                '.jsx': 'jsx' as const,
+                '.js': 'js' as const 
+              },
+              // Use the same virtual JSX runtime approach
+              plugins: [
+                {
+                  name: 'direct-jsx-runtime-provider',
+                  setup(build: any) {
+                    // Intercept JSX runtime imports and provide virtual module
+                    build.onResolve({ filter: /jsx-runtime/ }, () => {
+                      return { path: 'jsx-runtime-virtual', namespace: 'jsx-runtime-ns' };
+                    });
+                    
+                    // When the virtual module is loaded, provide the JSX runtime code directly
+                    build.onLoad({ filter: /jsx-runtime-virtual/, namespace: 'jsx-runtime-ns' }, () => {
+                      return {
+                        contents: `
+                          // Direct JSX runtime implementation
+                          export function jsx(type, props) {
+                            const element = typeof type === 'function' 
+                              ? type(props || {}) 
+                              : document.createElement(type);
+                            
+                            if (!element) return document.createDocumentFragment();
+                            
+                            if (props) {
+                              Object.entries(props).forEach(([key, value]) => {
+                                if (key === 'children') return;
+                                if (key === 'className') { element.className = value; return; }
+                                if (key === 'style' && typeof value === 'object') {
+                                  Object.entries(value).forEach(([styleKey, styleValue]) => {
+                                    element.style[styleKey] = styleValue;
+                                  });
+                                  return;
+                                }
+                                // Handle event handlers
+                                if (key.startsWith('on') && typeof value === 'function') {
+                                  const eventName = key.slice(2).toLowerCase();
+                                  element.addEventListener(eventName, value);
+                                  return;
+                                }
+                                // Set attribute
+                                element.setAttribute(key, value);
+                              });
+                              
+                              // Handle children
+                              if (props.children) {
+                                const appendChildren = (children) => {
+                                  if (Array.isArray(children)) {
+                                    children.forEach(child => appendChildren(child));
+                                  } else if (children !== null && children !== undefined) {
+                                    element.append(
+                                      children instanceof Node ? children : document.createTextNode(String(children))
+                                    );
+                                  }
+                                };
+                                appendChildren(props.children);
+                              }
+                            }
+                            return element;
+                          }
+                          
+                          // Alias jsxs to jsx for fragment handling
+                          export const jsxs = jsx;
+                          
+                          // Fragment support
+                          export const Fragment = (props) => {
+                            const fragment = document.createDocumentFragment();
+                            if (props && props.children) {
+                              const appendChildren = (children) => {
+                                if (Array.isArray(children)) {
+                                  children.forEach(child => appendChildren(child));
+                                } else if (children !== null && children !== undefined) {
+                                  fragment.append(
+                                    children instanceof Node ? children : document.createTextNode(String(children))
+                                  );
+                                }
+                              };
+                              appendChildren(props.children);
+                            }
+                            return fragment;
+                          };
+                          
+                          // Add createElement for compatibility
+                          export const createElement = jsx;
+                        `,
+                        loader: 'js',
+                      };
+                    });
+                  }
+                }
+              ]
+            };
+            
+            try {
+              // Use the enhanced page-specific options for transpilation
+              const pageResult = await Bun.build(pageSpecificOptions);
+              
+              if (!pageResult.success) {
+                throw new Error(`Page build failed: ${pageResult.logs?.join('\n') || 'Unknown error'}`);
+              }
+              
+              logger.debug('Page JSX transpilation completed successfully');
+              // Return early - we've already built the file
+              return true;
+            } catch (pageErr) {
+              logger.error(`Page transpilation error: ${pageErr}`);
+              logger.error('Falling back to standard build process');
+              // Continue with standard build process
+            }
+          }
+          
           // Add better module resolution to match Next.js behavior
           buildOptions.resolve = {
             extensions: ['.tsx', '.ts', '.jsx', '.js'],
