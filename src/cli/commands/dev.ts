@@ -1113,20 +1113,66 @@ export default {
             // CRITICAL FIX: Special handling for router.js to ensure correct MIME type
             if (path.includes('router') && !path.endsWith('.map')) {
               options.debug && logger.debug(`Ensuring correct MIME type for router module: ${path}`);
-              // Get 0x1 framework root path
-              const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+              // Get 0x1 framework root path - fixed to properly point to project root
+              const frameworkRoot = resolve(dirname(dirname(fileURLToPath(import.meta.url))), '..');
+              options.debug && logger.debug(`Framework root resolved to: ${frameworkRoot}`);
               
               // Try to find the router module in various locations
               const routerPaths = [
+                // Include paths from both dist and src directories
+                resolve(frameworkRoot, 'src/core/router.js'),
                 resolve(frameworkRoot, 'dist/core/router.js'),
-                resolve(frameworkRoot, 'dist/0x1/router.js'),
+                resolve(frameworkRoot, 'src/router.js'),
                 resolve(frameworkRoot, 'dist/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/src/core/router.js'),
                 resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
+                resolve(process.cwd(), 'node_modules/0x1/src/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/router.js')
               ];
+              
+              // Enhanced debugging to show all paths being checked
+              if (options.debug) {
+                logger.debug(`Checking the following router paths:`);
+                for (const rp of routerPaths) {
+                  logger.debug(`- ${rp} ${existsSync(rp) ? '✅ EXISTS' : '❌ NOT FOUND'}`);
+                }
+              }
+              
+              // Also try to check if TypeScript files exist and if so, compile them on the fly
+              const routerTsPath = resolve(frameworkRoot, 'src/core/router.ts');
+              if (existsSync(routerTsPath) && !routerPaths.some(p => existsSync(p))) {
+                options.debug && logger.debug(`Found router.ts at ${routerTsPath}, compiling on the fly`);
+                try {
+                  // Use Bun's built-in transpiler to compile TypeScript to JavaScript
+                  const result = await Bun.build({
+                    entrypoints: [routerTsPath],
+                    format: 'esm',
+                    target: 'browser',
+                  });
+                  
+                  if (result.success) {
+                    const outputFiles = result.outputs || [];
+                    if (outputFiles.length > 0) {
+                      const jsContent = await outputFiles[0].text();
+                      options.debug && logger.debug(`Successfully compiled router.ts, serving generated JavaScript`);
+                      return new Response(jsContent, {
+                        headers: {
+                          "Content-Type": "application/javascript; charset=utf-8",
+                          "Cache-Control": "no-cache, no-store, must-revalidate"
+                        },
+                      });
+                    }
+                  } else {
+                    options.debug && logger.debug(`Failed to compile router.ts: ${result.logs.join('\n')}`);
+                  }
+                } catch (err) {
+                  options.debug && logger.debug(`Error compiling router.ts: ${err}`);
+                }
+              }
               
               for (const routerPath of routerPaths) {
                 if (existsSync(routerPath)) {
+                  options.debug && logger.debug(`Using router from ${routerPath}`);
                   // Found a valid router module - serve it with the correct MIME type
                   const routerContent = await Bun.file(routerPath).text();
                   return new Response(routerContent, {

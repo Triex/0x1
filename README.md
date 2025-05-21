@@ -85,6 +85,7 @@
 - **Special files**: Support for `page.tsx`, `layout.tsx`, `loading.tsx`, and `error.tsx`
 - **Type-safe data fetching**: Server components with built-in fetch utilities
 - **Next.js-compatible Link component**: Drop-in replacement for Next.js `Link`
+- **Error boundaries**: Built-in error handling with detailed fallback UI
 
 ### 🔨️ Developer Experience
 - **Bun-first architecture**: Fully optimized for Bun's capabilities with zero compromises
@@ -353,7 +354,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.133**
+Current version: **0.0.134**
 
 This release provides all core functionality with a stable API, including:
 - Fixed router regex pattern for robust routing
@@ -1181,4 +1182,4 @@ Ultimately; adding crypto features to give the framework a real use case, and ab
   - [ ] `Coin dApp / Dashboard`, view connected wallet coin holdings, transactions + coin price, market cap, etc as appropriate.
   - [ ] `NFT`, NFT viewing UI, basic NFT minting and collection features.
 - [ ] Audit / ensure stable app router functionality (`"use server"`, `"use client"` tags work, `page.tsx` `actions.ts` work)
-- [ ] Full `ErrorBoundary` support, like `react-error-boundary` or `next-error-boundary`
+- [x] Full `ErrorBoundary` support, like `react-error-boundary` or `next-error-boundary`

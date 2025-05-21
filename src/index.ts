@@ -46,6 +46,14 @@ export {
 // Export the new router implementation
 export { Router, type RouteParams } from './core/router.js';
 
+// Export the error boundary for catching and displaying runtime errors
+export {
+  ErrorBoundary,
+  createErrorBoundary,
+  createDefaultErrorUI,
+  withErrorBoundary
+} from './core/error-boundary.js';
+
 // Export hooks
 export {
   useCallback, useClickOutside, useEffect, useFetch, useForm, useLocalStorage, useMemo, useRef, useState
