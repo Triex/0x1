@@ -1803,7 +1803,7 @@ export const Redirect = BrowserRedirect;
 
     // Create router instance with default options
     const router = createRouter({
-      root: document.getElementById('app')
+      rootElement: document.getElementById('app') // Fixed: using rootElement instead of root
     });
 
     // Load components
