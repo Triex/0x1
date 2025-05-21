@@ -156,7 +156,7 @@ export async function transpileJSX(
         try {
           logger.debug('Using Bun.build API directly');
           
-          // Build options with Next.js-inspired configurations
+          // Enhanced build options with better Next.js compatibility
           const buildOptions: any = {
             entrypoints: [tempFile],
             outdir: dirname(outputFile),
@@ -166,23 +166,34 @@ export async function transpileJSX(
             minify: minify,
             sourcemap: 'none',
             external: ['*.css', '*.scss', 'tailwind*', '@tailwind*'],
+            // Improved JSX configuration for better layout component compatibility
             jsx: 'automatic', // Use automatic JSX runtime like Next.js
             jsxImportSource: '0x1', // Use our framework's JSX runtime
             jsxFactory: 'jsx',  // Default JSX factory
             jsxFragment: 'Fragment', // Fragment implementation
+            // Add better logging and environment variables
+            logLevel: 'debug', // More verbose logging for easier debugging
             define: {
-              'process.env.NODE_ENV': JSON.stringify('production')
+              'process.env.NODE_ENV': JSON.stringify('production'),
+              'process.env.__0X1_BUILD': 'true'
             },
             target: 'browser'
           };
           
-          // Standard loader configuration for all component types
+          // Enhanced loader configuration for all component types
           buildOptions.loader = { 
             '.tsx': 'tsx',
             '.ts': 'ts',
             '.jsx': 'jsx',
             '.js': 'js' 
           };
+          
+          // Special handling for layout files to ensure proper transpilation
+          if (tempFile.includes('layout.tsx') || tempFile.includes('layout.jsx')) {
+            logger.debug('Enhanced transpilation for layout component');
+            // Add layout-specific configuration
+            buildOptions.define['process.env.__0X1_LAYOUT'] = 'true';
+          }
           
           // Add better module resolution to match Next.js behavior
           buildOptions.resolve = {
@@ -200,12 +211,23 @@ export async function transpileJSX(
           // Successful build
           logger.debug('JSX transpilation completed with Bun.build API');
           return true;
-        } catch (buildError) {
-          // If direct API fails, fall back to spawn method as a backup
-          logger.debug(`Falling back to spawn method for JSX transpilation: ${buildError}`);
+        } catch (err) {
+          logger.error(`Error in direct Bun.build: ${err}`);
           
-          // Enhanced command with better handling of CSS files
-          // Explicitly ignore all CSS content and add extra flags
+          // Enhanced error reporting for layout components
+          if (tempFile.includes('layout')) {
+            logger.error('Layout component transpilation failed, checking for common issues:');
+            // Check if jsx-runtime import is correct
+            const fileContent = await Bun.file(tempFile).text();
+            if (!fileContent.includes('import { jsx, Fragment } from')) {
+              logger.error('- Layout might be missing proper JSX runtime imports');
+            }
+            if (fileContent.includes('React')) {
+              logger.error('- Layout contains React import but should use 0x1 JSX runtime');
+            }
+          }
+          
+          // Fall back to command execution
           // Create a temporary config file for Bun build with all options
           const configContent = JSON.stringify({
             entrypoints: [tempFile],

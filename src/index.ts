@@ -18,6 +18,7 @@ export {
 
 // Export Next.js-compatible Link component
 export { default as Link } from './components/link.js';
+export type { LinkProps } from './components/link.js';
 export type { Component, ComponentProps } from './core/component.js';
 
 // Export JSX runtime for TSX support
