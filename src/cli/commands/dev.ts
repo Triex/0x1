@@ -915,32 +915,13 @@ export default {
               
               // Try to locate the router module
               const routerImportPaths = [
-                // Check for dist/src/router.js first (new structure)
-                resolve(frameworkPath, 'dist/src/router.js'),
-                
-                // Check for dist/src/core/router.js (correct module structure)
-                resolve(frameworkPath, 'dist/src/core/router.js'),
-                
-                // Try all the traditional dist locations
-                resolve(frameworkPath, 'dist/router.js'),
-                resolve(frameworkPath, 'dist/core/router.js'),
-                resolve(frameworkPath, 'dist/0x1/router.js'),
-                
-                // Check for development source files
-                resolve(frameworkPath, 'src/router.js'),
-                resolve(frameworkPath, 'src/router.ts'),
-                resolve(frameworkPath, 'src/core/router.js'),
-                resolve(frameworkPath, 'src/core/router.ts'),
-                
-                // Try global installations
-                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/core/router.js'),
-                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/src/router.js'),
-                resolve(process.env.BUN_INSTALL || '/usr/local', 'lib/node_modules/0x1/dist/0x1/router.js'),
-                
-                // Try node_modules in current project
-                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/dist/src/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
+                // Check package structure based on package.json exports
+                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),  // Primary location (package.json)
+                resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),      // Alternative location
+                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),  // Core implementation
+                resolve(frameworkPath, 'dist/0x1/router.js'),                  // Direct path for local development
+                resolve(frameworkPath, 'dist/router.js'),                      // Alternative direct path
+                resolve(frameworkPath, 'dist/core/router.js')                  // Core direct path
               ];
               
               // Debug the search paths
@@ -954,10 +935,27 @@ export default {
               for (const path of routerImportPaths) {
                 if (await Bun.file(path).exists()) {
                   routerPath = path;
-                  // Set navigation path based on the router location
-                  navigationPath = path.replace('router.js', 'navigation.js');
-                  if (path.endsWith('.ts')) {
-                    navigationPath = path.replace('router.ts', 'navigation.ts');
+                  // Set navigation path based on the router location, ensuring consistency
+                  // First determine if we're using the 0x1/ subdirectory structure
+                  if (path.includes('/0x1/')) {
+                    navigationPath = path.replace('/0x1/router.js', '/0x1/navigation.js');
+                    if (path.endsWith('.ts')) {
+                      navigationPath = path.replace('/0x1/router.ts', '/0x1/navigation.ts');
+                    }
+                  } 
+                  // Or if we're using the core/ subdirectory
+                  else if (path.includes('/core/')) {
+                    navigationPath = path.replace('/core/router.js', '/core/navigation.js');
+                    if (path.endsWith('.ts')) {
+                      navigationPath = path.replace('/core/router.ts', '/core/navigation.ts');
+                    }
+                  }
+                  // Regular path in the root directory 
+                  else {
+                    navigationPath = path.replace('router.js', 'navigation.js');
+                    if (path.endsWith('.ts')) {
+                      navigationPath = path.replace('router.ts', 'navigation.ts');
+                    }
                   }
                   options.debug && logger.debug(`Found router at: ${routerPath}`);
                   options.debug && logger.debug(`Associated navigation at: ${navigationPath}`);
@@ -1007,19 +1005,36 @@ export default {
                   .replace(/export\s+function\s+Redirect/g, 'function BrowserRedirect');
                 
                 // Create a COMPLETELY isolated router module to fix duplicate exports once and for all
-                moduleContent = `
+                let clientContent = `
 // ===== ROUTER MODULE =====
-// IMPORTANT: This implementation isolates all exports to prevent duplicates
+// Ensure we're using Bun for better performance
+${routerSource}
 
-// Internal router implementation - no exports
-${cleanRouterSource.replace(/export\s+/g, '')}
+// ===== NAVIGATION MODULE =====
+// Careful handling to avoid duplicate Link identifiers
+${navigationSource}
 
-// Internal navigation components - no exports
-${cleanNavigationSource.replace(/export\s+/g, '')}
+// Initialize router on page load with enhanced error handling
+document.addEventListener('DOMContentLoaded', () => {
+  // Check if window.__0x1_ROUTER__ exists to prevent double initialization
+  if (window.__0x1_ROUTER__) return;
 
-// PRIVATE: Factory function for router creation
-const _createRouter = (options = {}) => {
-  const defaultOptions = {
+  try {
+    // Find the app root element with more robust detection
+    const appRoot = document.querySelector('#app-root') || document.querySelector('#root') || document.body;
+    
+    console.log('[0x1] Running in development mode', window.location.hostname);
+    
+    // Create the router with improved configuration
+    const router = new Router({
+      rootElement: appRoot,
+      mode: 'history',
+      notFoundComponent: () => {
+        const notFound = document.createElement('div');
+        notFound.innerHTML = '<h1>404 - Page Not Found</h1><p>The requested page could not be found.</p>';
+        return notFound;
+      }
+    });
     root: document.getElementById('app') || document.body,
     mode: 'history',
     transitionDuration: 200,

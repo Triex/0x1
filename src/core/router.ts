@@ -5,6 +5,8 @@
  */
 
 import type { Component } from './component.js';
+// Import navigation Link component as NavigationLink to avoid naming conflicts
+import { Link as NavigationLink } from './navigation.js';
 
 export interface RouteParams {
   [key: string]: string;
@@ -141,35 +143,24 @@ export class Router {
    * Initialize the router
    */
   init(): void {
-    // Add transition class for smooth transitions
-    if (this.transitionDuration > 0) {
-      this.rootElement.style.transition = `opacity ${this.transitionDuration}ms ease-in-out`;
-    }
-
+    // Initialize event listeners for navigation
     if (this.mode === "hash") {
-      // Handle initial route
-      window.addEventListener("hashchange", () => this.handleRouteChange());
-
-      // Set default route if hash is empty
-      if (!window.location.hash) {
-        window.location.hash = "/";
-      } else {
+      // Use the hashchange event for hash-based routing
+      window.addEventListener("hashchange", () => {
         this.handleRouteChange();
-      }
+      });
     } else if (this.mode === "history") {
-      // Handle clicks on links
+      // Use the popstate event for history API based routing
+      window.addEventListener("popstate", () => {
+        this.handleRouteChange();
+      });
+      
+      // Intercept link clicks to use history API instead of full page loads
       document.addEventListener("click", (e) => {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "A") {
-          const href = (target as HTMLAnchorElement).getAttribute("href");
-
-          // Only handle internal links
-          if (
-            href &&
-            !href.startsWith("http") &&
-            !href.startsWith("//") &&
-            !href.startsWith("#")
-          ) {
+        // Only intercept link clicks
+        if (e.target && (e.target as HTMLElement).tagName === "A") {
+          const href = (e.target as HTMLAnchorElement).getAttribute("href");
+          if (href && !href.startsWith("http") && !href.startsWith("//")) {
             e.preventDefault();
             this.navigate(href);
           }
@@ -183,8 +174,12 @@ export class Router {
       this.handleRouteChange();
     }
 
-    // Expose the router instance globally for the Link component
+    // Make router instance available globally for use by Link components
+    // This allows proper Link functionality without duplicating identifiers
     (window as any).__0x1_ROUTER__ = this;
+    
+    // Trigger initial route rendering
+    this.handleRouteChange();
   }
 
   /**

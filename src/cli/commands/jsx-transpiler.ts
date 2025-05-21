@@ -14,6 +14,7 @@ import { logger } from '../utils/logger';
 async function processImports(sourceCode: string, fileName: string = ''): Promise<string> {
   // Handle import statements for JSX
   let processedSource = sourceCode;
+  const isLayout = fileName.includes('layout');
 
   // First check if the file contains CSS Tailwind directives
   const hasTailwind = processedSource.includes('@tailwind');
@@ -79,11 +80,22 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
     "// JSX runtime imports handled by transpiler"
   );
   
-  // Add standard JSX runtime imports for all component types
-  processedSource = `// Auto-injected JSX runtime imports
+  // Special handling for layout components - they often need more comprehensive JSX runtime support
+  if (isLayout) {
+    logger.debug(`Enhanced JSX runtime imports for layout component: ${fileName}`);
+    processedSource = `// Auto-injected JSX runtime imports for layout component
+import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
+// Ensure Link component is properly handled
+import { Link } from "0x1";
+
+${processedSource}`;
+  } else {
+    // Add standard JSX runtime imports for all other component types
+    processedSource = `// Auto-injected JSX runtime imports
 import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
 
 ${processedSource}`;
+  }
 
   return processedSource;
 }
@@ -105,7 +117,13 @@ export async function transpileJSX(
   try {
     // Read the source file
     const fileBasename = basename(entryFile);
-    logger.info(`Transpiling JSX: ${fileBasename}`);
+    const isLayout = fileBasename.includes('layout');
+    
+    if (isLayout) {
+      logger.info(`Transpiling Layout JSX: ${fileBasename} (special handling)`);
+    } else {
+      logger.info(`Transpiling JSX: ${fileBasename}`);
+    }
     
     const sourceCode = await Bun.file(entryFile).text();
 
@@ -129,29 +147,13 @@ export async function transpileJSX(
     // We'll use project root or file directory for context
     const _projectPath = projectRoot || dirname(entryFile);
 
-    // Now preprocess the source to handle JSX imports
-    const processedSource = await processImports(sourceCode, fileBasename);
-
-    // Ensure output directory exists
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
-    }
+    // Process imports to add our JSX runtime imports
+    const processedSource = await processImports(sourceCode, fileName);
     
-    // Automatically inject JSX runtime imports for layout files
-    const isLayoutComponent = entryFile.includes('layout.');
-    let finalSource = processedSource;
-    
-    // Only inject the import if it's not already there
-    if (isLayoutComponent && !finalSource.includes('jsx-runtime')) {
-      logger.debug('Automatically injecting JSX runtime imports for layout component');
-      finalSource = `// Auto-injected by 0x1 JSX transpiler
-import { jsx, jsxs, Fragment } from '0x1/jsx-runtime';
-${finalSource}`;
-    }
-
-    // Write processed source to a temporary file
-    const tempFile = join(dirname(entryFile), `.temp-${basename(entryFile)}`);
-    await Bun.write(tempFile, finalSource);
+    // Create a temporary file for processing with enhanced runtime for layouts
+    const tempDir = dirname(entryFile);
+    const tempFile = join(tempDir, `.__temp_${Math.random().toString(36).slice(2)}_${fileName}`);
+    await Bun.write(tempFile, processedSource);
 
     try {
       // Use Bun.build directly rather than spawning a process for better reliability
@@ -205,6 +207,21 @@ ${finalSource}`;
             logger.debug('Enhanced transpilation for layout component');
             // Add layout-specific configuration
             buildOptions.define['process.env.__0X1_LAYOUT'] = 'true';
+            
+            // For layouts, add special plugin to handle Link imports
+            buildOptions.plugins = [
+              {
+                name: 'layout-jsx-runtime-plugin',
+                setup(build: any) {
+                  build.onResolve({ filter: /jsx-runtime/ }, () => {
+                    return { path: '0x1/jsx-runtime.js', namespace: 'jsx-runtime' };
+                  });
+                  build.onResolve({ filter: /^0x1$/ }, () => {
+                    return { path: '0x1', namespace: '0x1' };
+                  });
+                }
+              }
+            ];
           }
           
           // Add better module resolution to match Next.js behavior
@@ -239,8 +256,9 @@ ${finalSource}`;
             }
           }
           
-          // Fall back to command execution
+          // Fall back to command execution with enhanced configuration for layout components
           // Create a temporary config file for Bun build with all options
+          const isLayout = tempFile.includes('layout');
           const configContent = JSON.stringify({
             entrypoints: [tempFile],
             outfile: outputFile,
@@ -249,10 +267,17 @@ ${finalSource}`;
             target: 'browser',
             jsx: 'automatic',
             jsxImportSource: '0x1',
-            jsxFactory: 'createElement',
+            jsxFactory: isLayout ? 'jsx' : 'createElement',  // Use jsx for layouts
             jsxFragment: 'Fragment',
             define: {
-              'process.env.NODE_ENV': JSON.stringify('production')
+              'process.env.NODE_ENV': JSON.stringify('production'),
+              'process.env.__0X1_LAYOUT': isLayout ? 'true' : 'false'
+            },
+            loader: { 
+              '.tsx': 'tsx',
+              '.ts': 'ts',
+              '.jsx': 'jsx',
+              '.js': 'js' 
             }
           }, null, 2);
           
