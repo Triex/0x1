@@ -646,7 +646,7 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
 import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
 // Import router components
-import { Router, Link, RouterNavLink, RouterRedirect } from '/0x1/router';
+import { Router, RouterLink, RouterNavLink, RouterRedirect } from '/0x1/router';
 
 // Export version
 export const version = '0.1.0';
@@ -662,7 +662,7 @@ export {
   
   // Router exports
   Router,
-  Link, 
+  RouterLink as Link, 
   RouterNavLink as NavLink,
   RouterRedirect as Redirect
 };
@@ -677,7 +677,7 @@ export default {
   
   // Router components
   Router,
-  Link,
+  Link: RouterLink,
   NavLink: RouterNavLink,
   Redirect: RouterRedirect,
   

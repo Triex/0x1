@@ -979,8 +979,8 @@ export default {
                   .replace(/import[^;]+;/g, '// Import removed')
                   // Remove all interfaces and types
                   .replace(/export\s+(interface|type)\s+[^{]+\{[^}]+\};?/g, '// Interface removed')
-                  // Remove export keyword from function definitions
-                  .replace(/export\s+function\s+Link/g, 'function Link');
+                  // Rename functions to avoid conflicts
+                  .replace(/export\s+function\s+Link/g, 'function BrowserLink');
                   
                 // Rename NavLink to BrowserNavLink to avoid duplicate exports
                 cleanNavigationSource = cleanNavigationSource
@@ -1022,8 +1022,8 @@ export function createRouter(options = {}) {
 }
 
 // Export components with consistent naming to avoid conflicts
-const LinkExport = Link;
-// Use our renamed functions for exports
+// Use our renamed browser functions for exports
+const LinkExport = BrowserLink;
 const NavLinkExport = BrowserNavLink;
 const RedirectExport = BrowserRedirect;
 
@@ -1069,15 +1069,15 @@ export default Router;
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
             // Import with consistent naming from router
-            import { createRouter, Link, RouterNavLink, RouterRedirect } from '/0x1/router';
+            import { createRouter, RouterLink, RouterNavLink, RouterRedirect } from '/0x1/router';
             import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
             // Export everything through a single export statement to avoid duplication
             // IMPORTANT: Using consistent export pattern to prevent duplicate exports
             export { 
               createRouter, 
-              Link, 
-              // Use the imported RouterNavLink as NavLink (not re-exporting NavLink directly)
+              // Use explicit naming for all router components to prevent duplicate exports
+              RouterLink as Link, 
               RouterNavLink as NavLink, 
               RouterRedirect as Redirect,
               jsx, 
@@ -1089,9 +1089,11 @@ export default Router;
             // Default export for convenience
             export default { 
               createRouter, 
-              Link, 
+              // Use explicit naming pattern for consistency
+              Link: RouterLink, 
               NavLink: RouterNavLink, 
               Redirect: RouterRedirect,
+              // JSX runtime components
               jsx, 
               jsxs, 
               Fragment, 

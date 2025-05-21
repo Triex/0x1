@@ -4,7 +4,7 @@
  */
 
 // Export core components with appropriate naming
-export { Link } from './core/navigation.js';
+export { Link as RouterLink } from './core/navigation.js';
 export { Router } from './core/router.js';
 
 // Named exports to avoid collision
