@@ -577,8 +577,9 @@ async function createDevServer(options: {
       possiblePaths.push(resolve(cleanRoot, 'dist', 'browser', 'live-reload.js'));
     }
     
-    // Add framework paths relative to the current file location
-    const frameworkBrowserPath = resolve(frameworkPath, 'browser', 'live-reload.js');
+    // Add framework paths relative to the current file location - fixed path resolution
+    // Correctly pointing to the exact location of live-reload.js
+    const frameworkBrowserPath = resolve(frameworkDistPath, 'browser', 'live-reload.js');
     const frameworkSrcBrowserPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
     
     // Add the framework paths if they exist
@@ -1121,15 +1122,19 @@ export default {
               path.endsWith("/router") || path.endsWith("/router.js")) {
             options.debug && logger.debug(`Direct router module request detected: ${path}`);
             
-            // Get 0x1 framework root path
-            const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+            // Use the predefined framework paths from the top of the file
+            // for more consistent module resolution
             
             // Try multiple possible router locations in priority order
             const possibleRouterPaths = [
+              // Direct framework paths (more reliable, using predefined constants)
+              resolve(frameworkCorePath, 'router.js'),  // dist/core/router.js
+              resolve(frameworkDistPath, 'router.js'),  // dist/router.js
+              resolve(frameworkDistPath, '0x1/router.js'), // dist/0x1/router.js
+              // Fallback to node_modules paths
+              resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
               resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
-              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),
-              resolve(frameworkRoot, 'dist/router.js'),
-              resolve(frameworkRoot, 'dist/0x1/router.js')
+              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
             ];
             
             // Find the first router path that exists

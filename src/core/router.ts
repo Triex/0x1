@@ -144,6 +144,12 @@ export class Router {
    * Initialize the router
    */
   init(): void {
+    // Validate rootElement exists
+    if (!this.rootElement) {
+      console.error('Router initialization error: rootElement is undefined. Make sure to provide a valid DOM element when initializing the router.');
+      return;
+    }
+    
     // Initialize event listeners for navigation
     if (this.mode === "hash") {
       // Use the hashchange event for hash-based routing
@@ -179,8 +185,10 @@ export class Router {
     // This allows proper Link functionality without duplicating identifiers
     (window as any).__0x1_ROUTER__ = this;
     
-    // Trigger initial route rendering
-    this.handleRouteChange();
+    // Trigger initial route rendering (only if rootElement exists)
+    if (this.rootElement) {
+      this.handleRouteChange();
+    }
   }
 
   /**
@@ -205,6 +213,12 @@ export class Router {
     }
 
     try {
+      // Check if rootElement exists before manipulating it
+      if (!this.rootElement) {
+        console.error('Router error: rootElement is undefined. Make sure to provide a valid DOM element when initializing the router.');
+        return;
+      }
+      
       // Clear previous content
       this.rootElement.innerHTML = "";
 
