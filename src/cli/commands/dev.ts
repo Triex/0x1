@@ -17,7 +17,10 @@ import { build } from "./build.js";
 const currentFilePath = fileURLToPath(import.meta.url);
 const cliDir = dirname(currentFilePath);
 // Fixing the framework path resolution to correctly point to the root
+// Use absolute paths to ensure consistent module resolution
 const frameworkPath = resolve(cliDir, "../..");
+const frameworkDistPath = resolve(frameworkPath, "dist");
+const frameworkCorePath = resolve(frameworkDistPath, "core");
 
 /**
  * Transform code content to handle 0x1 bare imports
@@ -695,16 +698,19 @@ async function createDevServer(options: {
             // CRITICAL FIX: Always return JavaScript modules with the correct MIME type
             // This fixes the "Failed to load module script" error due to incorrect MIME type
             
-            // Get 0x1 framework root path
-            const frameworkRootPath = dirname(dirname(fileURLToPath(import.meta.url)));
+            // Use the predefined framework paths to ensure consistent resolution
+            // These paths are defined at the top of the file for better reliability
             
             // Try multiple possible router locations in priority order
             const possibleRouterPaths = [
-              resolve(frameworkRootPath, 'dist/0x1/router.js'),
-              resolve(frameworkRootPath, 'dist/router.js'),
-              resolve(frameworkRootPath, 'dist/core/router.js'),
-              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),
+              // Direct framework paths (more reliable, using predefined constants)
+              resolve(frameworkCorePath, 'router.js'),  // dist/core/router.js
+              resolve(frameworkDistPath, 'router.js'),  // dist/router.js
+              resolve(frameworkDistPath, '0x1/router.js'), // dist/0x1/router.js
+              // Secondary paths (from node_modules)
+              resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
               resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
+              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),
             ];
             
             // Find the first router path that exists
