@@ -580,7 +580,10 @@ async function createDevServer(options: {
     // Add framework paths relative to the current file location - fixed path resolution
     // Correctly pointing to the exact location of live-reload.js
     const frameworkBrowserPath = resolve(frameworkDistPath, 'browser', 'live-reload.js');
-    const frameworkSrcBrowserPath = resolve(frameworkPath, 'src', 'browser', 'live-reload.js');
+    
+    // CRITICAL FIX: There was a path resolution error with duplicate 'src' folder
+    // This correctly points to the actual location of the script
+    const frameworkSrcBrowserPath = resolve(frameworkPath, 'browser', 'live-reload.js');
     
     // Add the framework paths if they exist
     if (existsSync(frameworkBrowserPath)) {
@@ -1857,9 +1860,8 @@ export const Redirect = BrowserRedirect;
     const router = createRouter({
       rootElement: document.getElementById('app'),
       mode: 'history', // Use history API for cleaner URLs without hash
-      appComponents: appComponents, // Register app directory components
-      // Add explicit root route for fallback
-      autoDiscovery: true // Also enable auto-discovery as backup
+      appComponents, // Register app directory components
+      autoDiscovery: true // Enable auto-discovery for dynamic loading
     });
 
     // Start routing
