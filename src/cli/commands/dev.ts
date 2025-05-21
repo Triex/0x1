@@ -16,7 +16,8 @@ import { build } from "./build.js";
 // Get the path to the framework files
 const currentFilePath = fileURLToPath(import.meta.url);
 const cliDir = dirname(currentFilePath);
-const frameworkPath = resolve(cliDir, "../../..");
+// Fixing the framework path resolution to correctly point to the root
+const frameworkPath = resolve(cliDir, "../..");
 
 /**
  * Transform code content to handle 0x1 bare imports
@@ -684,43 +685,159 @@ async function createDevServer(options: {
               });
             } else {
               // Fallback to generating a minimal router module if we can't find one
-              options.debug && logger.debug(`Could not find router module, generating minimal version`);
-              const minimalRouter = `// 0x1 minimal router (fallback)
-export class Router { 
-  constructor(options) { this.options = options || {}; }
-  init() {}
-  navigate(path) { window.location.href = path; }
+              options.debug && logger.debug(`Could not find router module, generating dev error module instead`);
+              const devErrorModule = `// 0x1 development error display
+// This module is generated when the router module can't be loaded
+// to provide a better developer experience with clear error messages
+
+// Helper to create a developer-friendly error UI
+function createDevErrorUI(title, message, details = '') {
+  // Clear the entire document first
+  document.body.innerHTML = '';
+  document.body.style.margin = '0';
+  document.body.style.padding = '0';
+  document.body.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   
-  // Simple fixed implementation for the root path regex issue
-  pathToRegex(path) { 
-    // Just handle root path specially - the critical fix
-    if (path === "/") return new RegExp("^/?$");
-    // For all other paths, create a simple regex
-    return new RegExp("^" + path + "$");
+  const errorContainer = document.createElement('div');
+  errorContainer.style.background = '#1e293b';
+  errorContainer.style.color = '#e2e8f0';
+  errorContainer.style.minHeight = '100vh';
+  errorContainer.style.padding = '2rem';
+  errorContainer.style.boxSizing = 'border-box';
+  
+  const header = document.createElement('header');
+  header.style.marginBottom = '2rem';
+  
+  const logo = document.createElement('div');
+  logo.style.fontSize = '1.5rem';
+  logo.style.fontWeight = 'bold';
+  logo.style.display = 'flex';
+  logo.style.alignItems = 'center';
+  logo.style.gap = '0.5rem';
+  
+  const logoIcon = document.createElement('span');
+  logoIcon.textContent = '⚠️';
+  logoIcon.style.fontSize = '1.8rem';
+  
+  const logoText = document.createElement('span');
+  logoText.innerHTML = '<span style="color: #3b82f6">0x1</span> Development Error';
+  
+  logo.appendChild(logoIcon);
+  logo.appendChild(logoText);
+  header.appendChild(logo);
+  
+  const errorTitle = document.createElement('h1');
+  errorTitle.textContent = title;
+  errorTitle.style.fontSize = '2rem';
+  errorTitle.style.color = '#f87171';
+  errorTitle.style.marginBottom = '1rem';
+  errorTitle.style.marginTop = '2rem';
+  
+  const errorMessage = document.createElement('div');
+  errorMessage.innerHTML = message;
+  errorMessage.style.fontSize = '1.2rem';
+  errorMessage.style.lineHeight = '1.6';
+  errorMessage.style.background = '#334155';
+  errorMessage.style.padding = '1.5rem';
+  errorMessage.style.borderRadius = '0.5rem';
+  errorMessage.style.marginBottom = '1.5rem';
+  
+  const errorDetails = details ? document.createElement('pre') : null;
+  if (errorDetails) {
+    errorDetails.textContent = details;
+    errorDetails.style.background = '#0f172a';
+    errorDetails.style.color = '#e2e8f0';
+    errorDetails.style.padding = '1rem';
+    errorDetails.style.borderRadius = '0.5rem';
+    errorDetails.style.overflow = 'auto';
+    errorDetails.style.maxHeight = '20rem';
+    errorDetails.style.fontSize = '0.9rem';
+    errorDetails.style.marginBottom = '1.5rem';
   }
+  
+  const helpSection = document.createElement('div');
+  helpSection.style.background = '#334155';
+  helpSection.style.padding = '1.5rem';
+  helpSection.style.borderRadius = '0.5rem';
+  helpSection.style.marginTop = '2rem';
+  
+  const helpTitle = document.createElement('h2');
+  helpTitle.textContent = 'How to fix this';
+  helpTitle.style.margin = '0 0 1rem 0';
+  helpTitle.style.fontSize = '1.4rem';
+  helpTitle.style.color = '#38bdf8';
+  
+  const helpText = document.createElement('ul');
+  helpText.style.margin = '0';
+  helpText.style.paddingLeft = '1.5rem';
+  helpText.style.lineHeight = '1.6';
+  
+  const helpItems = [
+    'Check that the router module exists in your project',
+    'Ensure the framework path resolution is correct',
+    'Run <code>bun build</code> to rebuild the project',
+    'Try restarting the development server'
+  ];
+  
+  helpItems.forEach(item => {
+    const li = document.createElement('li');
+    li.innerHTML = item;
+    li.style.margin = '0.5rem 0';
+    helpText.appendChild(li);
+  });
+  
+  helpSection.appendChild(helpTitle);
+  helpSection.appendChild(helpText);
+  
+  errorContainer.appendChild(header);
+  errorContainer.appendChild(errorTitle);
+  errorContainer.appendChild(errorMessage);
+  if (errorDetails) errorContainer.appendChild(errorDetails);
+  errorContainer.appendChild(helpSection);
+  
+  document.body.appendChild(errorContainer);
+}
+
+// Generate an error router that will display the error when initialized
+export class Router {
+  constructor(options) {
+    this.options = options || {};
+    setTimeout(() => this.showError(), 10);
+  }
+  
+  init() {
+    this.showError();
+  }
+  
+  showError() {
+    createDevErrorUI(
+      'Router Module Error',
+      'The 0x1 router module could not be loaded properly. The development server is running, but no content can be displayed because the router is unavailable.',
+      'The router module path could not be resolved correctly. This might be due to a build issue or incorrect path resolution.'
+    );
+  }
+  
+  // Stub methods to prevent runtime errors
+  navigate() {}
+  pathToRegex() { return new RegExp('.*'); }
 }
 
 export function createRouter(options) {
   return new Router(options);
 }
 
-export const Link = ({ href, children }) => {
-  const a = document.createElement('a');
-  a.href = href;
-  a.appendChild(typeof children === 'string' ? document.createTextNode(children) : children);
-  a.addEventListener('click', (e) => {
-    e.preventDefault();
-    window.history.pushState({}, '', href);
-    window.dispatchEvent(new Event('popstate'));
-  });
-  return a;
-};
-
+// Stub components to prevent runtime errors
+export const Link = () => document.createElement('span');
 export const NavLink = Link;
-export const Redirect = ({ to }) => { window.location.href = to; return document.createTextNode(''); };
+export const Redirect = () => document.createElement('span');
+
+// Immediately show the error
+document.addEventListener('DOMContentLoaded', () => {
+  new Router().showError();
+});
 `;
               
-              return new Response(minimalRouter, {
+              return new Response(devErrorModule, {
                 headers: {
                   "Content-Type": "application/javascript; charset=utf-8",
                   "Cache-Control": "no-cache, no-store, must-revalidate",

@@ -376,7 +376,7 @@ export class Router {
       if (path === "/") {
         // CRITICAL FIX: Fixed root path regex pattern that was causing SyntaxError
         // Using a simpler pattern that correctly matches / or empty path without errors
-        return new RegExp("^\\/?$");
+        return new RegExp("^/$");
       }
       
       // Convert path pattern to regex by carefully handling special characters
