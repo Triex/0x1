@@ -5,10 +5,10 @@
  */
 
 import { serve, type Server, type Subprocess } from "bun";
-import { Dirent, existsSync, mkdirSync, readdirSync } from "fs";
+import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { watch } from "fs/promises";
 import os from "os";
-import { dirname, join, resolve } from "path";
+import { basename, dirname, join, resolve, extname } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
 import { build } from "./build.js";
@@ -542,7 +542,7 @@ async function createDevServer(options: {
       resolve(projectPath, "node_modules", "0x1", "dist", "browser", "live-reload.js"),
 
       // Check for linked package paths
-      join(process.cwd(), "src/browser/live-reload.js"),
+      join(process.cwd(), "browser/live-reload.js"),
       resolve(process.cwd(), "dist", "browser", "live-reload.js"),
 
       // Check relative to current module directory
@@ -1113,22 +1113,61 @@ export default {
             // CRITICAL FIX: Special handling for router.js to ensure correct MIME type
             if (path.includes('router') && !path.endsWith('.map')) {
               options.debug && logger.debug(`Ensuring correct MIME type for router module: ${path}`);
-              // Get 0x1 framework root path - fixed to properly point to project root
-              const frameworkRoot = resolve(dirname(dirname(fileURLToPath(import.meta.url))), '..');
-              options.debug && logger.debug(`Framework root resolved to: ${frameworkRoot}`);
-              
-              // Try to find the router module in various locations
-              const routerPaths = [
-                // Include paths from both dist and src directories
-                resolve(frameworkRoot, 'src/core/router.js'),
-                resolve(frameworkRoot, 'dist/core/router.js'),
-                resolve(frameworkRoot, 'src/router.js'),
-                resolve(frameworkRoot, 'dist/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/src/core/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/src/router.js'),
-                resolve(process.cwd(), 'node_modules/0x1/dist/router.js')
+              // CRITICAL FIX: Get 0x1 framework root path with more robust detection
+              // This ensures we correctly find the framework root regardless of installation method
+              const cliDir = dirname(fileURLToPath(import.meta.url));
+              const possibleFrameworkRoots = [
+                resolve(cliDir, '../..'), // Standard path from CLI dir
+                resolve(cliDir, '../../..'), // Some installations
+                resolve(process.cwd()), // Current project (if it's the framework itself)
+                resolve(process.cwd(), 'node_modules/0x1') // Installed as dependency
               ];
+              
+              // Find the first valid framework root that has a src or dist directory
+              let frameworkRoot = '';
+              for (const root of possibleFrameworkRoots) {
+                if (
+                  existsSync(resolve(root, 'src/core')) || 
+                  existsSync(resolve(root, 'dist/core'))
+                ) {
+                  frameworkRoot = root;
+                  break;
+                }
+              }
+              
+              options.debug && logger.debug(`Framework root resolved to: ${frameworkRoot || 'Not found'}`);
+              
+              // CRITICAL FIX: Comprehensive search for router module
+              // We search in all possible locations where the router module might be
+              const routerPaths: string[] = [];
+              
+              // Helper to add all possible router paths for a given root
+              const addRouterPathsForRoot = (root: string) => {
+                // Core paths (most common)
+                routerPaths.push(resolve(root, 'dist/core/router.js'));
+                routerPaths.push(resolve(root, 'src/core/router.js'));
+                
+                // Direct paths in root
+                routerPaths.push(resolve(root, 'dist/router.js'));
+                routerPaths.push(resolve(root, 'src/router.js'));
+                
+                // 0x1 subdirectory paths
+                routerPaths.push(resolve(root, 'dist/0x1/router.js'));
+                routerPaths.push(resolve(root, 'src/0x1/router.js'));
+                
+                // Check for transpiled files without .js extension
+                routerPaths.push(resolve(root, 'dist/core/router'));
+                routerPaths.push(resolve(root, 'dist/router'));
+              };
+              
+              // Add paths for the detected framework root
+              if (frameworkRoot) {
+                addRouterPathsForRoot(frameworkRoot);
+              }
+              
+              // Also try the current directory and node_modules
+              addRouterPathsForRoot(process.cwd());
+              addRouterPathsForRoot(resolve(process.cwd(), 'node_modules/0x1'));
               
               // Enhanced debugging to show all paths being checked
               if (options.debug) {
@@ -1138,14 +1177,41 @@ export default {
                 }
               }
               
-              // Also try to check if TypeScript files exist and if so, compile them on the fly
-              const routerTsPath = resolve(frameworkRoot, 'src/core/router.ts');
-              if (existsSync(routerTsPath) && !routerPaths.some(p => existsSync(p))) {
-                options.debug && logger.debug(`Found router.ts at ${routerTsPath}, compiling on the fly`);
+              // Find the first existing router path
+              const existingRouterPath = routerPaths.find(p => existsSync(p));
+              
+              if (existingRouterPath) {
+                options.debug && logger.debug(`✅ Found router module at: ${existingRouterPath}`);
+                try {
+                  // Read the router.js file contents
+                  const routerContent = readFileSync(existingRouterPath, 'utf8');
+                  return new Response(routerContent, {
+                    headers: {
+                      "Content-Type": "application/javascript; charset=utf-8",
+                      "Cache-Control": "no-cache, no-store, must-revalidate"
+                    }
+                  });
+                } catch (err) {
+                  options.debug && logger.error(`Error reading router file: ${err}`);
+                }
+              }
+              
+              // If no router.js found, try to compile router.ts on the fly
+              // Try all possible TypeScript router file locations
+              const routerTsPaths = [
+                resolve(frameworkRoot, 'src/core/router.ts'),
+                resolve(process.cwd(), 'src/core/router.ts'),
+                resolve(process.cwd(), 'node_modules/0x1/src/core/router.ts')
+              ];
+              
+              const existingRouterTsPath = routerTsPaths.find(p => existsSync(p));
+              
+              if (existingRouterTsPath) {
+                options.debug && logger.debug(`Found router.ts at ${existingRouterTsPath}, compiling on the fly`);
                 try {
                   // Use Bun's built-in transpiler to compile TypeScript to JavaScript
                   const result = await Bun.build({
-                    entrypoints: [routerTsPath],
+                    entrypoints: [existingRouterTsPath],
                     format: 'esm',
                     target: 'browser',
                   });
@@ -1159,22 +1225,16 @@ export default {
                         headers: {
                           "Content-Type": "application/javascript; charset=utf-8",
                           "Cache-Control": "no-cache, no-store, must-revalidate"
-                        },
+                        }
                       });
                     }
                   } else {
-                    options.debug && logger.debug(`Failed to compile router.ts: ${result.logs.join('\n')}`);
+                    options.debug && logger.error(`Failed to compile router.ts: ${result.logs.join('\n')}`);
                   }
                 } catch (err) {
-                  options.debug && logger.debug(`Error compiling router.ts: ${err}`);
-                }
-              }
-              
-              for (const routerPath of routerPaths) {
-                if (existsSync(routerPath)) {
-                  options.debug && logger.debug(`Using router from ${routerPath}`);
+                  options.debug && logger.error(`Error compiling router.ts: ${err}`);
                   // Found a valid router module - serve it with the correct MIME type
-                  const routerContent = await Bun.file(routerPath).text();
+                  const routerContent = await Bun.file(existingRouterTsPath).text();
                   return new Response(routerContent, {
                     headers: {
                       "Content-Type": "application/javascript; charset=utf-8",
@@ -1183,6 +1243,34 @@ export default {
                   });
                 }
               }
+
+              // Last resort - serve a minimal router implementation if all else fails
+              options.debug && logger.warn('⚠️ Could not find or compile router module, serving minimal fallback');
+              return new Response(`
+                // Minimal fallback router module
+                export class Router {
+                  constructor() {
+                    console.error('[0x1] Development Error\nRouter Module Error\nThe 0x1 router module could not be loaded properly.');
+                  }
+                  
+                  static pathToRegex(path) {
+                    if (path === '/') {
+                      return new RegExp('^/$');
+                    }
+                    return new RegExp('^' + path.replace(/\//g, '\\/').replace(/:([\w-]+)/g, '([^/]+)') + '$');
+                  }
+                  
+                  // Minimal implementation
+                  initialize() {}
+                  navigate() {}
+                  loadRoute() {}
+                }
+              `, {
+                headers: {
+                  "Content-Type": "application/javascript; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate"
+                }
+              });
             }
             const submodulePath = path.replace("/node_modules/0x1/", "");
             const submoduleName = submodulePath.replace(/\.js$/, "");

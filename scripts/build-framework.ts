@@ -367,6 +367,36 @@ async function buildFramework() {
       console.warn('⚠️ No JSX dev runtime found - will use regular JSX runtime');
     }
     
+    // Handle browser utilities such as live-reload script
+    console.log('📄 Copying browser utilities (live-reload, etc.)');
+    
+    // Ensure browser directory exists in dist
+    const distBrowserDir = join(distDir, 'browser');
+    if (!(await Bun.file(distBrowserDir).exists())) {
+      Bun.spawnSync(['mkdir', '-p', distBrowserDir]);
+    }
+    
+    // Copy live-reload.js script
+    const liveReloadSrcPath = join(srcDir, 'browser', 'live-reload.js');
+    const liveReloadDestPath = join(distBrowserDir, 'live-reload.js');
+    
+    if (await Bun.file(liveReloadSrcPath).exists()) {
+      await Bun.write(liveReloadDestPath, await Bun.file(liveReloadSrcPath).text());
+      console.log('✅ Live-reload script copied to dist/browser/');
+    } else {
+      console.warn('⚠️ Live-reload script not found at', liveReloadSrcPath);
+      
+      // Create a minimal fallback version to prevent errors
+      const minimalLiveReload = `/**
+ * 0x1 Live Reload Script (Minimal Fallback)
+ */
+(function() {
+  console.log('[0x1] Running in development mode ' + window.location.hostname);
+})();`;
+      await Bun.write(liveReloadDestPath, minimalLiveReload);
+      console.log('✅ Created minimal fallback live-reload script');
+    }
+    
     console.log('🎉 Build completed successfully!');
   } catch (error) {
     console.error('❌ Build failed with error:', error);
