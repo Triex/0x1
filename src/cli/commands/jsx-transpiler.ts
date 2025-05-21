@@ -218,6 +218,22 @@ export async function transpileJSX(
               'process.env.NODE_ENV': minify ? '"production"' : '"development"'
             };
             
+            // Handle layouts specially by directly patching their content
+            // Read the original file first
+            const fileContent = await Bun.file(tempFile).text();
+            
+            // Create modified content with required JSX runtime imports
+            const layoutImports = `// Auto-injected layout component imports
+import { jsx, jsxs, Fragment } from "0x1/jsx-runtime";
+import { createElement } from "0x1/jsx-runtime";
+
+${fileContent}`;
+            
+            // Write this directly back to the temp file (which is already a copy)
+            await Bun.write(tempFile, layoutImports);
+            
+            logger.debug(`Enhanced layout component with direct JSX runtime imports`);
+            
             // Ensure jsx factory and fragment are properly configured
             buildOptions.jsx = 'automatic';
             buildOptions.jsxImportSource = '0x1';

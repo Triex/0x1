@@ -855,6 +855,43 @@ export default {
             });
           }
 
+          // Critical fix for router module specifically without .js extension
+          if (path === "/node_modules/0x1/router") {
+            options.debug && logger.debug(`Direct router module request detected: ${path}`);
+            
+            // Get 0x1 framework root path
+            const frameworkRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+            
+            // Try multiple possible router locations in priority order
+            const possibleRouterPaths = [
+              resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
+              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js'),
+              resolve(frameworkRoot, 'dist/router.js'),
+              resolve(frameworkRoot, 'dist/0x1/router.js')
+            ];
+            
+            // Find the first router path that exists
+            let routerPath = null;
+            for (const path of possibleRouterPaths) {
+              if (existsSync(path)) {
+                routerPath = path;
+                break;
+              }
+            }
+            
+            if (routerPath) {
+              const routerContent = await Bun.file(routerPath).text();
+              options.debug && logger.debug(`Serving router module from ${routerPath}`);
+              
+              return new Response(routerContent, {
+                headers: {
+                  "Content-Type": "application/javascript; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate"
+                },
+              });
+            }
+          }
+          
           // Handle 0x1 submodule imports (e.g., import { Router } from '0x1/router')
           if (
             path.startsWith("/node_modules/0x1/") &&
