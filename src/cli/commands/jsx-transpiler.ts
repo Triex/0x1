@@ -355,8 +355,12 @@ export async function transpileJSX(
             }
           }
           
-          // Special handling for page components too, as they need similar JSX runtime handling
-          if (tempFile.includes('page.tsx') || tempFile.includes('page.jsx')) {
+          // Special handling for all special component types
+          // This includes page, not-found, error, and other special route components
+          if (tempFile.includes('page.tsx') || tempFile.includes('page.jsx') ||
+              tempFile.includes('not-found.tsx') || tempFile.includes('not-found.jsx') ||
+              tempFile.includes('error.tsx') || tempFile.includes('error.jsx') ||
+              tempFile.includes('loading.tsx') || tempFile.includes('loading.jsx')) {
             logger.debug('Enhanced transpilation for page component');
             
             // Read the original file first

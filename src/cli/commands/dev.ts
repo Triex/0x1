@@ -730,6 +730,66 @@ export const Redirect = ({ to }) => { window.location.href = to; return document
             }
           }
 
+          // Handle component manifest request
+          if (path === "/_components_list") {
+            options.debug && logger.debug(`Component manifest request detected`);
+            
+            // Scan components directory for available components
+            const componentsDir = resolve(projectPath, 'components');
+            const componentsList = [];
+            
+            if (existsSync(componentsDir)) {
+              try {
+                // Get all TypeScript/JavaScript component files using proper Bun API
+                // Use filesystem operations since Bun.Glob doesn't support multiple patterns
+                const patterns = ['**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'];
+                const componentFiles = [];
+                
+                // Process each pattern
+                for (const pattern of patterns) {
+                  try {
+                    // Use Bun.spawn to run the find command with glob pattern
+                    const { stdout } = await Bun.spawn(['find', '.', '-type', 'f', '-name', pattern], {
+                      cwd: componentsDir
+                    });
+                    
+                    // Get results as string and split by newline
+                    const output = await new Response(stdout).text();
+                    const files = output.split('\n').filter(f => f && !f.includes('node_modules'));
+                    
+                    // Add files to componentFiles array
+                    componentFiles.push(...files.map(f => f.startsWith('./') ? f.slice(2) : f));
+                  } catch (err) {
+                    // Continue with other patterns if one fails
+                    logger.debug(`Error finding ${pattern} files: ${err}`);
+                  }
+                }
+                
+                // Map files to component names
+                for (const file of componentFiles) {
+                  // Extract component name from file path
+                  // Remove extension and convert to component format
+                  const name = file.replace(/\.(tsx|jsx|ts|js)$/, '');
+                  componentsList.push(name);
+                }
+                
+                options.debug && logger.debug(`Found ${componentsList.length} components`);
+              } catch (err) {
+                logger.error(`Error scanning components directory: ${err}`);
+              }
+            } else {
+              options.debug && logger.debug('No components directory found at: ' + componentsDir);
+            }
+            
+            // Return components list as JSON
+            return new Response(JSON.stringify(componentsList), {
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          }
+          
           // Handle SSE connection for live reload
           if (
             path === "/__0x1_live_reload" ||
