@@ -355,13 +355,15 @@ export async function transpileJSX(
             }
           }
           
-          // Special handling for all special component types
-          // This includes page, not-found, error, and other special route components
+          // Enhanced handling for ALL component types - including regular components
+          // This provides consistent JSX runtime handling to prevent transpilation issues
           if (tempFile.includes('page.tsx') || tempFile.includes('page.jsx') ||
               tempFile.includes('not-found.tsx') || tempFile.includes('not-found.jsx') ||
               tempFile.includes('error.tsx') || tempFile.includes('error.jsx') ||
-              tempFile.includes('loading.tsx') || tempFile.includes('loading.jsx')) {
-            logger.debug('Enhanced transpilation for page component');
+              tempFile.includes('loading.tsx') || tempFile.includes('loading.jsx') ||
+              tempFile.includes('/components/') || tempFile.includes('Component.tsx') ||
+              tempFile.includes('component.tsx') || tempFile.endsWith('.tsx') || tempFile.endsWith('.jsx')) {
+            logger.debug(`Enhanced transpilation for component: ${basename(tempFile)}`);
             
             // Read the original file first
             const fileContent = await Bun.file(tempFile).text();
