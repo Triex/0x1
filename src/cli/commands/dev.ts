@@ -990,19 +990,19 @@ export default {
                 cleanNavigationSource = cleanNavigationSource
                   .replace(/export\s+function\s+Redirect/g, 'function BrowserRedirect');
                 
-                // Provide a proper ESM module with the router implementation
+                // Create a completely clean module implementation to avoid duplicate exports 
                 moduleContent = `
 // 0x1 Router - Modern ESM Implementation
-// Directly from core source files
+// This is a clean implementation that prevents duplicate exports
 
-// First the Router implementation
+// Router class (without export keywords)
 ${cleanRouterSource}
 
-// Navigation components implementation
+// Navigation components (without export keywords)
 ${cleanNavigationSource}
 
 // Factory function to create router with default options
-export function createRouter(options = {}) {
+function createRouter(options = {}) {
   const defaultOptions = {
     root: document.getElementById('app') || document.body,
     mode: 'history',
@@ -1021,21 +1021,20 @@ export function createRouter(options = {}) {
   return new Router(mergedOptions);
 }
 
-// Export components with consistent naming to avoid conflicts
-// Use our renamed browser functions for exports
-const LinkExport = BrowserLink;
-const NavLinkExport = BrowserNavLink;
-const RedirectExport = BrowserRedirect;
-
-// Use explicit naming pattern to avoid duplicate exports
-export { 
+// IMPORTANT: Single export statement to prevent duplicates
+// Export everything in one statement with explicit names
+export {
+  // Export only the Router class, not individual components
   Router,
-  LinkExport as Link, 
-  NavLinkExport as RouterNavLink, // Export as RouterNavLink to avoid duplicate NavLink export
-  RedirectExport as RouterRedirect 
+  // Export the factory function
+  createRouter,
+  // Explicitly export runtime components with unique names
+  BrowserLink as Link,
+  BrowserNavLink as NavLink,
+  BrowserRedirect as Redirect
 };
 
-// Default export
+// Simple default export
 export default Router;
 `;
                 
@@ -1065,35 +1064,39 @@ export default Router;
               modulePath === "index.js" ||
               path === "/node_modules/0x1/index.js"
             ) {
-              // Provide the main 0x1 module - simplified to avoid duplicate exports
+              // Generate clean main module with single export statement to prevent duplicates
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            // Import with consistent naming from router
-            import { createRouter, RouterLink, RouterNavLink, RouterRedirect } from '/0x1/router';
+            // Import router components and JSX runtime
+            import { createRouter, Router, Link, NavLink, Redirect } from '/0x1/router';
             import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
-            // Export everything through a single export statement to avoid duplication
-            // IMPORTANT: Using consistent export pattern to prevent duplicate exports
+            // Single export statement with explicit names to ensure no duplicates
             export { 
+              // Router components - directly from router module to prevent duplication
               createRouter, 
-              // Use explicit naming for all router components to prevent duplicate exports
-              RouterLink as Link, 
-              RouterNavLink as NavLink, 
-              RouterRedirect as Redirect,
+              Router,
+              // Navigation components with consistent names
+              Link, 
+              NavLink, 
+              Redirect,
+              // JSX runtime components
               jsx, 
               jsxs, 
               Fragment, 
               createElement 
             };
             
-            // Default export for convenience
+            // Simple default export with all components 
             export default { 
-              createRouter, 
-              // Use explicit naming pattern for consistency
-              Link: RouterLink, 
-              NavLink: RouterNavLink, 
-              Redirect: RouterRedirect,
-              // JSX runtime components
+              // Router
+              createRouter,
+              Router, 
+              // Navigation
+              Link,
+              NavLink,
+              Redirect,
+              // JSX runtime
               jsx, 
               jsxs, 
               Fragment, 
