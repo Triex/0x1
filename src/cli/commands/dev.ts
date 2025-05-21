@@ -644,6 +644,9 @@ async function createDevServer(options: {
           if (path === "/router" || path === "/router.js") {
             options.debug && logger.debug(`Direct router.js request - serving with proper MIME type`);
             
+            // CRITICAL FIX: Always return JavaScript modules with the correct MIME type
+            // This fixes the "Failed to load module script" error due to incorrect MIME type
+            
             // Get 0x1 framework root path
             const frameworkRootPath = dirname(dirname(fileURLToPath(import.meta.url)));
             
@@ -856,7 +859,9 @@ export default {
           }
 
           // Critical fix for router module specifically without .js extension
-          if (path === "/node_modules/0x1/router") {
+          // This fixes the "Failed to load module script" error due to incorrect MIME type
+          if (path === "/node_modules/0x1/router" || path === "/node_modules/0x1/router.js" || 
+              path.endsWith("/router") || path.endsWith("/router.js")) {
             options.debug && logger.debug(`Direct router module request detected: ${path}`);
             
             // Get 0x1 framework root path
