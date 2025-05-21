@@ -1,7 +1,6 @@
-// /**
-//  * Footer component
-//  */
-
+/**
+ * Footer component
+ */
 import { Link } from "0x1/router";
 
 export function Footer() {

@@ -45,10 +45,12 @@ async function buildFramework() {
     console.log('Running TypeScript compiler with bun...');
     
     try {
-      // Execute TypeScript compiler using bun directly
+      // Execute TypeScript compiler using bun directly with proper JSX settings
       const tsResult = Bun.spawnSync([
-        'bun', 'tsc', 
+        'bun', 'tsc',
         '--project', 'tsconfig.json',
+        '--jsx', 'react-jsx',
+        '--jsxImportSource', '0x1',
         '--outDir', distDir,
         '--declaration', 
         '--emitDeclarationOnly'
@@ -215,7 +217,84 @@ async function buildFramework() {
       console.log(`  • Estimated compressed: ${formattedCompressedSize} (${compressedSize} bytes)`);
       console.log(`  • Ratio: ${Math.round((compressedSize / bundleSize) * 100)}% (${(bundleSize / compressedSize).toFixed(1)}x reduction)\n`);
       
-      console.log('✅ TypeScript build successful');
+      try {
+        // First, compile the main bundle with Bun's bundler
+        console.log('📦 Bundling with Bun...');
+        await Bun.build({
+          entrypoints: [join(srcDir, 'index.ts')],
+          outdir: distDir,
+          format: 'esm',
+          target: 'browser',
+          minify: true,
+          sourcemap: 'external',
+          external: ['bun:ffi', 'bun:sqlite'],
+        });
+        
+        // Then run TypeScript type checking and emit declarations
+        console.log('📦 Compiling TypeScript with JSX support...');
+        const tsResult = await Bun.spawn({
+          cmd: ['bun', 'x', 'tsc'],
+          cwd: rootDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            NODE_ENV: 'production',
+            FORCE_COLOR: '1'
+          },
+          args: [
+            '--project', 'tsconfig.json',
+            '--jsx', 'react-jsx',
+            '--jsxImportSource', '0x1',
+            '--outDir', distDir,
+            '--declaration',
+            '--emitDeclarationOnly',
+            '--noEmit', 'false'
+          ]
+        });
+        
+        // Pipe the output to the current process
+        const stdout = await new Response(tsResult.stdout).text();
+        const stderr = await new Response(tsResult.stderr).text();
+        
+        if (stdout) console.log(stdout);
+        if (stderr) console.error(stderr);
+        
+        // Wait for the process to complete and get the exit code
+        const exitCode = await tsResult.exited;
+        
+        if (exitCode !== 0) {
+          console.error(`❌ TypeScript compilation failed with exit code ${exitCode}`);
+          process.exit(exitCode);
+        }
+      } catch (error) {
+        console.error('❌ Build failed:', error);
+        process.exit(1);
+      }
+      
+      console.log('✅ TypeScript compilation successful!');
+      
+      // Copy type definitions after successful build
+      console.log('📦 Copying type definitions...');
+      const copyResult = await Bun.spawn({
+        cmd: ['bun', 'run', '--bun', './scripts/copy-types.js'],
+        cwd: rootDir,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      const copyStdout = await new Response(copyResult.stdout).text();
+      const copyStderr = await new Response(copyResult.stderr).text();
+      
+      if (copyStdout) console.log(copyStdout);
+      if (copyStderr) console.error(copyStderr);
+      
+      const copyExitCode = await copyResult.exited;
+      
+      if (copyExitCode === 0) {
+        console.log('✅ Type definitions copied successfully!');
+      } else {
+        console.error(`❌ Failed to copy type definitions with exit code ${copyExitCode}`);
+        process.exit(copyExitCode);
+      }
     } else {
       console.error('❌ TypeScript build failed');
       process.exit(1);

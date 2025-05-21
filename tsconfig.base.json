@@ -1,5 +1,4 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -10,27 +9,22 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "0x1/*": ["../../dist/*"],
-      "0x1": ["../../dist/index.js"],
-      "0x1-store": ["../../dist/store.js"]
+      "0x1/*": ["src/*"],
+      "0x1-store": ["src/store/index.ts"]
     },
     "typeRoots": [
       "./node_modules/@types",
       "./types"
-    ],
-    "types": ["bun-types", "0x1"],
-    "lib": ["DOM", "DOM.Iterable", "ESNext"]
+    ]
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    "types/**/*.d.ts"
+    "**/*.tsx"
   ],
   "exclude": ["node_modules", "dist"]
 }

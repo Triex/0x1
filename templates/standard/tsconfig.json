@@ -1,4 +1,5 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -14,8 +15,10 @@
     "baseUrl": ".",
     "paths": {
       "0x1/*": [
-        "node_modules/0x1/dist/*"
-      ]
+        "../../dist/*"
+      ],
+      "0x1": ["../../dist/index.js"],
+      "0x1-store": ["../../dist/store.js"]
     },
     "typeRoots": [
       "./node_modules/@types",

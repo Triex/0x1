@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.139",
+  "version": "0.0.140",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -24,11 +24,15 @@
     },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
-      "types": "./dist/jsx-runtime.d.ts"
+      "types": "./types/jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
       "import": "./dist/jsx-dev-runtime.js",
-      "types": "./dist/jsx-dev-runtime.d.ts"
+      "types": "./types/jsx-runtime.d.ts"
+    },
+    "./store": {
+      "import": "./dist/store.js",
+      "types": "./dist/store.d.ts"
     }
   },
   "bin": {
@@ -50,17 +54,16 @@
     "**/.cache"
   ],
   "scripts": {
-    "dev": "bun run --watch src/cli/index.ts dev",
-    "build": "bun run build:framework && bun run build:cli",
-    "build:framework": "bun run scripts/build-framework.ts",
-    "build:cli": "bun run scripts/build-cli-with-size.js",
-    "build:templates": "cp -r templates dist/",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
-    "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "test": "bun test",
+    "build": "bun run scripts/build-framework.ts",
+    "dev": "bun run scripts/dev.ts",
+    "start": "bun run scripts/start.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "build:templates": "cp -r templates dist/",
+    "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "update-version": "bun run scripts/update-version.ts",
-    "prepare": "bun run update-version && bun run build",
-    "publish-package": "bun run prepare && npm publish"
+    "prepare": "bun run update-version && bun run build"
   },
   "keywords": [
     "bun",

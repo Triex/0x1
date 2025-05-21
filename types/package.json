@@ -1,0 +1,18 @@
+{
+  "name": "0x1",
+  "version": "0.1.0",
+  "private": true,
+  "types": "./0x1.d.ts",
+  "type": "module",
+  "exports": {
+    "./jsx-runtime": "./jsx-runtime.d.ts",
+    "./jsx-dev-runtime": "./jsx-runtime.d.ts"
+  },
+  "dependencies": {
+    "@types/node": "^18.0.0",
+    "@types/react": "^18.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.7.0"
+  }
+}

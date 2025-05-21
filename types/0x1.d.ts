@@ -89,6 +89,42 @@ declare module '0x1/router' {
 
 // Main module declaration
 declare module '0x1' {
+  // React-like hooks
+  export function useState<T>(initialState: T | (() => T)): [T, (newState: T | ((prevState: T) => T)) => void];
+  export function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+  export function useRef<T>(initialValue: T): { current: T };
+  export function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+  export function useMemo<T>(factory: () => T, deps: any[]): T;
+  
+  // JSX factory
+  export function createElement(
+    type: string | Function,
+    props: Record<string, any> | null,
+    ...children: any[]
+  ): any;
+
+  export const Fragment: unique symbol;
+  
+  // Store functionality
+  export function createStore<T>(name: string, initialState: T, actions?: Record<string, (state: T, ...args: any[]) => T>): {
+    getState(): T;
+    subscribe(listener: () => void): () => void;
+  } & { [K in keyof typeof actions]: (...args: any[]) => void };
+  
+  // Router
+  export * from './router';
+  
+  // Theme
+  export interface ThemeContextType {
+    theme: 'light' | 'dark';
+    toggleTheme: () => void;
+  }
+  
+  export const ThemeContext: {
+    Provider: (props: { value: ThemeContextType; children: any }) => any;
+  };
+  
+  export function useTheme(): ThemeContextType;
   // JSX types and rendering - these are also defined in jsx.d.ts which is referenced above
   export function createElement(type: any, props: any, ...children: any[]): any;
   export const Fragment: unique symbol;
