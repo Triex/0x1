@@ -8,7 +8,7 @@ import { serve, type Server, type Subprocess } from "bun";
 import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { watch } from "fs/promises";
 import os from "os";
-import { basename, dirname, join, resolve, extname } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
 import { build } from "./build.js";
@@ -557,19 +557,33 @@ async function createDevServer(options: {
     const possiblePaths = [];
     const frameworkRoots = getPossibleFrameworkRoots();
     
-    // For each possible root, add various path combinations
+    // FIXED: For each possible root, add various path combinations without duplicating src
     for (const root of frameworkRoots) {
-      // Source directory paths
-      possiblePaths.push(resolve(root, 'src', 'browser', 'live-reload.js'));
+      // Carefully handle path combinations to avoid src/src duplication
+      // First check if root path already contains 'src' to avoid duplication
+      const rootHasSrc = root.includes('/src') || root.endsWith('src');
+      
+      // Source directory paths - avoid adding 'src' if already in path
+      if (!rootHasSrc) {
+        possiblePaths.push(resolve(root, 'src', 'browser', 'live-reload.js'));
+      }
       possiblePaths.push(resolve(root, 'browser', 'live-reload.js'));
       
       // Distribution paths
       possiblePaths.push(resolve(root, 'dist', 'browser', 'live-reload.js'));
     }
     
-    // Also add a few additional special paths
-    possiblePaths.push(resolve(__dirname, '..', '..', '..', 'browser', 'live-reload.js'));
-    possiblePaths.push(resolve(__dirname, '..', '..', '..', 'src', 'browser', 'live-reload.js'));
+    // Also add a few additional special paths, but normalized to prevent src/src issues
+    // First create path without src, then add it if needed
+    const baseDir = resolve(__dirname, '..', '..', '..');
+    possiblePaths.push(resolve(baseDir, 'browser', 'live-reload.js'));
+    
+    // Only add src path if it's not already in the baseDir
+    if (!baseDir.includes('/src') && !baseDir.endsWith('src')) {
+      possiblePaths.push(resolve(baseDir, 'src', 'browser', 'live-reload.js'));
+    }
+    
+    // Node modules path is less likely to have duplication
     possiblePaths.push(resolve(projectPath, 'node_modules', '0x1', 'dist', 'browser', 'live-reload.js'));
     
     // Debug output to help diagnose path issues
@@ -660,7 +674,7 @@ async function createDevServer(options: {
       server = serve({
         port: currentPort,
         hostname: host,
-        async fetch(req) {
+        async fetch(req: Request) {
           const url = new URL(req.url);
           const path = url.pathname;
 
@@ -1194,6 +1208,16 @@ export default {
               // We search in all possible locations where the router module might be
               const routerPaths: string[] = [];
               
+              // Make sure we have the validFrameworkRoots variable initialized correctly
+              // to prevent TypeScript errors - must be defined before it's used below
+              if (!validFrameworkRoots || validFrameworkRoots.length === 0) {
+                possibleFrameworkRoots.forEach(root => {
+                  if (root && (existsSync(resolve(root, 'dist/core')) || existsSync(resolve(root, 'src/core')))) {
+                    validFrameworkRoots.push(root);
+                  }
+                });
+              }
+              
               // Helper to add all possible router paths for a given root
               const addRouterPathsForRoot = (root: string) => {
                 if (!root) return;
@@ -1237,14 +1261,24 @@ export default {
                 }
               }
               
-              // Find the first existing router path
+              // CRITICAL: Find the first existing router path
               const existingRouterPath = routerPaths.find(p => existsSync(p));
               
               if (existingRouterPath) {
                 options.debug && logger.debug(`✅ Found router module at: ${existingRouterPath}`);
                 try {
-                  // Read the router.js file contents
-                  const routerContent = readFileSync(existingRouterPath, 'utf8');
+                  // Read the router.js file contents with better error handling
+                  let routerContent = '';
+                  try {
+                    // Try Bun's file API first for better performance
+                    routerContent = await Bun.file(existingRouterPath).text();
+                  } catch (bunErr) {
+                    // Fall back to fs.readFileSync if Bun's API fails
+                    routerContent = readFileSync(existingRouterPath, 'utf8');
+                  }
+                  
+                  // Log success and return the router content with proper headers
+                  logger.info(`Successfully loaded router module from ${existingRouterPath}`);
                   return new Response(routerContent, {
                     headers: {
                       "Content-Type": "application/javascript; charset=utf-8",
@@ -1252,7 +1286,7 @@ export default {
                     }
                   });
                 } catch (err) {
-                  options.debug && logger.error(`Error reading router file: ${err}`);
+                  options.debug && logger.error(`Error reading router file (${existingRouterPath}): ${err}`);
                 }
               }
               
@@ -1261,7 +1295,9 @@ export default {
               const routerTsPaths: string[] = [];
               
               // Add TypeScript paths from all valid framework roots
-              for (const root of validFrameworkRoots) {
+              // Make sure we have the validFrameworkRoots in scope
+              const frameworkRoots = validFrameworkRoots || possibleFrameworkRoots;
+              for (const root of frameworkRoots) {
                 routerTsPaths.push(resolve(root, 'src/core/router.ts'));
               }
               
@@ -1922,15 +1958,13 @@ export const Redirect = BrowserRedirect;
                 return new Response(transformedOutput, {
                   headers: {
                     "Content-Type": "application/javascript",
-                    "Cache-Control": "no-cache",
-                  },
+                    "Cache-Control": "no-cache"
+                  }
                 });
               } catch (error) {
                 const err = error as Error;
-                logger.error(
-                  `❌ Error transpiling ${tsFilePath}: ${err.message || "Unknown error"}`
-                );
-
+                logger.error(`❌ Error transpiling ${tsFilePath}: ${err.message || "Unknown error"}`);
+                
                 // Log detailed error information with proper typing
                 if (err.stack) logger.debug(`Stack trace: ${err.stack}`);
                 if ("cause" in err)
@@ -2024,6 +2058,12 @@ export const Redirect = BrowserRedirect;
               join(appDir, routePath, "page.jsx"),
               join(appDir, routePath, "page.ts"),
               join(appDir, routePath, "page.js"),
+              
+              // App/pages pattern support (for Next.js 15 compatibility)
+              join(appDir, "pages", routePath, "page.tsx"),
+              join(appDir, "pages", routePath, "page.jsx"),
+              join(appDir, "pages", routePath, "page.ts"),
+              join(appDir, "pages", routePath, "page.js"),
 
               // For route segments
               join(appDir, routePath + ".tsx"),

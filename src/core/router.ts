@@ -297,11 +297,39 @@ export class Router {
 
   /**
    * Find a route that matches the current path
+   * Enhanced to support both direct app directory routes and app/pages/* routes
    */
   private findMatchingRoute(path: string): Route | undefined {
+    // Normalize path for matching
+    const normalizedPath = path.endsWith("/") && path !== "/"
+      ? path.slice(0, -1) // Remove trailing slash except for root
+      : path;
+    
+    // Enhanced support for app/pages structure
+    // This ensures both standard app directory routes and app/pages/* routes are properly matched
+    const routes = [...this.routes]; // Create a copy to safely iterate
+
+    // First check for direct matches to handle regular routes
+    for (const route of routes) {
+      // Exact path matching (for root or fixed paths)
+      if (route.exact && route.path === normalizedPath) {
+        return route;
+      }
+    }
+    
+    // Handle the scenario where URL path doesn't have "/pages" but the route might be defined in app/pages
+    // This allows a URL like /about to match a component at app/pages/about/page.tsx
+    for (const route of routes) {
+      // Check if this route is from the app/pages structure
+      // We'll match dynamic routes or routes that might be in the app/pages directory
+      if (!route.exact && this.checkPathMatch(normalizedPath, route.path)) {
+        return route;
+      }
+    }
+
     // Try exact matches first
     for (const route of this.routes) {
-      if (route.exact && route.path === path) {
+      if (route.exact && route.path === normalizedPath) {
         return route;
       }
     }
@@ -332,6 +360,24 @@ export class Router {
     return undefined;
   }
 
+  /**
+   * Check if a path matches a route pattern, with special handling for app/pages structure
+   * This supports both standard app directory routes and routes defined in app/pages/*
+   */
+  private checkPathMatch(path: string, routePath: string): boolean {
+    // Direct match
+    if (path === routePath) return true;
+    
+    // Handle app/pages structure - allow /about to match routes from /app/pages/about
+    // This is the key enhancement for supporting the app/pages directory structure
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    const pagesPath = `/pages/${cleanPath}`;
+    const routeRegex = this.pathToRegex(routePath);
+    
+    // Check if this is a match for either the direct path or through the pages directory
+    return routeRegex.test(path) || routeRegex.test(pagesPath);
+  }
+  
   /**
    * Recursively find a matching child route
    */

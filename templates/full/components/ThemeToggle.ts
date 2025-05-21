@@ -1,8 +1,7 @@
 /**
  * Theme toggle component for switching between light and dark mode
  */
-
-import type { Store } from '../../store';
+import { Store } from "../store";
 
 interface ThemeToggleProps {
   store: Store;

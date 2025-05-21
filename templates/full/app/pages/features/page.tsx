@@ -2,7 +2,6 @@
  * Features page component
  * Similar to Next.js 15's app/features/page.tsx
  */
-import { createElement, Fragment } from '../../lib/jsx-runtime';
 
 export default function FeaturesPage() {
   return (

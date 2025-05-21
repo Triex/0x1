@@ -2,7 +2,6 @@
  * Contact page component
  * Similar to Next.js 15's app/contact/page.tsx
  */
-import { createElement, Fragment } from '../../lib/jsx-runtime';
 
 // In Next.js this would be a Server Component that could handle form submissions
 export default function ContactPage() {

@@ -2,7 +2,6 @@
  * Not Found component
  * Similar to Next.js 15's app/not-found.tsx
  */
-import { createElement, Fragment } from '../lib/jsx-runtime';
 
 export default function NotFound() {
   return (

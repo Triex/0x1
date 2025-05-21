@@ -1,21 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    './index.html',
-    './app.{js,ts,tsx}',
+    './app/**/*.{js,ts,jsx,tsx}',  // Modern app directory structure (Next.js style)
     './components/**/*.{js,ts,jsx,tsx}',
-    './pages/**/*.{js,ts,jsx,tsx}',
-    './utils/**/*.{js,ts,jsx,tsx}',
     './lib/**/*.{js,ts,jsx,tsx}',
     './store/**/*.{js,ts}',
-    // More specific paths for src directory structure
-    './src/index.html',
-    './src/app.{js,ts,tsx}',
-    './src/components/**/*.{js,ts,jsx,tsx}',
-    './src/pages/**/*.{js,ts,jsx,tsx}',
-    './src/utils/**/*.{js,ts,jsx,tsx}',
-    './src/lib/**/*.{js,ts,jsx,tsx}',
-    './src/store/**/*.{js,ts}'
+    './utils/**/*.{js,ts,jsx,tsx}',
+    './*.html',
+    './index.tsx'
   ],
   darkMode: 'class',
   theme: {

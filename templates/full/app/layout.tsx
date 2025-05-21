@@ -2,7 +2,6 @@
  * Root layout that wraps all pages
  * Similar to Next.js 15's app/layout.tsx pattern
  */
-import { createElement, Fragment } from '../lib/jsx-runtime';
 import { useTheme } from '../lib/theme';
 
 interface RootLayoutProps {

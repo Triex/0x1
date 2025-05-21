@@ -2,7 +2,6 @@
  * About page component
  * Similar to Next.js 15's app/about/page.tsx
  */
-import { createElement, Fragment } from '../../lib/jsx-runtime';
 
 export default function AboutPage() {
   return (

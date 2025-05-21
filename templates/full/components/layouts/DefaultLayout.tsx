@@ -1,8 +1,9 @@
 /**
  * Default layout component for 0x1 applications
  */
-import { createElement, Fragment, JSXNode } from '../../../lib/jsx-runtime';
-import { useTheme } from '../../../lib/theme';
+
+import { JSXNode } from "../../lib/jsx-runtime";
+import { useTheme } from "../../lib/theme";
 
 export interface DefaultLayoutProps {
   title: string;

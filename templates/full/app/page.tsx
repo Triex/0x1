@@ -2,7 +2,6 @@
  * Home page component
  * Similar to Next.js 15's app/page.tsx
  */
-import { createElement, Fragment } from '../lib/jsx-runtime';
 import { counterStore } from '../store/counter';
 
 // This is a server component in Next.js world

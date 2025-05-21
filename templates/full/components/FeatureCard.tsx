@@ -1,7 +1,6 @@
 /**
  * Reusable FeatureCard component
  */
-import { createElement, Fragment } from '0x1';
 
 interface FeatureCardProps {
   title: string;

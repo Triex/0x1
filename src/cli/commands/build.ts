@@ -428,6 +428,13 @@ async function bundleJavaScript(
     // Also include normal components from root-level components directory
     const projectRoot = dir.includes('/app') ? dir.split('/app')[0] : dir;
     const rootComponentsDir = join(projectRoot, 'components');
+    
+    // Special handling for app/pages directory - ensuring we discover all components in this structure
+    if (dir.includes('/app') && !dir.includes('/app/pages') && existsSync(join(dir, 'pages'))) {
+      const pagesDir = join(dir, 'pages');
+      const pagesComponents = await findAppComponents(pagesDir);
+      components.push(...pagesComponents);
+    }
 
     // Process the app directory for page components
     if (existsSync(dir)) {
