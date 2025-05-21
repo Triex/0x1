@@ -1800,13 +1800,50 @@ export const Redirect = BrowserRedirect;
   <script type="module">
     // Import the router factory and components
     import { createRouter } from '0x1/router';
-
-    // Create router instance with default options
-    const router = createRouter({
-      rootElement: document.getElementById('app') // Fixed: using rootElement instead of root
-    });
-
-    // Load components
+    
+    // Dynamically load app pages with improved error handling
+    const appComponents = {};
+    let hasRootPage = false;
+    
+    // Helper function to safely load a module
+    async function safeImport(path: string, componentKey: string, required: boolean = false): Promise<boolean> {
+      try {
+        const module = await import(path);
+        console.log('Loaded ' + componentKey + ' successfully');
+        appComponents[componentKey] = module;
+        return true;
+      } catch (err: any) {
+        if (required) {
+          console.warn('Required module ' + componentKey + ' failed to load: ' + err.message);
+        } else {
+          console.log('Optional module ' + componentKey + ' not found');
+        }
+        return false;
+      }
+    }
+    
+    // Load core app components in order of importance
+    try {
+      // 1. First try loading the root page - essential for rendering content
+      hasRootPage = await safeImport('/app/page.js', 'app/page', true);
+      
+      // 2. Try loading the layout - used to wrap pages
+      await safeImport('/app/layout.js', 'app/layout');
+      
+      // 3. Try loading the not-found page - used for 404 errors
+      await safeImport('/app/not-found.js', 'app/not-found');
+      
+      // If we couldn't load the root page, try alternate locations
+      if (!hasRootPage) {
+        console.log('Trying alternate page locations...');
+        hasRootPage = await safeImport('/app/index.js', 'app/index') || 
+                     await safeImport('/pages/index.js', 'pages/index');
+      }
+    } catch (e) {
+      console.error('Error loading app components:', e);
+    }
+    
+    // Load regular components
     try {
       const components = await fetch('/_components_list').then(res => res.json());
       for (const comp of components) {
@@ -1815,6 +1852,15 @@ export const Redirect = BrowserRedirect;
     } catch (e) {
       console.log('No component manifest found');
     }
+    
+    // Create router instance with app components registered
+    const router = createRouter({
+      rootElement: document.getElementById('app'),
+      mode: 'history', // Use history API for cleaner URLs without hash
+      appComponents: appComponents, // Register app directory components
+      // Add explicit root route for fallback
+      autoDiscovery: true // Also enable auto-discovery as backup
+    });
 
     // Start routing
     router.init();

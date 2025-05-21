@@ -70,14 +70,21 @@ export class Router {
       });
 
     // Initialize app directory components if provided
-    if (options.appComponents) {
+    if (options.appComponents && Object.keys(options.appComponents).length > 0) {
       this.initAppDirectoryRoutes(options.appComponents);
     } else if (options.autoDiscovery) {
-      // When autoDiscovery is enabled, we automatically find and load components
-      // This is handled by the framework at build time, for runtime we use an empty set
-      // of routes that will be populated by the bundler/compiler
-      this.initAppDirectoryRoutes({});
-
+      // When autoDiscovery is enabled, we need to ensure at least a root route is registered
+      // Create a minimal app structure with a root route to prevent 'Page Not Found' errors
+      const dummyRoot = () => {
+        const element = document.createElement("div");
+        element.id = "0x1-auto-discovery-root";
+        // Will be populated by the dynamic imports
+        return element;
+      };
+      
+      // Register at least the root route for auto-discovery
+      this.addRoute("/", dummyRoot, true);
+      
       console.log("🔍 Using automatic component discovery");
     }
   }
