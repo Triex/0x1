@@ -1055,15 +1055,15 @@ export default Router;
               // Provide the main 0x1 module - simplified to avoid duplicate exports
               moduleContent = `
             // 0x1 Framework - Browser Compatible Version
-            import { createRouter, Link, NavLink, RouterRedirect as Redirect } from '/0x1/router';
+            import { createRouter, Link, RouterNavLink, RouterRedirect } from '/0x1/router';
             import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
 
             // Export everything through a single export statement to avoid duplication
             export { 
               createRouter, 
               Link, 
-              NavLink, 
-              Redirect,
+              RouterNavLink as NavLink, 
+              RouterRedirect as Redirect,
               jsx, 
               jsxs, 
               Fragment, 
@@ -1074,8 +1074,8 @@ export default Router;
             export default { 
               createRouter, 
               Link, 
-              NavLink, 
-              Redirect,
+              NavLink: RouterNavLink, 
+              Redirect: RouterRedirect,
               jsx, 
               jsxs, 
               Fragment, 

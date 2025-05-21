@@ -4,10 +4,11 @@
  */
 
 // Export core components with appropriate naming
-export { Link, NavLink } from './core/navigation.js';
+export { Link } from './core/navigation.js';
 export { Router } from './core/router.js';
 
-// Named export for Redirect to avoid collision
+// Named exports to avoid collision
+export { NavLink as RouterNavLink } from './core/navigation.js';
 export { Redirect as RouterRedirect } from './core/navigation.js';
 
 // Export type definitions
