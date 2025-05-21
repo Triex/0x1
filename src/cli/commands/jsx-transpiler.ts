@@ -210,50 +210,149 @@ export async function transpileJSX(
           // Special handling for layout files to ensure proper transpilation
           if (tempFile.includes('layout.tsx') || tempFile.includes('layout.jsx')) {
             logger.debug('Enhanced transpilation for layout component');
-            // Add layout-specific configuration and prepare proper JSX runtime imports
-            buildOptions.define = {
-              ...buildOptions.define,
-              'process.env.__0X1_LAYOUT': 'true',
-              'process.env.RUNTIME_MODE': '"development"',
-              'process.env.NODE_ENV': minify ? '"production"' : '"development"'
-            };
             
-            // Handle layouts specially by directly patching their content
             // Read the original file first
             const fileContent = await Bun.file(tempFile).text();
             
-            // Create modified content with required JSX runtime imports
-            const layoutImports = `// Auto-injected layout component imports
-import { jsx, jsxs, Fragment } from "0x1/jsx-runtime";
-import { createElement } from "0x1/jsx-runtime";
-
-${fileContent}`;
+            // Check for existing JSX runtime imports
+            const hasExistingJsxRuntime = fileContent.includes('0x1/jsx-runtime');
             
-            // Write this directly back to the temp file (which is already a copy)
-            await Bun.write(tempFile, layoutImports);
-            
-            logger.debug(`Enhanced layout component with direct JSX runtime imports`);
-            
-            // Ensure jsx factory and fragment are properly configured
-            buildOptions.jsx = 'automatic';
-            buildOptions.jsxImportSource = '0x1';
-            buildOptions.jsxFactory = 'jsx';
-            buildOptions.jsxFragment = 'Fragment';
-            
-            // For layouts, add special plugin to handle Link imports
-            buildOptions.plugins = [
-              {
-                name: 'layout-jsx-runtime-plugin',
-                setup(build: any) {
-                  build.onResolve({ filter: /jsx-runtime/ }, () => {
-                    return { path: '0x1/jsx-runtime.js', namespace: 'jsx-runtime' };
-                  });
-                  build.onResolve({ filter: /^0x1$/ }, () => {
-                    return { path: '0x1', namespace: '0x1' };
-                  });
+            // For layouts, create an optimized standalone build configuration
+            // that doesn't depend on external resolution
+            // Use the same outdir from buildOptions
+            const layoutSpecificOptions = {
+              entrypoints: [tempFile],
+              outdir: buildOptions.outdir,
+              minify: minify,
+              target: 'browser' as const,
+              format: 'esm' as const,
+              sourcemap: 'external' as const,
+              define: {
+                'process.env.__0X1_LAYOUT': 'true',
+                'process.env.RUNTIME_MODE': '"development"',
+                'process.env.NODE_ENV': minify ? '"production"' : '"development"'
+              },
+              // Critical: Force automatic JSX with our runtime
+              jsx: 'automatic',
+              jsxImportSource: '0x1',
+              jsxFactory: 'jsx',
+              jsxFragment: 'Fragment',
+              // Enhanced loader configuration
+              loader: { 
+                '.tsx': 'tsx' as const,
+                '.ts': 'ts' as const,
+                '.jsx': 'jsx' as const,
+                '.js': 'js' as const 
+              },
+              // Use an external plugin that directly provides the JSX runtime
+              plugins: [
+                {
+                  name: 'direct-jsx-runtime-provider',
+                  setup(build: any) {
+                    // Intercept JSX runtime imports and provide virtual module
+                    build.onResolve({ filter: /jsx-runtime/ }, () => {
+                      return { path: 'jsx-runtime-virtual', namespace: 'jsx-runtime-ns' };
+                    });
+                    
+                    // When the virtual module is loaded, provide the JSX runtime code directly
+                    build.onLoad({ filter: /jsx-runtime-virtual/, namespace: 'jsx-runtime-ns' }, () => {
+                      return {
+                        contents: `
+                          // Direct JSX runtime implementation
+                          export function jsx(type, props) {
+                            const element = typeof type === 'function' 
+                              ? type(props || {}) 
+                              : document.createElement(type);
+                            
+                            if (!element) return document.createDocumentFragment();
+                            
+                            if (props) {
+                              Object.entries(props).forEach(([key, value]) => {
+                                if (key === 'children') return;
+                                if (key === 'className') { element.className = value; return; }
+                                if (key === 'style' && typeof value === 'object') {
+                                  Object.entries(value).forEach(([styleKey, styleValue]) => {
+                                    element.style[styleKey] = styleValue;
+                                  });
+                                  return;
+                                }
+                                // Handle event handlers
+                                if (key.startsWith('on') && typeof value === 'function') {
+                                  const eventName = key.slice(2).toLowerCase();
+                                  element.addEventListener(eventName, value);
+                                  return;
+                                }
+                                // Set attribute
+                                element.setAttribute(key, value);
+                              });
+                              
+                              // Handle children
+                              if (props.children) {
+                                const appendChildren = (children) => {
+                                  if (Array.isArray(children)) {
+                                    children.forEach(child => appendChildren(child));
+                                  } else if (children !== null && children !== undefined) {
+                                    element.append(
+                                      children instanceof Node ? children : document.createTextNode(String(children))
+                                    );
+                                  }
+                                };
+                                appendChildren(props.children);
+                              }
+                            }
+                            return element;
+                          }
+                          
+                          // Alias jsxs to jsx for fragment handling
+                          export const jsxs = jsx;
+                          
+                          // Fragment support
+                          export const Fragment = (props) => {
+                            const fragment = document.createDocumentFragment();
+                            if (props && props.children) {
+                              const appendChildren = (children) => {
+                                if (Array.isArray(children)) {
+                                  children.forEach(child => appendChildren(child));
+                                } else if (children !== null && children !== undefined) {
+                                  fragment.append(
+                                    children instanceof Node ? children : document.createTextNode(String(children))
+                                  );
+                                }
+                              };
+                              appendChildren(props.children);
+                            }
+                            return fragment;
+                          };
+                          
+                          // Add createElement for compatibility
+                          export const createElement = jsx;
+                        `,
+                        loader: 'js',
+                      };
+                    });
+                  }
                 }
+              ]
+            };
+            
+            logger.debug(`Configured optimized build for layout component`);
+            
+            try {
+              // Use the enhanced layout-specific options for transpilation
+              const layoutResult = await Bun.build(layoutSpecificOptions);
+              
+              if (!layoutResult.success) {
+                throw new Error(`Layout build failed: ${layoutResult.logs?.join('\n') || 'Unknown error'}`);
               }
-            ];
+              
+              logger.debug('Layout JSX transpilation completed successfully');
+              // Return early - we've already built the file
+              return true;
+            } catch (layoutErr) {
+              logger.error(`Layout transpilation error: ${layoutErr}`);
+              logger.error('Falling back to standard build process');
+              // Continue with standard build process
+            }
           }
           
           // Add better module resolution to match Next.js behavior
