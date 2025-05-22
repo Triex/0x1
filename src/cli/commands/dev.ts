@@ -1906,6 +1906,9 @@ export const Redirect = BrowserRedirect;
     }
   }
   </script>
+  
+  <!-- Live reload script - using standardized path to avoid duplication -->
+  <script src="/__0x1_live_reload.js"></script>
 </head>
 <body>
   <!-- App Container -->
@@ -2102,20 +2105,99 @@ export const Redirect = BrowserRedirect;
                 logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
                 const _tsContent = await Bun.file(tsFilePath).text();
 
-                // Use Bun to transpile TypeScript
+                // Enhanced Bun transpilation settings with explicit JSX handling
                 const result = await Bun.build({
                   entrypoints: [tsFilePath],
                   target: "browser",
                   format: "esm",
                   minify: false,
                   sourcemap: "inline",
-                  loader: { ".tsx": "tsx", ".ts": "ts" },
+                  // Improved loader configuration with better TSX/JSX handling
+                  loader: { 
+                    ".tsx": "tsx", 
+                    ".ts": "ts",
+                    ".jsx": "jsx",
+                    ".js": "js"
+                  },
+                  define: {
+                    // Add React-compatible definitions
+                    "process.env.NODE_ENV": "'development'"
+                  },
+                  // Ensure external packages are properly resolved
+                  external: ["0x1", "0x1/*"],
                 });
 
                 if (!result.success) {
                   logger.error(`Failed to transpile ${tsFilePath}`);
+                  
+                  // Enhanced error reporting
+                  if (result.logs && result.logs.length > 0) {
+                    logger.error(`Build errors:`);
+                    for (const log of result.logs) {
+                      if (log.level === 'error') {
+                        logger.error(`  - ${log.message}`);
+                        if (log.position) {
+                          const { line, column, file } = log.position;
+                          logger.error(`    at ${file || tsFilePath}:${line}:${column}`);
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Try fallback build with more permissive settings
+                  try {
+                    logger.debug(`Attempting fallback build for ${tsFilePath}...`);
+                    const fallbackResult = await Bun.build({
+                      entrypoints: [tsFilePath],
+                      target: 'browser',
+                      format: 'esm',
+                      minify: false,
+                      sourcemap: 'inline',
+                      // Use loader configuration which is supported in BuildConfig
+                      loader: {
+                        '.tsx': 'tsx',
+                        '.ts': 'ts',
+                        '.jsx': 'jsx',
+                        '.js': 'js'
+                      },
+                      define: {
+                        'process.env.NODE_ENV': "'development'"
+                      },
+                      // Keep only supported options that help with build success
+                    });
+                    
+                    if (fallbackResult.success) {
+                      logger.info(`✅ Fallback build succeeded for ${tsFilePath}`);
+                      // Continue with the fallback result
+                      const output = await fallbackResult.outputs[0].text();
+                      const transformedOutput = transformBareImports(output);
+                      
+                      // Cache the successful build
+                      try {
+                        const distFilePath = join(distDir, path);
+                        const distFileDir = dirname(distFilePath);
+                        if (!existsSync(distFileDir)) {
+                          mkdirSync(distFileDir, { recursive: true });
+                        }
+                        await Bun.write(distFilePath, transformedOutput);
+                      } catch (writeErr: any) {
+                        logger.warn(`Failed to cache fallback build: ${writeErr.message || String(writeErr)}`);
+                      }
+                      
+                      return new Response(transformedOutput, {
+                        headers: {
+                          "Content-Type": "application/javascript",
+                          "Cache-Control": "no-cache"
+                        }
+                      });
+                    }
+                  } catch (fallbackErr: any) {
+                    logger.error(`Fallback build also failed: ${fallbackErr.message || String(fallbackErr)}`);
+                  }
+                  
+                  // If all builds fail, return a helpful error message
                   return new Response(
-                    `// Failed to compile ${path}\nconsole.error('Compilation failed');`,
+                    `// Failed to compile ${path}\nconsole.error('Compilation failed. Check server logs for details.');\nconsole.error('Try running: bun run build');`,
                     {
                       headers: {
                         "Content-Type": "application/javascript",
@@ -2419,14 +2501,21 @@ export const Redirect = BrowserRedirect;
             // For HTML files, inject the live reload script
             if (path.endsWith(".html")) {
               try {
-                // Inject live reload script into HTML files
+                // Inject live reload script into HTML files using the standardized path
                 let content = await file.text();
 
-                if (!content.includes("__0x1_live_reload.js")) {
+                // Use a consistent path for the live-reload script to avoid duplication
+                // Only inject if not already present (checking both possible formats)
+                if (!content.includes("__0x1_live_reload.js") && !content.includes("/live-reload.js")) {
+                  // Always use the standardized path that will be handled by the server
                   content = content.replace(
                     "</head>",
                     '<script src="/__0x1_live_reload.js"></script></head>'
                   );
+                  
+                  if (options.debug) {
+                    logger.debug(`Injected live-reload script into HTML response for ${path}`);
+                  }
                 }
 
                 // Log successful HTML connection
