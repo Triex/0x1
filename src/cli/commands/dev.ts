@@ -724,6 +724,28 @@ async function createDevServer(options: {
           const url = new URL(req.url);
           const path = url.pathname;
 
+          try {
+            // Import the app component handler for special components
+            // This provides fallback components when transpilation fails
+            if (path.startsWith('/app/') && (
+                path.endsWith('/page.js') || 
+                path.endsWith('/layout.js') || 
+                path.endsWith('/not-found.js') || 
+                path.endsWith('/error.js')
+            )) {
+              // Dynamically import to avoid loading unnecessary modules
+              const { handleAppComponent } = await import('./app-component-handler.js');
+              const response = handleAppComponent(req);
+              
+              if (response) {
+                return response;
+              }
+            }
+          } catch (err) {
+            // If the handler throws, continue with normal processing
+            logger.debug(`App component handler error: ${err}`);
+          }
+
           // CRITICAL FIX: Comprehensive handling for all router module requests
           // This catches router module requests in any format to ensure correct MIME type
           if (path === "/router" || path === "/router.js" || 
