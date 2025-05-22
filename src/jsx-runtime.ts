@@ -275,6 +275,7 @@ declare global {
       path: any;
       circle: any;
       rect: any;
+    }
     
     interface ElementChildrenAttribute {
       children: Record<string, unknown>;
