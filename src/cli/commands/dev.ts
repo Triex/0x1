@@ -5,10 +5,10 @@
  */
 
 import { serve, type Server, type Subprocess } from "bun";
-import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "fs";
+import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { watch } from "fs/promises";
 import os from "os";
-import { dirname, join, resolve, basename } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
 import { build } from "./build.js";
@@ -2213,14 +2213,16 @@ export const Redirect = BrowserRedirect;
                       // For TSX files, add basic createElement implementation
                       if (tsFilePath.endsWith('.tsx')) {
                         // Basic JSX transformation
+                        // Use a safe string building approach without complex regex
                         transformedOutput = `
 // Basic JSX compatibility layer
 const createElement = (type, props, ...children) => {
   return { type, props: props || {}, children };
 };
 
-// Transformed content with basic JSX support
-${sourceContent.replace(/</g, '/* JSX start */')}
+// Transformed content with basic JSX support - processed by 0x1
+// Original source file: ${basename(tsFilePath)}
+${sourceContent.replace(/<([a-zA-Z][a-zA-Z0-9]*)/g, '/* JSX: $1 */')}
 `;
                         transpiled = true;
                       }
@@ -2228,40 +2230,50 @@ ${sourceContent.replace(/</g, '/* JSX start */')}
                     
                     if (transpiled) {
                       // Transform any bare imports in the transpiled code
-                      transformedOutput = transformBareImports(transformedOutput);
+                      const processedOutput = transformBareImports(transformedOutput);
                       
-                      // Create a mock successful result to continue processing
-                      const fallbackResult = { 
-                        success: true,
-                        outputs: [{ text: async () => transformedOutput }]
-                      };
+                      // Create a fallback response with the processed content
+                      logger.info(`✅ Fallback build succeeded for ${tsFilePath}`);
                       
-                      // Process the successful fallback result
-                      if (fallbackResult.success) {
-                        logger.info(`✅ Fallback build succeeded for ${tsFilePath}`);
-                        // Continue with the fallback result
-                        const output = await fallbackResult.outputs[0].text();
-                        const transformedOutput = transformBareImports(output);
+                      // Cache the successful build with proper metadata
+                      try {
+                        const distFilePath = join(distDir, path);
+                        const distFileDir = dirname(distFilePath);
+                        const cacheMetaFile = `${distFilePath}.meta`;
                         
-                        // Cache the successful build
-                        try {
-                          const distFilePath = join(distDir, path);
-                          const distFileDir = dirname(distFilePath);
-                          if (!existsSync(distFileDir)) {
-                            mkdirSync(distFileDir, { recursive: true });
-                          }
-                          await Bun.write(distFilePath, transformedOutput);
-                        } catch (writeErr: any) {
-                          logger.warn(`Failed to cache fallback build: ${writeErr.message || String(writeErr)}`);
+                        // Create the directory if it doesn't exist
+                        if (!existsSync(distFileDir)) {
+                          mkdirSync(distFileDir, { recursive: true });
                         }
                         
-                        return new Response(transformedOutput, {
-                          headers: {
-                            "Content-Type": "application/javascript",
-                            "Cache-Control": "no-cache"
-                          }
-                        });
+                        // Add a source file comment
+                        const outputWithComment = `// Generated from ${basename(tsFilePath)} (fallback) - 0x1 Framework ${new Date().toISOString()}\n${processedOutput}`;
+                        
+                        // Write the transpiled file
+                        await Bun.write(distFilePath, outputWithComment);
+                        
+                        // Create simple metadata for fallback cache
+                        const fallbackMetadata = {
+                          sourcePath: tsFilePath,
+                          buildTime: Date.now(),
+                          version: "0.0.156",
+                          fallback: true
+                        };
+                        
+                        // Write the cache metadata
+                        await Bun.write(cacheMetaFile, JSON.stringify(fallbackMetadata, null, 2));
+                        
+                        options.debug && logger.debug(`✅ Cached fallback build to ${distFilePath}`);
+                      } catch (writeErr: any) {
+                        logger.warn(`Failed to cache fallback build: ${writeErr.message || String(writeErr)}`);
                       }
+                      
+                      return new Response(processedOutput, {
+                        headers: {
+                          "Content-Type": "application/javascript",
+                          "Cache-Control": "no-cache"
+                        }
+                      });
                     }
                   } catch (fallbackErr: any) {
                     // Log fallback error with proper error handling
@@ -2298,21 +2310,46 @@ ${sourceContent.replace(/</g, '/* JSX start */')}
                 // Transform any remaining bare imports
                 const transformedOutput = transformBareImports(output);
 
-                // Write the transformed output to the dist directory to ensure it's available for future requests
+                // Write the transformed output to the dist directory with cache metadata
                 try {
                   const distFilePath = join(distDir, path);
                   const distFileDir = dirname(distFilePath);
+                  const cacheMetaFile = `${distFilePath}.meta`;
+                  
+                  // Create the directory if it doesn't exist
                   if (!existsSync(distFileDir)) {
                     mkdirSync(distFileDir, { recursive: true });
                   }
-                  await Bun.write(distFilePath, transformedOutput);
-                  logger.debug(
-                    `Successfully wrote transpiled file to ${distFilePath}`
+                  
+                  // Add a source file comment to help with cache validation
+                  const outputWithComment = `// Generated from ${basename(tsFilePath)} - 0x1 Framework ${new Date().toISOString()}\n${transformedOutput}`;
+                  
+                  // Write the transpiled file
+                  await Bun.write(distFilePath, outputWithComment);
+                  
+                  // Get source file modification time for cache validation
+                  const sourceStats = await Bun.file(tsFilePath).stat();
+                  const sourceModTime = sourceStats?.mtime?.getTime() || Date.now();
+                  
+                  // Create cache metadata with all the information needed for validation
+                  const cacheMetadata = {
+                    sourcePath: tsFilePath,
+                    sourceModTime: sourceModTime,
+                    buildTime: Date.now(),
+                    version: "0.0.156", // Current framework version
+                    hash: Bun.hash(transformedOutput).toString(16) // Content hash
+                  };
+                  
+                  // Write the cache metadata
+                  await Bun.write(cacheMetaFile, JSON.stringify(cacheMetadata, null, 2));
+                  
+                  options.debug && logger.debug(
+                    `✅ Successfully cached transpiled file to ${distFilePath}`
                   );
                 } catch (error) {
                   const writeError = error as Error;
                   logger.warn(
-                    `Warning: Unable to cache transpiled file: ${writeError.message || String(writeError)}`
+                    `⚠️ Warning: Unable to cache transpiled file: ${writeError.message || String(writeError)}`
                   );
                 }
 
@@ -2726,10 +2763,11 @@ ${sourceContent.replace(/</g, '/* JSX start */')}
                     "Expires": "0"
                   },
                 });
-              } catch (error) {
-                logger.error(`Error transforming ${filePath}: ${error}`);
+              } catch (err) {
+                const error = err as Error;
+                logger.error(`Error transforming ${filePath}: ${error.message || String(error)}`);
                 return new Response(
-                  `console.error('Failed to transform ${path}: ${error}');`,
+                  `console.error('Failed to transform ${path}: ${error.message || String(error)}');`,
                   {
                     headers: {
                       "Content-Type": "application/javascript",
