@@ -5,7 +5,7 @@
  */
 
 import { serve, type Server, type Subprocess } from "bun";
-import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
+import { Dirent, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "fs";
 import { watch } from "fs/promises";
 import os from "os";
 import { dirname, join, resolve } from 'path';
@@ -2105,45 +2105,76 @@ export const Redirect = BrowserRedirect;
                 logger.debug(`Compiling TypeScript file: ${tsFilePath}`);
                 const _tsContent = await Bun.file(tsFilePath).text();
 
-                options.debug && logger.debug(`Transpiling with enhanced settings: ${tsFilePath}`);                
+                options.debug && logger.debug(`Transpiling TSX/JSX file: ${tsFilePath}`);                
                 
-                // Create a complete and robust Bun build configuration
-                // Handle both internal JSX/TSX and external imports
+                // First, modify the source content to ensure it uses our JSX runtime
+                let sourceContent = await Bun.file(tsFilePath).text();
+                
+                // Add our JSX factory as a pragma comment at the top of the file
+                // This is a more compatible approach than relying on Bun's JSX config
+                if (tsFilePath.endsWith('.tsx') || tsFilePath.endsWith('.jsx')) {
+                  // Only add the pragma if it's not already present
+                  if (!sourceContent.includes('/** @jsx')) {
+                    sourceContent = `/** @jsx createElement */
+/** @jsxFrag Fragment */
+import { createElement, Fragment } from '0x1/jsx-runtime';
+
+${sourceContent}`;
+                  }
+                  
+                  // Handle potential React JSX runtime imports by redirecting them
+                  sourceContent = sourceContent.replace(
+                    /from ['"]react\/jsx-(dev-)?runtime['"]/g, 
+                    "from '0x1/jsx-runtime'"
+                  );
+                }
+                
+                // Write the modified source to a temporary file
+                const tempFilePath = `${tsFilePath}.temp`;
+                await Bun.write(tempFilePath, sourceContent);
+                
+                // Set up cleanup function to remove temporary file
+                const cleanupTempFile = async () => {
+                  try {
+                    if (existsSync(tempFilePath)) {
+                      unlinkSync(tempFilePath);
+                      options.debug && logger.debug(`Cleaned up temporary file: ${tempFilePath}`);
+                    }
+                  } catch (cleanupErr: unknown) {
+                    const errorMessage = cleanupErr instanceof Error 
+                      ? cleanupErr.message 
+                      : String(cleanupErr);
+                    logger.warn(`Failed to clean up temporary file: ${errorMessage}`);
+                  }
+                };
+                
+                // Build with the modified source
+                options.debug && logger.debug(`Transpiling with modified source: ${tempFilePath}`);
+                
                 const result = await Bun.build({
-                  entrypoints: [tsFilePath],
+                  entrypoints: [tempFilePath],
                   target: "browser",
                   format: "esm",
                   minify: false, // Keep code readable for debugging
                   sourcemap: "inline",
-                  // Basic loader configuration
                   loader: { 
                     ".tsx": "tsx", 
                     ".ts": "ts",
                     ".jsx": "jsx",
-                    ".js": "js"
+                    ".js": "js",
+                    ".temp": tsFilePath.endsWith('.tsx') ? "tsx" : 
+                             tsFilePath.endsWith('.jsx') ? "jsx" : 
+                             tsFilePath.endsWith('.ts') ? "ts" : "js"
                   },
                   // Define environment variables for browser compatibility
                   define: {
                     "process.env.NODE_ENV": "'development'",
-                    // Add any additional defines needed for the framework
                     "global": "window"
                   },
-                  // Ensure proper external handling
+                  // Ensure proper handling of imports
                   external: [
                     "0x1", 
-                    "0x1/*", 
-                    "react", 
-                    "react-dom"
-                  ],
-                  // Critical: Add plugins for proper JSX handling
-                  plugins: [
-                    {
-                      name: "jsx-resolver",
-                      // Simple plugin to ensure JSX imports are handled properly
-                      setup(build) {
-                        // This is a basic plugin definition that Bun understands
-                      }
-                    }
+                    "0x1/*"
                   ]
                 });
 
@@ -2163,6 +2194,9 @@ export const Redirect = BrowserRedirect;
                       }
                     }
                   }
+                  
+                  // Clean up temporary file before continuing
+                  await cleanupTempFile();
                   
                   // Try alternative transpilation approach as fallback
                   try {
@@ -2258,9 +2292,13 @@ ${sourceContent.replace(/</g, '/* JSX start */')}
                     }
                   }
                   
-                  // If all builds fail, return a helpful error message
+                  // If all builds fail, return a helpful error message with enhanced diagnostics
                   return new Response(
-                    `// Failed to compile ${path}\nconsole.error('Compilation failed. Check server logs for details.');\nconsole.error('Try running: bun run build');`,
+                    `// Failed to compile ${path}\n` +
+                    `console.error('Compilation failed for ${tsFilePath.replace(/'/g, "\\'")}: Check server logs for details.');\n` +
+                    `console.error('Try running: bun run build');\n` +
+                    `// Error details are available in the browser console\n` +
+                    `console.info('To debug this issue: run with --debug flag and check server output');`,
                     {
                       headers: {
                         "Content-Type": "application/javascript",
