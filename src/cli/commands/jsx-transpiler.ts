@@ -126,7 +126,8 @@ const React = {
 // CRITICAL FIX: Define React in global scope for consistent references
 globalThis.React = React;
 
-// Runtime code for browser compatibility - will be injected into transpiled output
+// Runtime code helpers for JSX transpilation
+// Defined at module level to avoid scope issues
 const runtimeHelpers = {
   // Browser environment safety check
   safeWindowCode: `
@@ -137,34 +138,32 @@ if (typeof window !== 'undefined') {
 }
 `,
 
-  // Proper exports to ensure JSX works correctly - matching React 19 runtime
-  exportsCode: `
-// Export JSX runtime functions to match React 19 automatic JSX transform pattern
-// In production mode - using type assertions for string templates
-// @ts-ignore - String template exports
-export function jsx(type, props, key) {
-  return (globalThis as any).__jsx(type, props, key);
-}
-
-// @ts-ignore - String template exports
-export function jsxs(type, props, key) {
-  return (globalThis as any).__jsxs(type, props, key);
-}
-
-// @ts-ignore - String template exports
-export const Fragment = (globalThis as any).__fragment;
-
-// @ts-ignore - String template exports
-export function createElement(type, props, ...children) {
-  return (globalThis as any).React.createElement(type, props, ...children);
-}
-
-// For development mode
-// @ts-ignore - String template exports
-export function jsxDEV(type, props, key, isStaticChildren, source, self) {
-  return (globalThis as any).__jsx(type, props, key);
-}
-`
+  // Function to generate JSX runtime exports matching React 19/Next.js 15 approach
+  // Avoids template literals with export statements at module level
+  createJsxRuntimeCode() {
+    return [
+      '// JSX Runtime implementation matching React 19/Next.js 15 approach',
+      '// Production mode JSX functions',
+      'export function jsx(type, props, key) {',
+      '  return globalThis.__jsx(type, props, key);',
+      '}',
+      '',
+      'export function jsxs(type, props, key) {',
+      '  return globalThis.__jsxs(type, props, key);',
+      '}',
+      '',
+      'export const Fragment = globalThis.__fragment;',
+      '',
+      'export function createElement(type, props, ...children) {',
+      '  return globalThis.React.createElement(type, props, ...children);',
+      '}',
+      '',
+      '// For development mode',
+      'export function jsxDEV(type, props, key, isStaticChildren, source, self) {',
+      '  return globalThis.__jsx(type, props, key);',
+      '}'      
+    ].join('\n');
+  }
 };
 
 // Modern JSX runtime approach/pattern matching React 19 and Next.js 15
@@ -743,11 +742,26 @@ if (typeof window !== 'undefined') {
   window.React = globalThis.React;
 }
 
-// Export the JSX runtime functions properly using direct references to avoid circular dependencies
-export const jsx = globalThis.__jsx;
-export const jsxs = globalThis.__jsxs;
+// JSX Runtime implementation matching React 19/Next.js 15 approach
+// Production mode JSX functions
+export function jsx(type, props, key) {
+  return globalThis.__jsx(type, props, key);
+}
+
+export function jsxs(type, props, key) {
+  return globalThis.__jsxs(type, props, key);
+}
+
 export const Fragment = globalThis.__fragment;
-export const createElement = globalThis.React.createElement;`;
+
+export function createElement(type, props, ...children) {
+  return globalThis.React.createElement(type, props, ...children);
+}
+
+// For development mode
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  return globalThis.__jsx(type, props, key);
+}`;
         
         // Write the enhanced generated code to the debug file
         await Bun.write(debugFile, finalCode);
