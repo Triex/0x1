@@ -1237,6 +1237,34 @@ export default {
             
             // If we have router content (from any source), return it
             if (routerContent) {
+              // Add extensive debug logging to trace exactly what's being served
+              if (options.debug) {
+                logger.debug(`----- ROUTER MODULE DEBUG -----`);
+                logger.debug(`Router content length: ${routerContent.length} bytes`);
+                logger.debug(`Router content preview: ${routerContent.substring(0, 300)}...`);
+                
+                // Check specifically for problematic patterns
+                const hasTypeScriptSyntax = routerContent.includes(': string') || 
+                                             routerContent.includes(': boolean') ||
+                                             routerContent.includes(': Promise<');
+                                             
+                if (hasTypeScriptSyntax) {
+                  logger.warn(`⚠️ TypeScript syntax detected in router module content! This will cause browser errors.`);
+                }
+                
+                // Check if our regex fix was applied
+                const hasFixedRegex = routerContent.includes('"^/$"');
+                const hasProblematicRegex = routerContent.includes('"^\\/\\/\$"');
+                
+                if (hasProblematicRegex) {
+                  logger.warn(`⚠️ Problematic regex pattern still present in router module!`);
+                } else if (hasFixedRegex) {
+                  logger.debug(`✅ Fixed regex pattern found in router module`);
+                }
+                
+                logger.debug(`----- END ROUTER MODULE DEBUG -----`);
+              }
+              
               return new Response(routerContent, {
                 headers: {
                   "Content-Type": "application/javascript; charset=utf-8",
@@ -1893,13 +1921,13 @@ export const Redirect = BrowserRedirect;
     let hasRootPage = false;
     
     // Helper function to safely load a module
-    async function safeImport(path: string, componentKey: string, required: boolean = false): Promise<boolean> {
+    async function safeImport(path, componentKey, required = false) {
       try {
         const module = await import(path);
         console.log('Loaded ' + componentKey + ' successfully');
         appComponents[componentKey] = module;
         return true;
-      } catch (err: any) {
+      } catch (err) {
         if (required) {
           console.warn('Required module ' + componentKey + ' failed to load: ' + err.message);
         } else {
@@ -1908,6 +1936,25 @@ export const Redirect = BrowserRedirect;
         return false;
       }
     }
+
+    // Client-side debug - only when debug flag is enabled
+    ${options.debug ? `
+    console.log('[0x1 DEBUG] Framework initializing');
+    console.log('[0x1 DEBUG] About to import router module from: 0x1/router');
+    // Enable more detailed import debugging
+    const originalImport = window.import;
+    window.import = function(path) {
+      console.log('[0x1 DEBUG] Importing module:', path);
+      return originalImport(path).then(module => {
+        console.log('[0x1 DEBUG] Successfully imported:', path);
+        return module;
+      }).catch(err => {
+        console.error('[0x1 DEBUG] Import error for', path, ':', err);
+        throw err;
+      });
+    };
+    ` : '// Debug logging disabled in production'}
+    
     
     // Load core app components in order of importance
     try {
