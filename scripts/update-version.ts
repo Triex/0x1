@@ -101,6 +101,7 @@ async function updatePackageJsonDependencies(packageJsonPath: string, version: s
 async function updateCliVersions(version: string): Promise<void> {
   const cliNewCommandPath = join(ROOT_DIR, 'src/cli/commands/new.ts');
   const cliIndexPath = join(ROOT_DIR, 'src/cli/index.ts');
+  const jsxTranspilerPath = join(ROOT_DIR, 'src/cli/commands/jsx-transpiler.ts');
   
   // Update new.ts file
   if (existsSync(cliNewCommandPath)) {
@@ -163,6 +164,23 @@ async function updateCliVersions(version: string): Promise<void> {
     // Write the updated content
     // Use Bun's native file API for better performance
     await Bun.write(cliIndexPath, indexContent);
+  }
+  
+  // Update JSX transpiler version reference
+  if (existsSync(jsxTranspilerPath)) {
+    console.log('Updating JSX transpiler version reference');
+    
+    // Read the file content
+    let transpilerContent = await Bun.file(jsxTranspilerPath).text();
+    
+    // Replace version in the JSX runtime header
+    transpilerContent = transpilerContent.replace(
+      /0x1 Framework - JSX Runtime \(v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\)/g,
+      `0x1 Framework - JSX Runtime (v${version})`
+    );
+    
+    // Write the updated content
+    await Bun.write(jsxTranspilerPath, transpilerContent);
   }
 }
 

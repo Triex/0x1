@@ -77,57 +77,97 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
                         /jsx[Ds]?\(/.test(processedSource) ||  
                         /createElement\(/.test(processedSource);
   
-  // Step 3: Create the dynamic JSX runtime injection with better Next.js-like behavior
+  // Use a minimal but effective approach similar to Next.js/SWC
+  // This runtime code is optimized for minimal overhead while ensuring compatibility
   const runtimeImports = `/*
- * 0x1 Framework - Auto-injected JSX Runtime
+ * 0x1 Framework - JSX Runtime (v0.0.160)
  * File: ${fileName || 'unknown'}
  * Generated: ${new Date().toISOString()}
  */
 
-// === 0x1 FRAMEWORK JSX RUNTIME - DO NOT MODIFY ===
-// Core JSX runtime imports using our absolute path format for Bun
-import * as _jsx_runtime from "/node_modules/0x1/dist/jsx-runtime.js";
+// Import just the types, not actual functions to avoid circular dependencies
+import type { JSXNode } from '../../../types/jsx';
 
-// Destructure the required functions to make them available globally
-const {
-  jsx,
-  jsxs,
-  Fragment,
-  createElement,
-  jsxDEV
-} = _jsx_runtime;
-
-// Make React available with proper createElement and Fragment support
-// This ensures all React/Preact/Next.js components work properly
-globalThis.React = { 
-  createElement, 
-  Fragment,
-  // Common hooks and utilities for compatibility
-  useState: (initial) => [initial, (v) => v],
-  useEffect: () => {},
-  useRef: (v) => ({ current: v }),
-  useMemo: (fn) => fn(),
-  useCallback: (fn) => fn,
-  createContext: (defaultValue) => ({ Provider: ({children}) => children, Consumer: ({children}) => children, _currentValue: defaultValue }),
-  memo: (c) => c,
-  Children: { 
-    map: (c, fn) => Array.isArray(c) ? c.map(fn) : c ? [fn(c)] : [],
-    forEach: (c, fn) => Array.isArray(c) ? c.forEach(fn) : c ? fn(c) : null,
-    count: (c) => c ? (Array.isArray(c) ? c.length : 1) : 0,
-    only: (c) => Array.isArray(c) && c.length === 1 ? c[0] : c,
-    toArray: (c) => Array.isArray(c) ? c : c ? [c] : []
+// Extend globalThis interface to include our JSX runtime functions
+declare global {
+  interface globalThis {
+    __jsx: (type: any, props: any, key?: any) => any;
+    __jsxs: (type: any, props: any, key?: any) => any;
+    __fragment: symbol;
+    React: {
+      createElement: (type: any, props: any, ...children: any[]) => any;
+      Fragment: symbol;
+    };
   }
-};
+}
 
-// Create globally accessible aliases for the JSX functions
-// This is how Next.js and modern React frameworks handle JSX transformation
+// Define the JSX runtime for code generation
+// Note: These are just placeholders for the generated runtime code
+const jsx = function(type: any, props: any, key?: string) { return { type, props, key }; };
+const jsxs = function(type: any, props: any, key?: string) { return { type, props, key }; };
+const Fragment = Symbol('Fragment');
+const createElement = function(type: any, props?: any, ...children: any[]) { return { type, props, children }; };
+
+// Make JSX functions available globally to match Next.js model
 globalThis.__jsx = jsx;
 globalThis.__jsxs = jsxs;
-globalThis.__jsxDEV = jsxDEV;
-globalThis.__Fragment = Fragment;
+globalThis.__fragment = Fragment;
 
-// === END 0X1 FRAMEWORK JSX RUNTIME ===
+// Provide React compatibility layer
+const React = { 
+  createElement, 
+  Fragment,
+  // Minimal React API compatibility
+  useState: (initial) => [initial, (v) => v],
+  useEffect: () => {},
+  Children: { map: (c, fn) => Array.isArray(c) ? c.map(fn) : c ? [fn(c)] : [] }
+};
 
+// CRITICAL FIX: Define React in global scope for consistent references
+globalThis.React = React;
+
+// Runtime code for browser compatibility - will be injected into transpiled output
+const runtimeHelpers = {
+  // Browser environment safety check
+  safeWindowCode: `
+// Safe browser environment check
+if (typeof window !== 'undefined') {
+  // @ts-ignore - Add React to window for client components
+  window.React = globalThis.React;
+}
+`,
+
+  // Proper exports to ensure JSX works correctly - matching React 19 runtime
+  exportsCode: `
+// Export JSX runtime functions to match React 19 automatic JSX transform pattern
+// In production mode - using type assertions for string templates
+// @ts-ignore - String template exports
+export function jsx(type, props, key) {
+  return (globalThis as any).__jsx(type, props, key);
+}
+
+// @ts-ignore - String template exports
+export function jsxs(type, props, key) {
+  return (globalThis as any).__jsxs(type, props, key);
+}
+
+// @ts-ignore - String template exports
+export const Fragment = (globalThis as any).__fragment;
+
+// @ts-ignore - String template exports
+export function createElement(type, props, ...children) {
+  return (globalThis as any).React.createElement(type, props, ...children);
+}
+
+// For development mode
+// @ts-ignore - String template exports
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  return (globalThis as any).__jsx(type, props, key);
+}
+`
+};
+
+// Modern JSX runtime approach/pattern matching React 19 and Next.js 15
 `;
 
   // Step 4: Add layout-specific or regular imports based on component type
@@ -624,41 +664,33 @@ export async function transpileJSX(
               'react', 
               'react-dom',
               'next',
-              'preact',
-              '0x1',
-              '0x1/*'
+              'preact'
+              // Don't mark 0x1 as external - we need to bundle it properly
             ],
             target: 'browser',
-            // Next.js-compatible JSX configuration
+            // Use standard React JSX configuration
             jsx: 'automatic',
             jsxImportSource: '0x1',
-            // Use our global JSX functions that match Next.js pattern
-            jsxFactory: 'globalThis.__jsx', 
-            jsxFragment: 'globalThis.__Fragment',
+            // Use React's createElement & Fragment
+            jsxFactory: 'React.createElement',
+            jsxFragment: 'React.Fragment',
             define: {
               // Environment variables
               'process.env.NODE_ENV': JSON.stringify('development'),
               'process.env.__0X1_LAYOUT': isLayout ? 'true' : 'false',
               'process.env.__0X1_DEV': 'true',
               
-              // Important: Define global JSX factories to ensure compatibility
-              // This is how Next.js handles JSX transformation
+              // Define React properly
               'React': 'globalThis.React',
               'React.createElement': 'globalThis.React.createElement',
-              'React.Fragment': 'globalThis.React.Fragment',
-              
-              // Support direct jsx calls as well
-              '__jsx': 'globalThis.__jsx',
-              '__jsxs': 'globalThis.__jsxs',
-              '__jsxDEV': 'globalThis.__jsxDEV',
-              '__Fragment': 'globalThis.__Fragment'
+              'React.Fragment': 'globalThis.React.Fragment'
             },
             loader: { 
               '.tsx': 'tsx',
               '.ts': 'ts', 
               '.jsx': 'jsx',
               '.js': 'js',
-              // Handle all CSS as text to avoid bundling issues
+              // Handle CSS as text
               '.css': 'text',
               '.module.css': 'text'
             }
@@ -694,15 +726,34 @@ export async function transpileJSX(
         exitCode = error.code || error.status || 1;
         stderr = error.stderr || error.message || String(error);
       }
+      
       if (exitCode !== 0) {
         // Save debug file for inspection
         const debugFile = join(
           dirname(entryFile),
           `.debug-${basename(entryFile)}`
         );
-        await Bun.write(debugFile, processedSource);
+        
+        // Generate enhanced code with browser compatibility and runtime exports
+        const finalCode = `${processedSource}
 
+// Add browser environment compatibility
+if (typeof window !== 'undefined') {
+  // @ts-ignore - Add React to window for client components
+  window.React = globalThis.React;
+}
+
+// Export the JSX runtime functions properly using direct references to avoid circular dependencies
+export const jsx = globalThis.__jsx;
+export const jsxs = globalThis.__jsxs;
+export const Fragment = globalThis.__fragment;
+export const createElement = globalThis.React.createElement;`;
+        
+        // Write the enhanced generated code to the debug file
+        await Bun.write(debugFile, finalCode);
+        
         logger.error(`JSX transpilation failed for ${basename(entryFile)}:`);
+        
         logger.error(`Command exit code: ${exitCode}`);
         logger.error(`Standard output:`);
         logger.error(stdout || "(none)");
@@ -731,7 +782,9 @@ export async function transpileJSX(
         /* ignore */
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Final error catching at the transpileJSX function level
+    logger.error(`JSX transpilation error: ${error.message || String(error)}`);
     return Promise.reject(error);
   }
 }
