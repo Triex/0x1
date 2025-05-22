@@ -1,5 +1,6 @@
 /// <reference path="jsx.d.ts" />
 
+// Import types from the main 0x1 declaration file
 import { ComponentFunction, JSXNode, JSXChildren, JSXAttributes } from '0x1';
 
 declare global {

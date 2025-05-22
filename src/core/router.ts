@@ -474,8 +474,9 @@ export class Router {
       // Handle root path separately to avoid regex issues
       if (path === "/") {
         // CRITICAL FIX: Fixed root path regex pattern that was causing SyntaxError
-        // Using a simpler pattern that correctly matches / or empty path without errors
-        return new RegExp("^/$");
+        // Using a simpler pattern that correctly matches the root path without errors
+        return new RegExp("^\/");
+        // return new RegExp("^/$");
       }
       
       // Convert path pattern to regex by carefully handling special characters
@@ -514,52 +515,40 @@ export class Router {
         }
       }
       
-      // Make trailing slash optional (Next.js compatibility)
-      finalPattern += "\\/?$";
-      
-      // Validate the regex pattern before creating the RegExp
-      // This helps catch malformed patterns early
-      try {
-        new RegExp(finalPattern);
-      } catch (regexErr) {
-        console.error(`Invalid regex pattern created: ${finalPattern}`, regexErr);
-        return new RegExp("^\\/.*$"); // Fallback to permissive regex
-      }
-      
-      // Create and return the RegExp object
+      // Complete the pattern and return the RegExp
       return new RegExp(finalPattern);
     } catch (error) {
       console.error(`Error creating regex from path '${path}':`, error);
       // Fallback to a very permissive regex that matches any path
-      return new RegExp("^\\/.*$");
+      return new RegExp("^\/.*$");
     }
   }
 
-  /**
-   * Extract parameters from a path based on a route pattern
-   */
-  private extractParams(route: Route, path: string): RouteParams {
-    const params: RouteParams = {};
+/**
+ * Extract parameters from a path based on a route pattern
+ */
+private extractParams(route: Route, path: string): RouteParams {
+  const params: RouteParams = {};
 
-    if (!route.path.includes(":")) return params;
+  if (!route.path.includes(":")) return params;
 
-    const paramNames = route.path
-      .match(/:\w+/g)
-      ?.map((param) => param.substring(1));
+  const paramNames = route.path
+    .match(/:\w+/g)
+    ?.map((param) => param.substring(1));
 
-    if (!paramNames) return params;
+  if (!paramNames) return params;
 
-    const pathRegex = this.pathToRegex(route.path);
-    const matches = path.match(pathRegex);
+  const pathRegex = this.pathToRegex(route.path);
+  const matches = path.match(pathRegex);
 
-    if (matches) {
-      paramNames.forEach((name, index) => {
-        params[name] = matches[index + 1];
-      });
-    }
-
-    return params;
+  if (matches) {
+    paramNames.forEach((name, index) => {
+      params[name] = matches[index + 1];
+    });
   }
+
+  return params;
+}
 
   /**
    * Initialize routes from app directory components
