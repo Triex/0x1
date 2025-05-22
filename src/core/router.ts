@@ -291,9 +291,41 @@ export class Router {
    */
   private renderResult(result: any): void {
     if (result instanceof HTMLElement || result instanceof DocumentFragment) {
+      // Clear the container before appending to avoid duplicates
+      this.rootElement.innerHTML = '';
       this.rootElement.appendChild(result);
     } else if (typeof result === "string") {
       this.rootElement.innerHTML = result;
+    } else if (result && typeof result === "object" && result.type) {
+      // Handle React-style elements (JSX objects) from our stub components
+      try {
+        // Use a dynamic import to get the renderToString function from our JSX runtime
+        // This prevents circular dependencies and allows us to render React-style elements
+        import('../jsx-runtime.js')
+          .then(jsxRuntime => {
+            if (typeof jsxRuntime.renderToString === 'function') {
+              try {
+                const html = jsxRuntime.renderToString(result);
+                this.rootElement.innerHTML = html;
+              } catch (renderError) {
+                console.error("Error during JSX rendering:", renderError);
+                // Safely access error message in case renderError is not an Error object
+                const errorMessage = renderError instanceof Error ? renderError.message : String(renderError);
+                this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Failed to render JSX: ${errorMessage}</p></div>`;
+              }
+            } else {
+              console.error("renderToString function not found in jsx-runtime");
+              this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Could not render JSX element - renderToString not available.</p></div>`;
+            }
+          })
+          .catch(err => {
+            console.error("Failed to import jsx-runtime:", err);
+            this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Could not load JSX runtime module.</p></div>`;
+          });
+      } catch (err) {
+        console.error("Error handling JSX element:", err);
+        this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Failed to process JSX element.</p></div>`;
+      }
     } else {
       console.error("Invalid component result:", result);
       this.rootElement.innerHTML = `
