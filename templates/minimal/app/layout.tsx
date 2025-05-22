@@ -2,12 +2,6 @@
  * 0x1 Minimal App - Root Layout
  * Using app directory structure
  */
-
-// These JSX runtime imports are automatically handled by the build process
-// @ts-ignore - These imports are resolved at build time
-import { jsx, jsxs, Fragment, createElement } from '0x1/jsx-runtime';
-
-// Import styles
 import './globals.css';
 
 export default function RootLayout({ children }: { children: any }) {

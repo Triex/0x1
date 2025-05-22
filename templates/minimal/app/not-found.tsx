@@ -3,8 +3,6 @@
  * Using app directory structure
  */
 
-import { createElement, Fragment } from '0x1';
-
 export default function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">

@@ -51,73 +51,86 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
     logger.debug("Extracted CSS directives from file to prevent JSX parsing issues");
   }
 
-  // Ensure we remove any existing React imports to avoid conflicts with our custom JSX runtime
-  // This is more thorough than previous approach
-  processedSource = processedSource.replace(
-    /import\s+(?:(?:\*\s+as\s+)?React|\{\s*(?:[\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)["'];?/g,
-    "// React import handled by 0x1 transpiler"
-  );
+  // Step 1: Remove all JSX runtime imports to avoid conflicts
+  // This ensures we don't have duplicates after we inject our own
+  
+  // First, find and remove React imports
+  const reactImportRegex = /import\s+(?:(?:\*\s+as\s+)?React|\{\s*(?:[\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)["'];?/g;
+  processedSource = processedSource.replace(reactImportRegex, 
+    "/* React import removed by 0x1 transpiler */");
 
-  // Handle any JSX specific imports that might conflict with our runtime
-  processedSource = processedSource.replace(
-    /import\s+\{\s*(?:(?:createElement|Fragment|jsx|jsxs|jsxDEV)\s*(?:,\s*)?)+([\w\s,}]+)?\s*\}\s+from\s+["'](react|0x1|next\/jsx-dev-runtime|react\/jsx-runtime)["'];?/g,
-    (match, imp2, source) => {
-      // Keep other imports if there were any, but remove the JSX-specific ones
-      if (
-        imp2 &&
-        imp2.trim() &&
-        !imp2.includes("createElement") &&
-        !imp2.includes("Fragment") &&
-        !imp2.includes("jsx") &&
-        !imp2.includes("jsxs") &&
-        !imp2.includes("jsxDEV")
-      ) {
-        return `import { ${imp2.trim()} } from "${source}";`;
-      }
-      return "// JSX runtime imports handled by 0x1 transpiler";
-    }
-  );
+  // Find and remove JSX-specific imports
+  const jsxImportRegex = /import\s+\{\s*(?:(?:createElement|Fragment|jsx|jsxs|jsxDEV)\s*(?:,\s*)?)+([\w\s,}]+)?\s*\}\s+from\s+["'](react|0x1|next\/jsx-dev-runtime|react\/jsx-runtime|0x1\/jsx-runtime)["'];?/g;
+  processedSource = processedSource.replace(jsxImportRegex, match => {
+    // Comment with the original import for debugging
+    return `/* ${match.trim()} - removed by 0x1 transpiler */`;
+  });
   
-  // Handle imports from react/next/preact JSX runtime modules
-  processedSource = processedSource.replace(
-    /import\s+(?:\*\s+as\s+)?[\w\s{},.]+\s+from\s+["'](react\/jsx-(?:dev-)?runtime|next\/jsx-(?:dev-)?runtime|preact\/jsx-(?:dev-)?runtime)["'];?/g,
-    "// External JSX runtime imports replaced by 0x1 transpiler"
-  );
+  // Find and remove other JSX runtime imports
+  const otherJsxRuntimeRegex = /import\s+(?:\*\s+as\s+)?[\w\s{},.]+\s+from\s+["'](react\/jsx-(?:dev-)?runtime|next\/jsx-(?:dev-)?runtime|preact\/jsx-(?:dev-)?runtime|0x1\/jsx-(?:dev-)?runtime)["'];?/g;
+  processedSource = processedSource.replace(otherJsxRuntimeRegex, 
+    "/* JSX runtime import removed by 0x1 transpiler */");
+    
+  // Step 2: Check if there are any JSX elements in the file
+  // This is a basic check - we inject the runtime regardless to be safe
+  const hasJsxElements = /<[a-zA-Z][^>]*>/.test(processedSource) || 
+                        /jsx[Ds]?\(/.test(processedSource) ||  
+                        /createElement\(/.test(processedSource);
   
-  // Enhanced runtime support for all component types with proper polyfills
-  // Add clear indication this is generated code for debugging
+  // Step 3: Create the dynamic JSX runtime injection with better Next.js-like behavior
   const runtimeImports = `/*
  * 0x1 Framework - Auto-injected JSX Runtime
  * File: ${fileName || 'unknown'}
  * Generated: ${new Date().toISOString()}
  */
 
-// Core JSX runtime imports - these provide the actual JSX support
-import { jsx, jsxs, Fragment, createElement, jsxDEV } from "0x1/jsx-runtime.js";
+// === 0x1 FRAMEWORK JSX RUNTIME - DO NOT MODIFY ===
+// Core JSX runtime imports using our absolute path format for Bun
+import * as _jsx_runtime from "/node_modules/0x1/dist/jsx-runtime.js";
 
-// React compatibility layer - allows React components to work in 0x1
-const React = { 
+// Destructure the required functions to make them available globally
+const {
+  jsx,
+  jsxs,
+  Fragment,
+  createElement,
+  jsxDEV
+} = _jsx_runtime;
+
+// Make React available with proper createElement and Fragment support
+// This ensures all React/Preact/Next.js components work properly
+globalThis.React = { 
   createElement, 
   Fragment,
-  // Add standard React utilities to improve compatibility
+  // Common hooks and utilities for compatibility
   useState: (initial) => [initial, (v) => v],
   useEffect: () => {},
   useRef: (v) => ({ current: v }),
   useMemo: (fn) => fn(),
   useCallback: (fn) => fn,
+  createContext: (defaultValue) => ({ Provider: ({children}) => children, Consumer: ({children}) => children, _currentValue: defaultValue }),
   memo: (c) => c,
-  Children: { map: (c, fn) => Array.isArray(c) ? c.map(fn) : c ? [fn(c)] : [] }
+  Children: { 
+    map: (c, fn) => Array.isArray(c) ? c.map(fn) : c ? [fn(c)] : [],
+    forEach: (c, fn) => Array.isArray(c) ? c.forEach(fn) : c ? fn(c) : null,
+    count: (c) => c ? (Array.isArray(c) ? c.length : 1) : 0,
+    only: (c) => Array.isArray(c) && c.length === 1 ? c[0] : c,
+    toArray: (c) => Array.isArray(c) ? c : c ? [c] : []
+  }
 };
 
-// Ensure these are available in global scope for JSX transpilation
-const __0x1_jsx = jsx;
-const __0x1_jsxs = jsxs;
-const __0x1_jsxDEV = jsxDEV;
-const __0x1_Fragment = Fragment;
+// Create globally accessible aliases for the JSX functions
+// This is how Next.js and modern React frameworks handle JSX transformation
+globalThis.__jsx = jsx;
+globalThis.__jsxs = jsxs;
+globalThis.__jsxDEV = jsxDEV;
+globalThis.__Fragment = Fragment;
+
+// === END 0X1 FRAMEWORK JSX RUNTIME ===
 
 `;
 
-  // Special handling for layout components - they often need navigation components
+  // Step 4: Add layout-specific or regular imports based on component type
   if (isLayout) {
     logger.debug(`Enhanced JSX runtime imports for layout component: ${fileName}`);
     processedSource = `${runtimeImports}
@@ -125,6 +138,38 @@ const __0x1_Fragment = Fragment;
 import { Link } from "0x1";
 
 ${processedSource}`;
+    
+    // For layouts, ensure we have proper HTML document structure if it doesn't exist
+    if (!processedSource.includes('<html') && !processedSource.includes('<head')) {
+      logger.debug('Adding HTML document structure to layout component');
+      
+      // Replace the layout component with one that has proper HTML structure
+      processedSource = processedSource.replace(
+        /export\s+default\s+function\s+([\w]+)\s*\(\s*\{\s*children\s*\}\s*\)\s*\{[\s\S]*?return\s*\(/,
+        (match) => {
+          return `${match}
+<html lang="en">
+  <head>
+    <meta charSet="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>0x1 App</title>
+  </head>
+  <body className="bg-white dark:bg-gray-900">
+`;
+        }
+      );
+      
+      // Add closing tags if needed
+      processedSource = processedSource.replace(
+        /\);\s*\}\s*(?:export|$)/,
+        `
+  </body>
+</html>
+);
+}
+`
+      );
+    }
   } else {
     // Standard runtime for all other components
     processedSource = `${runtimeImports}
@@ -563,50 +608,62 @@ export async function transpileJSX(
           }
           
           // Fall back to command execution with enhanced configuration for layout components
-          // Create a more robust temporary config file for Bun build with enhanced options
+          // Create a Next.js-compatible build configuration for JSX
           const isLayout = tempFile.includes('layout');
           const configContent = JSON.stringify({
             entrypoints: [tempFile],
             outfile: outputFile,
             minify: minify,
             external: [
+              // CSS handling
               '*.css', 
               'tailwind*', 
               'postcss*', 
               '@tailwind*',
-              // Additional externals to avoid bundling issues
+              // Framework externals - these will be handled by our global injections
               'react', 
               'react-dom',
               'next',
-              'preact'
+              'preact',
+              '0x1',
+              '0x1/*'
             ],
             target: 'browser',
-            // Use explicit JSX configuration
+            // Next.js-compatible JSX configuration
             jsx: 'automatic',
             jsxImportSource: '0x1',
-            // Use consistent jsx functions for all components to avoid mismatches
-            jsxFactory: '__0x1_jsx', 
-            jsxFragment: '__0x1_Fragment',
+            // Use our global JSX functions that match Next.js pattern
+            jsxFactory: 'globalThis.__jsx', 
+            jsxFragment: 'globalThis.__Fragment',
             define: {
+              // Environment variables
               'process.env.NODE_ENV': JSON.stringify('development'),
               'process.env.__0X1_LAYOUT': isLayout ? 'true' : 'false',
               'process.env.__0X1_DEV': 'true',
-              // Define React globals to avoid reference errors
-              'React.createElement': '__0x1_jsx',
-              'React.Fragment': '__0x1_Fragment'
+              
+              // Important: Define global JSX factories to ensure compatibility
+              // This is how Next.js handles JSX transformation
+              'React': 'globalThis.React',
+              'React.createElement': 'globalThis.React.createElement',
+              'React.Fragment': 'globalThis.React.Fragment',
+              
+              // Support direct jsx calls as well
+              '__jsx': 'globalThis.__jsx',
+              '__jsxs': 'globalThis.__jsxs',
+              '__jsxDEV': 'globalThis.__jsxDEV',
+              '__Fragment': 'globalThis.__Fragment'
             },
             loader: { 
               '.tsx': 'tsx',
               '.ts': 'ts', 
               '.jsx': 'jsx',
               '.js': 'js',
-              // Ensure CSS is properly handled
+              // Handle all CSS as text to avoid bundling issues
               '.css': 'text',
               '.module.css': 'text'
             }
           }, null, 2);
           
-          // Write config to temp file
           const configPath = join(dirname(tempFile), '.bun-build-config.json');
           await Bun.write(configPath, configContent);
           
