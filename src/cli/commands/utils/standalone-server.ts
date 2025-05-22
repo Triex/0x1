@@ -348,11 +348,28 @@ export function createStandaloneServer({
       const url = new URL(req.url);
       const reqPath = url.pathname;
       
-      logger.debug(`Request for: ${reqPath}`);
+      // Log request status with color-coded output
+      const logRequestStatus = (status: number, path: string, extraInfo?: string) => {
+        const statusText = status >= 200 && status < 300 ? "OK" : status >= 300 && status < 400 ? "Redirect" : "Error";
+        const emoji = status >= 200 && status < 300 ? "✅" : status >= 300 && status < 400 ? "↪️" : "❌";
+        const message = `${emoji} ${status} ${statusText}: ${path}${extraInfo ? ` (${extraInfo})` : ''}`;
+        if (status >= 200 && status < 300) {
+          logger.info(message);
+        } else if (status >= 300 && status < 400) {
+          logger.warn(message);
+        } else {
+          logger.error(message);
+        }
+      };
+      
+      // More detailed debug logging for all requests
+      if (process.env.DEBUG) {
+        logger.debug(`Request for: ${reqPath} (${req.method})`);
+      }
       
       // Handle WebSocket upgrade requests specifically for our endpoint
       if (reqPath === "/__0x1_ws_live_reload" && req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
-        logger.debug("WebSocket upgrade request for live reload endpoint");
+        logger.info("🔄 WebSocket upgrade request for live reload endpoint");
         // Let Bun's websocket handler process this request
         // We return undefined to allow Bun's internal upgrade handling to take over
         return undefined;
@@ -475,10 +492,10 @@ export function createStandaloneServer({
       
       // Handle ping requests from client heartbeats
       if (reqPath === "/__0x1_ping") {
-        // Log every 10th ping to avoid excessive logging
-        const pingCounter = Math.floor(Math.random() * 10);
+        // Log every 20th ping to avoid excessive logging
+        const pingCounter = Math.floor(Math.random() * 20);
         if (pingCounter === 0) {
-          logger.debug(`Received ping from client`);
+          logger.debug(`🏓 Ping from client`);
         }
         
         return new Response(null, {
@@ -513,7 +530,7 @@ export function createStandaloneServer({
           if (exists) {
             try {
               const content = readFileSync(path, "utf-8");
-              logger.debug(`Found router at ${path}, serving with JavaScript MIME type`);
+              logRequestStatus(200, reqPath, `Router from ${path}`);
               
               // Always serve with JavaScript MIME type
               return new Response(content, {
@@ -530,7 +547,7 @@ export function createStandaloneServer({
         }
         
         // If router not found, return a meaningful error that works with error-boundary
-        logger.error("Router module not found in any expected location!");
+        logRequestStatus(404, reqPath, "Router module not found");
         return new Response(`
           console.error('[0x1] CRITICAL ERROR: Router module not found');
           console.error('[0x1] Check your installation or rebuild the framework');
@@ -569,7 +586,7 @@ export function createStandaloneServer({
             const content = readFileSync(path, "utf-8");
             const mimeType = getMimeType(path);
             
-            logger.debug(`Found module at ${path}, serving with MIME type ${mimeType}`);
+            logRequestStatus(200, reqPath, `Module from ${path}`);
             
             return new Response(content, {
               headers: {
@@ -638,7 +655,7 @@ export function createStandaloneServer({
         
         for (const cssPath of possibleCSSPaths) {
           if (existsSync(cssPath)) {
-            logger.debug(`Serving CSS file from: ${cssPath}`);
+            logRequestStatus(200, reqPath, `Serving from ${cssPath}`);
             const content = readFileSync(cssPath);
             return new Response(content, {
               headers: {
@@ -650,7 +667,7 @@ export function createStandaloneServer({
         }
         
         // If no CSS file found, return an empty CSS file
-        logger.warn(`No CSS file found at ${reqPath}, serving empty CSS`);
+        logRequestStatus(204, reqPath, "Empty CSS served");
         return new Response("/* Empty CSS file */", {
           headers: {
             "Content-Type": "text/css; charset=utf-8",
@@ -708,8 +725,7 @@ export function createStandaloneServer({
             }
           });
         } else {
-          logger.debug(`Serving static file: ${filePath}`);
-          
+          logRequestStatus(200, reqPath, filePath);
           // For non-HTML files, serve as-is
           const content = readFileSync(filePath);
           const mimeType = getMimeType(filePath);
@@ -753,7 +769,7 @@ export function createStandaloneServer({
       }
       
       // File not found
-      logger.debug(`File not found: ${filePath}`);
+      logRequestStatus(404, reqPath, `File not found: ${filePath}`);
       
       return new Response("Not Found", {
         status: 404,

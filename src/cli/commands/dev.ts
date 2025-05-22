@@ -296,6 +296,22 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       logger.info(`  > Network: http://${localIP}:${currentPort}`);  
     }
     
+    // Add a beautiful box display for server information
+    logger.spacer();
+    logger.box(
+      `🚀 0x1 Dev Server Running
+
+` +
+      `Local:            http://${host === "0.0.0.0" ? "localhost" : host}:${currentPort}
+` +
+      `Network:          http://${localIP}:${currentPort}
+
+` +
+      `Powered by Bun   v${Bun.version}`
+    );
+    logger.spacer();
+    logger.info("💠 Ready for development. Press Ctrl+C to stop.");
+    
     // Open browser
     if (open) {
       logger.info(`💠 Opening browser...`);
