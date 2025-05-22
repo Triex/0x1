@@ -3,15 +3,23 @@
  * Provides JSX factory functions for creating elements and server-side rendering
  */
 
-// Types for the JSX elements
+// Types for the JSX elements with better React compatibility
 export type JSXAttributes = Record<string, any>;
 export type JSXChildren = (string | JSXNode | null | undefined | boolean | number)[];
 
-// JSX Node representation
+// JSX Node representation with enhanced capabilities
 export interface JSXNode {
   type: string | ComponentFunction;
   props: JSXAttributes;
   children: JSXChildren;
+  key?: string | number | null;
+  // Additional metadata for debugging
+  __source?: {
+    fileName: string;
+    lineNumber: number;
+    columnNumber: number;
+  };
+  __self?: any;
 }
 
 // Component function type
@@ -48,15 +56,22 @@ export const Fragment = (props: { children?: JSXChildren }): JSXNode => {
 
 /**
  * jsx function for the automatic JSX transform
+ * This is the primary entry point for modern JSX transformations
  */
-export function jsx(type: string | ComponentFunction, props: JSXAttributes, _key?: string): JSXNode {
+export function jsx(type: string | ComponentFunction, props: JSXAttributes, key?: string): JSXNode {
   // Handle children from props to match React's JSX transform
   const { children, ...restProps } = props || {};
   
+  // Normalize children to match React's expected format
+  const normalizedChildren = children ? 
+    (Array.isArray(children) ? children : [children]) : [];
+  
+  // Create JSX node with key for reconciliation
   return {
     type,
     props: restProps,
-    children: children ? (Array.isArray(children) ? children : [children]) : []
+    children: normalizedChildren,
+    key: key || null
   };
 }
 
@@ -70,10 +85,32 @@ export function jsxs(type: string | ComponentFunction, props: JSXAttributes, _ke
 
 /**
  * jsxDEV function for development
+ * Enhanced version with source mapping and debugging support
  */
-export function jsxDEV(type: string | ComponentFunction, props: JSXAttributes, _key?: string): JSXNode {
-  // For our implementation, jsxDEV is the same as jsx
-  return jsx(type, props, _key);
+export function jsxDEV(
+  type: string | ComponentFunction, 
+  props: JSXAttributes, 
+  key?: string,
+  isStaticChildren?: boolean,
+  source?: {
+    fileName: string;
+    lineNumber: number;
+    columnNumber: number;
+  },
+  self?: any
+): JSXNode {
+  // Create node with standard jsx function
+  const node = jsx(type, props, key);
+  
+  // Add development-only properties for debugging
+  if (source) {
+    node.__source = source;
+  }
+  if (self) {
+    node.__self = self;
+  }
+  
+  return node;
 }
 
 /**
@@ -183,8 +220,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
-      // Using a more specific index signature to avoid duplication
-      // HTML and SVG elements will be properly typed
+      // Enhanced with all common HTML elements
       div: any;
       span: any;
       a: any;
@@ -198,8 +234,47 @@ declare global {
       button: any;
       input: any;
       img: any;
-      // Add more specific elements as needed
-    }
+      // Form elements
+      form: any;
+      label: any;
+      select: any;
+      option: any;
+      textarea: any;
+      // Layout elements
+      header: any;
+      footer: any;
+      main: any;
+      section: any;
+      article: any;
+      nav: any;
+      aside: any;
+      // Lists
+      ul: any;
+      ol: any;
+      li: any;
+      dl: any;
+      dt: any;
+      dd: any;
+      // Tables
+      table: any;
+      tr: any;
+      td: any;
+      th: any;
+      thead: any;
+      tbody: any;
+      tfoot: any;
+      // Other common elements
+      code: any;
+      pre: any;
+      strong: any;
+      em: any;
+      hr: any;
+      br: any;
+      // SVG elements for completeness
+      svg: any;
+      path: any;
+      circle: any;
+      rect: any;
     
     interface ElementChildrenAttribute {
       children: Record<string, unknown>;

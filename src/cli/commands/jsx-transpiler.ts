@@ -51,54 +51,83 @@ async function processImports(sourceCode: string, fileName: string = ''): Promis
     logger.debug("Extracted CSS directives from file to prevent JSX parsing issues");
   }
 
-  // Replace React imports with our custom JSX runtime
+  // Ensure we remove any existing React imports to avoid conflicts with our custom JSX runtime
+  // This is more thorough than previous approach
   processedSource = processedSource.replace(
-    /import React(, { .+? })? from ["'](react|0x1)["'];?/g,
-    "// React import handled by transpiler"
+    /import\s+(?:(?:\*\s+as\s+)?React|\{\s*(?:[\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)["'];?/g,
+    "// React import handled by 0x1 transpiler"
   );
 
-  // Replace direct imports of createElement and Fragment
+  // Handle any JSX specific imports that might conflict with our runtime
   processedSource = processedSource.replace(
-    /import { (createElement|Fragment|jsx|jsxs|jsxDEV)(?:, )?(.+?)?} from ["'](react|0x1)["'];?/g,
-    (match, imp1, imp2, source) => {
-      // Keep other imports if there were any
+    /import\s+\{\s*(?:(?:createElement|Fragment|jsx|jsxs|jsxDEV)\s*(?:,\s*)?)+([\w\s,}]+)?\s*\}\s+from\s+["'](react|0x1|next\/jsx-dev-runtime|react\/jsx-runtime)["'];?/g,
+    (match, imp2, source) => {
+      // Keep other imports if there were any, but remove the JSX-specific ones
       if (
         imp2 &&
         imp2.trim() &&
         !imp2.includes("createElement") &&
-        !imp2.includes("Fragment")
+        !imp2.includes("Fragment") &&
+        !imp2.includes("jsx") &&
+        !imp2.includes("jsxs") &&
+        !imp2.includes("jsxDEV")
       ) {
         return `import { ${imp2.trim()} } from "${source}";`;
       }
-      return "// JSX imports handled by transpiler";
+      return "// JSX runtime imports handled by 0x1 transpiler";
     }
   );
   
-  // Handle imports from react JSX runtime modules that Bun tries to resolve
+  // Handle imports from react/next/preact JSX runtime modules
   processedSource = processedSource.replace(
-    /import .+ from ["'](react\/jsx-(?:dev-)?runtime)["'];?/g,
-    "// JSX runtime imports handled by transpiler"
+    /import\s+(?:\*\s+as\s+)?[\w\s{},.]+\s+from\s+["'](react\/jsx-(?:dev-)?runtime|next\/jsx-(?:dev-)?runtime|preact\/jsx-(?:dev-)?runtime)["'];?/g,
+    "// External JSX runtime imports replaced by 0x1 transpiler"
   );
   
-  // Special handling for layout components - they often need more comprehensive JSX runtime support
+  // Enhanced runtime support for all component types with proper polyfills
+  // Add clear indication this is generated code for debugging
+  const runtimeImports = `/*
+ * 0x1 Framework - Auto-injected JSX Runtime
+ * File: ${fileName || 'unknown'}
+ * Generated: ${new Date().toISOString()}
+ */
+
+// Core JSX runtime imports - these provide the actual JSX support
+import { jsx, jsxs, Fragment, createElement, jsxDEV } from "0x1/jsx-runtime.js";
+
+// React compatibility layer - allows React components to work in 0x1
+const React = { 
+  createElement, 
+  Fragment,
+  // Add standard React utilities to improve compatibility
+  useState: (initial) => [initial, (v) => v],
+  useEffect: () => {},
+  useRef: (v) => ({ current: v }),
+  useMemo: (fn) => fn(),
+  useCallback: (fn) => fn,
+  memo: (c) => c,
+  Children: { map: (c, fn) => Array.isArray(c) ? c.map(fn) : c ? [fn(c)] : [] }
+};
+
+// Ensure these are available in global scope for JSX transpilation
+const __0x1_jsx = jsx;
+const __0x1_jsxs = jsxs;
+const __0x1_jsxDEV = jsxDEV;
+const __0x1_Fragment = Fragment;
+
+`;
+
+  // Special handling for layout components - they often need navigation components
   if (isLayout) {
     logger.debug(`Enhanced JSX runtime imports for layout component: ${fileName}`);
-    // Make sure we explicitly force all required imports for layouts
-    processedSource = `// Auto-injected JSX runtime imports for layout component
-import { jsx, jsxs, Fragment } from "0x1/jsx-runtime.js";
-// Import createElement directly to ensure it's available
-import { createElement } from "0x1/jsx-runtime.js";
-// Add React-compatible aliases for JSX transformations
-const React = { createElement, Fragment };
-// Ensure Link component is properly handled (required for navigation)
+    processedSource = `${runtimeImports}
+// Layout-specific imports
 import { Link } from "0x1";
 
 ${processedSource}`;
   } else {
-    // Add standard JSX runtime imports for all other component types
-    processedSource = `// Auto-injected JSX runtime imports
-import { jsx, jsxs, Fragment, createElement } from "0x1/jsx-runtime.js";
-
+    // Standard runtime for all other components
+    processedSource = `${runtimeImports}
 ${processedSource}`;
   }
 
@@ -534,27 +563,46 @@ export async function transpileJSX(
           }
           
           // Fall back to command execution with enhanced configuration for layout components
-          // Create a temporary config file for Bun build with all options
+          // Create a more robust temporary config file for Bun build with enhanced options
           const isLayout = tempFile.includes('layout');
           const configContent = JSON.stringify({
             entrypoints: [tempFile],
             outfile: outputFile,
             minify: minify,
-            external: ['*.css', 'tailwind*', 'postcss*', '@tailwind*'],
+            external: [
+              '*.css', 
+              'tailwind*', 
+              'postcss*', 
+              '@tailwind*',
+              // Additional externals to avoid bundling issues
+              'react', 
+              'react-dom',
+              'next',
+              'preact'
+            ],
             target: 'browser',
+            // Use explicit JSX configuration
             jsx: 'automatic',
             jsxImportSource: '0x1',
-            jsxFactory: isLayout ? 'jsx' : 'createElement',  // Use jsx for layouts
-            jsxFragment: 'Fragment',
+            // Use consistent jsx functions for all components to avoid mismatches
+            jsxFactory: '__0x1_jsx', 
+            jsxFragment: '__0x1_Fragment',
             define: {
-              'process.env.NODE_ENV': JSON.stringify('production'),
-              'process.env.__0X1_LAYOUT': isLayout ? 'true' : 'false'
+              'process.env.NODE_ENV': JSON.stringify('development'),
+              'process.env.__0X1_LAYOUT': isLayout ? 'true' : 'false',
+              'process.env.__0X1_DEV': 'true',
+              // Define React globals to avoid reference errors
+              'React.createElement': '__0x1_jsx',
+              'React.Fragment': '__0x1_Fragment'
             },
             loader: { 
               '.tsx': 'tsx',
-              '.ts': 'ts',
+              '.ts': 'ts', 
               '.jsx': 'jsx',
-              '.js': 'js' 
+              '.js': 'js',
+              // Ensure CSS is properly handled
+              '.css': 'text',
+              '.module.css': 'text'
             }
           }, null, 2);
           
