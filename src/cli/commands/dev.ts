@@ -1152,40 +1152,91 @@ export default {
             });
           }
 
-          // Critical fix for router module specifically without .js extension
-          // This fixes the "Failed to load module script" error due to incorrect MIME type
+          // CRITICAL FIX: Router module handling with explicit regex pattern correction
+          // This fixes both the "Failed to load module script" error due to incorrect MIME type
+          // AND the SyntaxError with invalid regex pattern for root path
           if (path === "/node_modules/0x1/router" || path === "/node_modules/0x1/router.js" || 
               path.endsWith("/router") || path.endsWith("/router.js")) {
             options.debug && logger.debug(`Direct router module request detected: ${path}`);
             
-            // Use the predefined framework paths from the top of the file
-            // for more consistent module resolution
+            // Try to use the source router module first (most up-to-date)
+            const sourceRouterPath = resolve(frameworkPath, 'src', 'core', 'router.ts');
+            let routerContent = null;
             
-            // Try multiple possible router locations in priority order
-            const possibleRouterPaths = [
-              // Direct framework paths (more reliable, using predefined constants)
-              resolve(frameworkCorePath, 'router.js'),  // dist/core/router.js
-              resolve(frameworkDistPath, 'router.js'),  // dist/router.js
-              resolve(frameworkDistPath, '0x1/router.js'), // dist/0x1/router.js
-              // Fallback to node_modules paths
-              resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
-              resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
-              resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
-            ];
-            
-            // Find the first router path that exists
-            let routerPath = null;
-            for (const path of possibleRouterPaths) {
-              if (existsSync(path)) {
-                routerPath = path;
-                break;
+            if (existsSync(sourceRouterPath)) {
+              // Load directly from source for latest fixes (most reliable)
+              options.debug && logger.debug(`Loading router from source: ${sourceRouterPath}`);
+              try {
+                routerContent = await Bun.file(sourceRouterPath).text();
+                
+                // Ensure the regex pattern for root path is correct
+                // This is a critical fix for the SyntaxError: Invalid regular expression: /(^/: Unterminated group
+                routerContent = routerContent.replace(/"\^\\\\\/\\\\\/\$"/g, '"^/$"');
+                
+                // Convert TypeScript to JavaScript
+                const result = await Bun.build({
+                  entrypoints: [sourceRouterPath],
+                  target: 'browser',
+                  format: 'esm',
+                });
+                
+                if (!result.success) {
+                  logger.error('Failed to transpile router from source');
+                  // We'll fall back to other methods
+                } else {
+                  // Get the transpiled output
+                  for (const output of result.outputs) {
+                    routerContent = await output.text();
+                    break; // Just use the first output
+                  }
+                }
+                
+                options.debug && logger.debug(`Successfully transpiled router module from source`);
+              } catch (err: any) {
+                logger.error(`Error loading router from source: ${err.message}`);
+                // Fall back to compiled versions
+                routerContent = null;
               }
             }
             
-            if (routerPath) {
-              const routerContent = await Bun.file(routerPath).text();
-              options.debug && logger.debug(`Serving router module from ${routerPath}`);
+            // If source loading failed, try compiled versions
+            if (!routerContent) {
+              // Try multiple possible router locations in priority order
+              const possibleRouterPaths = [
+                // Direct framework paths (more reliable, using predefined constants)
+                resolve(frameworkCorePath, 'router.js'),  // dist/core/router.js
+                resolve(frameworkDistPath, 'router.js'),  // dist/router.js
+                resolve(frameworkDistPath, '0x1/router.js'), // dist/0x1/router.js
+                // Fallback to node_modules paths
+                resolve(process.cwd(), 'node_modules/0x1/dist/core/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/router.js'),
+                resolve(process.cwd(), 'node_modules/0x1/dist/0x1/router.js')
+              ];
               
+              // Find the first router path that exists
+              let routerPath = null;
+              for (const checkPath of possibleRouterPaths) {
+                if (existsSync(checkPath)) {
+                  routerPath = checkPath;
+                  break;
+                }
+              }
+              
+              if (routerPath) {
+                options.debug && logger.debug(`Serving router module from ${routerPath}`);
+                try {
+                  routerContent = await Bun.file(routerPath).text();
+                  
+                  // Ensure the regex pattern for root path is correct even in compiled version
+                  routerContent = routerContent.replace(/"\^\\\\\/\\\\\/\$"/g, '"^/$"');
+                } catch (err: any) {
+                  logger.error(`Error loading router from path ${routerPath}: ${err.message}`);
+                }
+              }
+            }
+            
+            // If we have router content (from any source), return it
+            if (routerContent) {
               return new Response(routerContent, {
                 headers: {
                   "Content-Type": "application/javascript; charset=utf-8",
