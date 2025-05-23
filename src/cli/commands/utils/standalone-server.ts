@@ -60,7 +60,7 @@ const STYLES = '\n\n  <!-- Include any stylesheets -->\n  <link rel="stylesheet"
 
 const BODY_START = '\n</head>\n<body>\n  <div id="app"></div>\n\n  <!-- Live reload script - using standardized path to avoid duplication -->\n  <script src="/__0x1_live_reload.js"></script>';
 
-const APP_SCRIPT = '\n\n  <!-- App initialization script -->\n  <script type="module">\n    console.log("[0x1 DEBUG] Framework initializing");\n    console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");\n    console.log("[0x1 DEBUG] About to import router module from: 0x1/router");\n\n    // Import the router and create a router instance\n    import { createRouter } from "0x1/router";\n    \n    console.log("[0x1 DEBUG] Router module loaded successfully");\n    console.log("[0x1 DEBUG] Creating router instance with auto-discovery");\n\n    // Function to initialize app\n    async function initApp() {\n      // Get the app element\n      const appElement = document.getElementById("app");\n      \n      if (!appElement) {\n        console.error("[0x1 ERROR] Could not find app element with id \'app\'. Router initialization failed.");\n        return;\n      }\n      \n      try {\n        // Define a simple page component for the root route with inline styling\n        const HomePage = (props) => {\n          const div = document.createElement("div");\n          div.className = "p-8 max-w-4xl mx-auto";\n          div.innerHTML = `\n            <div class="text-center">\n              <h1 class="text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400">\n                Welcome to 0x1\n              </h1>\n              <p class="text-xl mb-8 text-gray-800 dark:text-gray-200">\n                The lightning-fast web framework powered by Bun\n              </p>\n\n              <!-- Counter Component Placeholder -->\n              <div class="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">\n                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Counter Component</h2>\n                <div class="flex justify-center items-center gap-4">\n                  <button id="decrement" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">\n                    -\n                  </button>\n                  <span id="count" class="text-2xl font-bold min-w-[3rem] text-center">0</span>\n                  <button id="increment" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">\n                    +\n                  </button>\n                </div>\n              </div>\n\n              <!-- Theme Toggle Component -->\n              <div class="mb-6">\n                <button id="theme-toggle" class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition">\n                  Toggle Dark Mode\n                </button>\n              </div>\n            </div>\n          `;\n          \n          // Add some interactivity to our components\n          setTimeout(() => {\n            const count = div.querySelector("#count");\n            const increment = div.querySelector("#increment");\n            const decrement = div.querySelector("#decrement");\n            const themeToggle = div.querySelector("#theme-toggle");\n            \n            let counter = 0;\n            \n            if (count && increment && decrement) {\n              increment.addEventListener("click", () => {\n                counter++;\n                count.textContent = counter.toString();\n              });\n              \n              decrement.addEventListener("click", () => {\n                counter--;\n                count.textContent = counter.toString();\n              });\n            }\n            \n            if (themeToggle) {\n              themeToggle.addEventListener("click", () => {\n                document.documentElement.classList.toggle("dark");\n                \n                // Save preference\n                const isDark = document.documentElement.classList.contains("dark");\n                localStorage.setItem("darkMode", isDark ? "enabled" : "disabled");\n              });\n              \n              // Apply saved theme preference\n              if (localStorage.getItem("darkMode") === "enabled" ||\n                  (localStorage.getItem("darkMode") === null && \n                   window.matchMedia("(prefers-color-scheme: dark)").matches)) {\n                document.documentElement.classList.add("dark");\n              }\n            }\n          }, 100);\n          \n          return div;\n        };\n\n        // Create a router with the home component\n        const router = createRouter({ \n          rootElement: appElement,\n          mode: "history",\n          debug: true\n        });\n\n        // Register the home route explicitly\n        router.addRoute("/", HomePage);\n\n        console.log("[0x1 DEBUG] Router created, starting initialization");\n        \n        // Initialize the router\n        router.init();\n        console.log("[0x1] Router initialized successfully");\n        \n        // Apply initial styles for dark mode\n        const style = document.createElement("style");\n        style.textContent = `\n          .dark { color-scheme: dark; }\n          .dark body { background-color: #1a1a1a; color: #ffffff; }\n        `;\n        document.head.appendChild(style);\n        \n        // Add navigation event handlers for client-side routing\n        document.addEventListener("click", (e) => {\n          const target = e.target.closest("a");\n          if (target && target.href && target.href.startsWith(window.location.origin) && !target.getAttribute("download") && !target.getAttribute("target")) {\n            e.preventDefault();\n            const url = new URL(target.href);\n            const path = url.pathname;\n            // Only use client-side navigation for internal routes\n            if (path && !path.includes(".")) {\n              history.pushState({}, "", path);\n              router.navigate(path);\n            } else {\n              window.location.href = target.href;\n            }\n          }\n        });\n        \n        // Handle browser back/forward navigation\n        window.addEventListener("popstate", () => {\n          router.navigate(window.location.pathname);\n        });\n      } catch (err) {\n        console.error("[0x1 ERROR] Router initialization failed:", err);\n        appElement.innerHTML = `<div class="p-8 text-center"><h1 class="text-2xl font-bold text-red-600 mb-4">Page Not Found</h1><p class="mb-6">The requested page could not be found.</p><a href="/" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Home</a></div>`;\n      }\n    }\n\n    // Initialize when DOM is ready\n    if (document.readyState === "loading") {\n      document.addEventListener("DOMContentLoaded", initApp);\n    } else {\n      initApp();\n    }\n  </script>';
+const APP_SCRIPT = '\n\n  <!-- App initialization script -->\n  <script type="module">\n    console.log("[0x1 DEBUG] Framework initializing");\n    console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");\n\n    // Import the router and required components\n    import { createRouter } from "0x1/router";\n    \n    console.log("[0x1 DEBUG] Router module loaded successfully");\n\n    // Function to get app components\n    async function fetchComponentModule(path) {\n      try {\n        const response = await fetch(path);\n        if (!response.ok) throw new Error(`Failed to load component: ${path}`);\n        const text = await response.text();\n        \n        // Create a blob with the module content\n        const blob = new Blob([text], { type: "application/javascript" });\n        const url = URL.createObjectURL(blob);\n        \n        // Import the module dynamically\n        return await import(url);\n      } catch (err) {\n        console.error(`[0x1 ERROR] Failed to load component ${path}:`, err);\n        return null;\n      }\n    }\n\n    // Function to initialize app\n    async function initApp() {\n      // Get the app element\n      const appElement = document.getElementById("app");\n      \n      if (!appElement) {\n        console.error("[0x1 ERROR] Could not find app element with id \'app\'. Router initialization failed.");\n        return;\n      }\n      \n      try {\n        // Try to load layout and page components\n        console.log("[0x1 DEBUG] Loading app directory components...");\n        \n        // Load the layout component\n        const layoutModule = await fetchComponentModule("/app/layout.js");\n        const RootLayout = layoutModule?.default;\n        \n        if (RootLayout) {\n          console.log("[0x1 DEBUG] Successfully loaded layout component");\n        } else {\n          console.warn("[0x1 WARN] No layout component found, will use default layout");\n        }\n        \n        // Load the page component\n        const pageModule = await fetchComponentModule("/app/page.js");\n        const Page = pageModule?.default;\n        \n        if (Page) {\n          console.log("[0x1 DEBUG] Successfully loaded page component");\n        } else {\n          console.warn("[0x1 WARN] No page component found, will use default page");\n        }\n\n        // Load the not-found component\n        const notFoundModule = await fetchComponentModule("/app/not-found.js");\n        const NotFound = notFoundModule?.default;\n\n        // Define default fallback components if needed\n        const DefaultLayout = (props) => {\n          const div = document.createElement("div");\n          div.id = "default-layout";\n          // appendChild will be called with the children content\n          return div;\n        };\n        \n        const DefaultPage = (props) => {\n          const div = document.createElement("div");\n          div.className = "p-8 max-w-4xl mx-auto";\n          div.innerHTML = `\n            <div class="text-center">\n              <h1 class="text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400">\n                Welcome to 0x1\n              </h1>\n              <p class="text-xl mb-8 text-gray-800 dark:text-gray-200">\n                The lightning-fast web framework powered by Bun\n              </p>\n\n              <!-- Counter Component Placeholder -->\n              <div class="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">\n                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Counter Component</h2>\n                <div class="flex justify-center items-center gap-4">\n                  <button id="decrement" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">\n                    -\n                  </button>\n                  <span id="count" class="text-2xl font-bold min-w-[3rem] text-center">0</span>\n                  <button id="increment" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">\n                    +\n                  </button>\n                </div>\n              </div>\n\n              <!-- Theme Toggle Component -->\n              <div class="mb-6">\n                <button id="theme-toggle" class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition">\n                  Toggle Dark Mode\n                </button>\n              </div>\n            </div>\n          `;\n          \n          // Add some interactivity to our components\n          setTimeout(() => {\n            const count = div.querySelector("#count");\n            const increment = div.querySelector("#increment");\n            const decrement = div.querySelector("#decrement");\n            const themeToggle = div.querySelector("#theme-toggle");\n            \n            let counter = 0;\n            \n            if (count && increment && decrement) {\n              increment.addEventListener("click", () => {\n                counter++;\n                count.textContent = counter.toString();\n              });\n              \n              decrement.addEventListener("click", () => {\n                counter--;\n                count.textContent = counter.toString();\n              });\n            }\n            \n            if (themeToggle) {\n              themeToggle.addEventListener("click", () => {\n                document.documentElement.classList.toggle("dark");\n                \n                // Save preference\n                const isDark = document.documentElement.classList.contains("dark");\n                localStorage.setItem("darkMode", isDark ? "enabled" : "disabled");\n              });\n              \n              // Apply saved theme preference\n              if (localStorage.getItem("darkMode") === "enabled" ||\n                  (localStorage.getItem("darkMode") === null && \n                   window.matchMedia("(prefers-color-scheme: dark)").matches)) {\n                document.documentElement.classList.add("dark");\n              }\n            }\n          }, 100);\n          \n          return div;\n        };\n\n        // Create the router with available components or fallbacks\n        const router = createRouter({ \n          rootElement: appElement,\n          mode: "history",\n          debug: true,\n          rootLayout: RootLayout || DefaultLayout,\n          notFoundComponent: NotFound || null\n        });\n\n        // Register the home route with proper component\n        router.addRoute("/", Page || DefaultPage);\n\n        console.log("[0x1 DEBUG] Router created, starting initialization");\n        \n        // Initialize the router\n        router.init();\n        console.log("[0x1] Router initialized successfully");\n        \n        // Apply initial styles for dark mode\n        const style = document.createElement("style");\n        style.textContent = `\n          .dark { color-scheme: dark; }\n          .dark body { background-color: #1a1a1a; color: #ffffff; }\n        `;\n        document.head.appendChild(style);\n        \n        // Add navigation event handlers for client-side routing\n        document.addEventListener("click", (e) => {\n          const target = e.target.closest("a");\n          if (target && target.href && target.href.startsWith(window.location.origin) && !target.getAttribute("download") && !target.getAttribute("target")) {\n            e.preventDefault();\n            const url = new URL(target.href);\n            const path = url.pathname;\n            // Only use client-side navigation for internal routes\n            if (path && !path.includes(".")) {\n              history.pushState({}, "", path);\n              router.navigate(path);\n            } else {\n              window.location.href = target.href;\n            }\n          }\n        });\n        \n        // Handle browser back/forward navigation\n        window.addEventListener("popstate", () => {\n          router.navigate(window.location.pathname);\n        });\n      } catch (err) {\n        console.error("[0x1 ERROR] Router initialization failed:", err);\n        appElement.innerHTML = `<div class="p-8 text-center"><h1 class="text-2xl font-bold text-red-600 mb-4">Page Not Found</h1><p class="mb-6">The requested page could not be found.</p><a href="/" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Home</a></div>`;\n      }\n    }\n\n    // Initialize when DOM is ready\n    if (document.readyState === "loading") {\n      document.addEventListener("DOMContentLoaded", initApp);\n    } else {\n      initApp();\n    }\n  </script>';
 
 const BODY_END = '\n</body>\n</html>';
 
@@ -375,6 +375,380 @@ export function createStandaloneServer({
         return undefined;
       }
       
+      // Handle app component requests (layout.js, page.js, etc.)
+      if (reqPath.endsWith('.js') && (
+        reqPath.includes('/app/layout.js') ||
+        reqPath.includes('/app/page.js') ||
+        reqPath.includes('/app/not-found.js') ||
+        reqPath.includes('/app/error.js')
+      )) {
+        // Extract the component name from the path for logging
+        const componentNameFromPath = reqPath.split('/').pop()?.split('.')[0] || 'unknown';
+        
+        // Create component type name with proper capitalization
+        const componentType = componentNameFromPath.charAt(0).toUpperCase() + componentNameFromPath.slice(1);
+        
+        // Generate a super simple component that directly returns DOM elements
+        const jsxComponent = `
+// ==============================================================
+// DIRECT DOM COMPONENT IMPLEMENTATION
+// ==============================================================
+
+// Log component loading
+console.log('[0x1 DEBUG] Loading ${componentNameFromPath} component');
+
+// Main component export that returns a DOM element directly
+export default function ${componentType}(props) {
+  console.log('[0x1 DEBUG] Rendering ${componentNameFromPath} component', Object.keys(props));
+  
+  ${componentNameFromPath === 'layout' ? `
+  // Debug output for layout props
+  console.log('[0x1 DEBUG] Layout props:', Object.keys(props));
+  console.log('[0x1 DEBUG] Children type:', props.children ? (Array.isArray(props.children) ? 'array' : typeof props.children) : 'none');
+  if (props.children) {
+    console.log('[0x1 DEBUG] Children value:', props.children);
+  }
+  
+  // Create a layout container element with explicit ID for debugging
+  const container = document.createElement('div');
+  container.id = '0x1-root-layout';
+  container.className = 'layout-container flex flex-col min-h-screen w-full';
+  container.setAttribute('data-component', '${componentNameFromPath}');
+  
+  // Create main content area
+  const mainContent = document.createElement('main');
+  mainContent.className = 'flex-grow';
+  mainContent.id = '0x1-main-content';
+  container.appendChild(mainContent);
+  
+  // Special handling for children with more debugging
+  if (props.children) {
+    console.log('[0x1 DEBUG] Layout has children to append');
+    
+    // Handle both single child and array of children
+    const children = Array.isArray(props.children) ? props.children : [props.children];
+    
+    children.forEach((child, index) => {
+      console.log(\`[0x1 DEBUG] Processing layout child \${index}:\`, child, typeof child);
+      
+      if (child instanceof Node) {
+        console.log('[0x1 DEBUG] Child is a DOM node, appending directly');
+        mainContent.appendChild(child);
+      } else if (typeof child === 'function') {
+        // Handle function components
+        console.log('[0x1 DEBUG] Child is a function, executing');
+        try {
+          const result = child({});
+          if (result instanceof Node) {
+            console.log('[0x1 DEBUG] Function returned a DOM node, appending');
+            mainContent.appendChild(result);
+          } else {
+            console.warn('[0x1 WARN] Function returned non-DOM result:', result);
+            mainContent.appendChild(document.createTextNode(String(result || '[Empty component]')));
+          }
+        } catch (err) {
+          console.error('[0x1 ERROR] Error executing child function:', err);
+          mainContent.appendChild(document.createTextNode('[Component Error]'));
+        }
+      } else if (child && typeof child === 'object') {
+        // This might be a JSX element object
+        console.log('[0x1 DEBUG] Child appears to be an object, trying to render as JSX');
+        try {
+          // Check if it's a JSX element with type
+          if (child.type) {
+            if (typeof child.type === 'function') {
+              // Execute the function component
+              const result = child.type({
+                ...child.props,
+                children: child.children
+              });
+              
+              if (result instanceof Node) {
+                mainContent.appendChild(result);
+              } else {
+                mainContent.appendChild(document.createTextNode(String(result || '[JSX Function Result]')));
+              }
+            } else if (typeof child.type === 'string') {
+              // Create the element
+              const element = document.createElement(child.type);
+              // Add props
+              if (child.props) {
+                Object.entries(child.props).forEach(([key, value]) => {
+                  if (key !== 'children') {
+                    element.setAttribute(key, String(value));
+                  }
+                });
+              }
+              // Add children if any
+              if (child.children) {
+                const childrenArray = Array.isArray(child.children) ? child.children : [child.children];
+                childrenArray.forEach(grandchild => {
+                  if (grandchild instanceof Node) {
+                    element.appendChild(grandchild);
+                  } else {
+                    element.appendChild(document.createTextNode(String(grandchild)));
+                  }
+                });
+              }
+              mainContent.appendChild(element);
+            }
+          } else {
+            // If not a JSX element, try to stringify it
+            mainContent.appendChild(document.createTextNode(JSON.stringify(child)));
+          }
+        } catch (err) {
+          console.error('[0x1 ERROR] Error rendering object child:', err);
+          mainContent.appendChild(document.createTextNode('[Object Rendering Error]'));
+        }
+      } else if (child != null) {
+        console.warn('[0x1 WARN] Non-DOM child in layout, converting to text:', child);
+        mainContent.appendChild(document.createTextNode(String(child)));
+      }
+    });
+  } else {
+    console.log('[0x1 DEBUG] Layout has no children');
+    mainContent.textContent = 'No content provided to layout';
+  }
+  
+  // Add a footer with debugging info
+  const footer = document.createElement('footer');
+  footer.className = 'py-4 px-6 text-center text-sm text-gray-500';
+  footer.textContent = '0x1 Framework - Layout Active';
+  container.appendChild(footer);
+  
+  return container;
+  ` : componentNameFromPath === 'page' ? `
+  // Debug page component rendering
+  console.log('[0x1 DEBUG] Page component rendering with props:', Object.keys(props));
+  
+  // Create a page container with explicit ID for debugging
+  const container = document.createElement('div');
+  container.id = '0x1-page-component';
+  container.className = 'p-8 max-w-4xl mx-auto text-center';
+  container.setAttribute('data-component', '${componentNameFromPath}');
+  
+  // Add debug information at the top of the page
+  const debugInfo = document.createElement('div');
+  debugInfo.className = 'bg-blue-50 p-3 mb-6 rounded text-xs text-blue-800 font-mono';
+  debugInfo.textContent = '0x1 Page Component Active';
+  container.appendChild(debugInfo);
+  
+  // Add page title
+  const title = document.createElement('h1');
+  title.className = 'text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400';
+  title.textContent = 'Welcome to 0x1';
+  container.appendChild(title);
+  
+  // Add page subtitle
+  const subtitle = document.createElement('p');
+  subtitle.className = 'text-xl mb-8 text-gray-800 dark:text-gray-200';
+  subtitle.textContent = 'The lightning-fast web framework powered by Bun';
+  container.appendChild(subtitle);
+  
+  // Add getting started section
+  const card = document.createElement('div');
+  card.className = 'mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md';
+  
+  const cardTitle = document.createElement('h2');
+  cardTitle.className = 'text-2xl font-semibold mb-4';
+  cardTitle.textContent = 'Getting Started';
+  card.appendChild(cardTitle);
+  
+  const cardText = document.createElement('p');
+  cardText.className = 'mb-4';
+  cardText.textContent = 'Edit app/page.tsx to customize this page';
+  card.appendChild(cardText);
+  
+  // Add counter component
+  const counterSection = document.createElement('div');
+  counterSection.className = 'flex justify-center items-center gap-4 mt-4';
+  
+  const decrementBtn = document.createElement('button');
+  decrementBtn.className = 'px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition';
+  decrementBtn.textContent = '-';
+  counterSection.appendChild(decrementBtn);
+  
+  const countDisplay = document.createElement('span');
+  countDisplay.className = 'text-2xl font-bold min-w-[3rem] text-center';
+  countDisplay.textContent = '0';
+  counterSection.appendChild(countDisplay);
+  
+  const incrementBtn = document.createElement('button');
+  incrementBtn.className = 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition';
+  incrementBtn.textContent = '+';
+  counterSection.appendChild(incrementBtn);
+  
+  card.appendChild(counterSection);
+  
+  // Add event listeners for counter buttons
+  let count = 0;
+  decrementBtn.addEventListener('click', () => {
+    count--;
+    countDisplay.textContent = count.toString();
+  });
+  
+  incrementBtn.addEventListener('click', () => {
+    count++;
+    countDisplay.textContent = count.toString();
+  });
+  
+  container.appendChild(card);
+  
+  console.log('[0x1 DEBUG] Page component created DOM element:', container);
+  return container;
+  ` : componentNameFromPath === 'not-found' ? `
+  // Create a not-found component
+  const notFoundElement = document.createElement('div');
+  notFoundElement.id = '0x1-not-found-component';
+  notFoundElement.className = 'not-found-container p-8 max-w-4xl mx-auto text-center';
+  notFoundElement.setAttribute('data-component', '${componentNameFromPath}');
+  
+  // Add a heading
+  const heading = document.createElement('h1');
+  heading.className = 'text-4xl font-bold text-red-500 mb-4';
+  heading.textContent = '404 - Not Found';
+  notFoundElement.appendChild(heading);
+  
+  // Add a description
+  const description = document.createElement('p');
+  description.className = 'text-xl mb-6 text-gray-600';
+  description.textContent = 'The page you are looking for does not exist.';
+  notFoundElement.appendChild(description);
+  
+  // Add a back link
+  const backLink = document.createElement('a');
+  backLink.href = '/';
+  backLink.className = 'inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors';
+  backLink.textContent = 'Return to Home';
+  notFoundElement.appendChild(backLink);
+  
+  // Add debug info
+  const debugInfo = document.createElement('div');
+  debugInfo.className = 'mt-8 text-sm text-gray-500';
+  debugInfo.textContent = 'This is the 0x1 framework built-in 404 component';
+  notFoundElement.appendChild(debugInfo);
+  
+  return notFoundElement;
+  ` : componentNameFromPath === 'error' ? `
+  // Create an error component
+  const errorElement = document.createElement('div');
+  errorElement.id = '0x1-error-component';
+  errorElement.className = 'error-container p-8 max-w-4xl mx-auto bg-red-50 rounded-lg';
+  errorElement.setAttribute('data-component', '${componentNameFromPath}');
+  
+  // Add a heading
+  const heading = document.createElement('h1');
+  heading.className = 'text-3xl font-bold text-red-600 mb-4 text-center';
+  heading.textContent = 'Something went wrong';
+  errorElement.appendChild(heading);
+  
+  // Add error details if provided
+  if (props.error) {
+    const errorDetails = document.createElement('div');
+    errorDetails.className = 'error-details bg-white p-6 rounded-md border border-red-300 mb-6 mx-auto max-w-lg overflow-auto';
+    
+    const errorMessage = document.createElement('p');
+    errorMessage.className = 'font-mono text-base text-red-800 mb-3';
+    errorMessage.textContent = props.error.message || 'Unknown error';
+    errorDetails.appendChild(errorMessage);
+    
+    if (props.error.stack) {
+      const errorStack = document.createElement('pre');
+      errorStack.className = 'mt-2 p-4 bg-gray-50 rounded-md text-xs text-gray-600 text-left overflow-auto max-h-64';
+      errorStack.textContent = props.error.stack;
+      errorDetails.appendChild(errorStack);
+    }
+    
+    errorElement.appendChild(errorDetails);
+  } else {
+    // Generic error message when no specific error is provided
+    const genericMessage = document.createElement('p');
+    genericMessage.className = 'text-center mb-6 text-gray-700';
+    genericMessage.textContent = 'An unexpected error occurred while rendering this page.';
+    errorElement.appendChild(genericMessage);
+  }
+  
+  // Add buttons container
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'flex justify-center space-x-4';
+  
+  // Add a retry button
+  const retryButton = document.createElement('button');
+  retryButton.className = 'px-5 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors';
+  retryButton.textContent = 'Try Again';
+  retryButton.onclick = () => {
+    window.location.reload();
+  };
+  buttonContainer.appendChild(retryButton);
+  
+  // Add a go home button
+  const homeButton = document.createElement('button');
+  homeButton.className = 'px-5 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors';
+  homeButton.textContent = 'Go Home';
+  homeButton.onclick = () => {
+    window.location.href = '/';
+  };
+  buttonContainer.appendChild(homeButton);
+  
+  errorElement.appendChild(buttonContainer);
+  
+  // Add a debug note
+  const debugNote = document.createElement('div');
+  debugNote.className = 'mt-8 text-center text-sm text-gray-500';
+  debugNote.textContent = '0x1 Framework - Error Boundary Component';
+  errorElement.appendChild(debugNote);
+  
+  return errorElement;
+  ` : `
+  // Fallback component for unknown types
+  const fallbackElement = document.createElement('div');
+  fallbackElement.className = 'fallback-component p-4 border-2 border-yellow-400 bg-yellow-50';
+  fallbackElement.setAttribute('data-component', '${componentNameFromPath}');
+  
+  const heading = document.createElement('h2');
+  heading.className = 'text-xl font-bold text-yellow-700';
+  heading.textContent = \`Unknown Component Type: ${componentNameFromPath}\`;
+  fallbackElement.appendChild(heading);
+  
+  const helpText = document.createElement('p');
+  helpText.className = 'mt-2 text-gray-600';
+  helpText.textContent = 'This is a fallback rendering for an unknown component type.';
+  fallbackElement.appendChild(helpText);
+  
+  return fallbackElement;
+  `}
+}
+
+// Enable browser debugging
+window.__0x1_debug = true;
+console.log('[0x1 DEBUG] Component registered:', '${componentNameFromPath}');
+        `;
+        
+        // Check if there's a corresponding component file in the app directory
+        const possibleComponentPaths = [
+          join(projectPath, reqPath.replace('.js', '.tsx')),
+          join(projectPath, reqPath.replace('.js', '.jsx')),
+          join(projectPath, reqPath.replace('.js', '.ts')),
+          join(projectPath, reqPath.replace('.js', '.js'))
+        ];
+        
+        // Check if any of the possible component paths exist
+        const componentPath = possibleComponentPaths.find(path => existsSync(path));
+        
+        // We already have componentType defined above, so we'll reuse it here
+        
+        // Log component being served with pretty formatting
+        logRequestStatus(200, reqPath, `${componentType} component${componentPath ? ` from ${componentPath.replace(projectPath, '')}` : ' (generated stub)'}`);
+        
+        return new Response(jsxComponent, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+          }
+        });
+      }
+      
       // Handle live reload script
       if (reqPath === "/__0x1_live_reload.js") {
         logger.debug("Serving live reload script");
@@ -388,6 +762,7 @@ export function createStandaloneServer({
             
             // Always serve with JavaScript MIME type
             return new Response(scriptContent, {
+              status: 200,
               headers: {
                 "Content-Type": "application/javascript; charset=utf-8"
               }
@@ -402,6 +777,7 @@ export function createStandaloneServer({
               
               // Always serve with JavaScript MIME type
               return new Response(scriptContent, {
+                status: 200,
                 headers: {
                   "Content-Type": "application/javascript; charset=utf-8"
                 }
@@ -414,6 +790,7 @@ export function createStandaloneServer({
         
         // Fallback to the inline version
         return new Response(FALLBACK_LIVE_RELOAD_SCRIPT, {
+          status: 200,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8"
           }
@@ -479,6 +856,7 @@ export function createStandaloneServer({
         });
         
         return new Response(stream, {
+          status: 200,
           headers: {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform, no-store, must-revalidate',
@@ -534,6 +912,7 @@ export function createStandaloneServer({
               
               // Always serve with JavaScript MIME type
               return new Response(content, {
+                status: 200,
                 headers: {
                   "Content-Type": "application/javascript; charset=utf-8",
                   "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -589,6 +968,7 @@ export function createStandaloneServer({
             logRequestStatus(200, reqPath, `Module from ${path}`);
             
             return new Response(content, {
+              status: 200,
               headers: {
                 "Content-Type": mimeType,
                 "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -610,6 +990,7 @@ export function createStandaloneServer({
         logger.debug("Serving root HTML");
         
         return new Response(INDEX_HTML_TEMPLATE, {
+          status: 200,
           headers: {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -658,6 +1039,7 @@ export function createStandaloneServer({
             logRequestStatus(200, reqPath, `Serving from ${cssPath}`);
             const content = readFileSync(cssPath);
             return new Response(content, {
+              status: 200,
               headers: {
                 "Content-Type": "text/css; charset=utf-8",
                 "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -669,6 +1051,7 @@ export function createStandaloneServer({
         // If no CSS file found, return an empty CSS file
         logRequestStatus(204, reqPath, "Empty CSS served");
         return new Response("/* Empty CSS file */", {
+          status: 200,
           headers: {
             "Content-Type": "text/css; charset=utf-8",
             "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -688,6 +1071,7 @@ export function createStandaloneServer({
             logger.debug(`Serving favicon from: ${faviconPath}`);
             const content = readFileSync(faviconPath);
             return new Response(content, {
+              status: 200,
               headers: {
                 "Content-Type": "image/x-icon",
                 "Cache-Control": "public, max-age=86400"
@@ -719,6 +1103,7 @@ export function createStandaloneServer({
           }
           
           return new Response(modifiedContent, {
+            status: 200,
             headers: {
               "Content-Type": "text/html; charset=utf-8",
               "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -731,6 +1116,7 @@ export function createStandaloneServer({
           const mimeType = getMimeType(filePath);
           
           return new Response(content, {
+            status: 200,
             headers: {
               "Content-Type": mimeType,
               "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -755,12 +1141,16 @@ export function createStandaloneServer({
         
         const routeExists = possibleAppDirPaths.some(path => existsSync(path));
         if (routeExists) {
-          logger.debug(`Found route file for path ${reqPath}, serving HTML for client-side routing`);
+          // Show which file we're using for the route
+          const foundPath = possibleAppDirPaths.find(path => existsSync(path));
+          logRequestStatus(200, reqPath, `Route: ${foundPath ? foundPath.replace(projectPath, '') : 'app directory route'}`);
         } else {
-          logger.debug(`No route file found for ${reqPath}, but serving HTML for client-side routing anyway`);
+          // Still log the route even if we don't find a specific file
+          logRequestStatus(200, reqPath, `Route: using default handler`);
         }
         
         return new Response(INDEX_HTML_TEMPLATE, {
+          status: 200,
           headers: {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-cache, no-store, must-revalidate"
