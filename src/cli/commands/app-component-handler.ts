@@ -14,35 +14,79 @@ import Bun from "bun";
 export function generateStubComponent(componentType: string): string {
   return `// 0x1 Framework - Stub component for ${componentType}
 
-// Define and export JSX runtime functions directly
-export function jsx(type, props, key) { 
-  props = props || {};
-  return { type, props, key, children: props.children || [] }; 
+// Import from our custom JSX runtime
+import { jsx, jsxs, Fragment, createElement, jsxDEV } from '0x1/jsx-runtime';
+
+// Export these functions for compatibility
+export { jsx, jsxs, Fragment, createElement, jsxDEV };
+
+// Create a proper HTML element that can be rendered
+function createHtmlElement(tag, props = {}, ...children) {
+  const element = document.createElement(tag);
+  
+  // Apply props to the element
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'className') {
+      element.className = value;
+    } else if (key === 'style' && typeof value === 'object') {
+      Object.assign(element.style, value);
+    } else if (key.startsWith('on') && typeof value === 'function') {
+      const eventName = key.toLowerCase().substring(2);
+      element.addEventListener(eventName, value);
+    } else if (key !== 'children') {
+      element.setAttribute(key, value);
+    }
+  }
+  
+  // Add children
+  for (const child of children) {
+    if (child) {
+      if (typeof child === 'string') {
+        element.appendChild(document.createTextNode(child));
+      } else if (child instanceof Node) {
+        element.appendChild(child);
+      }
+    }
+  }
+  
+  return element;
 }
 
-export function jsxs(type, props, key) { 
-  props = props || {};
-  return { type, props, key, children: props.children || [] };
-}
-
-export const Fragment = Symbol.for('react.fragment');
-
-export function createElement(type, props, ...children) {
-  props = props || {};
-  return { type, props, children: children.filter(c => c != null) };
-}
-
-export const jsxDEV = jsx;
-
-// Export a working component that won't break the application
+// Export default component that works with both React and DOM rendering
 export default function ${componentType[0].toUpperCase() + componentType.slice(1)}Component(props) {
-  return jsx('div', { className: 'auto-generated-component', ...props }, null);
+  // Determine if we're in browser or server environment
+  const isBrowser = typeof window !== 'undefined';
+  
+  if (isBrowser) {
+    // For browser rendering, return an actual HTML element
+    return createHtmlElement('div', {
+      className: 'auto-generated-${componentType}-component 0x1-stub-component',
+      style: {
+        padding: '20px',
+        margin: '10px',
+        border: '1px dashed #ccc',
+        borderRadius: '4px'
+      }
+    }, 'Auto-generated ${componentType} component');
+  } else {
+    // For React-style JSX rendering
+    return jsx('div', { 
+      className: 'auto-generated-${componentType}-component 0x1-stub-component',
+      style: {
+        padding: '20px',
+        margin: '10px',
+        border: '1px dashed #ccc',
+        borderRadius: '4px'
+      },
+      children: 'Auto-generated ${componentType} component'
+    });
+  }
 }
 
-// Export any special Next.js or React compatibility functions
-export const useRouter = () => ({ push: () => {}, pathname: '/' });
-export const useParams = () => ({});
-export const useSearchParams = () => new Map();
+// Export special React/Next.js compatibility functions
+export function useRouter() { return { push: () => {}, pathname: '/' }; }
+export function useParams() { return {}; }
+export function useSearchParams() { return new Map(); }
 `;
 }
 

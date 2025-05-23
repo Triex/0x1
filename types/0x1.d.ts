@@ -2,6 +2,7 @@
  * 0x1 Framework Type Definitions
  * 
  * This is the consolidated type declaration file for the 0x1 framework.
+ * Contains all core types used for JSX rendering and framework features
  */
 
 // Reference DOM types
@@ -89,6 +90,54 @@ declare module '0x1/router' {
 
 // Main module declaration
 declare module '0x1' {
+  /**
+   * Component function type for 0x1 components
+   */
+  export type ComponentFunction = (props: JSXAttributes & { children?: JSXChildren }) => string | JSXNode | HTMLElement;
+
+  /**
+   * JSX Node representation with enhanced capabilities for both client and server rendering
+   */
+  export interface JSXNode {
+    type: string | ComponentFunction | symbol;
+    props: JSXAttributes;
+    children: JSXChildren;
+    key?: string | number | null;
+    // Additional metadata for debugging
+    __source?: {
+      fileName: string;
+      lineNumber: number;
+      columnNumber: number;
+    };
+    __self?: any;
+  }
+
+  /**
+   * JSX Attributes type - props passed to components
+   */
+  export type JSXAttributes<T = HTMLElement> = {
+    [key: string]: any;
+    children?: JSXChildren;
+    className?: string;
+    style?: Partial<CSSStyleDeclaration> | string;
+    dangerouslySetInnerHTML?: { __html: string };
+    // Event handlers
+    onClick?: (e: MouseEvent) => void;
+    onChange?: (e: Event) => void;
+    onInput?: (e: Event) => void;
+    onSubmit?: (e: Event) => void;
+    onFocus?: (e: FocusEvent) => void;
+    onBlur?: (e: FocusEvent) => void;
+    // Special app router props
+    key?: string | number;
+    ref?: any;
+  };
+
+  /**
+   * JSX Children type - array of possible child types
+   */
+  export type JSXChildren = (string | number | boolean | null | undefined | JSXNode)[];
+
   // React-like hooks
   export function useState<T>(initialState: T | (() => T)): [T, (newState: T | ((prevState: T) => T)) => void];
   export function useEffect(effect: () => void | (() => void), deps?: any[]): void;

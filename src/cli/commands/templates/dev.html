@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <link rel="icon" href="/favicon.ico">
+
+  <!-- Process polyfill for browser environment to fix 'process is not defined' errors -->
+  <script>
+    // Simple process.env polyfill that works in all browsers
+    window.process = window.process || {
+      env: {
+        NODE_ENV: 'development'
+      }
+    };
+    console.log('[0x1] Running in development mode', window.location.hostname);
+  </script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/router": "/0x1/router.js?type=module",
+      "0x1/": "/0x1/"
+    }
+  }
+  </script>
+  
+  <!-- Live reload script - using standardized path to avoid duplication -->
+  <script src="/__0x1_live_reload.js"></script>
+</head>
+<body>
+  <!-- Error Overlay Container (Next.js style) -->
+  <div id="0x1-error-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; overflow: auto; padding: 16px; pointer-events: auto; backdrop-filter: blur(8px); background: linear-gradient(135deg, rgba(13, 18, 30, 0.75), rgba(25, 33, 60, 0.75), rgba(44, 39, 75, 0.75))">
+    <div style="position: relative; background: rgba(30, 41, 59, 0.95); color: #e2e8f0; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); overflow: hidden; max-width: 960px; margin: auto; display: flex; flex-direction: column; max-height: 85vh; top: 50%; transform: translateY(-50%); border: 1px solid rgba(99, 102, 241, 0.2);">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: rgba(0, 0, 0, 0.3);">
+        <div style="display: flex; align-items: center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="margin-right: 12px;">
+            <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 8V12" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="16" r="1" fill="#F87171"/>
+          </svg>
+          <span style="font-size: 18px; font-weight: 600;">Error</span>
+          <!-- Error counter navigation (only shown when multiple errors) -->
+          <div id="0x1-error-navigation" style="display: none; margin-left: 12px; font-size: 14px; background: rgba(0, 0, 0, 0.2); padding: 4px 8px; border-radius: 4px;">
+            <button id="0x1-error-prev" class="nav-arrow" style="background: none; border: none; color: rgba(226, 232, 240, 0.5); cursor: pointer; padding: 0 4px; transition: all 0.2s ease;">&lt;</button>
+            <span id="0x1-error-counter">1/1</span>
+            <button id="0x1-error-next" class="nav-arrow active" style="background: none; border: none; color: #e2e8f0; cursor: pointer; padding: 0 4px; transition: all 0.2s ease;">&gt;</button>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center;">
+          <button id="0x1-error-ignore" style="background: rgba(255, 255, 255, 0.1); border: none; color: #e2e8f0; cursor: pointer; padding: 4px 10px; border-radius: 4px; font-size: 14px; margin-right: 12px; transition: all 0.2s ease;">
+            Ignore
+          </button>
+          <button id="0x1-error-minimize" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #e2e8f0; cursor: pointer; font-size: 14px; line-height: 1; padding: 4px 8px; border-radius: 4px; transition: all 0.2s ease;">
+            _
+          </button>
+        </div>
+      </div>
+      <div id="0x1-error-content" style="padding: 24px; overflow: auto;">
+        <!-- Error content will be injected here -->
+      </div>
+    </div>
+  </div>
+  
+  <!-- Minimized Error Badge (Bottom Left) -->
+  <div id="0x1-error-badge" style="display: none; position: fixed; bottom: 16px; left: 16px; z-index: 9998; background: linear-gradient(135deg, #F56565, #ED64A6); color: white; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 600; box-shadow: 0 4px 15px -1px rgba(0, 0, 0, 0.2), 0 2px 8px -1px rgba(0, 0, 0, 0.15); cursor: pointer; display: flex; align-items: center; animation: pulseError 2s infinite; border: 1px solid rgba(255, 255, 255, 0.2);">
+    <!-- 0x1 Lightning Logo -->
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+      <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="white"/>
+    </svg>
+    <span>1 Error</span>
+  </div>
+  
+  <style>
+    @keyframes pulseError {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.95; transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    
+    /* Hover effects for buttons */
+    #0x1-error-minimize:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+    
+    #0x1-error-ignore:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+    
+    /* Navigation arrow styling */
+    .nav-arrow {
+      opacity: 0.5;
+    }
+    
+    .nav-arrow:hover {
+      opacity: 1 !important;
+      transform: scale(1.1);
+    }
+    
+    .nav-arrow.active {
+      opacity: 1;
+    }
+    
+    /* Custom scrollbar for error content */
+    #0x1-error-content::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    #0x1-error-content::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    
+    #0x1-error-content::-webkit-scrollbar-thumb {
+      background: rgba(99, 102, 241, 0.6);
+      border-radius: 4px;
+    }
+    
+    #0x1-error-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.8);
+    }
+  </style>
+
+  <!-- App Container -->
+  <div id="app"></div>
+
+  <!-- App entry point -->
+  <script type="module">
+    // Get DOM elements for error handling
+    const errorOverlay = document.getElementById('0x1-error-overlay');
+    const errorContent = document.getElementById('0x1-error-content');
+    const errorMinimize = document.getElementById('0x1-error-minimize');
+    const errorIgnore = document.getElementById('0x1-error-ignore');
+    const errorBadge = document.getElementById('0x1-error-badge');
+    const errorBadgeText = errorBadge ? errorBadge.querySelector('span') : null;
+    const errorNavigation = document.getElementById('0x1-error-navigation');
+    const errorCounter = document.getElementById('0x1-error-counter');
+    const errorPrev = document.getElementById('0x1-error-prev');
+    const errorNext = document.getElementById('0x1-error-next');
+    
+    // Error tracking
+    let errorCount = 0;
+    let currentErrors = [];
+    let currentErrorIndex = 0;
+    
+    // Display a specific error by index
+    function displayErrorByIndex(index) {
+      if (!currentErrors.length || index < 0 || index >= currentErrors.length) return;
+      
+      const error = currentErrors[index];
+      currentErrorIndex = index;
+      
+      // Update counter
+      if (errorCounter) {
+        errorCounter.textContent = `${index + 1}/${currentErrors.length}`;
+      }
+      
+      // Create error content
+      let content = `<h2 style="font-size: 18px; margin-top: 0; margin-bottom: 16px;">${error.title}</h2>`;
+      content += `<div style="font-family: monospace; background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 4px; margin-bottom: 16px; white-space: pre-wrap;">${error.message}</div>`;
+      
+      if (error.stack) {
+        content += `<details style="margin-top: 16px;">
+          <summary style="cursor: pointer; margin-bottom: 8px;">Stack Trace</summary>
+          <pre style="background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 4px; overflow: auto; margin: 0;">${error.stack}</pre>
+        </details>`;
+      }
+      
+      // Set content
+      errorContent.innerHTML = content;
+      
+      // Show/hide navigation based on error count
+      if (errorNavigation) {
+        // Show navigation only if we have more than one error
+        errorNavigation.style.display = currentErrors.length > 1 ? 'inline-flex' : 'none';
+        
+        // Update navigation arrow states
+        if (errorPrev && errorNext) {
+          // First error - prev is inactive, next is active
+          if (index === 0) {
+            errorPrev.classList.remove('active');
+            errorNext.classList.add('active');
+          }
+          // Last error - prev is active, next is inactive
+          else if (index === currentErrors.length - 1) {
+            errorPrev.classList.add('active');
+            errorNext.classList.remove('active');
+          }
+          // Middle error - both active
+          else {
+            errorPrev.classList.add('active');
+            errorNext.classList.add('active');
+          }
+        }
+      }
+    }
+    
+    // Error display function
+    function showError(title, message, stack) {
+      if (errorOverlay && errorContent) {
+        // Add error to collection
+        currentErrors.push({ title, message, stack });
+        errorCount = currentErrors.length;
+        
+        // Update error badge text
+        if (errorBadgeText) {
+          errorBadgeText.textContent = errorCount === 1 ? '1 Error' : `${errorCount} Errors`;
+        }
+        
+        // Display the newest error (last in array)
+        displayErrorByIndex(currentErrors.length - 1);
+        
+        // Show the overlay
+        errorOverlay.style.display = 'block';
+        errorBadge.style.display = 'none'; // Hide badge when showing full overlay
+      }
+    }
+    
+    // Handle minimize button
+    if (errorMinimize) {
+      errorMinimize.addEventListener('click', () => {
+        errorOverlay.style.display = 'none';
+        errorBadge.style.display = 'flex'; // Show the minimized badge
+      });
+    }
+    
+    // Handle badge click (show full overlay)
+    if (errorBadge) {
+      errorBadge.addEventListener('click', () => {
+        errorBadge.style.display = 'none';
+        errorOverlay.style.display = 'block';
+      });
+    }
+    
+    // Handle ignore button (dismiss current error)
+    if (errorIgnore) {
+      errorIgnore.addEventListener('click', () => {
+        // Remove the current error
+        if (currentErrors.length > 0) {
+          // Remove current error
+          currentErrors.splice(currentErrorIndex, 1);
+          errorCount = currentErrors.length;
+          
+          if (currentErrors.length === 0) {
+            // No more errors, hide everything
+            errorOverlay.style.display = 'none';
+            errorBadge.style.display = 'none';
+          } else {
+            // Show the next error or the previous one if we're at the end
+            const newIndex = Math.min(currentErrorIndex, currentErrors.length - 1);
+            displayErrorByIndex(newIndex);
+            
+            // Update badge
+            if (errorBadgeText) {
+              errorBadgeText.textContent = errorCount === 1 ? '1 Error' : `${errorCount} Errors`;
+            }
+          }
+        }
+      });
+    }
+    
+    // Error navigation - previous
+    if (errorPrev) {
+      errorPrev.addEventListener('click', () => {
+        if (currentErrors.length > 1) {
+          const newIndex = currentErrorIndex > 0 ? currentErrorIndex - 1 : currentErrors.length - 1;
+          displayErrorByIndex(newIndex);
+        }
+      });
+    }
+    
+    // Error navigation - next
+    if (errorNext) {
+      errorNext.addEventListener('click', () => {
+        if (currentErrors.length > 1) {
+          const newIndex = (currentErrorIndex + 1) % currentErrors.length;
+          displayErrorByIndex(newIndex);
+        }
+      });
+    }
+    
+    // Try importing the router with error handling
+    try {
+      // Import the router factory
+      const routerModule = await import('0x1/router').catch(e => {
+        console.error('Failed to import router module:', e);
+        showError(
+          'Router Module Import Error', 
+          'Could not import the 0x1 router module. This may be due to a missing or incorrect build.', 
+          e.stack
+        );
+        throw e;
+      });
+      
+      // Check if createRouter exists
+      if (!routerModule || typeof routerModule.createRouter !== 'function') {
+        const error = new Error('Router module does not export createRouter function');
+        console.error(error);
+        showError(
+          'Router Module Error',
+          'The router module was loaded but does not provide the createRouter function.',
+          'Make sure the router module is correctly built and exported.'
+        );
+        throw error;
+      }
+      
+      const { createRouter } = routerModule;
+    } catch (err) {
+      console.error('Router initialization error:', err);
+      showError(
+        'Router Initialization Error',
+        'Failed to initialize the router. Check the console for more details.',
+        err.stack
+      );
+    }
+    
+    // Next.js style error overlay manager
+    const ErrorOverlay = {
+      overlay: document.getElementById('0x1-error-overlay'),
+      content: document.getElementById('0x1-error-content'),
+      dismissBtn: document.getElementById('0x1-error-dismiss'),
+      
+      // Show an error in the overlay
+      show: function(error, title = 'Error') {
+        // Create error content
+        const errorContent = document.createElement('div');
+        
+        // Set title if provided
+        const errorTitle = document.createElement('h2');
+        errorTitle.textContent = title || (error.name || 'Error');
+        errorTitle.style.fontSize = '1.5rem';
+        errorTitle.style.marginBottom = '1rem';
+        errorTitle.style.color = '#f87171';
+        errorContent.appendChild(errorTitle);
+        
+        // Add error message
+        const errorMessage = document.createElement('div');
+        errorMessage.textContent = error.message || 'An unknown error occurred';
+        errorMessage.style.fontSize = '1rem';
+        errorMessage.style.marginBottom = '1rem';
+        errorMessage.style.fontFamily = 'monospace';
+        errorContent.appendChild(errorMessage);
+        
+        // Add stack trace if available
+        if (error.stack) {
+          const stackContainer = document.createElement('details');
+          stackContainer.style.marginTop = '1rem';
+          stackContainer.style.marginBottom = '1rem';
+          
+          const stackSummary = document.createElement('summary');
+          stackSummary.textContent = 'Stack Trace';
+          stackSummary.style.cursor = 'pointer';
+          stackSummary.style.fontWeight = 'bold';
+          stackSummary.style.padding = '0.5rem 0';
+          stackContainer.appendChild(stackSummary);
+          
+          const stackContent = document.createElement('pre');
+          stackContent.textContent = error.stack;
+          stackContent.style.padding = '1rem';
+          stackContent.style.background = 'rgba(0, 0, 0, 0.2)';
+          stackContent.style.borderRadius = '0.25rem';
+          stackContent.style.overflow = 'auto';
+          stackContent.style.fontSize = '0.875rem';
+          stackContent.style.lineHeight = '1.5';
+          stackContent.style.whiteSpace = 'pre-wrap';
+          stackContainer.appendChild(stackContent);
+          
+          errorContent.appendChild(stackContainer);
+        }
+        
+        // Add helpful troubleshooting tips
+        const helpSection = document.createElement('div');
+        helpSection.style.marginTop = '1.5rem';
+        helpSection.style.padding = '1rem';
+        helpSection.style.background = 'rgba(255, 255, 255, 0.05)';
+        helpSection.style.borderRadius = '0.25rem';
+        
+        const helpTitle = document.createElement('h3');
+        helpTitle.textContent = 'Troubleshooting Tips';
+        helpTitle.style.marginBottom = '0.5rem';
+        helpTitle.style.fontSize = '1rem';
+        helpSection.appendChild(helpTitle);
+        
+        const tipsList = document.createElement('ul');
+        tipsList.style.paddingLeft = '1.5rem';
+        tipsList.style.fontSize = '0.875rem';
+        tipsList.style.lineHeight = '1.5';
+        
+        const tips = [
+          'Check your component exports and make sure they are properly defined.',
+          'Verify that all imported modules exist and are correctly exported.',
+          'Check for syntax errors in your JSX/TSX code.',
+          'Ensure all required dependencies are installed.',
+          'Check the browser console for additional error details.'
+        ];
+        
+        tips.forEach(tip => {
+          const listItem = document.createElement('li');
+          listItem.textContent = tip;
+          listItem.style.margin = '0.5rem 0';
+          tipsList.appendChild(listItem);
+        });
+        
+        helpSection.appendChild(tipsList);
+        errorContent.appendChild(helpSection);
+        
+        // Clear previous content and add new error
+        this.content.innerHTML = '';
+        this.content.appendChild(errorContent);
+        
+        // Show the overlay
+        this.overlay.style.display = 'block';
+        this.overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+      },
+      
+      // Hide the error overlay
+      hide: function() {
+        this.overlay.style.display = 'none';
+        this.content.innerHTML = '';
+      },
+      
+      // Initialize the error overlay
+      init: function() {
+        // Set up dismiss button
+        this.dismissBtn.addEventListener('click', () => this.hide());
+        
+        // Allow dismissing by clicking outside the error content
+        this.overlay.addEventListener('click', (e) => {
+          if (e.target === this.overlay) {
+            this.hide();
+          }
+        });
+        
+        // Also allow dismissing with escape key
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && this.overlay.style.display === 'block') {
+            this.hide();
+          }
+        });
+        
+        // Capture unhandled errors and show them in the overlay
+        window.addEventListener('error', (event) => {
+          this.show(event.error || new Error(event.message));
+          // Don't prevent the browser's default error handling
+          return false;
+        });
+        
+        // Capture unhandled promise rejections
+        window.addEventListener('unhandledrejection', (event) => {
+          this.show(event.reason || new Error('Unhandled Promise rejection'));
+          // Don't prevent the browser's default error handling
+          return false;
+        });
+        
+        console.log('[0x1] Error overlay initialized');
+      }
+    };
+    
+    // Initialize the error overlay
+    ErrorOverlay.init();
+    
+    // React-style element renderer (handles JSX objects)
+    function renderReactElement(element, container) {
+      // Handle null/undefined elements
+      if (!element) {
+        console.warn('Attempted to render null or undefined element');
+        return;
+      }
+
+      // Handle DOM elements directly
+      if (element instanceof HTMLElement || element instanceof DocumentFragment) {
+        container.innerHTML = '';
+        container.appendChild(element);
+        return;
+      }
+
+      // Handle string content
+      if (typeof element === 'string') {
+        container.innerHTML = element;
+        return;
+      }
+
+      // Handle React-style element objects with { type, props, children }
+      if (element && typeof element === 'object' && element.type) {
+        try {
+          // Create a DOM element based on the React element
+          let domElement;
+          
+          if (typeof element.type === 'string') {
+            // For HTML tag types like 'div', 'span', etc.
+            domElement = document.createElement(element.type);
+          } else if (typeof element.type === 'function') {
+            // For component functions, call the function and process its result
+            const result = element.type(element.props || {});
+            return renderReactElement(result, container);
+          } else {
+            // Fallback for unknown types
+            domElement = document.createElement('div');
+            domElement.className = 'unknown-element-type';
+            domElement.textContent = 'Unknown element type';
+          }
+          
+          // Apply props to the DOM element
+          if (element.props) {
+            Object.entries(element.props).forEach(([key, value]) => {
+              if (key === 'children') return; // Skip children, handled separately
+              
+              if (key === 'className') {
+                domElement.className = value;
+              } else if (key === 'style' && typeof value === 'object') {
+                Object.assign(domElement.style, value);
+              } else if (key.startsWith('on') && key.length > 2) {
+                // Convert React-style event handlers: onClick -> click
+                const eventName = key.substring(2).toLowerCase();
+                domElement.addEventListener(eventName, value);
+              } else if (key !== 'children') {
+                // Set regular attributes
+                domElement.setAttribute(key, value);
+              }
+            });
+          }
+          
+          // Process children
+          const children = element.props?.children;
+          if (children) {
+            if (Array.isArray(children)) {
+              children.forEach(child => {
+                if (child == null) return;
+                
+                if (typeof child === 'string' || typeof child === 'number') {
+                  domElement.appendChild(document.createTextNode(String(child)));
+                } else {
+                  // Recursively render child elements
+                  const childContainer = document.createElement('div');
+                  renderReactElement(child, childContainer);
+                  
+                  // Move all child nodes to the parent
+                  while (childContainer.firstChild) {
+                    domElement.appendChild(childContainer.firstChild);
+                  }
+                }
+              });
+            } else if (typeof children === 'string' || typeof children === 'number') {
+              domElement.textContent = String(children);
+            } else if (children != null) {
+              // Single child object
+              const childContainer = document.createElement('div');
+              renderReactElement(children, childContainer);
+              
+              // Move all child nodes
+              while (childContainer.firstChild) {
+                domElement.appendChild(childContainer.firstChild);
+              }
+            }
+          }
+          
+          // Replace container contents with the new element
+          container.innerHTML = '';
+          container.appendChild(domElement);
+        } catch (error) {
+          console.error('Error rendering React element:', error);
+          container.innerHTML = `<div class="render-error">Error rendering component: ${error.message || 'Unknown error'}</div>`;
+        }
+      } else {
+        // Fallback for non-renderable content
+        console.warn('Cannot render element:', element);
+        container.innerHTML = '<div class="unknown-element">Unknown element format</div>';
+      }
+    }
+    
+    // Dynamically load app pages with improved error handling
+    const appComponents = {};
+    let hasRootPage = false;
+    
+    // Helper function to safely load a module
+    async function safeImport(path, componentKey, required = false) {
+      try {
+        const module = await import(path);
+        console.log('Loaded ' + componentKey + ' successfully');
+        
+        // Store the module in our components registry
+        appComponents[componentKey] = module;
+        
+        // Monkey-patch the default export to handle React-style elements
+        if (module.default && typeof module.default === 'function') {
+          const originalDefault = module.default;
+          
+          // Create a wrapper that handles both React elements and DOM elements
+          module.default = function wrappedComponent(props) {
+            try {
+              const result = originalDefault(props);
+              
+              // If the result is already a DOM element, return it directly
+              if (result instanceof HTMLElement || result instanceof DocumentFragment) {
+                return result;
+              }
+              
+              // If it's a string, create a wrapper element
+              if (typeof result === 'string') {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = result;
+                return wrapper;
+              }
+              
+              // For React-style elements, render them to a DOM element
+              if (result && typeof result === 'object' && result.type) {
+                const container = document.createElement('div');
+                renderReactElement(result, container);
+                return container.firstChild || container;
+              }
+              
+              // Fallback for unknown results
+              const fallback = document.createElement('div');
+              fallback.className = 'component-fallback';
+              fallback.textContent = 'Component returned an unknown result type';
+              return fallback;
+            } catch (err) {
+              console.error('Error in component:', err);
+              const errorElement = document.createElement('div');
+              errorElement.className = 'component-error';
+              errorElement.innerHTML = `<h3>Component Error</h3><p>${err.message || 'Unknown error'}</p>`;
+              return errorElement;
+            }
+          };
+        }
+        
+        return true;
+      } catch (err) {
+        if (required) {
+          console.warn('Required module ' + componentKey + ' failed to load: ' + err.message);
+        } else {
+          console.log('Optional module ' + componentKey + ' not found');
+        }
+        return false;
+      }
+    }
+
+    // Client-side debug - only when debug flag is enabled
+    {{DEBUG_LOGGING}}
+    
+    // Load core app components in order of importance
+    try {
+      // 1. First try loading the root page - essential for rendering content
+      hasRootPage = await safeImport('/app/page.js', 'app/page', true);
+      
+      // 2. Try loading the layout - used to wrap pages
+      await safeImport('/app/layout.js', 'app/layout');
+      
+      // 3. Try loading the not-found page - used for 404 errors
+      await safeImport('/app/not-found.js', 'app/not-found');
+      
+      // If we couldn't load the root page, try alternate locations
+      if (!hasRootPage) {
+        console.log('Trying alternate page locations...');
+        hasRootPage = await safeImport('/app/index.js', 'app/index') || 
+                     await safeImport('/pages/index.js', 'pages/index');
+      }
+    } catch (e) {
+      console.error('Error loading app components:', e);
+    }
+    
+    // Load regular components
+    try {
+      const components = await fetch('/_components_list').then(res => res.json());
+      for (const comp of components) {
+        await import('/components/' + comp);
+      }
+    } catch (e) {
+      console.log('No component manifest found');
+    }
+    
+    // Check for required components
+    if (!hasRootPage) {
+      // Show a nice error overlay for missing required components
+      const missingComponentsError = new Error('Missing required page component');
+      missingComponentsError.name = 'Missing Required Components';
+      missingComponentsError.message = 'The 0x1 framework requires a page component to be present.\n\nPlease create one of the following files:\n- app/page.tsx\n- app/page.jsx\n- app/page.ts\n- app/page.js';
+      
+      // Show in the error overlay
+      ErrorOverlay.show(missingComponentsError, 'Missing Required Components');
+      
+      // Also create a minimal placeholder in the app container
+      const placeholder = document.createElement('div');
+      placeholder.style.padding = '2rem';
+      placeholder.style.textAlign = 'center';
+      placeholder.style.color = '#666';
+      placeholder.innerHTML = '<h2>Missing Required Components</h2><p>Please check the error overlay for details.</p>';
+      document.getElementById('app').innerHTML = '';
+      document.getElementById('app').appendChild(placeholder);
+    } else {
+      try {
+        // Create a custom error handler that uses our error overlay
+        const errorHandler = (error, componentName) => {
+          console.error(`Error in component ${componentName || 'unknown'}:`, error);
+          ErrorOverlay.show(error, `Error in ${componentName || 'component'}`);
+          
+          // Return a minimal fallback UI that indicates there was an error
+          const fallback = document.createElement('div');
+          fallback.style.padding = '1rem';
+          fallback.style.margin = '0.5rem';
+          fallback.style.border = '1px dashed #f87171';
+          fallback.style.borderRadius = '0.25rem';
+          fallback.style.color = '#f87171';
+          fallback.innerHTML = `<p>⚠️ Error rendering ${componentName || 'component'}. See overlay for details.</p>`;
+          return fallback;
+        };
+        
+        // Create router instance with app components registered and wrapped in error boundary
+        const router = createRouter({
+          rootElement: document.getElementById('app'),
+          mode: 'history', // Use history API for cleaner URLs without hash
+          appComponents, // Register app directory components
+          autoDiscovery: true, // Enable auto-discovery for dynamic loading
+          errorBoundary: true, // Enable error boundary for all route components
+          errorHandler // Use our custom error handler with overlay
+        });
+
+        // Wrap the router initialization in try/catch for better error handling
+        try {
+          // Start routing
+          window.__0x1_ROUTER__ = router;
+          router.init();
+        } catch (routerError) {
+          console.error('Router initialization failed:', routerError);
+          ErrorOverlay.show(routerError, 'Router Initialization Failed');
+          
+          // Also update the app container with a minimal error indication
+          const fallback = document.createElement('div');
+          fallback.style.padding = '2rem';
+          fallback.style.textAlign = 'center';
+          fallback.style.color = '#666';
+          fallback.innerHTML = '<h2>Router Initialization Failed</h2><p>Please check the error overlay for details.</p>';
+          document.getElementById('app').innerHTML = '';
+          document.getElementById('app').appendChild(fallback);
+        }
+      } catch (error) {
+        // Show a nice error UI if router creation fails
+        console.error('Router creation failed:', error);
+        ErrorOverlay.show(error, 'Router Creation Failed');
+        
+        // Also update the app container with a minimal error indication
+        const fallback = document.createElement('div');
+        fallback.style.padding = '2rem';
+        fallback.style.textAlign = 'center';
+        fallback.style.color = '#666';
+        fallback.innerHTML = '<h2>Router Creation Failed</h2><p>Please check the error overlay for details.</p>';
+        document.getElementById('app').innerHTML = '';
+        document.getElementById('app').appendChild(fallback);
+      }
+    }
+  </script>
+</body>
+</html>

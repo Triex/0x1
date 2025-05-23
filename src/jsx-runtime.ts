@@ -115,6 +115,7 @@ export function jsxDEV(
 
 /**
  * Render JSX to HTML string
+ * This function is used by both server-side and client-side code to render JSX elements to HTML strings
  */
 export function renderToString(node: JSXNode | string | number | boolean | null | undefined): string {
   if (node === undefined || node === null || node === false) {
@@ -219,66 +220,133 @@ function escapeHtml(html: string): string {
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
-    interface IntrinsicElements {
-      // Enhanced with all common HTML elements
-      div: any;
-      span: any;
-      a: any;
-      p: any;
-      h1: any;
-      h2: any;
-      h3: any;
-      h4: any;
-      h5: any;
-      h6: any;
-      button: any;
-      input: any;
-      img: any;
-      // Form elements
-      form: any;
-      label: any;
-      select: any;
-      option: any;
-      textarea: any;
-      // Layout elements
-      header: any;
-      footer: any;
-      main: any;
-      section: any;
-      article: any;
-      nav: any;
-      aside: any;
-      // Lists
-      ul: any;
-      ol: any;
-      li: any;
-      dl: any;
-      dt: any;
-      dd: any;
-      // Tables
-      table: any;
-      tr: any;
-      td: any;
-      th: any;
-      thead: any;
-      tbody: any;
-      tfoot: any;
-      // Other common elements
-      code: any;
-      pre: any;
-      strong: any;
-      em: any;
-      hr: any;
-      br: any;
-      // SVG elements for completeness
-      svg: any;
-      path: any;
-      circle: any;
-      rect: any;
+    interface ElementAttributesProperty {
+      props: {}; // Specify the property name to use for props
+    }
+
+    interface ElementChildrenAttribute {
+      children: {}; // Specify the property name to use for children
     }
     
-    interface ElementChildrenAttribute {
-      children: Record<string, unknown>;
+    // Define common event handler type
+    type EventHandler = (event: any) => void;
+    
+    // Define attribute types with no index signature
+    interface DOMAttributes {
+      // Event handlers
+      onClick?: EventHandler;
+      onMount?: () => void;
+      onUnmount?: () => void;
+      onInput?: EventHandler;
+      onChange?: EventHandler;
+      onBlur?: EventHandler;
+      onFocus?: EventHandler;
+      onKeyDown?: EventHandler;
+      onKeyUp?: EventHandler;
+      onSubmit?: EventHandler;
+    }
+    
+    // Define HTML attributes with no index signature
+    interface HTMLAttributes extends DOMAttributes {
+      // Standard attributes
+      className?: string;
+      id?: string;
+      style?: Record<string, string | number>;
+      // Special props
+      children?: any; // Add children property to support JSX children
+      // Form attributes
+      disabled?: boolean;
+      value?: string | number | boolean;
+      type?: string;
+      placeholder?: string;
+      // Link attributes
+      href?: string;
+      target?: string;
+      rel?: string;
+      // Image attributes
+      src?: string;
+      alt?: string;
+      // Misc attributes
+      title?: string;
+      tabIndex?: number;
+      role?: string;
+      // Accessibility
+      'aria-label'?: string;
+      'aria-labelledby'?: string;
+      'aria-describedby'?: string;
+      'aria-hidden'?: boolean | string;
+      // Testing
+      'data-testid'?: string;
+      'data-component'?: string;
+      // SVG-specific attributes
+      xmlns?: string;
+      viewBox?: string;
+      width?: string | number;
+      height?: string | number;
+      fill?: string;
+      stroke?: string;
+      d?: string;
+    }
+    
+    // Define type for any custom attributes
+    type AttributeCollection = HTMLAttributes & { [key: string]: any };
+    
+    interface IntrinsicElements {
+      // Enhanced with all common HTML elements
+      div: AttributeCollection;
+      span: AttributeCollection;
+      a: AttributeCollection;
+      p: AttributeCollection;
+      h1: AttributeCollection;
+      h2: AttributeCollection;
+      h3: AttributeCollection;
+      h4: AttributeCollection;
+      h5: AttributeCollection;
+      h6: AttributeCollection;
+      button: AttributeCollection;
+      input: AttributeCollection;
+      img: AttributeCollection;
+      // Form elements
+      form: AttributeCollection;
+      label: AttributeCollection;
+      select: AttributeCollection;
+      option: AttributeCollection;
+      textarea: AttributeCollection;
+      // Layout elements
+      header: AttributeCollection;
+      footer: AttributeCollection;
+      main: AttributeCollection;
+      section: AttributeCollection;
+      article: AttributeCollection;
+      nav: AttributeCollection;
+      aside: AttributeCollection;
+      // Lists
+      ul: AttributeCollection;
+      ol: AttributeCollection;
+      li: AttributeCollection;
+      dl: AttributeCollection;
+      dt: AttributeCollection;
+      dd: AttributeCollection;
+      // Tables
+      table: AttributeCollection;
+      tr: AttributeCollection;
+      td: AttributeCollection;
+      th: AttributeCollection;
+      thead: AttributeCollection;
+      tbody: AttributeCollection;
+      tfoot: AttributeCollection;
+      // Other common elements
+      code: AttributeCollection;
+      pre: AttributeCollection;
+      strong: AttributeCollection;
+      em: AttributeCollection;
+      hr: AttributeCollection;
+      br: AttributeCollection;
+      // SVG elements for completeness
+      svg: AttributeCollection;
+      path: AttributeCollection;
+      circle: AttributeCollection;
+      rect: AttributeCollection;
     }
   }
 }
