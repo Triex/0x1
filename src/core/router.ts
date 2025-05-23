@@ -58,15 +58,33 @@ export class Router {
     this.suspense = options.suspense || false;
     this.notFoundComponent =
       options.notFoundComponent ||
-      (() => {
-        const element = document.createElement("div");
-        element.className = "0x1-not-found";
-        element.innerHTML = `
-        <h1>Page Not Found</h1>
-        <p>The requested page could not be found.</p>
-        <a href="/">Go Home</a>
-      `;
-        return element;
+      ((props) => {
+        // Create a properly styled not-found component as a fallback
+        const container = document.createElement("div");
+        container.className = "flex flex-col items-center justify-center min-h-screen text-center px-4";
+        
+        const errorCode = document.createElement("h1");
+        errorCode.className = "text-5xl font-bold text-gray-800 dark:text-gray-200 mb-4";
+        errorCode.textContent = "404";
+        container.appendChild(errorCode);
+        
+        const title = document.createElement("h2");
+        title.className = "text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-6";
+        title.textContent = "Page Not Found";
+        container.appendChild(title);
+        
+        const text = document.createElement("p");
+        text.className = "text-gray-600 dark:text-gray-400 mb-8";
+        text.textContent = "The page you are looking for doesn't exist or has been moved.";
+        container.appendChild(text);
+        
+        const link = document.createElement("a");
+        link.href = "/";
+        link.className = "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors";
+        link.textContent = "Back to Home";
+        container.appendChild(link);
+        
+        return container;
       });
 
     // Initialize app directory components if provided
@@ -237,7 +255,7 @@ export class Router {
         let componentFn = route.component;
 
         // Always apply layouts (app directory mode)
-        componentFn = this.applyLayouts(componentFn, params, route.layouts);
+        componentFn = this.applyLayouts(componentFn, route.layouts, params);
 
         // Execute the component function
         const result = componentFn(params);
@@ -844,38 +862,58 @@ private extractParams(route: Route, path: string): RouteParams {
   }
 
   /**
-   * Apply layouts to page components
-   * Supports nested layouts and error boundaries
+   * Apply layouts to the component
+   * @param component The page component to wrap with layouts
+   * @param layouts Array of layout components to apply
+   * @param params Route parameters
+   * @returns A wrapped component function that handles the layout nesting
    */
-  private applyLayouts(
-    component: Component,
-    params: RouteParams = {},
-    layouts?: Component[]
-  ): Component {
-    console.log('[0x1 DEBUG] Applying layouts to component');
-    // Start with the page component
-    let wrappedComponent = component;
+  private applyLayouts(component: Component, layouts: Component[] = [], params: RouteParams = {}): Component {
+    console.log('[0x1 DEBUG] Starting applyLayouts');
+    
+    // If no layouts, just return the component directly
+    if (!layouts || layouts.length === 0 && !this.rootLayout) {
+      console.log('[0x1 DEBUG] No layouts to apply, returning component directly');
+      return component;
+    }
 
-    // If we have specific layouts for this route, apply them in order
+    // We'll start with the page component and wrap it with layouts
+    let wrappedComponent = component;
+    
+    // Apply specific layouts if they exist (from innermost to outermost)
     if (layouts && layouts.length > 0) {
-      console.log(`[0x1 DEBUG] Applying ${layouts.length} route-specific layouts`);
-      // Apply layouts from innermost to outermost (reverse order)
+      console.log(`[0x1 DEBUG] Applying ${layouts.length} specific layouts to component`);
+      
+      // Process layouts from innermost to outermost (parent layouts wrap child layouts)
       for (let i = layouts.length - 1; i >= 0; i--) {
         const currentLayout = layouts[i];
         const prevComponent = wrappedComponent;
-
-        wrappedComponent = () => {
+        
+        console.log(`[0x1 DEBUG] Wrapping with layout ${i}: ${currentLayout.name || 'Anonymous'}`);
+        
+        // Create a new component function that will execute the layout with the inner content
+        wrappedComponent = (props: any = {}) => {
           try {
+            // First render the inner component/page
             console.log(`[0x1 DEBUG] Executing inner component for layout ${i}`);
-            const pageContent = prevComponent(params);
-            console.log(`[0x1 DEBUG] Passing page content to layout ${i}:`, typeof pageContent);
-            return (
-              currentLayout({ children: pageContent, params }) ||
-              document.createDocumentFragment()
-            );
+            const innerContent = prevComponent(props);
+            console.log(`[0x1 DEBUG] Inner content type:`, typeof innerContent);
+            
+            // Then pass it as children to the layout
+            const layoutProps = { ...props, children: innerContent, params };
+            console.log(`[0x1 DEBUG] Passing to layout ${i} with props:`, Object.keys(layoutProps));
+            
+            // Render the layout with the inner content as children
+            return currentLayout(layoutProps) || document.createDocumentFragment();
           } catch (error) {
-            console.error(`Error in layout at position ${i}:`, error);
-            return document.createDocumentFragment();
+            console.error(`[0x1 ERROR] Error in layout ${i}:`, error);
+            // Fall back to showing just the inner content if we can
+            try {
+              return prevComponent(props);
+            } catch (innerError) {
+              console.error(`[0x1 ERROR] Error in inner component:`, innerError);
+              return document.createDocumentFragment();
+            }
           }
         };
       }
@@ -883,31 +921,41 @@ private extractParams(route: Route, path: string): RouteParams {
 
     // Finally, apply the root layout if available
     if (this.rootLayout) {
-      console.log('[0x1 DEBUG] Applying root layout to component');
+      console.log('[0x1 DEBUG] Applying root layout as outermost wrapper');
       const finalComponent = wrappedComponent;
       const rootLayout = this.rootLayout; // Store in local variable to avoid TypeScript null check issues
-      wrappedComponent = () => {
+      
+      wrappedComponent = (props: any = {}) => {
         try {
-          console.log('[0x1 DEBUG] Executing page component before root layout');
-          const pageContent = finalComponent(params);
-          console.log('[0x1 DEBUG] Page content type before passing to layout:', typeof pageContent);
-          if (pageContent instanceof Node) {
-            console.log('[0x1 DEBUG] Page content is a DOM node');
+          console.log('[0x1 DEBUG] Executing inner content before root layout');
+          const innerContent = finalComponent(props);
+          console.log('[0x1 DEBUG] Inner content type before root layout:', typeof innerContent);
+          
+          if (innerContent instanceof Node) {
+            console.log('[0x1 DEBUG] Inner content is a DOM node');
           } else {
-            console.log('[0x1 DEBUG] Page content is NOT a DOM node, it is:', pageContent);
+            console.log('[0x1 DEBUG] Inner content is NOT a DOM node, type:', typeof innerContent);
           }
           
           // Create props with children and params
-          const layoutProps = { children: pageContent, params };
+          const layoutProps = { ...props, children: innerContent, params };
           console.log('[0x1 DEBUG] Passing to root layout with props:', Object.keys(layoutProps));
           
-          return (
-            rootLayout(layoutProps) ||
-            document.createDocumentFragment()
-          );
+          const result = rootLayout(layoutProps);
+          if (!result) {
+            console.error('[0x1 ERROR] Root layout returned null/undefined');
+            return document.createDocumentFragment();
+          }
+          return result;
         } catch (error) {
-          console.error("Error in root layout:", error);
-          return document.createDocumentFragment();
+          console.error('[0x1 ERROR] Error in root layout:', error);
+          // Fall back to showing just the inner content if we can
+          try {
+            return finalComponent(props);
+          } catch (innerError) {
+            console.error('[0x1 ERROR] Error in inner component:', innerError);
+            return document.createDocumentFragment();
+          }
         }
       };
     }

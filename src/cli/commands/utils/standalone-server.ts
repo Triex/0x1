@@ -8,6 +8,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../../utils/logger.js";
+import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from "./css-handler.js";
+
+// Extend Window interface to add our custom properties
+declare global {
+  interface Window {
+    __0x1_debug?: boolean;
+    __0x1_loadComponentStyles?: (path: string) => Promise<void>;
+    process?: any;
+  }
+}
 
 // Path resolution helpers
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -50,19 +60,264 @@ function getMimeType(path: string): string {
  * Default HTML template for the development server
  */
 // Define the HTML template parts to avoid TypeScript parsing issues with template literals
-const HEAD_SECTION = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>0x1 App</title>\n  <link rel="icon" href="/favicon.ico">\n\n  <!-- Process polyfill for browser environment -->\n  <script>\n    window.process = window.process || {\n      env: { NODE_ENV: \'development\' }\n    };\n    console.log(\'[0x1] Running in development mode\', window.location.hostname);\n  </script>\n\n  <!-- Add base styling for Tailwind classes -->\n  <style>\n    /* Base Tailwind utility classes */\n    .p-8 { padding: 2rem; }\n    .max-w-4xl { max-width: 56rem; }\n    .mx-auto { margin-left: auto; margin-right: auto; }\n    .text-center { text-align: center; }\n    .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }\n    .text-xl { font-size: 1.25rem; line-height: 1.75rem; }\n    .font-bold { font-weight: 700; }\n    .mb-6 { margin-bottom: 1.5rem; }\n    .mb-8 { margin-bottom: 2rem; }\n    .text-indigo-600 { color: #4f46e5; }\n    .dark .dark\:text-indigo-400 { color: #818cf8; }\n    .text-gray-800 { color: #1f2937; }\n    .dark .dark\:text-gray-200 { color: #e5e7eb; }\n    .bg-white { background-color: #ffffff; }\n    .dark .dark\:bg-gray-800 { background-color: #1f2937; }\n    .rounded-lg { border-radius: 0.5rem; }\n    .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }\n    .text-2xl { font-size: 1.5rem; line-height: 2rem; }\n    .font-semibold { font-weight: 600; }\n    .mb-4 { margin-bottom: 1rem; }\n    .text-gray-900 { color: #111827; }\n    .dark .dark\:text-white { color: #ffffff; }\n    .flex { display: flex; }\n    .justify-center { justify-content: center; }\n    .items-center { align-items: center; }\n    .gap-4 { gap: 1rem; }\n    .px-4 { padding-left: 1rem; padding-right: 1rem; }\n    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }\n    .bg-red-500 { background-color: #ef4444; }\n    .text-white { color: #ffffff; }\n    .rounded { border-radius: 0.25rem; }\n    .hover\:bg-red-600:hover { background-color: #dc2626; }\n    .transition { transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }\n    .min-w-\[3rem\] { min-width: 3rem; }\n    .text-center { text-align: center; }\n    .bg-green-500 { background-color: #22c55e; }\n    .hover\:bg-green-600:hover { background-color: #16a34a; }\n    .bg-purple-500 { background-color: #a855f7; }\n    .hover\:bg-purple-600:hover { background-color: #9333ea; }\n    /* Dark mode base styles */\n    .dark { color-scheme: dark; }\n    .dark body { background-color: #111827; color: #f3f4f6; }\n  </style>';
+const HEAD_SECTION = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>0x1 Framework</title>\n  <meta name="description" content="0x1 Framework Development Server">\n  <link rel="icon" href="/favicon.ico">\n  <!-- CSS Module Handling -->\n  <script>\n    window.__0x1_loadComponentStyles = async (path) => {\n      try {\n        // Check for .module.css alongside the component\n        const cssPath = path.replace(/\\.js$/, ".module.css");\n        const response = await fetch(cssPath);\n        \n        if (response.ok) {\n          const cssContent = await response.text();\n          const styleId = "style-" + path.replace(/[\\/\\.]/g, "-");\n          \n          // Create or update style element\n          let styleEl = document.getElementById(styleId);\n          if (!styleEl) {\n            styleEl = document.createElement("style");\n            styleEl.id = styleId;\n            document.head.appendChild(styleEl);\n          }\n          \n          styleEl.textContent = cssContent;\n          console.log("[0x1] Loaded CSS for " + path);\n        }\n      } catch (err) {\n        // Silently fail if no CSS found\n      }\n    };\n    \n    // Auto load global CSS\n    fetch("/app/globals.css").then(response => {\n      if (response.ok) {\n        return response.text().then(css => {\n          const globalStyle = document.createElement("style");\n          globalStyle.id = "globals-css";\n          globalStyle.textContent = css;\n          document.head.appendChild(globalStyle);\n          console.log("[0x1] Loaded global CSS");\n        });\n      }\n    }).catch(() => {});\n  </script>\n\n  <!-- Process polyfill for browser environment -->\n  <script>\n    window.process = window.process || {\n      env: { NODE_ENV: \'development\' }\n    };\n    console.log(\'[0x1] Running in development mode\', window.location.hostname);\n    \n    // Apply dark mode based on user preference\n    const darkModePreference = localStorage.getItem(\'0x1-dark-mode\') || localStorage.getItem(\'darkMode\');\n    if (darkModePreference === \'dark\' || darkModePreference === \'enabled\' || \n        (!darkModePreference && window.matchMedia(\'(prefers-color-scheme: dark)\').matches)) {\n      document.documentElement.classList.add(\'dark\');\n    }\n  </script>\n\n  <!-- Add base styling for Tailwind classes -->\n  <style>\n    /* Base Tailwind utility classes */\n    .p-8 { padding: 2rem; }\n    .max-w-4xl { max-width: 56rem; }\n    .mx-auto { margin-left: auto; margin-right: auto; }\n    .text-center { text-align: center; }\n    .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }\n    .text-xl { font-size: 1.25rem; line-height: 1.75rem; }\n    .font-bold { font-weight: 700; }\n    .mb-6 { margin-bottom: 1.5rem; }\n    .mb-8 { margin-bottom: 2rem; }\n    .text-indigo-600 { color: #4f46e5; }\n    .dark .dark\:text-indigo-400 { color: #818cf8; }\n    .text-gray-800 { color: #1f2937; }\n    .dark .dark\:text-gray-200 { color: #e5e7eb; }\n    .bg-white { background-color: #ffffff; }\n    .dark .dark\:bg-gray-800 { background-color: #1f2937; }\n    .rounded-lg { border-radius: 0.5rem; }\n    .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }\n    .text-2xl { font-size: 1.5rem; line-height: 2rem; }\n    .font-semibold { font-weight: 600; }\n    .mb-4 { margin-bottom: 1rem; }\n    .text-gray-900 { color: #111827; }\n    .dark .dark\:text-white { color: #ffffff; }\n    .flex { display: flex; }\n    .justify-center { justify-content: center; }\n    .items-center { align-items: center; }\n    .gap-4 { gap: 1rem; }\n    .px-4 { padding-left: 1rem; padding-right: 1rem; }\n    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }\n    .bg-red-500 { background-color: #ef4444; }\n    .text-white { color: #ffffff; }\n    .rounded { border-radius: 0.25rem; }\n    .hover\:bg-red-600:hover { background-color: #dc2626; }\n    .transition { transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }\n    .min-w-\[3rem\] { min-width: 3rem; }\n    .text-center { text-align: center; }\n    .bg-green-500 { background-color: #22c55e; }\n    .hover\:bg-green-600:hover { background-color: #16a34a; }\n    .bg-purple-500 { background-color: #a855f7; }\n    .hover\:bg-purple-600:hover { background-color: #9333ea; }\n    /* Dark mode base styles */\n    .dark { color-scheme: dark; }\n    .dark body { background-color: #111827; color: #f3f4f6; }\n  </style>';
 
 
 
-const IMPORT_MAP = '\n\n  <script type="importmap">\n  {\n    "imports": {\n      "0x1": "/node_modules/0x1/index.js",\n      "0x1/router": "/0x1/router.js?type=module",\n      "0x1/": "/0x1/"\n    }\n  }\n  </script>';
+const IMPORT_MAP = '\n\n  <script type="importmap">\n  {\n    "imports": {\n      "0x1": "/node_modules/0x1/index.js",\n      "0x1/router": "/0x1/router.js?type=module",\n      "0x1/": "/0x1/",\n      "components/": "/components/",\n      "app/": "/app/",\n      "src/": "/src/"\n    }\n  }\n  </script>';
 
 const STYLES = '\n\n  <!-- Include any stylesheets -->\n  <link rel="stylesheet" href="/styles.css">\n  <link rel="stylesheet" href="/public/styles.css">\n  <link rel="stylesheet" href="/public/styles/tailwind.css">';
 
 const BODY_START = '\n</head>\n<body>\n  <div id="app"></div>\n\n  <!-- Live reload script - using standardized path to avoid duplication -->\n  <script src="/__0x1_live_reload.js"></script>';
 
-const APP_SCRIPT = '\n\n  <!-- App initialization script -->\n  <script type="module">\n    console.log("[0x1 DEBUG] Framework initializing");\n    console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");\n\n    // Import the router and required components\n    import { createRouter } from "0x1/router";\n    \n    console.log("[0x1 DEBUG] Router module loaded successfully");\n\n    // Function to get app components\n    async function fetchComponentModule(path) {\n      try {\n        const response = await fetch(path);\n        if (!response.ok) throw new Error(`Failed to load component: ${path}`);\n        const text = await response.text();\n        \n        // Create a blob with the module content\n        const blob = new Blob([text], { type: "application/javascript" });\n        const url = URL.createObjectURL(blob);\n        \n        // Import the module dynamically\n        return await import(url);\n      } catch (err) {\n        console.error(`[0x1 ERROR] Failed to load component ${path}:`, err);\n        return null;\n      }\n    }\n\n    // Function to initialize app\n    async function initApp() {\n      // Get the app element\n      const appElement = document.getElementById("app");\n      \n      if (!appElement) {\n        console.error("[0x1 ERROR] Could not find app element with id \'app\'. Router initialization failed.");\n        return;\n      }\n      \n      try {\n        // Try to load layout and page components\n        console.log("[0x1 DEBUG] Loading app directory components...");\n        \n        // Load the layout component\n        const layoutModule = await fetchComponentModule("/app/layout.js");\n        const RootLayout = layoutModule?.default;\n        \n        if (RootLayout) {\n          console.log("[0x1 DEBUG] Successfully loaded layout component");\n        } else {\n          console.warn("[0x1 WARN] No layout component found, will use default layout");\n        }\n        \n        // Load the page component\n        const pageModule = await fetchComponentModule("/app/page.js");\n        const Page = pageModule?.default;\n        \n        if (Page) {\n          console.log("[0x1 DEBUG] Successfully loaded page component");\n        } else {\n          console.warn("[0x1 WARN] No page component found, will use default page");\n        }\n\n        // Load the not-found component\n        const notFoundModule = await fetchComponentModule("/app/not-found.js");\n        const NotFound = notFoundModule?.default;\n\n        // Define default fallback components if needed\n        const DefaultLayout = (props) => {\n          const div = document.createElement("div");\n          div.id = "default-layout";\n          // appendChild will be called with the children content\n          return div;\n        };\n        \n        const DefaultPage = (props) => {\n          const div = document.createElement("div");\n          div.className = "p-8 max-w-4xl mx-auto";\n          div.innerHTML = `\n            <div class="text-center">\n              <h1 class="text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400">\n                Welcome to 0x1\n              </h1>\n              <p class="text-xl mb-8 text-gray-800 dark:text-gray-200">\n                The lightning-fast web framework powered by Bun\n              </p>\n\n              <!-- Counter Component Placeholder -->\n              <div class="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">\n                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Counter Component</h2>\n                <div class="flex justify-center items-center gap-4">\n                  <button id="decrement" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">\n                    -\n                  </button>\n                  <span id="count" class="text-2xl font-bold min-w-[3rem] text-center">0</span>\n                  <button id="increment" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">\n                    +\n                  </button>\n                </div>\n              </div>\n\n              <!-- Theme Toggle Component -->\n              <div class="mb-6">\n                <button id="theme-toggle" class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition">\n                  Toggle Dark Mode\n                </button>\n              </div>\n            </div>\n          `;\n          \n          // Add some interactivity to our components\n          setTimeout(() => {\n            const count = div.querySelector("#count");\n            const increment = div.querySelector("#increment");\n            const decrement = div.querySelector("#decrement");\n            const themeToggle = div.querySelector("#theme-toggle");\n            \n            let counter = 0;\n            \n            if (count && increment && decrement) {\n              increment.addEventListener("click", () => {\n                counter++;\n                count.textContent = counter.toString();\n              });\n              \n              decrement.addEventListener("click", () => {\n                counter--;\n                count.textContent = counter.toString();\n              });\n            }\n            \n            if (themeToggle) {\n              themeToggle.addEventListener("click", () => {\n                document.documentElement.classList.toggle("dark");\n                \n                // Save preference\n                const isDark = document.documentElement.classList.contains("dark");\n                localStorage.setItem("darkMode", isDark ? "enabled" : "disabled");\n              });\n              \n              // Apply saved theme preference\n              if (localStorage.getItem("darkMode") === "enabled" ||\n                  (localStorage.getItem("darkMode") === null && \n                   window.matchMedia("(prefers-color-scheme: dark)").matches)) {\n                document.documentElement.classList.add("dark");\n              }\n            }\n          }, 100);\n          \n          return div;\n        };\n\n        // Create the router with available components or fallbacks\n        const router = createRouter({ \n          rootElement: appElement,\n          mode: "history",\n          debug: true,\n          rootLayout: RootLayout || DefaultLayout,\n          notFoundComponent: NotFound || null\n        });\n\n        // Register the home route with proper component\n        router.addRoute("/", Page || DefaultPage);\n\n        console.log("[0x1 DEBUG] Router created, starting initialization");\n        \n        // Initialize the router\n        router.init();\n        console.log("[0x1] Router initialized successfully");\n        \n        // Apply initial styles for dark mode\n        const style = document.createElement("style");\n        style.textContent = `\n          .dark { color-scheme: dark; }\n          .dark body { background-color: #1a1a1a; color: #ffffff; }\n        `;\n        document.head.appendChild(style);\n        \n        // Add navigation event handlers for client-side routing\n        document.addEventListener("click", (e) => {\n          const target = e.target.closest("a");\n          if (target && target.href && target.href.startsWith(window.location.origin) && !target.getAttribute("download") && !target.getAttribute("target")) {\n            e.preventDefault();\n            const url = new URL(target.href);\n            const path = url.pathname;\n            // Only use client-side navigation for internal routes\n            if (path && !path.includes(".")) {\n              history.pushState({}, "", path);\n              router.navigate(path);\n            } else {\n              window.location.href = target.href;\n            }\n          }\n        });\n        \n        // Handle browser back/forward navigation\n        window.addEventListener("popstate", () => {\n          router.navigate(window.location.pathname);\n        });\n      } catch (err) {\n        console.error("[0x1 ERROR] Router initialization failed:", err);\n        appElement.innerHTML = `<div class="p-8 text-center"><h1 class="text-2xl font-bold text-red-600 mb-4">Page Not Found</h1><p class="mb-6">The requested page could not be found.</p><a href="/" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Home</a></div>`;\n      }\n    }\n\n    // Initialize when DOM is ready\n    if (document.readyState === "loading") {\n      document.addEventListener("DOMContentLoaded", initApp);\n    } else {\n      initApp();\n    }\n  </script>';
+const APP_SCRIPT = `
+
+  <!-- App initialization script -->
+  <script type="module">
+    console.log("[0x1 DEBUG] Framework initializing");
+    console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");
+
+    // Import the router and required components
+    import { createRouter } from "0x1/router";
+    
+    console.log("[0x1 DEBUG] Router module loaded successfully");
+
+    // Function to get app components with enhanced import resolution
+    async function fetchComponentModule(path) {
+      try {
+        console.log(\`[0x1 DEBUG] Loading component: \${path}\`);
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(\`Failed to load component: \${path}\`);
+        const text = await response.text();
+        
+        // Pre-process text to fix imports if needed
+        let processedText = text;
+        
+        // Handle relative imports in component files
+        const importRegex = /import\\s+[^"']*["']([^"']*)["'];?/g;
+        const imports = [...text.matchAll(importRegex)];
+        
+        for (const importMatch of imports) {
+          const importPath = importMatch[1];
+          // Log the import being processed
+          console.log(\`[0x1 DEBUG] Processing import: \${importPath} in \${path}\`);
+          
+          // Ensure component imports are properly loaded
+          if (importPath.startsWith('./') || importPath.startsWith('../')) {
+            // This is a relative import - we'll need to resolve it
+            const basePath = path.substring(0, path.lastIndexOf('/'));
+            const resolvedPath = new URL(importPath, new URL(basePath, window.location.href)).pathname;
+            console.log(\`[0x1 DEBUG] Resolved relative import \${importPath} to \${resolvedPath}\`);
+            
+            // Pre-fetch this component to ensure it's available
+            fetch(resolvedPath).catch(e => console.warn(\`[0x1 WARN] Failed to pre-fetch: \${resolvedPath}\`, e));
+          }
+        }
+        
+        // Create a blob with the processed module content
+        const blob = new Blob([processedText], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        
+        // Load CSS for this component if available
+        if (window.__0x1_loadComponentStyles) {
+          await window.__0x1_loadComponentStyles(path);
+        }
+        
+        // Import the module dynamically
+        return await import(url);
+      } catch (err) {
+        console.error(\`[0x1 ERROR] Failed to load component \${path}:\`, err);
+        return null;
+      }
+    }
+
+    // Function to initialize app
+    async function initApp() {
+      // Get the app element
+      const appElement = document.getElementById("app");
+      
+      if (!appElement) {
+        console.error("[0x1 ERROR] Could not find app element with id 'app'. Router initialization failed.");
+        return;
+      }
+      
+      try {
+        // Try to load layout and page components
+        console.log("[0x1 DEBUG] Loading app directory components...");
+        
+        // Load the layout component
+        const layoutModule = await fetchComponentModule("/app/layout.js");
+        const RootLayout = layoutModule?.default;
+        
+        if (RootLayout) {
+          console.log("[0x1 DEBUG] Successfully loaded layout component");
+        } else {
+          console.warn("[0x1 WARN] No layout component found, will use default layout");
+        }
+        
+        // Load the page component
+        const pageModule = await fetchComponentModule("/app/page.js");
+        const Page = pageModule?.default;
+        
+        if (Page) {
+          console.log("[0x1 DEBUG] Successfully loaded page component");
+        } else {
+          console.warn("[0x1 WARN] No page component found, will use default page");
+        }
+
+        // Don't try to load the not-found component directly - let the router handle it
+        // The router has a built-in not-found component that will be used as fallback
+        const NotFound = null; // We'll let the router's built-in handler take care of this
+
+        // Define default fallback components if needed
+        const DefaultLayout = (props) => {
+          const div = document.createElement("div");
+          div.id = "default-layout";
+          // appendChild will be called with the children content
+          return div;
+        };
+        
+        const DefaultPage = (props) => {
+          const div = document.createElement("div");
+          div.className = "p-8 max-w-4xl mx-auto";
+          div.innerHTML = \`
+            <div class="text-center">
+              <h1 class="text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400">
+                Welcome to 0x1
+              </h1>
+              <p class="text-xl mb-8 text-gray-800 dark:text-gray-200">
+                The lightning-fast web framework powered by Bun
+              </p>
+
+              <!-- Counter Component Placeholder -->
+              <div class="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Counter Component</h2>
+                <div class="flex justify-center items-center gap-4">
+                  <button id="decrement" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">
+                    -
+                  </button>
+                  <span id="count" class="text-2xl font-bold min-w-[3rem] text-center">0</span>
+                  <button id="increment" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <!-- Theme Toggle Component -->
+              <div class="mb-6">
+                <button id="theme-toggle" class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition">
+                  Toggle Dark Mode
+                </button>
+              </div>
+            </div>
+          \`;
+          
+          // Add some interactivity to our components
+          setTimeout(() => {
+            const count = div.querySelector("#count");
+            const increment = div.querySelector("#increment");
+            const decrement = div.querySelector("#decrement");
+            const themeToggle = div.querySelector("#theme-toggle");
+            
+            let counter = 0;
+            
+            if (count && increment && decrement) {
+              increment.addEventListener("click", () => {
+                counter++;
+                count.textContent = counter.toString();
+              });
+              
+              decrement.addEventListener("click", () => {
+                counter--;
+                count.textContent = counter.toString();
+              });
+            }
+            
+            if (themeToggle) {
+              themeToggle.addEventListener("click", () => {
+                document.documentElement.classList.toggle("dark");
+                
+                // Save preference
+                const isDark = document.documentElement.classList.contains("dark");
+                localStorage.setItem("darkMode", isDark ? "enabled" : "disabled");
+              });
+              
+              // Apply saved theme preference
+              if (localStorage.getItem("darkMode") === "enabled" ||
+                  (localStorage.getItem("darkMode") === null && 
+                   window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+                document.documentElement.classList.add("dark");
+              }
+            }
+          }, 100);
+          
+          return div;
+        };
+
+        // Create the router with available components or fallbacks
+        const router = createRouter({ 
+          rootElement: appElement,
+          mode: "history",
+          debug: true,
+          rootLayout: RootLayout || DefaultLayout,
+          notFoundComponent: NotFound || null
+        });
+
+        // Register the home route with proper component
+        router.addRoute("/", Page || DefaultPage);
+
+        console.log("[0x1 DEBUG] Router created, starting initialization");
+        
+        // Initialize the router
+        router.init();
+        console.log("[0x1] Router initialized successfully");
+        
+        // Apply initial styles for dark mode
+        const style = document.createElement("style");
+        style.textContent = \`
+          .dark { color-scheme: dark; }
+          .dark body { background-color: #1a1a1a; color: #ffffff; }
+        \`;
+        document.head.appendChild(style);
+        
+        // Add navigation event handlers for client-side routing
+        document.addEventListener("click", (e) => {
+          const target = e.target.closest("a");
+          if (target && target.href && target.href.startsWith(window.location.origin) && !target.getAttribute("download") && !target.getAttribute("target")) {
+            e.preventDefault();
+            const url = new URL(target.href);
+            const path = url.pathname;
+            // Only use client-side navigation for internal routes
+            if (path && !path.includes(".")) {
+              history.pushState({}, "", path);
+              router.navigate(path);
+            } else {
+              window.location.href = target.href;
+            }
+          }
+        });
+        
+        // Handle browser back/forward navigation
+        window.addEventListener("popstate", () => {
+          router.navigate(window.location.pathname);
+        });
+      } catch (err) {
+        console.error("[0x1 ERROR] Router initialization failed:", err);
+        appElement.innerHTML = \`<div class="p-8 text-center"><h1 class="text-2xl font-bold text-red-600 mb-4">Page Not Found</h1><p class="mb-6">The requested page could not be found.</p><a href="/" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Home</a></div>\`;
+      }
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initApp);
+    } else {
+      initApp();
+    }
+  </script>`;
 
 const BODY_END = '\n</body>\n</html>';
+
+// CSS handling for global styles and component-level CSS is now included in the HEAD_SECTION
 
 // Combine all the template parts to create the full HTML
 const INDEX_HTML_TEMPLATE = HEAD_SECTION + IMPORT_MAP + STYLES + BODY_START + APP_SCRIPT + BODY_END;
@@ -203,6 +458,43 @@ interface SSEClient {
 /**
  * Create a standalone server for development
  */
+/**
+ * Loads the default HTML template page from the file system
+ */
+function loadDefaultHtmlTemplate(cssImports: string[] = []): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const templatePath = join(__dirname, "default-page.html");
+  
+  try {
+    let template = readFileSync(templatePath, "utf-8");
+    
+    // Replace CSS_IMPORTS placeholder with actual CSS imports
+    if (cssImports.length > 0) {
+      const cssImportTags = cssImports.map(css => 
+        `<link rel="stylesheet" href="${css}">`
+      ).join('\n    ');
+      template = template.replace("<!-- CSS_IMPORTS -->", cssImportTags);
+    }
+    
+    return template;
+  } catch (error) {
+    logger.error(`Error loading default HTML template: ${error}`);
+    return `<!DOCTYPE html>
+<html>
+<head><title>0x1 Framework</title></head>
+<body><h1>Error loading template</h1></body>
+</html>`;
+  }
+}
+
+/**
+ * Prepares HTML content with injected app component
+ */
+function prepareHtml(htmlTemplate: string, appContent: string): string {
+  // Replace APP_PLACEHOLDER with the actual app content
+  return htmlTemplate.replace("<!-- APP_PLACEHOLDER -->", appContent);
+}
+
 export function createStandaloneServer({
   port,
   host,
@@ -388,164 +680,108 @@ export function createStandaloneServer({
         // Create component type name with proper capitalization
         const componentType = componentNameFromPath.charAt(0).toUpperCase() + componentNameFromPath.slice(1);
         
-        // Generate a super simple component that directly returns DOM elements
-        const jsxComponent = `
-// ==============================================================
-// DIRECT DOM COMPONENT IMPLEMENTATION
-// ==============================================================
+        // Generate a clean, minimal component implementation
+        let jsxComponent = `
+// 0x1 ${componentNameFromPath} component
 
-// Log component loading
-console.log('[0x1 DEBUG] Loading ${componentNameFromPath} component');
-
-// Main component export that returns a DOM element directly
 export default function ${componentType}(props) {
-  console.log('[0x1 DEBUG] Rendering ${componentNameFromPath} component', Object.keys(props));
+`;
+        
+        // Add appropriate implementation based on component type
+        if (componentNameFromPath === 'layout') {
+          jsxComponent += `  // Create a direct DOM element instead of JSX
+  const element = document.createElement('div');
+  element.id = 'root-layout';
+  element.style.display = 'flex';
+  element.style.flexDirection = 'column';
+  element.style.minHeight = '100vh';
+  element.style.backgroundColor = '#f5f5f5';
+  element.style.padding = '20px';
+
+  // Create header
+  const header = document.createElement('header');
+  header.style.backgroundColor = '#ffffff';
+  header.style.padding = '15px';
+  header.style.marginBottom = '20px';
+  header.style.borderRadius = '8px';
+  header.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
   
-  ${componentNameFromPath === 'layout' ? `
-  // Debug output for layout props
-  console.log('[0x1 DEBUG] Layout props:', Object.keys(props));
-  console.log('[0x1 DEBUG] Children type:', props.children ? (Array.isArray(props.children) ? 'array' : typeof props.children) : 'none');
-  if (props.children) {
-    console.log('[0x1 DEBUG] Children value:', props.children);
-  }
+  const headerTitle = document.createElement('h1');
+  headerTitle.textContent = '0x1 Framework';
+  headerTitle.style.margin = '0';
+  headerTitle.style.fontSize = '24px';
+  headerTitle.style.fontWeight = 'bold';
+  headerTitle.style.color = '#4f46e5';
   
-  // Create a layout container element with explicit ID for debugging
-  const container = document.createElement('div');
-  container.id = '0x1-root-layout';
-  container.className = 'layout-container flex flex-col min-h-screen w-full';
-  container.setAttribute('data-component', '${componentNameFromPath}');
+  header.appendChild(headerTitle);
+  element.appendChild(header);
+
+  // Main content container
+  const main = document.createElement('main');
+  main.style.flex = '1';
+  main.style.backgroundColor = '#ffffff';
+  main.style.padding = '20px';
+  main.style.borderRadius = '8px';
+  main.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
   
-  // Create main content area
-  const mainContent = document.createElement('main');
-  mainContent.className = 'flex-grow';
-  mainContent.id = '0x1-main-content';
-  container.appendChild(mainContent);
+  // Add a placeholder if no children
+  const mainContent = document.createElement('div');
+  mainContent.id = 'children-container';
   
-  // Special handling for children with more debugging
-  if (props.children) {
-    console.log('[0x1 DEBUG] Layout has children to append');
-    
-    // Handle both single child and array of children
-    const children = Array.isArray(props.children) ? props.children : [props.children];
-    
-    children.forEach((child, index) => {
-      console.log(\`[0x1 DEBUG] Processing layout child \${index}:\`, child, typeof child);
-      
-      if (child instanceof Node) {
-        console.log('[0x1 DEBUG] Child is a DOM node, appending directly');
-        mainContent.appendChild(child);
-      } else if (typeof child === 'function') {
-        // Handle function components
-        console.log('[0x1 DEBUG] Child is a function, executing');
-        try {
-          const result = child({});
-          if (result instanceof Node) {
-            console.log('[0x1 DEBUG] Function returned a DOM node, appending');
-            mainContent.appendChild(result);
-          } else {
-            console.warn('[0x1 WARN] Function returned non-DOM result:', result);
-            mainContent.appendChild(document.createTextNode(String(result || '[Empty component]')));
-          }
-        } catch (err) {
-          console.error('[0x1 ERROR] Error executing child function:', err);
-          mainContent.appendChild(document.createTextNode('[Component Error]'));
-        }
-      } else if (child && typeof child === 'object') {
-        // This might be a JSX element object
-        console.log('[0x1 DEBUG] Child appears to be an object, trying to render as JSX');
-        try {
-          // Check if it's a JSX element with type
-          if (child.type) {
-            if (typeof child.type === 'function') {
-              // Execute the function component
-              const result = child.type({
-                ...child.props,
-                children: child.children
-              });
-              
-              if (result instanceof Node) {
-                mainContent.appendChild(result);
-              } else {
-                mainContent.appendChild(document.createTextNode(String(result || '[JSX Function Result]')));
-              }
-            } else if (typeof child.type === 'string') {
-              // Create the element
-              const element = document.createElement(child.type);
-              // Add props
-              if (child.props) {
-                Object.entries(child.props).forEach(([key, value]) => {
-                  if (key !== 'children') {
-                    element.setAttribute(key, String(value));
-                  }
-                });
-              }
-              // Add children if any
-              if (child.children) {
-                const childrenArray = Array.isArray(child.children) ? child.children : [child.children];
-                childrenArray.forEach(grandchild => {
-                  if (grandchild instanceof Node) {
-                    element.appendChild(grandchild);
-                  } else {
-                    element.appendChild(document.createTextNode(String(grandchild)));
-                  }
-                });
-              }
-              mainContent.appendChild(element);
-            }
-          } else {
-            // If not a JSX element, try to stringify it
-            mainContent.appendChild(document.createTextNode(JSON.stringify(child)));
-          }
-        } catch (err) {
-          console.error('[0x1 ERROR] Error rendering object child:', err);
-          mainContent.appendChild(document.createTextNode('[Object Rendering Error]'));
-        }
-      } else if (child != null) {
-        console.warn('[0x1 WARN] Non-DOM child in layout, converting to text:', child);
-        mainContent.appendChild(document.createTextNode(String(child)));
-      }
-    });
-  } else {
-    console.log('[0x1 DEBUG] Layout has no children');
-    mainContent.textContent = 'No content provided to layout';
-  }
-  
-  // Add a footer with debugging info
+  main.appendChild(mainContent);
+  element.appendChild(main);
+
+  // Footer
   const footer = document.createElement('footer');
-  footer.className = 'py-4 px-6 text-center text-sm text-gray-500';
-  footer.textContent = '0x1 Framework - Layout Active';
-  container.appendChild(footer);
+  footer.style.backgroundColor = '#ffffff';
+  footer.style.padding = '15px';
+  footer.style.marginTop = '20px';
+  footer.style.borderRadius = '8px';
+  footer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+  footer.style.textAlign = 'center';
+  footer.innerHTML = '<p style="margin: 0; color: #6b7280; font-size: 14px;">&copy; ' + new Date().getFullYear() + ' 0x1 Framework</p>';
   
-  return container;
-  ` : componentNameFromPath === 'page' ? `
-  // Debug page component rendering
-  console.log('[0x1 DEBUG] Page component rendering with props:', Object.keys(props));
+  element.appendChild(footer);
+
+  // Handle children if they exist
+  setTimeout(() => {
+    try {
+      const childrenContainer = document.getElementById('children-container');
+      if (childrenContainer && props.children) {
+        // Clear placeholder content
+        childrenContainer.innerHTML = '';
+        
+        if (typeof props.children === 'string') {
+          childrenContainer.innerHTML = props.children;
+        } else if (props.children instanceof Node) {
+          childrenContainer.appendChild(props.children);
+        }
+      }
+    } catch (err) {
+      console.error('Error rendering children in layout:', err);
+    }
+  }, 0);
   
-  // Create a page container with explicit ID for debugging
+  return element;
+`;
+        } else if (componentNameFromPath === 'page') {
+          jsxComponent += `  // Create page component
   const container = document.createElement('div');
-  container.id = '0x1-page-component';
-  container.className = 'p-8 max-w-4xl mx-auto text-center';
-  container.setAttribute('data-component', '${componentNameFromPath}');
+  container.className = 'p-8 max-w-4xl mx-auto';
   
-  // Add debug information at the top of the page
-  const debugInfo = document.createElement('div');
-  debugInfo.className = 'bg-blue-50 p-3 mb-6 rounded text-xs text-blue-800 font-mono';
-  debugInfo.textContent = '0x1 Page Component Active';
-  container.appendChild(debugInfo);
-  
-  // Add page title
+  // Add title
   const title = document.createElement('h1');
   title.className = 'text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400';
   title.textContent = 'Welcome to 0x1';
   container.appendChild(title);
   
-  // Add page subtitle
+  // Add subtitle
   const subtitle = document.createElement('p');
   subtitle.className = 'text-xl mb-8 text-gray-800 dark:text-gray-200';
   subtitle.textContent = 'The lightning-fast web framework powered by Bun';
   container.appendChild(subtitle);
   
-  // Add getting started section
+  // Add counter demo
   const card = document.createElement('div');
   card.className = 'mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md';
   
@@ -559,28 +795,25 @@ export default function ${componentType}(props) {
   cardText.textContent = 'Edit app/page.tsx to customize this page';
   card.appendChild(cardText);
   
-  // Add counter component
-  const counterSection = document.createElement('div');
-  counterSection.className = 'flex justify-center items-center gap-4 mt-4';
+  // Counter component
+  const counter = document.createElement('div');
+  counter.className = 'flex justify-center items-center gap-4 mt-4';
   
   const decrementBtn = document.createElement('button');
   decrementBtn.className = 'px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition';
   decrementBtn.textContent = '-';
-  counterSection.appendChild(decrementBtn);
   
   const countDisplay = document.createElement('span');
   countDisplay.className = 'text-2xl font-bold min-w-[3rem] text-center';
   countDisplay.textContent = '0';
-  counterSection.appendChild(countDisplay);
   
   const incrementBtn = document.createElement('button');
   incrementBtn.className = 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition';
   incrementBtn.textContent = '+';
-  counterSection.appendChild(incrementBtn);
   
-  card.appendChild(counterSection);
+  counter.append(decrementBtn, countDisplay, incrementBtn);
   
-  // Add event listeners for counter buttons
+  // Add counter functionality
   let count = 0;
   decrementBtn.addEventListener('click', () => {
     count--;
@@ -592,137 +825,84 @@ export default function ${componentType}(props) {
     countDisplay.textContent = count.toString();
   });
   
+  card.appendChild(counter);
   container.appendChild(card);
   
-  console.log('[0x1 DEBUG] Page component created DOM element:', container);
   return container;
-  ` : componentNameFromPath === 'not-found' ? `
-  // Create a not-found component
-  const notFoundElement = document.createElement('div');
-  notFoundElement.id = '0x1-not-found-component';
-  notFoundElement.className = 'not-found-container p-8 max-w-4xl mx-auto text-center';
-  notFoundElement.setAttribute('data-component', '${componentNameFromPath}');
+`;
+        } else if (componentNameFromPath === 'not-found') {
+          jsxComponent += `  // Create a simple not-found component that will definitely parse correctly
+  const container = document.createElement('div');
+  container.style.padding = '2rem';
+  container.style.textAlign = 'center';
+  container.style.maxWidth = '600px';
+  container.style.margin = '0 auto';
+  container.style.display = 'flex';
+  container.style.flexDirection = 'column';
+  container.style.alignItems = 'center';
+  container.style.justifyContent = 'center';
+  container.style.minHeight = '70vh';
   
-  // Add a heading
-  const heading = document.createElement('h1');
-  heading.className = 'text-4xl font-bold text-red-500 mb-4';
-  heading.textContent = '404 - Not Found';
-  notFoundElement.appendChild(heading);
+  const errorCode = document.createElement('h1');
+  errorCode.style.fontSize = '4rem';
+  errorCode.style.fontWeight = 'bold';
+  errorCode.style.marginBottom = '1rem';
+  errorCode.style.color = '#4b5563';
+  errorCode.textContent = '404';
+  container.appendChild(errorCode);
   
-  // Add a description
-  const description = document.createElement('p');
-  description.className = 'text-xl mb-6 text-gray-600';
-  description.textContent = 'The page you are looking for does not exist.';
-  notFoundElement.appendChild(description);
+  const title = document.createElement('h2');
+  title.style.fontSize = '1.5rem';
+  title.style.fontWeight = '600';
+  title.style.marginBottom = '1.5rem';
+  title.style.color = '#374151';
+  title.textContent = 'Page Not Found';
+  container.appendChild(title);
   
-  // Add a back link
-  const backLink = document.createElement('a');
-  backLink.href = '/';
-  backLink.className = 'inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors';
-  backLink.textContent = 'Return to Home';
-  notFoundElement.appendChild(backLink);
+  const text = document.createElement('p');
+  text.style.marginBottom = '2rem';
+  text.style.color = '#6b7280';
+  text.textContent = 'The page you are looking for does not exist or has been moved.';
+  container.appendChild(text);
   
-  // Add debug info
-  const debugInfo = document.createElement('div');
-  debugInfo.className = 'mt-8 text-sm text-gray-500';
-  debugInfo.textContent = 'This is the 0x1 framework built-in 404 component';
-  notFoundElement.appendChild(debugInfo);
+  const link = document.createElement('a');
+  link.href = '/';
+  link.style.backgroundColor = '#3b82f6';
+  link.style.color = 'white';
+  link.style.padding = '0.5rem 1rem';
+  link.style.borderRadius = '0.25rem';
+  link.style.textDecoration = 'none';
+  link.textContent = 'Back to Home';
+  container.appendChild(link);
   
-  return notFoundElement;
-  ` : componentNameFromPath === 'error' ? `
-  // Create an error component
-  const errorElement = document.createElement('div');
-  errorElement.id = '0x1-error-component';
-  errorElement.className = 'error-container p-8 max-w-4xl mx-auto bg-red-50 rounded-lg';
-  errorElement.setAttribute('data-component', '${componentNameFromPath}');
+  return container;
+`;
+        } else if (componentNameFromPath === 'error') {
+          jsxComponent += `  // Create error component
+  const container = document.createElement('div');
+  container.className = 'p-8 max-w-4xl mx-auto bg-red-50 rounded-lg';
   
-  // Add a heading
-  const heading = document.createElement('h1');
-  heading.className = 'text-3xl font-bold text-red-600 mb-4 text-center';
-  heading.textContent = 'Something went wrong';
-  errorElement.appendChild(heading);
+  const title = document.createElement('h1');
+  title.className = 'text-3xl font-bold text-red-600 mb-4 text-center';
+  title.textContent = 'Something went wrong';
+  container.appendChild(title);
   
-  // Add error details if provided
-  if (props.error) {
-    const errorDetails = document.createElement('div');
-    errorDetails.className = 'error-details bg-white p-6 rounded-md border border-red-300 mb-6 mx-auto max-w-lg overflow-auto';
-    
-    const errorMessage = document.createElement('p');
-    errorMessage.className = 'font-mono text-base text-red-800 mb-3';
-    errorMessage.textContent = props.error.message || 'Unknown error';
-    errorDetails.appendChild(errorMessage);
-    
-    if (props.error.stack) {
-      const errorStack = document.createElement('pre');
-      errorStack.className = 'mt-2 p-4 bg-gray-50 rounded-md text-xs text-gray-600 text-left overflow-auto max-h-64';
-      errorStack.textContent = props.error.stack;
-      errorDetails.appendChild(errorStack);
-    }
-    
-    errorElement.appendChild(errorDetails);
-  } else {
-    // Generic error message when no specific error is provided
-    const genericMessage = document.createElement('p');
-    genericMessage.className = 'text-center mb-6 text-gray-700';
-    genericMessage.textContent = 'An unexpected error occurred while rendering this page.';
-    errorElement.appendChild(genericMessage);
-  }
+  // Add error message
+  const message = document.createElement('p');
+  message.className = 'text-gray-700 mb-4';
+  message.textContent = props.error || 'An unexpected error occurred';
+  container.appendChild(message);
   
-  // Add buttons container
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'flex justify-center space-x-4';
+  // Add back button
+  const backButton = document.createElement('a');
+  backButton.href = '/';
+  backButton.className = 'inline-block px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600';
+  backButton.textContent = 'Back to Home';
+  container.appendChild(backButton);
   
-  // Add a retry button
-  const retryButton = document.createElement('button');
-  retryButton.className = 'px-5 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors';
-  retryButton.textContent = 'Try Again';
-  retryButton.onclick = () => {
-    window.location.reload();
-  };
-  buttonContainer.appendChild(retryButton);
-  
-  // Add a go home button
-  const homeButton = document.createElement('button');
-  homeButton.className = 'px-5 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors';
-  homeButton.textContent = 'Go Home';
-  homeButton.onclick = () => {
-    window.location.href = '/';
-  };
-  buttonContainer.appendChild(homeButton);
-  
-  errorElement.appendChild(buttonContainer);
-  
-  // Add a debug note
-  const debugNote = document.createElement('div');
-  debugNote.className = 'mt-8 text-center text-sm text-gray-500';
-  debugNote.textContent = '0x1 Framework - Error Boundary Component';
-  errorElement.appendChild(debugNote);
-  
-  return errorElement;
-  ` : `
-  // Fallback component for unknown types
-  const fallbackElement = document.createElement('div');
-  fallbackElement.className = 'fallback-component p-4 border-2 border-yellow-400 bg-yellow-50';
-  fallbackElement.setAttribute('data-component', '${componentNameFromPath}');
-  
-  const heading = document.createElement('h2');
-  heading.className = 'text-xl font-bold text-yellow-700';
-  heading.textContent = \`Unknown Component Type: ${componentNameFromPath}\`;
-  fallbackElement.appendChild(heading);
-  
-  const helpText = document.createElement('p');
-  helpText.className = 'mt-2 text-gray-600';
-  helpText.textContent = 'This is a fallback rendering for an unknown component type.';
-  fallbackElement.appendChild(helpText);
-  
-  return fallbackElement;
-  `}
-}
-
-// Enable browser debugging
-window.__0x1_debug = true;
-console.log('[0x1 DEBUG] Component registered:', '${componentNameFromPath}');
-        `;
+  return container;
+`;
+        }
         
         // Check if there's a corresponding component file in the app directory
         const possibleComponentPaths = [
@@ -733,13 +913,19 @@ console.log('[0x1 DEBUG] Component registered:', '${componentNameFromPath}');
         ];
         
         // Check if any of the possible component paths exist
-        const componentPath = possibleComponentPaths.find(path => existsSync(path));
+        const componentPath = possibleComponentPaths.find(path => existsSync(path)) || null;
         
-        // We already have componentType defined above, so we'll reuse it here
+        // Complete the component definition
+        jsxComponent += '}';
         
         // Log component being served with pretty formatting
-        logRequestStatus(200, reqPath, `${componentType} component${componentPath ? ` from ${componentPath.replace(projectPath, '')}` : ' (generated stub)'}`);
+        let sourcePath = ' (generated stub)';
+        if (componentPath !== null && typeof componentPath === 'string') {
+          sourcePath = ` from ${componentPath.replace(projectPath, '')}`;
+        }
+        logRequestStatus(200, reqPath, `${componentType} component${sourcePath}`);
         
+        // Return the complete component code
         return new Response(jsxComponent, {
           status: 200,
           headers: {
@@ -998,8 +1184,38 @@ console.log('[0x1 DEBUG] Component registered:', '${componentNameFromPath}');
         });
       }
       
+      // Handle CSS module JS mapping requests (for importing CSS modules in components)
+      if (isCssModuleJsRequest(reqPath)) {
+        const cssModuleScriptResult = generateCssModuleScript(reqPath, projectPath);
+        if (cssModuleScriptResult) {
+          logger.info(`200 ${reqPath} (CSS Module JS Mapping)`);
+          return new Response(cssModuleScriptResult.content, {
+            status: 200,
+            headers: {
+              "Content-Type": cssModuleScriptResult.contentType,
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
+      }
+      
       // Special handling for CSS files
       if (reqPath === "/styles.css" || reqPath.endsWith(".css")) {
+        // For module.css files, process them with scoped classnames
+        if (reqPath.includes(".module.css")) {
+          const cssResult = processCssFile(reqPath.slice(1), projectPath); // Remove leading /
+          if (cssResult) {
+            logger.info(`200 ${reqPath} (CSS Module)`);
+            return new Response(cssResult.content, {
+              status: 200,
+              headers: {
+                "Content-Type": cssResult.contentType,
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          }
+        }
+        
         // Prioritized list of possible CSS paths
         let possibleCSSPaths = [];
         

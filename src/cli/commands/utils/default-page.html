@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 Framework</title>
+  <style>
+    :root {
+      --background-color: #ffffff;
+      --text-color: #333333;
+      --accent-color: #0070f3;
+      --secondary-color: #f0f0f0;
+      --border-color: #eaeaea;
+      --error-color: #ff0000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background-color: #111111;
+        --text-color: #f0f0f0;
+        --accent-color: #0095ff;
+        --secondary-color: #222222;
+        --border-color: #333333;
+        --error-color: #ff6b6b;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-color);
+      background: var(--background-color);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      max-width: 800px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      background: linear-gradient(45deg, var(--accent-color), #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: var(--accent-color);
+    }
+
+    p {
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 3rem;
+      font-weight: 800;
+      margin-bottom: 1.5rem;
+      color: var(--accent-color);
+      background: linear-gradient(45deg, var(--accent-color), #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .card {
+      background: var(--secondary-color);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      width: 100%;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border-color);
+    }
+
+    .counter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #0051a8;
+    }
+
+    a {
+      color: var(--accent-color);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .links {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: #888;
+    }
+
+    code {
+      font-family: monospace;
+      background: var(--secondary-color);
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.75rem;
+      }
+      .card {
+        padding: 1rem;
+      }
+    }
+  </style>
+  <!-- CSS_IMPORTS -->
+</head>
+<body>
+  <main>
+    <div class="logo">0x1</div>
+    <h1>Welcome to 0x1 Framework</h1>
+    <p>The lightning fast web framework powered by Bun</p>
+    
+    <div class="card">
+      <h2>Counter Component Placeholder</h2>
+      <div class="counter">
+        <button id="decrement">-</button>
+        <span id="count">0</span>
+        <button id="increment">+</button>
+      </div>
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          const count = document.getElementById('count');
+          const increment = document.getElementById('increment');
+          const decrement = document.getElementById('decrement');
+          
+          let counter = 0;
+          
+          increment.addEventListener('click', () => {
+            counter++;
+            count.textContent = counter;
+          });
+          
+          decrement.addEventListener('click', () => {
+            counter--;
+            count.textContent = counter;
+          });
+        });
+      </script>
+    </div>
+    
+    <div class="links">
+      <a href="https://bun.sh" target="_blank" rel="noopener noreferrer">Bun Documentation</a>
+      <a href="https://github.com/triex/0x1" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+    </div>
+  </main>
+  
+  <footer>
+    <p>© 2025 0x1 Framework - Built with ❤️ using Bun</p>
+  </footer>
+  
+  <!-- APP_PLACEHOLDER -->
+  
+  <script>
+    // This script will be replaced with the actual application code
+    console.log('0x1 Framework initialized');
+  </script>
+</body>
+</html>
