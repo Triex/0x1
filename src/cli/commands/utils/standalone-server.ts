@@ -880,18 +880,63 @@ export function createStandaloneServer({
                   target: 'browser'
                 });
                 
-                // Transpile the source code directly
-                const transpiledCode = transpiler.transformSync(sourceCode);
-
+                let modifiedSource = sourceCode;
+                
+                // Handle layout component with globals.css import
+                if (componentPath.endsWith('/layout.tsx') || componentPath.endsWith('/layout.jsx')) {
+                  // First, check if it imports globals.css
+                  if (sourceCode.includes('import \'./globals.css\'') || sourceCode.includes('import "./globals.css"')) {
+                    logger.debug(`Found globals.css import in ${componentPath}, applying special handling`);
+                    
+                    // Replace the import with a special loader comment
+                    modifiedSource = modifiedSource.replace(
+                      /import\s+['"]\.\/globals\.css['"]\s*;?/g, 
+                      `// globals.css is handled specially
+// This dynamic loader replaces the static import
+;(async () => {
+  try {
+    const css = await fetch("/app/globals.css").then(r => r.text());
+    if (css) {
+      const style = document.createElement("style");
+      style.textContent = css;
+      document.head.appendChild(style);
+      console.log('[0x1] Loaded global CSS');
+    }
+  } catch (err) {
+    console.error('[0x1] Failed to load globals.css', err);
+  }
+})();`
+                    );
+                  }
+                }
+                
+                // Transpile the modified source code directly
+                const transpiledCode = transpiler.transformSync(modifiedSource);
+                
                 // Process the transpiled code to fix import paths
                 const processedCode = transpiledCode
-                  // Fix relative CSS imports
-                  .replace(/from\s+["']\.\/([^"']+\.css)["']/g, 'from "app/$1"')
-                  .replace(/import\(["']\.\/([^"']+)["']\)/g, 'import("app/$1")')
-                  .replace(/import\(["']\.\.\/([^"']+)["']\)/g, 'import("$1")')
-                  // Special handling for CSS imports
-                  .replace(/import\s+["'](\.\/.*?\.css)["']/g, 'await fetch("app/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
-                  .replace(/import\s+["'](\.\.\/(.*?\.css))["']/g, 'await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })');
+                  // Handle React/JSX runtime imports
+                  .replace(/from\s+["']react["']/g, 'from "react"')
+                  .replace(/from\s+["']react\/jsx-runtime["']/g, 'from "react/jsx-runtime"')
+                  .replace(/from\s+["']react\/jsx-dev-runtime["']/g, 'from "react/jsx-dev-runtime"')
+                  
+                  // Specifically handle globals.css first (this is the most common case)
+                  .replace(/import\s+["']\.\/(globals\.css)["']/g, 'await fetch("app/globals.css").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+                  .replace(/import\s+["']\.\/globals\.css["'];?/g, 'await fetch("app/globals.css").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+                  
+                  // Handle other CSS imports
+                  .replace(/import\s+["'](\.\/.+?\.css)["']/g, 'await fetch("app/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+                  .replace(/import\s+["'](\.\.\/.+?\.css)["']/g, 'await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+                  
+                  // Fix relative imports - IMPORTANT: Don't add components/ prefix to ../components paths
+                  .replace(/from\s+["']\.\.\/components\/(.*?)["']/g, 'from "components/$1"')
+                  .replace(/from\s+["']\.\.\/(.+?)["']/g, 'from "$1"')
+                  .replace(/from\s+["']\.\/(.*?)["']/g, 'from "app/$1"')
+                  
+                  // Fix dynamic imports
+                  .replace(/import\(["']\.\.\/components\/(.*?)["']\)/g, 'import("components/$1")')
+                  .replace(/import\(["']\.\.\/(.+?)["']\)/g, 'import("$1")')
+                  .replace(/import\(["']\.\/(.*?)["']\)/g, 'import("app/$1")');
                 
                 // Add React-compatible runtime for proper rendering
                 const finalCode = `
@@ -1134,7 +1179,7 @@ export default {
       // Handle JSX runtime compatibility (both regular and dev runtime)
       if (reqPath === "/__0x1_jsx_runtime.js" || reqPath === "/__0x1_jsx_dev_runtime.js") {
         logger.debug(`Serving JSX runtime: ${reqPath}`);
-        const jsxRuntime = `
+        let jsxRuntime = `
 // JSX Runtime compatibility shim
 export function jsx(type, props, key) {
   return { type, props, key };
@@ -1145,7 +1190,56 @@ export function jsxs(type, props, key) {
 }
 
 export const Fragment = Symbol('Fragment');
-        `;
+`;
+
+        // Add jsxDEV for development builds
+        if (reqPath === "/__0x1_jsx_dev_runtime.js") {
+          jsxRuntime += `
+// Development specific exports
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  return { type, props, key, source, self };
+}
+
+// Handle dynamic jsxDEV hash variants that Bun's transpiler generates
+// First, define some known hash patterns we've observed
+globalThis.jsxDEV_7x81h0kn = jsxDEV;
+globalThis.jsxDEV_8hrpqm9z = jsxDEV;
+globalThis.jsxDEV_9hf76kl2 = jsxDEV;
+
+// Dynamic handler for any other hashed identifiers
+(() => {
+  // When the page loads, scan for any jsxDEV_* patterns and map them
+  setTimeout(() => {
+    try {
+      // Get all scripts in the document
+      const scripts = document.querySelectorAll('script');
+      let allScriptContent = '';
+      scripts.forEach(script => {
+        if (script.textContent) {
+          allScriptContent += script.textContent;
+        }
+      });
+      
+      // Find all jsxDEV_* identifiers
+      const jsxDEVPattern = /jsxDEV_[a-z0-9]{7,8}/g;
+      const matches = allScriptContent.match(jsxDEVPattern) || [];
+      const uniqueMatches = [...new Set(matches)];
+      
+      // Define each hashed function to point to our jsxDEV implementation
+      uniqueMatches.forEach(id => {
+        if (!globalThis[id]) {
+          console.log('[0x1] Auto-mapping JSX identifier:', id);
+          globalThis[id] = jsxDEV;
+        }
+      });
+    } catch (err) {
+      console.error('[0x1] Error setting up dynamic JSX handling:', err);
+    }
+  }, 0);
+})();
+`;
+        }
+        
         return new Response(jsxRuntime, {
           status: 200,
           headers: {
@@ -1154,6 +1248,7 @@ export const Fragment = Symbol('Fragment');
           }
         });
       }
+
       
       // Handle Server-Sent Events endpoint for live reload
       if (reqPath === "/__0x1_live_reload") {
@@ -1570,24 +1665,25 @@ export const Fragment = Symbol('Fragment');
           const transpiledCode = transpiler.transformSync(sourceCode);
 
           // Process the transpiled code to fix import paths
-          const processedCode = transpiledCode
-            // Fix relative CSS imports
-            .replace(/from\s+["']\.\/([^"']+\.css)["']/g, 'from "app/$1"')
-            .replace(/from\s+["']\.\.\/([^"']+\.css)["']/g, 'from "$1"')
-            // Fix relative component imports
-            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "components/$1"')
-            .replace(/from\s+["']components\/([^"']+)["']/g, 'from "components/$1"')
-            // Fix any other relative imports
-            .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "app/$1"')
-            .replace(/from\s+["']\.\.\/([^"']+)["']/g, 'from "$1"')
-            // Handle import() calls with the same patterns
-            .replace(/import\(["']\.\/([^"']+\.css)["']\)/g, 'import("app/$1")')
-            .replace(/import\(["']\.\.\/([^"']+\.css)["']\)/g, 'import("$1")')
-            .replace(/import\(["']\.\/([^"']+)["']\)/g, 'import("app/$1")')
-            .replace(/import\(["']\.\.\/([^"']+)["']\)/g, 'import("$1")')
-            // Special handling for CSS imports
-            .replace(/import\s+["'](\.\/.*?\.css)["']/g, 'await fetch("app/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
-            .replace(/import\s+["'](\.\.\/.*?\.css)["']/g, 'await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })');
+const processedCode = transpiledCode
+  // Handle React/JSX runtime imports
+  .replace(/from\s+["']react["']/g, 'from "react"')
+  .replace(/from\s+["']react\/jsx-runtime["']/g, 'from "react/jsx-runtime"')
+  .replace(/from\s+["']react\/jsx-dev-runtime["']/g, 'from "react/jsx-dev-runtime"')
+  
+  // Handle CSS imports first - we'll convert these to fetch calls
+  .replace(/import\s+["'](\.\/.*?\.css)["']/g, 'const __css_module = await fetch("components/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); return {}; })')
+  .replace(/import\s+["'](\.\.\/.*?\.css)["']/g, 'const __css_module = await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); return {}; })')
+  
+  // Fix relative imports - IMPORTANT: Don't add extra components/ prefix
+  .replace(/from\s+["']\.\.\/components\/(.*?)["']/g, 'from "components/$1"')
+  .replace(/from\s+["']\.\.\/(.+?)["']/g, 'from "$1"')
+  .replace(/from\s+["']\.\/(.*?)["']/g, 'from "components/$1"')
+  
+  // Fix dynamic imports
+  .replace(/import\(["']\.\.\/components\/(.*?)["']\)/g, 'import("components/$1")')
+  .replace(/import\(["']\.\.\/(.+?)["']\)/g, 'import("$1")')
+  .replace(/import\(["']\.\/(.*?)["']\)/g, 'import("components/$1")');
       
       // Process imports for better compatibility
       const importRegex = /import\s+.*?['"]([^'"]+)['"]/g;
