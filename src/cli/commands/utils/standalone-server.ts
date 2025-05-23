@@ -1180,16 +1180,114 @@ export default {
       if (reqPath === "/__0x1_jsx_runtime.js" || reqPath === "/__0x1_jsx_dev_runtime.js") {
         logger.debug(`Serving JSX runtime: ${reqPath}`);
         let jsxRuntime = `
-// JSX Runtime compatibility shim
+// JSX Runtime compatibility shim - Enhanced version that actually creates DOM elements
+function createElementFromJSX(type, props = {}, ...children) {
+  try {
+    // Handle functional components
+    if (typeof type === 'function') {
+      // Call the function with props and children
+      const result = type({ ...props, children: children.length === 0 ? null : children.length === 1 ? children[0] : children });
+      
+      // If the result is a DOM node, return it directly
+      if (result instanceof Node) {
+        return result;
+      }
+      
+      // Otherwise, recursively create elements from the result
+      return createElementFromJSX(result.type, result.props, ...(result.props?.children ? [result.props.children].flat() : []));
+    }
+    
+    // Handle Fragment
+    if (type === Symbol.for('Fragment') || type === Symbol('Fragment') || type === 'Fragment') {
+      const fragment = document.createDocumentFragment();
+      children.flat().forEach(child => {
+        if (child instanceof Node) {
+          fragment.appendChild(child);
+        } else if (child !== null && child !== undefined) {
+          fragment.appendChild(document.createTextNode(String(child)));
+        }
+      });
+      return fragment;
+    }
+    
+    // Handle HTML elements
+    const element = document.createElement(type);
+    
+    // Add attributes/props
+    if (props) {
+      Object.entries(props).forEach(([key, value]) => {
+        if (key === 'className') {
+          element.className = value;
+        } else if (key === 'style' && typeof value === 'object') {
+          Object.assign(element.style, value);
+        } else if (key === 'dangerouslySetInnerHTML' && value.__html) {
+          element.innerHTML = value.__html;
+        } else if (key.startsWith('on') && typeof value === 'function') {
+          const eventName = key.substring(2).toLowerCase();
+          element.addEventListener(eventName, value);
+        } else if (key !== 'children' && value !== null && value !== undefined) {
+          element.setAttribute(key, String(value));
+        }
+      });
+    }
+    
+    // Add children if not using dangerouslySetInnerHTML
+    if (!props || !props.dangerouslySetInnerHTML) {
+      // Get children from props.children and/or direct children args
+      const allChildren = [];
+      if (props && props.children) {
+        allChildren.push(...[props.children].flat());
+      }
+      if (children.length > 0) {
+        allChildren.push(...children.flat());
+      }
+      
+      // Append children to the element
+      allChildren.forEach(child => {
+        if (child === null || child === undefined) {
+          return;
+        } else if (child instanceof Node) {
+          element.appendChild(child);
+        } else if (typeof child === 'object' && 'type' in child && 'props' in child) {
+          // This is a JSX element, recursively create and append it
+          const childElement = createElementFromJSX(child.type, child.props);
+          if (childElement) element.appendChild(childElement);
+        } else {
+          // Convert primitive values to text nodes
+          element.appendChild(document.createTextNode(String(child)));
+        }
+      });
+    }
+    
+    return element;
+  } catch (error) {
+    console.error('Error in createElementFromJSX:', error);
+    const errorElement = document.createElement('div');
+    errorElement.className = '0x1-jsx-error';
+    errorElement.textContent = 'Error rendering component: ' + (error instanceof Error ? error.message : String(error));
+    errorElement.style.color = 'red';
+    errorElement.style.padding = '10px';
+    errorElement.style.margin = '10px 0';
+    errorElement.style.border = '1px solid red';
+    errorElement.style.borderRadius = '4px';
+    return errorElement;
+  }
+}
+
 export function jsx(type, props, key) {
-  return { type, props, key };
+  // If props contains children, extract and pass as arguments
+  const { children, ...restProps } = props || {};
+  if (children !== undefined) {
+    return createElementFromJSX(type, restProps, children);
+  }
+  return createElementFromJSX(type, restProps);
 }
 
 export function jsxs(type, props, key) {
   return jsx(type, props, key);
 }
 
-export const Fragment = Symbol('Fragment');
+export const Fragment = Symbol.for('Fragment');
 `;
 
         // Add jsxDEV for development builds
@@ -1197,7 +1295,12 @@ export const Fragment = Symbol('Fragment');
           jsxRuntime += `
 // Development specific exports
 export function jsxDEV(type, props, key, isStaticChildren, source, self) {
-  return { type, props, key, source, self };
+  // Same implementation as jsx for our DOM-based renderer
+  const { children, ...restProps } = props || {};
+  if (children !== undefined) {
+    return createElementFromJSX(type, restProps, children);
+  }
+  return createElementFromJSX(type, restProps);
 }
 
 // Handle dynamic jsxDEV hash variants that Bun's transpiler generates
