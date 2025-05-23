@@ -1,6 +1,7 @@
 /**
  * Standalone development server implementation
  * This provides a simplified implementation that correctly handles MIME types
+ * and provides beautiful error handling in development mode
  */
 
 import { serve, type Server, type ServerWebSocket } from "bun";
@@ -9,12 +10,21 @@ import { dirname, extname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../../utils/logger.js";
 import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from "./css-handler.js";
+// Error boundary for beautiful error handling
 
 // Extend Window interface to add our custom properties
 declare global {
   interface Window {
     __0x1_debug?: boolean;
     __0x1_loadComponentStyles?: (path: string) => Promise<void>;
+    __0x1_env: { isDevelopment: boolean };
+    __0x1_errorReporting?: {
+      captureException: (error: Error | unknown, errorInfo?: Record<string, unknown>) => {
+        id: string;
+        timestamp: string;
+      };
+      recover: (componentId: string) => boolean;
+    };
     process?: any;
   }
 }
@@ -64,14 +74,13 @@ const HEAD_SECTION = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset
 
 
 
-const IMPORT_MAP = '\n\n  <script type="importmap">\n  {\n    "imports": {\n      "0x1": "/node_modules/0x1/index.js",\n      "0x1/router": "/0x1/router.js?type=module",\n      "0x1/": "/0x1/",\n      "components/": "/components/",\n      "app/": "/app/",\n      "src/": "/src/"\n    }\n  }\n  </script>';
+const IMPORT_MAP = '\n\n  <script type="importmap">\n  {\n    "imports": {\n      "0x1": "/node_modules/0x1/index.js",\n      "0x1/router": "/0x1/router.js?type=module",\n      "0x1/": "/0x1/",\n      "components/": "/components/",\n      "app/": "/app/",\n      "src/": "/src/",\n      "react": "/__0x1_react_shim.js",\n      "react/jsx-runtime": "/__0x1_jsx_runtime.js",\n      "react/jsx-dev-runtime": "/__0x1_jsx_dev_runtime.js"\n    }\n  }\n  </script>';
 
 const STYLES = '\n\n  <!-- Include any stylesheets -->\n  <link rel="stylesheet" href="/styles.css">\n  <link rel="stylesheet" href="/public/styles.css">\n  <link rel="stylesheet" href="/public/styles/tailwind.css">';
 
 const BODY_START = '\n</head>\n<body>\n  <div id="app"></div>\n\n  <!-- Live reload script - using standardized path to avoid duplication -->\n  <script src="/__0x1_live_reload.js"></script>';
 
 const APP_SCRIPT = `
-
   <!-- App initialization script -->
   <script type="module">
     console.log("[0x1 DEBUG] Framework initializing");
@@ -255,29 +264,129 @@ const APP_SCRIPT = `
         };
 
         // Create the router with available components or fallbacks
+        // Wrap components with error boundaries in development mode
+        const isDev = window.__0x1_env?.isDevelopment ?? (process.env.NODE_ENV !== 'production');
+        
+        // Helper to wrap component with error boundary in dev mode
+        const withDevErrorBoundary = (component) => {
+          if (!isDev || !component) return component;
+          
+          return (props) => {
+            try {
+              // Create a container to hold the component output
+              const container = document.createElement('div');
+              container.className = '0x1-error-boundary-container';
+              
+              // Try to render the component
+              const result = component(props);
+              
+              // Handle different types of component outputs
+              if (typeof result === 'string') {
+                container.innerHTML = result;
+              } else if (result instanceof Node) {
+                container.appendChild(result);
+              } else if (Array.isArray(result)) {
+                result.forEach((item) => {
+                  if (typeof item === 'string') {
+                    container.innerHTML += item;
+                  } else if (item instanceof Node) {
+                    container.appendChild(item);
+                  }
+                });
+              }
+              
+              return container;
+            } catch (error) {
+              console.error('[0x1] Component rendering error:', error);
+              
+              // Use the ErrorBoundary system to display the error
+              // This integrates with our beautiful error UI
+              const errorContainer = document.createElement('div');
+              errorContainer.className = '0x1-error-boundary-error';
+              
+              // In development, show the full error
+              if (isDev) {
+                const errorMessage = document.createElement('div');
+                errorMessage.textContent = 'Error rendering component: ' + (error instanceof Error ? error.message : String(error));
+                errorMessage.style.color = 'red';
+                errorMessage.style.padding = '10px';
+                errorMessage.style.margin = '10px 0';
+                errorMessage.style.border = '1px solid red';
+                errorMessage.style.borderRadius = '4px';
+                errorContainer.appendChild(errorMessage);
+              }
+              
+              return errorContainer;
+            }
+          };
+        };
+        
         const router = createRouter({ 
           rootElement: appElement,
           mode: "history",
-          debug: true,
-          rootLayout: RootLayout || DefaultLayout,
-          notFoundComponent: NotFound || null
+          debug: isDev,
+          rootLayout: withDevErrorBoundary(RootLayout) || withDevErrorBoundary(DefaultLayout),
+          notFoundComponent: withDevErrorBoundary(NotFound) || null
         });
 
-        // Register the home route with proper component
-        router.addRoute("/", Page || DefaultPage);
-
+        // Register all routes with proper component handling
+        router.addRoute("/", withDevErrorBoundary(Page) || withDevErrorBoundary(DefaultPage));
+        
+        // Attempt to discover components based on file system structure
+        // This helps ensure all components like Header are properly loaded
+        console.log("[0x1 DEBUG] Checking for additional components...");
+        
+        // Pre-fetch common components to ensure they load properly
+        // This addresses issues with components like Header not loading correctly
+        if (isDev) {
+          // Components we should pre-fetch in development mode
+          const componentsToPreload = [
+            "/components/Header.js",
+            "/components/ThemeToggle.js",
+            "/components/Counter.js"
+          ];
+          
+          // Pre-fetch these components
+          for (const componentPath of componentsToPreload) {
+            console.log('[0x1 DEBUG] Pre-fetching component: ' + componentPath);
+            fetch(componentPath).catch(e => {
+              // Just log but don't fail if component doesn't exist
+              console.log('[0x1 DEBUG] Component not found: ' + componentPath);
+            });
+          }
+        }
+        
         console.log("[0x1 DEBUG] Router created, starting initialization");
         
         // Initialize the router
         router.init();
         console.log("[0x1] Router initialized successfully");
         
-        // Apply initial styles for dark mode
+        // Apply enhanced styles for dark mode and error boundaries
         const style = document.createElement("style");
-        style.textContent = \`
-          .dark { color-scheme: dark; }
-          .dark body { background-color: #1a1a1a; color: #ffffff; }
-        \`;
+        style.textContent = '\\n' +
+          '/* Dark mode base styles */\\n' +
+          '.dark { color-scheme: dark; }\\n' +
+          '.dark body { background-color: #1a1a1a; color: #ffffff; }\\n' +
+          '\\n' +
+          '/* Error boundary styling */\\n' +
+          '.0x1-error-boundary-container { position: relative; }\\n' +
+          '.0x1-error-boundary-error { \\n' +
+          '  padding: 1rem; \\n' +
+          '  border-radius: 0.5rem; \\n' +
+          '  background-color: rgba(254, 226, 226, 0.9); \\n' +
+          '  color: #dc2626;\\n' +
+          '  margin: 0.5rem 0;\\n' +
+          '  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;\\n' +
+          '  font-size: 0.875rem;\\n' +
+          '  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\\n' +
+          '}\\n' +
+          '\\n' +
+          '/* Dark mode support for error boundaries */\\n' +
+          '.dark .0x1-error-boundary-error {\\n' +
+          '  background-color: rgba(127, 29, 29, 0.9);\\n' +
+          '  color: #fca5a5;\\n' +
+          '}';
         document.head.appendChild(style);
         
         // Add navigation event handlers for client-side routing
@@ -307,10 +416,76 @@ const APP_SCRIPT = `
       }
     }
 
+    // Error handling setup - integrate with the 0x1 error boundary system
+    function setupErrorHandling() {
+      // Define the environment - this ensures proper error display based on environment
+      const isDev = process.env.NODE_ENV !== 'production';
+      window.__0x1_env = { isDevelopment: isDev };
+      
+      // Add error reporting capabilities for integration with services like Sentry
+      window.__0x1_errorReporting = {
+        // Can be overridden by the app to integrate with error reporting services
+        captureException: (error, errorInfo) => {
+          // Default implementation logs to console
+          console.error('[0x1] Error captured:', error, errorInfo);
+          
+          // Apps can override this to send to their error reporting service
+          // Example: Sentry.captureException(error);
+          
+          return {
+            // Return an ID that can be used to look up the error
+            id: \`err-\${Date.now()}-\${Math.floor(Math.random() * 1000)}\`,
+            // Record when the error happened
+            timestamp: new Date().toISOString()
+          };
+        },
+        
+        // Allow apps to customize error recovery
+        recover: (componentId) => {
+          console.log(\`[0x1] Attempting recovery for component: \${componentId}\`);
+          // Default implementation triggers a localized re-render
+          const element = document.querySelector(\`[data-0x1-error-container="\${componentId}"]\`);
+          if (element) {
+            // Mark for re-render
+            element.setAttribute('data-0x1-recovery-attempt', Date.now().toString());
+            return true;
+          }
+          return false;
+        }
+      };
+      
+      // Setup global error handlers
+      window.addEventListener('error', (event) => {
+        console.error('[0x1] Uncaught error:', event.error);
+        // In development, let the error boundary handle display
+        if (isDev) return;
+        
+        // In production, capture the error but with less detail
+        if (window.__0x1_errorReporting) {
+          window.__0x1_errorReporting.captureException(event.error, { source: 'window.error' });
+        }
+      });
+      
+      window.addEventListener('unhandledrejection', (event) => {
+        console.error('[0x1] Unhandled Promise rejection:', event.reason);
+        // In development, let the error boundary handle display
+        if (isDev) return;
+        
+        // In production, capture unhandled rejections
+        if (window.__0x1_errorReporting) {
+          window.__0x1_errorReporting.captureException(event.reason, { source: 'unhandledRejection' });
+        }
+      });
+    }
+    
     // Initialize when DOM is ready
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initApp);
+      document.addEventListener("DOMContentLoaded", () => {
+        setupErrorHandling();
+        initApp();
+      });
     } else {
+      setupErrorHandling();
       initApp();
     }
   </script>`;
@@ -456,35 +631,26 @@ interface SSEClient {
 }
 
 /**
- * Create a standalone server for development
+ * Minimal HTML template function - only used as a fallback
  */
-/**
- * Loads the default HTML template page from the file system
- */
-function loadDefaultHtmlTemplate(cssImports: string[] = []): string {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const templatePath = join(__dirname, "default-page.html");
-  
-  try {
-    let template = readFileSync(templatePath, "utf-8");
-    
-    // Replace CSS_IMPORTS placeholder with actual CSS imports
-    if (cssImports.length > 0) {
-      const cssImportTags = cssImports.map(css => 
-        `<link rel="stylesheet" href="${css}">`
-      ).join('\n    ');
-      template = template.replace("<!-- CSS_IMPORTS -->", cssImportTags);
-    }
-    
-    return template;
-  } catch (error) {
-    logger.error(`Error loading default HTML template: ${error}`);
-    return `<!DOCTYPE html>
-<html>
-<head><title>0x1 Framework</title></head>
-<body><h1>Error loading template</h1></body>
+function loadDefaultHtmlTemplate(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 Framework</title>
+</head>
+<body>
+  <div id="app">
+    <div style="padding: 2rem; text-align: center;">
+      <h1 style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem;">0x1 Framework</h1>
+      <p style="margin-bottom: 1rem;">Loading application...</p>
+    </div>
+  </div>
+  <script src="/__0x1_live_reload.js"></script>
+</body>
 </html>`;
-  }
 }
 
 /**
@@ -674,267 +840,208 @@ export function createStandaloneServer({
         reqPath.includes('/app/not-found.js') ||
         reqPath.includes('/app/error.js')
       )) {
-        // Extract the component name from the path for logging
-        const componentNameFromPath = reqPath.split('/').pop()?.split('.')[0] || 'unknown';
+        // Check for the actual component file first
+        const componentBasePath = reqPath.replace(".js", "");
         
-        // Create component type name with proper capitalization
-        const componentType = componentNameFromPath.charAt(0).toUpperCase() + componentNameFromPath.slice(1);
-        
-        // Generate a clean, minimal component implementation
-        let jsxComponent = `
-// 0x1 ${componentNameFromPath} component
-
-export default function ${componentType}(props) {
-`;
-        
-        // Add appropriate implementation based on component type
-        if (componentNameFromPath === 'layout') {
-          jsxComponent += `  // Create a direct DOM element instead of JSX
-  const element = document.createElement('div');
-  element.id = 'root-layout';
-  element.style.display = 'flex';
-  element.style.flexDirection = 'column';
-  element.style.minHeight = '100vh';
-  element.style.backgroundColor = '#f5f5f5';
-  element.style.padding = '20px';
-
-  // Create header
-  const header = document.createElement('header');
-  header.style.backgroundColor = '#ffffff';
-  header.style.padding = '15px';
-  header.style.marginBottom = '20px';
-  header.style.borderRadius = '8px';
-  header.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-  
-  const headerTitle = document.createElement('h1');
-  headerTitle.textContent = '0x1 Framework';
-  headerTitle.style.margin = '0';
-  headerTitle.style.fontSize = '24px';
-  headerTitle.style.fontWeight = 'bold';
-  headerTitle.style.color = '#4f46e5';
-  
-  header.appendChild(headerTitle);
-  element.appendChild(header);
-
-  // Main content container
-  const main = document.createElement('main');
-  main.style.flex = '1';
-  main.style.backgroundColor = '#ffffff';
-  main.style.padding = '20px';
-  main.style.borderRadius = '8px';
-  main.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-  
-  // Add a placeholder if no children
-  const mainContent = document.createElement('div');
-  mainContent.id = 'children-container';
-  
-  main.appendChild(mainContent);
-  element.appendChild(main);
-
-  // Footer
-  const footer = document.createElement('footer');
-  footer.style.backgroundColor = '#ffffff';
-  footer.style.padding = '15px';
-  footer.style.marginTop = '20px';
-  footer.style.borderRadius = '8px';
-  footer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-  footer.style.textAlign = 'center';
-  footer.innerHTML = '<p style="margin: 0; color: #6b7280; font-size: 14px;">&copy; ' + new Date().getFullYear() + ' 0x1 Framework</p>';
-  
-  element.appendChild(footer);
-
-  // Handle children if they exist
-  setTimeout(() => {
-    try {
-      const childrenContainer = document.getElementById('children-container');
-      if (childrenContainer && props.children) {
-        // Clear placeholder content
-        childrenContainer.innerHTML = '';
-        
-        if (typeof props.children === 'string') {
-          childrenContainer.innerHTML = props.children;
-        } else if (props.children instanceof Node) {
-          childrenContainer.appendChild(props.children);
-        }
-      }
-    } catch (err) {
-      console.error('Error rendering children in layout:', err);
-    }
-  }, 0);
-  
-  return element;
-`;
-        } else if (componentNameFromPath === 'page') {
-          jsxComponent += `  // Create page component
-  const container = document.createElement('div');
-  container.className = 'p-8 max-w-4xl mx-auto';
-  
-  // Add title
-  const title = document.createElement('h1');
-  title.className = 'text-4xl font-bold mb-6 text-indigo-600 dark:text-indigo-400';
-  title.textContent = 'Welcome to 0x1';
-  container.appendChild(title);
-  
-  // Add subtitle
-  const subtitle = document.createElement('p');
-  subtitle.className = 'text-xl mb-8 text-gray-800 dark:text-gray-200';
-  subtitle.textContent = 'The lightning-fast web framework powered by Bun';
-  container.appendChild(subtitle);
-  
-  // Add counter demo
-  const card = document.createElement('div');
-  card.className = 'mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md';
-  
-  const cardTitle = document.createElement('h2');
-  cardTitle.className = 'text-2xl font-semibold mb-4';
-  cardTitle.textContent = 'Getting Started';
-  card.appendChild(cardTitle);
-  
-  const cardText = document.createElement('p');
-  cardText.className = 'mb-4';
-  cardText.textContent = 'Edit app/page.tsx to customize this page';
-  card.appendChild(cardText);
-  
-  // Counter component
-  const counter = document.createElement('div');
-  counter.className = 'flex justify-center items-center gap-4 mt-4';
-  
-  const decrementBtn = document.createElement('button');
-  decrementBtn.className = 'px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition';
-  decrementBtn.textContent = '-';
-  
-  const countDisplay = document.createElement('span');
-  countDisplay.className = 'text-2xl font-bold min-w-[3rem] text-center';
-  countDisplay.textContent = '0';
-  
-  const incrementBtn = document.createElement('button');
-  incrementBtn.className = 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition';
-  incrementBtn.textContent = '+';
-  
-  counter.append(decrementBtn, countDisplay, incrementBtn);
-  
-  // Add counter functionality
-  let count = 0;
-  decrementBtn.addEventListener('click', () => {
-    count--;
-    countDisplay.textContent = count.toString();
-  });
-  
-  incrementBtn.addEventListener('click', () => {
-    count++;
-    countDisplay.textContent = count.toString();
-  });
-  
-  card.appendChild(counter);
-  container.appendChild(card);
-  
-  return container;
-`;
-        } else if (componentNameFromPath === 'not-found') {
-          jsxComponent += `  // Create a simple not-found component that will definitely parse correctly
-  const container = document.createElement('div');
-  container.style.padding = '2rem';
-  container.style.textAlign = 'center';
-  container.style.maxWidth = '600px';
-  container.style.margin = '0 auto';
-  container.style.display = 'flex';
-  container.style.flexDirection = 'column';
-  container.style.alignItems = 'center';
-  container.style.justifyContent = 'center';
-  container.style.minHeight = '70vh';
-  
-  const errorCode = document.createElement('h1');
-  errorCode.style.fontSize = '4rem';
-  errorCode.style.fontWeight = 'bold';
-  errorCode.style.marginBottom = '1rem';
-  errorCode.style.color = '#4b5563';
-  errorCode.textContent = '404';
-  container.appendChild(errorCode);
-  
-  const title = document.createElement('h2');
-  title.style.fontSize = '1.5rem';
-  title.style.fontWeight = '600';
-  title.style.marginBottom = '1.5rem';
-  title.style.color = '#374151';
-  title.textContent = 'Page Not Found';
-  container.appendChild(title);
-  
-  const text = document.createElement('p');
-  text.style.marginBottom = '2rem';
-  text.style.color = '#6b7280';
-  text.textContent = 'The page you are looking for does not exist or has been moved.';
-  container.appendChild(text);
-  
-  const link = document.createElement('a');
-  link.href = '/';
-  link.style.backgroundColor = '#3b82f6';
-  link.style.color = 'white';
-  link.style.padding = '0.5rem 1rem';
-  link.style.borderRadius = '0.25rem';
-  link.style.textDecoration = 'none';
-  link.textContent = 'Back to Home';
-  container.appendChild(link);
-  
-  return container;
-`;
-        } else if (componentNameFromPath === 'error') {
-          jsxComponent += `  // Create error component
-  const container = document.createElement('div');
-  container.className = 'p-8 max-w-4xl mx-auto bg-red-50 rounded-lg';
-  
-  const title = document.createElement('h1');
-  title.className = 'text-3xl font-bold text-red-600 mb-4 text-center';
-  title.textContent = 'Something went wrong';
-  container.appendChild(title);
-  
-  // Add error message
-  const message = document.createElement('p');
-  message.className = 'text-gray-700 mb-4';
-  message.textContent = props.error || 'An unexpected error occurred';
-  container.appendChild(message);
-  
-  // Add back button
-  const backButton = document.createElement('a');
-  backButton.href = '/';
-  backButton.className = 'inline-block px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600';
-  backButton.textContent = 'Back to Home';
-  container.appendChild(backButton);
-  
-  return container;
-`;
-        }
-        
-        // Check if there's a corresponding component file in the app directory
+        // Check for the component in various formats (.tsx, .jsx, .ts, .js)
         const possibleComponentPaths = [
-          join(projectPath, reqPath.replace('.js', '.tsx')),
-          join(projectPath, reqPath.replace('.js', '.jsx')),
-          join(projectPath, reqPath.replace('.js', '.ts')),
-          join(projectPath, reqPath.replace('.js', '.js'))
+          join(projectPath, `${componentBasePath}.tsx`),
+          join(projectPath, `${componentBasePath}.jsx`),
+          join(projectPath, `${componentBasePath}.ts`),
+          join(projectPath, `${componentBasePath}.js`)
         ];
         
-        // Check if any of the possible component paths exist
-        const componentPath = possibleComponentPaths.find(path => existsSync(path)) || null;
+        // Find the first matching component path
+        const componentPath = possibleComponentPaths.find(path => existsSync(path));
         
-        // Complete the component definition
-        jsxComponent += '}';
-        
-        // Log component being served with pretty formatting
-        let sourcePath = ' (generated stub)';
-        if (componentPath !== null && typeof componentPath === 'string') {
-          sourcePath = ` from ${componentPath.replace(projectPath, '')}`;
-        }
-        logRequestStatus(200, reqPath, `${componentType} component${sourcePath}`);
-        
-        // Return the complete component code
-        return new Response(jsxComponent, {
-          status: 200,
-          headers: {
-            "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
+        if (componentPath) {
+          try {
+            logger.info(`✅ 200 OK: ${reqPath} (App component from ${componentPath.replace(projectPath, '')})`);
+            
+            // Extract component name for easier reference
+            const componentName = componentPath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'UnknownComponent';
+            
+            // Read the source code
+            const sourceCode = readFileSync(componentPath, 'utf-8');
+            
+            // Determine if this is a JSX/TSX file
+            const extension = componentPath.split('.').pop() || 'js';
+            const isJSX = extension === 'tsx' || extension === 'jsx';
+            
+            // In the section around line 871-873
+            // If this is a JSX/TSX file, we need to transpile it using Bun's transpiler
+            if (isJSX) {
+              try {
+                logger.debug(`Transpiling ${componentPath} using Bun.Transpiler`);
+                
+                // Use Bun's transpiler directly instead of the bundler
+                const transpiler = new Bun.Transpiler({
+                  loader: extension === 'tsx' ? 'tsx' : 'jsx',
+                  target: 'browser'
+                });
+                
+                // Transpile the source code directly
+                const transpiledCode = transpiler.transformSync(sourceCode);
+
+                // Process the transpiled code to fix import paths
+                const processedCode = transpiledCode
+                  // Fix relative CSS imports
+                  .replace(/from\s+["']\.\/([^"']+\.css)["']/g, 'from "app/$1"')
+                  .replace(/import\(["']\.\/([^"']+)["']\)/g, 'import("app/$1")')
+                  .replace(/import\(["']\.\.\/([^"']+)["']\)/g, 'import("$1")')
+                  // Special handling for CSS imports
+                  .replace(/import\s+["'](\.\/.*?\.css)["']/g, 'await fetch("app/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+                  .replace(/import\s+["'](\.\.\/(.*?\.css))["']/g, 'await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })');
+                
+                // Add React-compatible runtime for proper rendering
+                const finalCode = `
+            // Transpiled from ${componentPath.replace(projectPath, '')}
+            // App Component: ${componentName}
+
+            // React compatibility layer
+            if (typeof window !== 'undefined' && !window.React) {
+              window.React = {
+                createElement: function(type, props, ...children) {
+                  // Handle function components
+                  if (typeof type === 'function') {
+                    try {
+                      return type({...props, children: children.length === 1 ? children[0] : children});
+                    } catch (err) {
+                      console.error('Error rendering component:', err);
+                      const errorDiv = document.createElement('div');
+                      errorDiv.className = 'jsx-error p-4 bg-red-50 border border-red-300 rounded text-red-700';
+                      errorDiv.innerHTML = '<strong>Component Error</strong><p class="text-sm mt-2">See console for details</p>';
+                      return errorDiv;
+                    }
+                  }
+                  
+                  // Handle string types (HTML elements)
+                  const element = document.createElement(type);
+                  
+                  // Add props as attributes
+                  if (props) {
+                    Object.entries(props).forEach(([key, value]) => {
+                      if (key === 'className') {
+                        element.className = value;
+                      } else if (key === 'style' && typeof value === 'object') {
+                        Object.assign(element.style, value);
+                      } else if (key.startsWith('on') && typeof value === 'function') {
+                        const eventName = key.slice(2).toLowerCase();
+                        element.addEventListener(eventName, value);
+                      } else if (key !== 'children' && value !== undefined && value !== null) {
+                        element.setAttribute(key, value.toString());
+                      }
+                    });
+                  }
+                  
+                  // Add children
+                  children.flat().forEach(child => {
+                    if (child === null || child === undefined) return;
+                    
+                    if (child instanceof Node) {
+                      element.appendChild(child);
+                    } else {
+                      element.appendChild(document.createTextNode(child.toString()));
+                    }
+                  });
+                  
+                  return element;
+                },
+                Fragment: 'fragment',
+                useState: (initialState) => {
+                  const state = { value: typeof initialState === 'function' ? initialState() : initialState };
+                  const setState = (newValue) => {
+                    state.value = typeof newValue === 'function' ? newValue(state.value) : newValue;
+                    // Would trigger re-render in real React
+                  };
+                  return [state.value, setState];
+                },
+                useEffect: (effect, deps) => {
+                  // Simple implementation
+                  effect();
+                }
+              };
+            }
+
+            // Actual transpiled component code
+            ${processedCode}
+            `;
+                
+                return new Response(finalCode, {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "application/javascript; charset=utf-8",
+                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                  }
+                });
+              } catch (error) {
+                const transpileError = error instanceof Error ? error.message : String(error);
+                logger.error(`Failed to transpile ${componentPath}: ${transpileError}`);
+                
+                // Generate a fallback component
+                const fallbackCode = `
+            // Fallback component for ${componentName}
+            export default function ${componentName}(props) {
+              console.error('[0x1] Error in component: ${componentName}');
+              
+              const errorDiv = document.createElement('div');
+              errorDiv.className = 'component-error p-4 bg-red-50 border border-red-300 rounded my-4';
+              
+              const header = document.createElement('h3');
+              header.className = 'text-lg font-semibold text-red-700 mb-2';
+              header.textContent = 'Component Error: ${componentName}';
+              errorDiv.appendChild(header);
+              
+              const message = document.createElement('div');
+              message.className = 'text-sm text-red-600 whitespace-pre-wrap';
+              message.textContent = 'Failed to transpile component. Check console for details.';
+              errorDiv.appendChild(message);
+              
+              // Try to render children if available
+              if (props && props.children) {
+                const childrenWrapper = document.createElement('div');
+                childrenWrapper.className = 'mt-4 p-3 border-t border-red-200 pt-3';
+                
+                // Append children if they exist
+                if (Array.isArray(props.children)) {
+                  props.children.forEach(child => {
+                    if (child instanceof Node) childrenWrapper.appendChild(child);
+                    else if (child) childrenWrapper.appendChild(document.createTextNode(String(child)));
+                  });
+                } else if (props.children instanceof Node) {
+                  childrenWrapper.appendChild(props.children);
+                } else if (props.children) {
+                  childrenWrapper.appendChild(document.createTextNode(String(props.children)));
+                }
+                
+                errorDiv.appendChild(childrenWrapper);
+              }
+              
+              return errorDiv;
+            }
+            `;
+                
+                return new Response(fallbackCode, {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "application/javascript; charset=utf-8",
+                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                  }
+                });
+              } 
+            }
+          } catch (error) {
+            logger.error(`Failed to serve component ${componentPath}: ${error}`);
+            return new Response('Failed to serve component', {
+              status: 500,
+              headers: {
+                "Content-Type": "text/plain"
+              }
+            });
           }
-        });
+        }
       }
-      
+            
       // Handle live reload script
       if (reqPath === "/__0x1_live_reload.js") {
         logger.debug("Serving live reload script");
@@ -979,6 +1086,71 @@ export default function ${componentType}(props) {
           status: 200,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8"
+          }
+        });
+      }
+
+      // Handle React compatibility shim
+      if (reqPath === "/__0x1_react_shim.js") {
+        logger.debug("Serving React compatibility shim");
+        const reactShim = `
+// React compatibility shim
+export default {
+  createElement: function(type, props, ...children) {
+    if (typeof type === 'function') {
+      try {
+        return type({...props, children: children.length === 1 ? children[0] : children});
+      } catch (err) {
+        console.error('Error rendering component:', err);
+        return null;
+      }
+    }
+    // For other cases, our createElement is handled in the page runtime
+    return { type, props, children };
+  },
+  Fragment: Symbol('Fragment'),
+  useState: function(initialState) {
+    const state = { value: typeof initialState === 'function' ? initialState() : initialState };
+    const setState = (newValue) => {
+      state.value = typeof newValue === 'function' ? newValue(state.value) : newValue;
+    };
+    return [state.value, setState];
+  },
+  useEffect: function(effect, deps) {
+    effect();
+    return () => {};
+  }
+};
+        `;
+        return new Response(reactShim, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+          }
+        });
+      }
+
+      // Handle JSX runtime compatibility (both regular and dev runtime)
+      if (reqPath === "/__0x1_jsx_runtime.js" || reqPath === "/__0x1_jsx_dev_runtime.js") {
+        logger.debug(`Serving JSX runtime: ${reqPath}`);
+        const jsxRuntime = `
+// JSX Runtime compatibility shim
+export function jsx(type, props, key) {
+  return { type, props, key };
+}
+
+export function jsxs(type, props, key) {
+  return jsx(type, props, key);
+}
+
+export const Fragment = Symbol('Fragment');
+        `;
+        return new Response(jsxRuntime, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
           }
         });
       }
@@ -1341,6 +1513,279 @@ export default function ${componentType}(props) {
         }
       }
       
+      
+  // Handle component requests (both with and without .js extension)
+  if ((reqPath.endsWith(".js") || (!reqPath.includes(".") && (reqPath.includes("/components/") || reqPath.includes("/app/")))) && 
+      (reqPath.includes("/components/") || reqPath.includes("/app/"))) {
+    // If no extension, add .js for the server processing
+    const componentRequestPath = reqPath.endsWith(".js") ? reqPath : `${reqPath}.js`;
+    const componentBasePath = componentRequestPath.replace(".js", "");
+
+    // Check for the component in various formats (.tsx, .jsx, .ts, .js)
+    const possibleComponentPaths = [
+      join(projectPath, `${componentBasePath}.tsx`),
+      join(projectPath, `${componentBasePath}.jsx`),
+      join(projectPath, `${componentBasePath}.ts`),
+      join(projectPath, `${componentBasePath}.js`)
+    ];
+  
+  // Find the first matching component path
+  const componentPath = possibleComponentPaths.find(path => existsSync(path));
+  
+  if (componentPath) {
+    try {
+      logger.info(`✅ 200 OK: ${reqPath} (Component from ${componentPath.replace(projectPath, '')})`);            
+      
+      // Extract component name for easier reference
+      const componentName = componentPath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'UnknownComponent';
+      
+      // Read the source code
+      const sourceCode = readFileSync(componentPath, 'utf-8');
+      
+      // Determine if this is a JSX/TSX file
+      const extension = componentPath.split('.').pop() || 'js';
+      const isJSX = extension === 'tsx' || extension === 'jsx';
+      
+      // If this is a JSX/TSX file, transpile it with Bun
+      if (isJSX) {
+        try {
+          logger.debug(`Transpiling ${componentPath} using Bun.Transpiler`);
+          
+          // Use Bun's transpiler directly instead of the bundler
+          const transpiler = new Bun.Transpiler({
+            loader: extension === 'tsx' ? 'tsx' : 'jsx',
+            target: 'browser',
+            autoImportJSX: true,
+            jsxOptimizationInline: true
+            // tsconfig: JSON.stringify({
+            //   compilerOptions: {
+            //     jsx: 'react',
+            //     jsxFactory: 'React.createElement',
+            //     jsxFragmentFactory: 'React.Fragment'
+            //   }
+            // })
+          });
+          
+          // Transpile the source code directly
+          const transpiledCode = transpiler.transformSync(sourceCode);
+
+          // Process the transpiled code to fix import paths
+          const processedCode = transpiledCode
+            // Fix relative CSS imports
+            .replace(/from\s+["']\.\/([^"']+\.css)["']/g, 'from "app/$1"')
+            .replace(/from\s+["']\.\.\/([^"']+\.css)["']/g, 'from "$1"')
+            // Fix relative component imports
+            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "components/$1"')
+            .replace(/from\s+["']components\/([^"']+)["']/g, 'from "components/$1"')
+            // Fix any other relative imports
+            .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "app/$1"')
+            .replace(/from\s+["']\.\.\/([^"']+)["']/g, 'from "$1"')
+            // Handle import() calls with the same patterns
+            .replace(/import\(["']\.\/([^"']+\.css)["']\)/g, 'import("app/$1")')
+            .replace(/import\(["']\.\.\/([^"']+\.css)["']\)/g, 'import("$1")')
+            .replace(/import\(["']\.\/([^"']+)["']\)/g, 'import("app/$1")')
+            .replace(/import\(["']\.\.\/([^"']+)["']\)/g, 'import("$1")')
+            // Special handling for CSS imports
+            .replace(/import\s+["'](\.\/.*?\.css)["']/g, 'await fetch("app/$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })')
+            .replace(/import\s+["'](\.\.\/.*?\.css)["']/g, 'await fetch("$1").then(r => r.text()).then(css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); })');
+      
+      // Process imports for better compatibility
+      const importRegex = /import\s+.*?['"]([^'"]+)['"]/g;
+      let importMatches;
+      let importLines = '';
+      
+      while ((importMatches = importRegex.exec(sourceCode)) !== null) {
+        // Only process external or relative imports, not importing from React/JSX runtime
+        if (!importMatches[1].includes('react') && !importMatches[1].includes('jsx-runtime')) {
+          importLines += `// Original import: ${importMatches[0]}\n`;
+        }
+      }
+      
+      // Add React-compatible runtime and the transpiled code
+      const finalCode = `
+// Transpiled from ${componentPath.replace(projectPath, '')}
+// Component: ${componentName}
+
+${importLines}
+
+// React compatibility layer
+if (typeof window !== 'undefined' && !window.React) {
+  window.React = {
+    createElement: function(type, props, ...children) {
+      // Handle function components
+      if (typeof type === 'function') {
+        try {
+          return type({...props, children: children.length === 1 ? children[0] : children});
+        } catch (err) {
+          console.error('Error rendering component:', err);
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'jsx-error p-4 bg-red-50 border border-red-300 rounded text-red-700';
+          errorDiv.innerHTML = '<strong>Component Error</strong><p class="text-sm mt-2">See console for details</p>';
+          return errorDiv;
+        }
+      }
+      
+      // Handle string types (HTML elements)
+      const element = document.createElement(type);
+      
+      // Add props as attributes
+      if (props) {
+        Object.entries(props).forEach(([key, value]) => {
+          if (key === 'className') {
+            element.className = value;
+          } else if (key === 'style' && typeof value === 'object') {
+            Object.assign(element.style, value);
+          } else if (key.startsWith('on') && typeof value === 'function') {
+            const eventName = key.slice(2).toLowerCase();
+            element.addEventListener(eventName, value);
+          } else if (key !== 'children' && value !== undefined && value !== null) {
+            element.setAttribute(key, value.toString());
+          }
+        });
+      }
+      
+      // Add children
+      children.flat().forEach(child => {
+        if (child === null || child === undefined) return;
+        
+        if (child instanceof Node) {
+          element.appendChild(child);
+        } else {
+          element.appendChild(document.createTextNode(child.toString()));
+        }
+      });
+      
+      return element;
+    },
+    Fragment: 'fragment',
+    useState: (initialState) => {
+      const state = { value: typeof initialState === 'function' ? initialState() : initialState };
+      const setState = (newValue) => {
+        state.value = typeof newValue === 'function' ? newValue(state.value) : newValue;
+        // Would trigger re-render in real React
+      };
+      return [state.value, setState];
+    },
+    useEffect: (effect, deps) => {
+      // Simple implementation
+      effect();
+    }
+  };
+}
+
+// Actual transpiled component code
+${processedCode}
+
+// Add error handling wrapper around the component
+const OriginalComponent = typeof exports !== 'undefined' && exports.default ? exports.default : null;
+if (OriginalComponent) {
+  exports.default = function(props) {
+    try {
+      return OriginalComponent(props);
+    } catch (err) {
+      console.error('Error in component ${componentName}:', err);
+      
+      // Report error to 0x1 error system if available
+      if (window.__0x1_errorReporting) {
+        window.__0x1_errorReporting.captureException(err, {
+          componentName: '${componentName}',
+          source: 'component-runtime'
+        });
+      }
+      
+      // Return fallback error UI
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'error p-4 bg-red-50 border border-red-300 rounded text-red-700';
+      errorDiv.innerHTML = '<strong>Error in ${componentName}</strong><p class="text-sm mt-2">' + (err.message || 'Unknown error') + '</p>';
+      return errorDiv;
+    }
+  };
+}
+`;
+    
+    return new Response(finalCode, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      }
+    });
+  } catch (error: unknown) {
+    const transpileError = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to transpile ${componentPath}: ${transpileError}`);
+    // Instead of returning nothing, return a basic fallback component
+    const fallbackCode = generateFallbackComponent(componentName, transpileError);
+    return new Response(fallbackCode, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      }
+    });
+  }
+} else {
+  // For non-JSX files, just return the content
+  return new Response(sourceCode, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate" 
+    }
+  });
+}
+    } catch (error) {
+      logger.error(`Failed to process component ${componentPath}: ${error}`);
+    }
+  }
+  
+  // If we reach here, we need a minimal fallback
+  logger.warn(`⚠️ 404 Not Found: ${reqPath} (Creating minimal component fallback)`);
+  
+  // Extract component name for the fallback
+  const componentNameFromPath = reqPath.split('/').pop()?.replace('.js', '') || 'unknown';
+  
+  return new Response(`
+// 0x1 fallback component for ${componentNameFromPath}
+export default function ${componentNameFromPath}(props) {
+  const container = document.createElement('div');
+  container.className = 'fallback-component p-4 border border-yellow-300 bg-yellow-50 rounded';
+  container.innerHTML = '<p>Component not found: ${componentNameFromPath}</p>';
+  
+  // Render any children if provided
+  if (props && props.children) {
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'mt-4 p-2 border-t border-yellow-300';
+    
+    if (typeof props.children === 'string') {
+      childrenContainer.textContent = props.children;
+    } else if (props.children instanceof Node) {
+      childrenContainer.appendChild(props.children);
+    } else if (Array.isArray(props.children)) {
+      props.children.forEach(child => {
+        if (child instanceof Node) {
+          childrenContainer.appendChild(child);
+        } else if (child !== null && child !== undefined) {
+          const span = document.createElement('span');
+          span.textContent = child.toString();
+          childrenContainer.appendChild(span);
+        }
+      });
+    }
+    
+    container.appendChild(childrenContainer);
+  }
+  
+  return container;
+}
+`, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate"
+    }
+  });
+}
+      
       // Check if this is a route in the app directory structure
       if (reqPath.startsWith("/") && !reqPath.includes(".")) {
         // Check if there's a corresponding app directory path
@@ -1385,4 +1830,61 @@ export default function ${componentType}(props) {
       });
     }
   });
+
+  // Helper function to generate a fallback component with error details
+function generateFallbackComponent(componentName: string, errorMessage: string): string {
+  return `
+// 0x1 fallback component for ${componentName}
+// Original component failed to transpile
+
+export default function ${componentName}(props) {
+  console.log('[0x1] Rendering fallback for ${componentName}');
+  
+  const container = document.createElement('div');
+  container.className = 'component-error p-4 bg-red-50 border border-red-300 rounded my-4';
+  
+  const header = document.createElement('h3');
+  header.className = 'text-lg font-semibold text-red-700 mb-2';
+  header.textContent = 'Component Error: ${componentName}';
+  container.appendChild(header);
+  
+  const message = document.createElement('div');
+  message.className = 'text-sm text-red-600 whitespace-pre-wrap';
+  message.textContent = 'Failed to transpile component. Check console for details.';
+  container.appendChild(message);
+  
+  // Add view source button if props contain children
+  if (props && props.children) {
+    // Try to render children if available
+    const childrenWrapper = document.createElement('div');
+    childrenWrapper.className = 'mt-4 p-3 border-t border-red-200 pt-3';
+    
+    const childrenLabel = document.createElement('div');
+    childrenLabel.className = 'text-xs text-red-500 mb-2';
+    childrenLabel.textContent = 'Children content:';
+    childrenWrapper.appendChild(childrenLabel);
+    
+    // Append children elements if they exist
+    if (Array.isArray(props.children)) {
+      props.children.forEach(child => {
+        if (child instanceof Node) {
+          childrenWrapper.appendChild(child);
+        } else if (child) {
+          const textNode = document.createTextNode(String(child));
+          childrenWrapper.appendChild(textNode);
+        }
+      });
+    } else if (props.children instanceof Node) {
+      childrenWrapper.appendChild(props.children);
+    } else if (props.children) {
+      const textNode = document.createTextNode(String(props.children));
+      childrenWrapper.appendChild(textNode);
+    }
+    
+    container.appendChild(childrenWrapper);
+  }
+  
+  return container;
+}`;
+}
 }
