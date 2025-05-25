@@ -293,8 +293,8 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
         
         // Add cleanup handler
         process.on('SIGINT', () => {
-          if (tailwindWatcher && tailwindWatcher.stop) {
-            tailwindWatcher.stop();
+          if (tailwindWatcher && tailwindWatcher.close) {
+            tailwindWatcher.close();
           }
           process.exit();
         });

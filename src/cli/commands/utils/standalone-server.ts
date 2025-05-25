@@ -10,10 +10,10 @@ import { fileURLToPath } from "url";
 import { logger } from "../../utils/logger.js";
 import { handleComponentRequest } from './component-handler.js';
 import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from './css-handler.js';
+import { createJsxRuntimeEndpoint, createRouterEndpoint, generateJsxRuntime, generateReactShim, injectJsxRuntime } from './jsx-templates.js';
 import { createLiveReloadSystem } from './live-reload/index.js';
 import { LiveReloadSocket } from "./live-reload/ws-handler.js";
 import { composeHtmlTemplate, generateLandingPage, generateLiveReloadScript } from './server-templates.js';
-import { generateJsxRuntime, generateReactShim, injectJsxRuntime, createJsxRuntimeEndpoint, createRouterEndpoint } from './jsx-templates.js';
 import * as tailwindHandler from './tailwind-handler.js';
 
 // Path resolution helpers
@@ -421,6 +421,87 @@ export function createStandaloneServer({
         // which properly handles all router.js requests regardless of query params
       }
       */
+      
+      // Handle processed Tailwind CSS file requests
+      if (reqPath === "/processed-tailwind.css") {
+        const processedCssPath = join(projectPath, "public", "processed-tailwind.css");
+        
+        if (existsSync(processedCssPath)) {
+          logRequestStatus(200, reqPath, `Serving processed Tailwind CSS`);
+          
+          const cssContent = readFileSync(processedCssPath, "utf-8");
+          
+          return new Response(cssContent, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/css; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        } else {
+          // If the processed file doesn't exist, try to process it on-demand
+          try {
+            // Ensure Tailwind module is available
+            const tailwindHandler = await import("./tailwind-handler.js");
+            await tailwindHandler.processTailwindCss(projectPath);
+            
+            // Check again after processing
+            if (existsSync(processedCssPath)) {
+              logRequestStatus(200, reqPath, `Processed and serving Tailwind CSS on-demand`);
+              
+              const cssContent = readFileSync(processedCssPath, "utf-8");
+              
+              return new Response(cssContent, {
+                status: 200,
+                headers: {
+                  "Content-Type": "text/css; charset=utf-8",
+                  "Cache-Control": "no-cache, no-store, must-revalidate"
+                }
+              });
+            }
+          } catch (error) {
+            logger.error(`Error processing Tailwind CSS on-demand: ${error}`);
+          }
+          
+          // Fallback if we couldn't process the CSS
+          logRequestStatus(404, reqPath, `Processed Tailwind CSS file not found`);
+          return new Response("/* Tailwind CSS processing failed */", {
+            status: 404,
+            headers: {
+              "Content-Type": "text/css; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
+      }
+      
+      // Handle Tailwind runtime script
+      if (reqPath === "/tailwindcss") {
+        const tailwindRuntimePath = join(projectPath, "public", "tailwindcss");
+        
+        if (existsSync(tailwindRuntimePath)) {
+          logRequestStatus(200, reqPath, `Serving Tailwind runtime script`);
+          
+          const runtimeScript = readFileSync(tailwindRuntimePath, "utf-8");
+          
+          return new Response(runtimeScript, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/javascript; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        } else {
+          logRequestStatus(404, reqPath, `Tailwind runtime script not found`);
+          return new Response("console.error('[0x1] Tailwind runtime script not found');", {
+            status: 200, // Return 200 to avoid breaking the page
+            headers: {
+              "Content-Type": "application/javascript; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
+      }
       
       // Handle app directory routes
       if (reqPath.startsWith("/") && !reqPath.includes(".")) {

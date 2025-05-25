@@ -75,22 +75,13 @@ export const PROCESS_POLYFILL = `
 
 export const STYLES = `
   <!-- Include global stylesheets -->
-  <link rel="stylesheet" href="/globals.css">`;
+  <link rel="stylesheet" href="/globals.css">
+  <!-- Processed Tailwind CSS -->
+  <link rel="stylesheet" href="/processed-tailwind.css">
+  <!-- Tailwind CSS v4 runtime script (for dark mode) -->
+  <script src="/tailwindcss"></script>`;
 
 export const IMPORT_MAP = `
-  <!-- Tailwind CSS v4 runtime -->
-  <script>
-    // Dynamically load Tailwind CSS v4 runtime
-    (function() {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.tailwindcss.com?plugins=typography,forms,aspect-ratio';
-      script.onload = function() {
-        console.log('[0x1] Tailwind CSS v4 runtime loaded');
-      };
-      document.head.appendChild(script);
-    })();
-  </script>
-  
   <!-- Import map for module resolution -->
   <script type="importmap">
   {
