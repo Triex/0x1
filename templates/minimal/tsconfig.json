@@ -4,7 +4,8 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
+    "jsxImportSource": "0x1",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,18 +15,48 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "0x1/*": ["../../dist/*"],
-      "0x1": ["../../dist/index.js"],
-      "0x1-store": ["../../dist/store.js"]
+      "0x1/*": [
+        "../../dist/*",
+        "../../src/*",
+        "../../types/*"
+      ],
+      "0x1": [
+        "../../dist/index.js",
+        "../../src/index.ts",
+        "../../types/index.d.ts"
+      ],
+      "0x1-store": [
+        "../../dist/store.js",
+        "../../src/store.ts"
+      ],
+      "0x1/jsx-runtime": [
+        "../../types/jsx-runtime.d.ts"
+      ],
+      "0x1/jsx-dev-runtime": [
+        "../../types/jsx-runtime.d.ts"
+      ],
+      "0x1/jsx": [
+        "../../types/jsx.d.ts"
+      ],
+      "react/jsx-runtime": [
+        "../../types/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../types/jsx-runtime.d.ts"
+      ]
     },
     "typeRoots": [
       "./node_modules/@types",
-      "./types"
+      "./types",
+      "../types"
     ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx"
   ],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

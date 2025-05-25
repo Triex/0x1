@@ -21,6 +21,7 @@ import {
 import { getLocalIP, openBrowser, transformBareImports, findTailwindCssInput } from "./utils/dev-server-utils.js";
 import { shutdownServer, startTailwindProcess, setupShutdown, type DevOptions } from "./utils/server-setup.js";
 import { discoverComponents, transpileFile } from "./utils/transpilation-utils.js";
+import * as tailwindHandler from "./utils/tailwind-handler.js";
 
 /**
  * Check if a port is available for use
@@ -262,16 +263,57 @@ export async function startDevServer(options: DevOptions = {}): Promise<void> {
       mkdirSync(publicDir, { recursive: true });
     }
 
-    // Find Tailwind CSS input file
-    const tailwindInputPath = await findTailwindCssInput(projectPath);
+    // Initialize tailwindProcess variable outside the if/else blocks for proper scope
     let tailwindProcess: Subprocess | null = null;
     
-    // Start Tailwind CSS compiler if input file exists and skipTailwind is not set
-    if (tailwindInputPath && !options.skipTailwind) {
-      logger.info(`💠 Starting Tailwind CSS compiler...`);
-      tailwindProcess = await startTailwindProcess(projectPath, tailwindInputPath, publicDir);
+    // Detect and handle Tailwind v4 if present
+    let isTailwindV4 = false;
+    try {
+      const packageJsonPath = join(projectPath, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        isTailwindV4 = !!(packageJson.devDependencies?.['@tailwindcss/postcss'] || 
+                packageJson.dependencies?.['@tailwindcss/postcss'] ||
+                packageJson.devDependencies?.tailwindcss?.startsWith('4') ||
+                packageJson.dependencies?.tailwindcss?.startsWith('4'));
+      }
+    } catch (e) {
+      logger.debug(`Error checking for Tailwind v4: ${e}`);
+    }
+    
+    // Handle Tailwind processing based on version
+    if (isTailwindV4) {
+      logger.info('🌈 Detected Tailwind CSS v4');
+      try {
+        // Process initial CSS with v4 handler
+        await tailwindHandler.processTailwindCss(projectPath);
+        
+        // Start watcher
+        const tailwindWatcher = tailwindHandler.startTailwindWatcher(projectPath);
+        
+        // Add cleanup handler
+        process.on('SIGINT', () => {
+          if (tailwindWatcher && tailwindWatcher.stop) {
+            tailwindWatcher.stop();
+          }
+          process.exit();
+        });
+      } catch (err) {
+        logger.warn(`Tailwind CSS v4 processing failed: ${err}`);
+        logger.info('Continuing without Tailwind CSS watcher...');
+      }
     } else if (!options.skipTailwind) {
-      logger.warn("💠 No Tailwind CSS input file found. Skipping Tailwind compilation.");
+      // Standard v3 processing for non-v4 setups
+      // Find Tailwind CSS input file
+      const tailwindInputPath = await findTailwindCssInput(projectPath);
+      
+      // Start Tailwind CSS compiler if input file exists
+      if (tailwindInputPath) {
+        logger.info(`💠 Starting Tailwind CSS compiler...`);
+        tailwindProcess = await startTailwindProcess(projectPath, tailwindInputPath, publicDir);
+      } else {
+        logger.warn("💠 No Tailwind CSS input file found. Skipping Tailwind compilation.");
+      }
     } else {
       logger.info("💠 Tailwind CSS compilation skipped as requested.");
     }

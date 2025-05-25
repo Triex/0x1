@@ -17,6 +17,7 @@ export interface DevOptions {
   config?: string;
   ignore?: string[];
   skipTailwind?: boolean; // Option to skip Tailwind processing
+  useTailwindCss?: boolean; // Use modern Tailwind CSS v4 integration
   debug?: boolean; // Enable debug mode for verbose logging
 }
 

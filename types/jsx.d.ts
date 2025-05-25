@@ -20,10 +20,7 @@ type ComponentFunction<P = any> = (props: P) => JSXNode;
 
 // Export types that will be used in other type definitions
 export type {
-  JSXNode,
-  JSXChildren,
-  JSXAttributes,
-  ComponentFunction,
+  ComponentFunction, JSXAttributes, JSXChildren, JSXNode
 };
 
 // Now global augmentations are valid in a module context
@@ -41,78 +38,312 @@ declare global {
       key?: string | number;
       ref?: any;
     }
-
-    // The type of the props for HTML elements
-    interface HTMLAttributes<T = HTMLElement> extends PropsWithChildren {
-      // Standard HTML Attributes
-      accessKey?: string;
+    
+    // Define IntrinsicElements to fix the "JSX element implicitly has type 'any'" errors
+    interface IntrinsicElements {
+      // HTML elements
+      a: any;
+      abbr: any;
+      address: any;
+      area: any;
+      article: any;
+      aside: any;
+      audio: any;
+      b: any;
+      base: any;
+      bdi: any;
+      bdo: any;
+      blockquote: any;
+      body: any;
+      br: any;
+      button: any;
+      canvas: any;
+      caption: any;
+      cite: any;
+      code: any;
+      col: any;
+      colgroup: any;
+      data: any;
+      datalist: any;
+      dd: any;
+      del: any;
+      details: any;
+      dfn: any;
+      dialog: any;
+      div: any;
+      dl: any;
+      dt: any;
+      em: any;
+      embed: any;
+      fieldset: any;
+      figcaption: any;
+      figure: any;
+      footer: any;
+      form: any;
+      h1: any;
+      h2: any;
+      h3: any;
+      h4: any;
+      h5: any;
+      h6: any;
+      head: any;
+      header: any;
+      hr: any;
+      html: any;
+      i: any;
+      iframe: any;
+      img: any;
+      input: any;
+      ins: any;
+      kbd: any;
+      label: any;
+      legend: any;
+      li: any;
+      link: any;
+      main: any;
+      map: any;
+      mark: any;
+      menu: any;
+      meta: any;
+      meter: any;
+      nav: any;
+      noscript: any;
+      object: any;
+      ol: any;
+      optgroup: any;
+      option: any;
+      output: any;
+      p: any;
+      param: any;
+      picture: any;
+      pre: any;
+      progress: any;
+      q: any;
+      rp: any;
+      rt: any;
+      ruby: any;
+      s: any;
+      samp: any;
+      script: any;
+      section: any;
+      select: any;
+      slot: any;
+      small: any;
+      source: any;
+      span: any;
+      strong: any;
+      style: any;
+      sub: any;
+      summary: any;
+      sup: any;
+      table: any;
+      tbody: any;
+      td: any;
+      template: any;
+      textarea: any;
+      tfoot: any;
+      th: any;
+      thead: any;
+      time: any;
+      title: any;
+      tr: any;
+      track: any;
+      u: any;
+      ul: any;
+      var: any;
+      video: any;
+      wbr: any;
+      
+      // SVG elements
+      svg: any;
       className?: string;
-      contentEditable?: boolean | 'true' | 'false';
-      contextMenu?: string;
-      dir?: string;
+      style?: { [key: string]: string | number } | string;
+      title?: string;
+      role?: string;
+      tabIndex?: number;
+      
+      // Event handlers - mouse
+      onClick?: EventHandler<MouseEvent>;
+      onDoubleClick?: EventHandler<MouseEvent>;
+      onContextMenu?: EventHandler<MouseEvent>;
+      onMouseDown?: EventHandler<MouseEvent>;
+      onMouseUp?: EventHandler<MouseEvent>;
+      onMouseEnter?: EventHandler<MouseEvent>;
+      onMouseLeave?: EventHandler<MouseEvent>;
+      onMouseMove?: EventHandler<MouseEvent>;
+      onMouseOver?: EventHandler<MouseEvent>;
+      onMouseOut?: EventHandler<MouseEvent>;
+      
+      // Event handlers - touch
+      onTouchStart?: EventHandler<TouchEvent>;
+      onTouchEnd?: EventHandler<TouchEvent>;
+      onTouchMove?: EventHandler<TouchEvent>;
+      onTouchCancel?: EventHandler<TouchEvent>;
+      
+      // Event handlers - keyboard
+      onKeyDown?: EventHandler<KeyboardEvent>;
+      onKeyUp?: EventHandler<KeyboardEvent>;
+      onKeyPress?: EventHandler<KeyboardEvent>;
+      
+      // Event handlers - focus
+      onFocus?: EventHandler<FocusEvent>;
+      onBlur?: EventHandler<FocusEvent>;
+      
+      // Event handlers - form
+      onChange?: EventHandler<Event>;
+      onInput?: EventHandler<Event>;
+      onSubmit?: EventHandler<Event>;
+      
+      // ARIA attributes
+      'aria-label'?: string;
+      'aria-labelledby'?: string;
+      'aria-describedby'?: string;
+      'aria-hidden'?: boolean | 'true' | 'false';
+      'aria-disabled'?: boolean | 'true' | 'false';
+      'aria-required'?: boolean | 'true' | 'false';
+      'aria-checked'?: boolean | 'true' | 'false' | 'mixed';
+      'aria-expanded'?: boolean | 'true' | 'false';
+      'aria-controls'?: string;
+      'aria-selected'?: boolean | 'true' | 'false';
+      'aria-pressed'?: boolean | 'true' | 'false' | 'mixed';
+      'aria-current'?: 'page' | 'step' | 'location' | 'date' | 'time' | 'true' | 'false';
+      'aria-valuemin'?: number;
+      'aria-valuemax'?: number;
+      'aria-valuenow'?: number;
+      'aria-valuetext'?: string;
+      'aria-live'?: 'off' | 'assertive' | 'polite';
+      'aria-atomic'?: boolean | 'true' | 'false';
+      'aria-busy'?: boolean | 'true' | 'false';
+      'aria-relevant'?: 'additions' | 'additions text' | 'all' | 'removals' | 'text';
+      
+      // Data attributes
+      [key: `data-${string}`]: any;
+      
+      // Other common attributes
       draggable?: boolean | 'true' | 'false';
       hidden?: boolean;
-      id?: string;
-      lang?: string;
-      slot?: string;
       spellCheck?: boolean | 'true' | 'false';
-      style?: Partial<CSSStyleDeclaration> | string;
-      tabIndex?: number;
-      title?: string;
       translate?: 'yes' | 'no';
-
-      // Event handlers
-      onAbort?: (event: Event) => void;
-      onAnimationEnd?: (event: AnimationEvent) => void;
-      onAnimationIteration?: (event: AnimationEvent) => void;
-      onAnimationStart?: (event: AnimationEvent) => void;
-      onBlur?: (event: FocusEvent) => void;
-      onChange?: (event: Event) => void;
-      onClick?: (event: MouseEvent) => void;
-      onContextMenu?: (event: MouseEvent) => void;
-      onDoubleClick?: (event: MouseEvent) => void;
-      onError?: (event: Event) => void;
-      onFocus?: (event: FocusEvent) => void;
-      onInput?: (event: Event) => void;
-      onKeyDown?: (event: KeyboardEvent) => void;
-      onKeyPress?: (event: KeyboardEvent) => void;
-      onKeyUp?: (event: KeyboardEvent) => void;
-      onLoad?: (event: Event) => void;
-      onMouseDown?: (event: MouseEvent) => void;
-      onMouseEnter?: (event: MouseEvent) => void;
-      onMouseLeave?: (event: MouseEvent) => void;
-      onMouseMove?: (event: MouseEvent) => void;
-      onMouseOut?: (event: MouseEvent) => void;
-      onMouseOver?: (event: MouseEvent) => void;
-      onMouseUp?: (event: MouseEvent) => void;
-      onSubmit?: (event: Event) => void;
-      onWheel?: (event: WheelEvent) => void;
-
-      // Allow any other props
+      dir?: 'ltr' | 'rtl' | 'auto';
+      lang?: string;
+      
+      // Allow any other attributes
       [key: string]: any;
     }
-
-    // The type of the props for SVG elements
-    interface SVGAttributes<T = SVGElement> extends HTMLAttributes<T> {
-      // SVG Attributes
-      viewBox?: string;
-      width?: string | number;
-      height?: string | number;
-      fill?: string;
-      stroke?: string;
-      strokeWidth?: string | number;
-      d?: string;
-      x?: string | number;
-      y?: string | number;
-      cx?: string | number;
-      cy?: string | number;
-      r?: string | number;
-      rx?: string | number;
-      ry?: string | number;
-      transform?: string;
+    
+    /**
+     * Attributes collection for HTML elements with ref support
+     */
+    type AttributeCollection<T = HTMLElement> = HTMLAttributes & {
+      ref?: { current: T | null } | ((instance: T | null) => void);
+    };
+    
+    /**
+     * All HTML intrinsic elements
+     */
+    interface IntrinsicElements {
+      // Document elements
+      html: AttributeCollection<HTMLHtmlElement>;
+      head: AttributeCollection<HTMLHeadElement>;
+      body: AttributeCollection<HTMLBodyElement>;
+      title: AttributeCollection<HTMLTitleElement>;
+      meta: AttributeCollection<HTMLMetaElement>;
+      link: AttributeCollection<HTMLLinkElement>;
+      script: AttributeCollection<HTMLScriptElement>;
+      style: AttributeCollection<HTMLStyleElement>;
+      
+      // Sectioning elements
+      div: AttributeCollection<HTMLDivElement>;
+      span: AttributeCollection<HTMLSpanElement>;
+      section: AttributeCollection<HTMLElement>;
+      article: AttributeCollection<HTMLElement>;
+      aside: AttributeCollection<HTMLElement>;
+      header: AttributeCollection<HTMLElement>;
+      footer: AttributeCollection<HTMLElement>;
+      main: AttributeCollection<HTMLElement>;
+      nav: AttributeCollection<HTMLElement>;
+      
+      // Text content elements
+      p: AttributeCollection<HTMLParagraphElement>;
+      h1: AttributeCollection<HTMLHeadingElement>;
+      h2: AttributeCollection<HTMLHeadingElement>;
+      h3: AttributeCollection<HTMLHeadingElement>;
+      h4: AttributeCollection<HTMLHeadingElement>;
+      h5: AttributeCollection<HTMLHeadingElement>;
+      h6: AttributeCollection<HTMLHeadingElement>;
+      ul: AttributeCollection<HTMLUListElement>;
+      ol: AttributeCollection<HTMLOListElement>;
+      li: AttributeCollection<HTMLLIElement>;
+      blockquote: AttributeCollection<HTMLQuoteElement>;
+      pre: AttributeCollection<HTMLPreElement>;
+      code: AttributeCollection<HTMLElement>;
+      
+      // Form elements
+      form: AttributeCollection<HTMLFormElement>;
+      input: AttributeCollection<HTMLInputElement> & { type?: string };
+      button: AttributeCollection<HTMLButtonElement> & { type?: 'button' | 'submit' | 'reset' };
+      textarea: AttributeCollection<HTMLTextAreaElement>;
+      select: AttributeCollection<HTMLSelectElement>;
+      option: AttributeCollection<HTMLOptionElement>;
+      label: AttributeCollection<HTMLLabelElement>;
+      fieldset: AttributeCollection<HTMLFieldSetElement>;
+      legend: AttributeCollection<HTMLLegendElement>;
+      
+      // Inline elements
+      a: AttributeCollection<HTMLAnchorElement> & { href?: string; target?: string };
+      strong: AttributeCollection<HTMLElement>;
+      em: AttributeCollection<HTMLElement>;
+      small: AttributeCollection<HTMLElement>;
+      s: AttributeCollection<HTMLElement>;
+      cite: AttributeCollection<HTMLElement>;
+      q: AttributeCollection<HTMLQuoteElement>;
+      time: AttributeCollection<HTMLTimeElement>;
+      
+      // Embedded content
+      img: AttributeCollection<HTMLImageElement> & { src: string; alt: string };
+      iframe: AttributeCollection<HTMLIFrameElement>;
+      canvas: AttributeCollection<HTMLCanvasElement>;
+      audio: AttributeCollection<HTMLAudioElement>;
+      video: AttributeCollection<HTMLVideoElement>;
+      source: AttributeCollection<HTMLSourceElement>;
+      track: AttributeCollection<HTMLTrackElement>;
+      embed: AttributeCollection<HTMLEmbedElement>;
+      object: AttributeCollection<HTMLObjectElement>;
+      
+      // Table elements
+      table: AttributeCollection<HTMLTableElement>;
+      caption: AttributeCollection<HTMLTableCaptionElement>;
+      colgroup: AttributeCollection<HTMLTableColElement>;
+      col: AttributeCollection<HTMLTableColElement>;
+      tbody: AttributeCollection<HTMLTableSectionElement>;
+      thead: AttributeCollection<HTMLTableSectionElement>;
+      tfoot: AttributeCollection<HTMLTableSectionElement>;
+      tr: AttributeCollection<HTMLTableRowElement>;
+      td: AttributeCollection<HTMLTableCellElement>;
+      th: AttributeCollection<HTMLTableCellElement>;
+      
+      // Others
+      hr: AttributeCollection<HTMLHRElement>;
+      br: AttributeCollection<HTMLBRElement>;
+      wbr: AttributeCollection<HTMLElement>;
+      sup: AttributeCollection<HTMLElement>;
+      sub: AttributeCollection<HTMLElement>;
+      
+      // SVG elements (basic support)
+      svg: AttributeCollection<SVGSVGElement>;
+      path: AttributeCollection<SVGPathElement>;
+      circle: AttributeCollection<SVGCircleElement>;
+      rect: AttributeCollection<SVGRectElement>;
+      line: AttributeCollection<SVGLineElement>;
+      g: AttributeCollection<SVGGElement>;
+      
+      // Allow any other element with any props
+      [elemName: string]: any;
     }
-
-    // The type of a JSX element node
+    
+    /**
+     * The type of a JSX element node
+     */
     interface JSXNode {
       type: string | ComponentFunction;
       props: Record<string, any>;
@@ -121,27 +352,39 @@ declare global {
       children: JSXNode[];
     }
 
-    // The type of a component function
+    /**
+     * The type of a component function
+     */
     type ComponentFunction = (props: Record<string, any>, ...children: any[]) => JSXNode;
 
-    // The type of the children prop
+    /**
+     * The type of the children prop
+     */
     type JSXChildren = JSXNode | JSXNode[] | string | number | boolean | null | undefined;
 
-    // The type of the props object
+    /**
+     * The type of the props object
+     */
     interface JSXAttributes<T = HTMLElement> extends HTMLAttributes<T> {
       // Allow any other props
       [key: string]: any;
     }
 
-    // The type of the props for the Fragment component
+    /**
+     * The type of the props for the Fragment component
+     */
     interface FragmentProps {
       children?: JSXChildren;
     }
 
-    // The Fragment component
+    /**
+     * The Fragment component
+     */
     const Fragment: ComponentFunction<FragmentProps>;
 
-    // The type of the JSX namespace
+    /**
+     * The type of the JSX namespace
+     */
     interface Element extends JSXNode {}
     
     interface ElementClass {
@@ -155,55 +398,8 @@ declare global {
     interface ElementChildrenAttribute {
       children: {};
     }
-
-    // Intrinsic elements
+    
     interface IntrinsicElements {
-      // Basic HTML elements (partial list for brevity)
-      a: JSXAttributes<HTMLAnchorElement>;
-      abbr: JSXAttributes;
-      address: JSXAttributes;
-      area: JSXAttributes<HTMLAreaElement>;
-      article: JSXAttributes<HTMLElement>;
-      aside: JSXAttributes<HTMLElement>;
-      audio: JSXAttributes<HTMLAudioElement>;
-      b: JSXAttributes;
-      base: JSXAttributes<HTMLBaseElement>;
-      bdi: JSXAttributes;
-      bdo: JSXAttributes;
-      blockquote: JSXAttributes<HTMLQuoteElement>;
-      body: JSXAttributes<HTMLBodyElement>;
-      br: JSXAttributes<HTMLBRElement>;
-      button: JSXAttributes<HTMLButtonElement>;
-      canvas: JSXAttributes<HTMLCanvasElement>;
-      caption: JSXAttributes<HTMLTableCaptionElement>;
-      cite: JSXAttributes;
-      code: JSXAttributes;
-      col: JSXAttributes<HTMLTableColElement>;
-      colgroup: JSXAttributes<HTMLTableColElement>;
-      data: JSXAttributes<HTMLDataElement>;
-      datalist: JSXAttributes<HTMLDataListElement>;
-      dd: JSXAttributes;
-      del: JSXAttributes<HTMLModElement>;
-      details: JSXAttributes<HTMLDetailsElement>;
-      dfn: JSXAttributes;
-      dialog: JSXAttributes<HTMLDialogElement>;
-      div: JSXAttributes<HTMLDivElement>;
-      dl: JSXAttributes<HTMLDListElement>;
-      dt: JSXAttributes;
-      em: JSXAttributes;
-      embed: JSXAttributes<HTMLEmbedElement>;
-      fieldset: any;
-      figcaption: any;
-      figure: any;
-      footer: any;
-      form: any;
-      h1: any;
-      h2: any;
-      h3: any;
-      h4: any;
-      h5: any;
-      h6: any;
-      head: any;
       header: any;
       hr: any;
       html: any;

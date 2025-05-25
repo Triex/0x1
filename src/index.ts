@@ -6,6 +6,10 @@
  * Main entry point exporting all core functionality
  */
 
+// Reference JSX type definitions to ensure they're available to consumers
+/// <reference path="../types/jsx.d.ts" />
+/// <reference path="../types/jsx-runtime.d.ts" />
+
 // Export core components and functionality
 export {
   // Use legacy names for HTML element creation functions
@@ -26,7 +30,10 @@ export type { Component, ComponentProps } from './core/component.js';
 export {
   createElement,
   Fragment,
-  renderToString
+  renderToString,
+  jsx,
+  jsxs,
+  jsxDEV
 } from './jsx-runtime.js';
 
 // Export JSX types
@@ -34,6 +41,37 @@ export type {
   ComponentFunction, JSXAttributes,
   JSXChildren, JSXNode
 } from './jsx-runtime.js';
+
+// Define the JSX namespace to be picked up by TypeScript
+export namespace JSX {
+  export interface Element {
+    type: string | Function;
+    props: any;
+    children: any[];
+    __source?: {
+      fileName: string;
+      lineNumber: number;
+      columnNumber: number;
+    };
+    __self?: any;
+  }
+  
+  export interface ElementClass {
+    render(): Element;
+  }
+  
+  export interface ElementAttributesProperty {
+    props: any;
+  }
+  
+  export interface ElementChildrenAttribute {
+    children: any;
+  }
+  
+  export interface IntrinsicElements {
+    [elemName: string]: any;
+  }
+}
 
 // Export router and navigation with consistent naming
 export {
@@ -83,4 +121,4 @@ export { clearElement, patchElement, setAttributes, setStyles } from './utils/do
 export type { _0x1Config } from '../types/config.js';
 
 // Version info
-export const version = '0.0.125';
+export const version = '0.0.169';

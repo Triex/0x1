@@ -233,15 +233,7 @@ async function buildFramework() {
         // Then run TypeScript type checking and emit declarations
         console.log('📦 Compiling TypeScript with JSX support...');
         const tsResult = await Bun.spawn({
-          cmd: ['bun', 'x', 'tsc'],
-          cwd: rootDir,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: {
-            ...process.env,
-            NODE_ENV: 'production',
-            FORCE_COLOR: '1'
-          },
-          args: [
+          cmd: ['bun', 'x', 'tsc', 
             '--project', 'tsconfig.json',
             '--jsx', 'react-jsx',
             '--jsxImportSource', '0x1',
@@ -249,7 +241,14 @@ async function buildFramework() {
             '--declaration',
             '--emitDeclarationOnly',
             '--noEmit', 'false'
-          ]
+          ],
+          cwd: rootDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            NODE_ENV: 'production',
+            FORCE_COLOR: '1'
+          }
         });
         
         // Pipe the output to the current process
@@ -357,17 +356,20 @@ async function buildFramework() {
         // Transpile TS to JS using Bun directly
         console.log('Found TypeScript JSX runtime, transpiling it...');
         
-        // Write to a temporary file for transpilation
-        const tempOutputFile = join(srcDir, '.temp-jsx-runtime.js');
+        // Use direct output to the target destination to avoid temporary files
+        const targetCliJsxRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-runtime.js');
         
-        // Use Bun to build the TS file to JS
-        const bunBuildCmd = `bun build ${jsxRuntimeTS} --outfile ${tempOutputFile} --target browser`;
-        const buildResult = Bun.spawnSync(bunBuildCmd.split(' '));
+        // Use Bun to build the TS file to JS using the proper API syntax
+        const buildResult = Bun.spawnSync([
+          'bun', 'build', jsxRuntimeTS,
+          '--outfile', targetCliJsxRuntime,
+          '--target', 'browser'
+        ]);
         
         if (buildResult.exitCode === 0) {
-          jsxRuntimeContent = await Bun.file(tempOutputFile).text();
-          // Cleanup temp file
-          Bun.spawnSync(['rm', tempOutputFile]);
+          // Read the content from the compiled file for further processing
+          jsxRuntimeContent = await Bun.file(targetCliJsxRuntime).text();
+          console.log('✅ JSX runtime file generated and saved to cli/commands/utils/');
         } else {
           console.warn('⚠️ Failed to transpile TypeScript JSX runtime, falling back to JavaScript version');
         }
@@ -405,20 +407,20 @@ async function buildFramework() {
       try {
         console.log('Found TypeScript JSX dev runtime, transpiling it...');
         
-        // Write to a temporary file for transpilation
-        const tempOutputFile = join(srcDir, '.temp-jsx-dev-runtime.js');
+        // Use direct output to the target destination to avoid temporary files
+        const targetCliJsxDevRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-dev-runtime.js');
         
-        // Use Bun to build the TS file to JS
+        // Use Bun to build the TS file to JS using the proper API syntax
         const buildResult = Bun.spawnSync([
-          'bun', 'build', jsxDevRuntimeTS, 
-          '--outfile', tempOutputFile,
+          'bun', 'build', jsxDevRuntimeTS,
+          '--outfile', targetCliJsxDevRuntime,
           '--target', 'browser'
         ]);
         
         if (buildResult.exitCode === 0) {
-          jsxDevRuntimeContent = await Bun.file(tempOutputFile).text();
-          // Cleanup temp file
-          Bun.spawnSync(['rm', tempOutputFile]);
+          // Read the content from the compiled file for further processing
+          jsxDevRuntimeContent = await Bun.file(targetCliJsxDevRuntime).text();
+          console.log('✅ JSX dev runtime file generated and saved to cli/commands/utils/');
         } else {
           console.warn('⚠️ Failed to transpile TypeScript JSX dev runtime, falling back to JavaScript version');
         }

@@ -1,7 +1,14 @@
 /**
  * JSX Runtime for 0x1 Framework
  * Provides JSX factory functions for creating elements and server-side rendering
+ * 
+ * This is the main implementation of the JSX runtime that powers the framework's
+ * client-side and server-side rendering capabilities. It follows the React 17+ JSX transform spec.
  */
+
+// Import types from our type definitions
+/// <reference path="../types/jsx.d.ts" />
+/// <reference path="../types/jsx-runtime.d.ts" />
 
 // Types for the JSX elements with better React compatibility
 export type JSXAttributes = Record<string, any>;
@@ -118,11 +125,13 @@ export function jsxDEV(
  * This function is used by both server-side and client-side code to render JSX elements to HTML strings
  */
 export function renderToString(node: JSXNode | string | number | boolean | null | undefined): string {
-  if (node === undefined || node === null || node === false) {
+  if (node === undefined || node === null || node === false || node === true) {
+    // Skip undefined, null, false, AND true values
     return '';
   }
   
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
+  if (typeof node === 'string' || typeof node === 'number') {
+    // Only render strings and numbers, not booleans
     return String(node);
   }
   
@@ -215,138 +224,5 @@ function escapeHtml(html: string): string {
     .replace(/'/g, '&#039;');
 }
 
-// Type definitions for JSX
-// Use ESLint disable to allow namespace syntax which is required for JSX compatibility
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface ElementAttributesProperty {
-      props: {}; // Specify the property name to use for props
-    }
-
-    interface ElementChildrenAttribute {
-      children: {}; // Specify the property name to use for children
-    }
-    
-    // Define common event handler type
-    type EventHandler = (event: any) => void;
-    
-    // Define attribute types with no index signature
-    interface DOMAttributes {
-      // Event handlers
-      onClick?: EventHandler;
-      onMount?: () => void;
-      onUnmount?: () => void;
-      onInput?: EventHandler;
-      onChange?: EventHandler;
-      onBlur?: EventHandler;
-      onFocus?: EventHandler;
-      onKeyDown?: EventHandler;
-      onKeyUp?: EventHandler;
-      onSubmit?: EventHandler;
-    }
-    
-    // Define HTML attributes with no index signature
-    interface HTMLAttributes extends DOMAttributes {
-      // Standard attributes
-      className?: string;
-      id?: string;
-      style?: Record<string, string | number>;
-      // Special props
-      children?: any; // Add children property to support JSX children
-      // Form attributes
-      disabled?: boolean;
-      value?: string | number | boolean;
-      type?: string;
-      placeholder?: string;
-      // Link attributes
-      href?: string;
-      target?: string;
-      rel?: string;
-      // Image attributes
-      src?: string;
-      alt?: string;
-      // Misc attributes
-      title?: string;
-      tabIndex?: number;
-      role?: string;
-      // Accessibility
-      'aria-label'?: string;
-      'aria-labelledby'?: string;
-      'aria-describedby'?: string;
-      'aria-hidden'?: boolean | string;
-      // Testing
-      'data-testid'?: string;
-      'data-component'?: string;
-      // SVG-specific attributes
-      xmlns?: string;
-      viewBox?: string;
-      width?: string | number;
-      height?: string | number;
-      fill?: string;
-      stroke?: string;
-      d?: string;
-    }
-    
-    // Define type for any custom attributes
-    type AttributeCollection = HTMLAttributes & { [key: string]: any };
-    
-    interface IntrinsicElements {
-      // Enhanced with all common HTML elements
-      div: AttributeCollection;
-      span: AttributeCollection;
-      a: AttributeCollection;
-      p: AttributeCollection;
-      h1: AttributeCollection;
-      h2: AttributeCollection;
-      h3: AttributeCollection;
-      h4: AttributeCollection;
-      h5: AttributeCollection;
-      h6: AttributeCollection;
-      button: AttributeCollection;
-      input: AttributeCollection;
-      img: AttributeCollection;
-      // Form elements
-      form: AttributeCollection;
-      label: AttributeCollection;
-      select: AttributeCollection;
-      option: AttributeCollection;
-      textarea: AttributeCollection;
-      // Layout elements
-      header: AttributeCollection;
-      footer: AttributeCollection;
-      main: AttributeCollection;
-      section: AttributeCollection;
-      article: AttributeCollection;
-      nav: AttributeCollection;
-      aside: AttributeCollection;
-      // Lists
-      ul: AttributeCollection;
-      ol: AttributeCollection;
-      li: AttributeCollection;
-      dl: AttributeCollection;
-      dt: AttributeCollection;
-      dd: AttributeCollection;
-      // Tables
-      table: AttributeCollection;
-      tr: AttributeCollection;
-      td: AttributeCollection;
-      th: AttributeCollection;
-      thead: AttributeCollection;
-      tbody: AttributeCollection;
-      tfoot: AttributeCollection;
-      // Other common elements
-      code: AttributeCollection;
-      pre: AttributeCollection;
-      strong: AttributeCollection;
-      em: AttributeCollection;
-      hr: AttributeCollection;
-      br: AttributeCollection;
-      // SVG elements for completeness
-      svg: AttributeCollection;
-      path: AttributeCollection;
-      circle: AttributeCollection;
-      rect: AttributeCollection;
-    }
-  }
-}
+// Re-export the Fragment for use in code
+export { Fragment as JSXFragment };

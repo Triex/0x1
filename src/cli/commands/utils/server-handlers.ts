@@ -53,6 +53,92 @@ export async function serveAppDirectoryHtml(
 
     templateContent = templateContent.replace("{{DEBUG_LOGGING}}", debugCode);
     
+    // Add support for NextJS 15-style layout with full HTML structure
+    // This script will detect if the layout includes full HTML tags and adjust rendering accordingly
+    const layoutCompatScript = `
+    <script>
+      // Boolean text cleaner - removes "true" and "false" text nodes
+      (function setupBooleanCleaner() {
+        function cleanBooleanTextNodes(node) {
+          if (!node) return;
+          
+          // Handle text nodes
+          if (node.nodeType === Node.TEXT_NODE) {
+            if (node.textContent === "true" || node.textContent === "false") {
+              node.textContent = "";
+            }
+          } 
+          // Handle element nodes recursively
+          else if (node.nodeType === Node.ELEMENT_NODE) {
+            Array.from(node.childNodes).forEach(child => {
+              cleanBooleanTextNodes(child);
+            });
+          }
+        }
+
+        // Set up a mutation observer to clean boolean text nodes when new content is added
+        const observer = new MutationObserver(mutations => {
+          mutations.forEach(mutation => {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(node => {
+                cleanBooleanTextNodes(node);
+              });
+            }
+          });
+        });
+
+        // Run on DOM content loaded
+        document.addEventListener('DOMContentLoaded', () => {
+          // Clean existing nodes
+          cleanBooleanTextNodes(document.body);
+          
+          // Watch for future changes
+          observer.observe(document.body, { 
+            childList: true,
+            subtree: true
+          });
+        });
+      })();
+
+      // Handle NextJS 15 style layouts with full HTML structure
+      (function setupLayoutCompatibility() {
+        // Store the original createElement to patch it
+        const originalCreateElement = document.createElement.bind(document);
+        
+        // Function to check if content has HTML root elements
+        window.__0x1_hasHtmlStructure = function(content) {
+          return typeof content === 'string' && 
+                 (content.includes('<html') || 
+                  content.includes('</html>') || 
+                  (content.includes('<head') && content.includes('</head>') && 
+                   content.includes('<body') && content.includes('</body>')));
+        };
+
+        // Function to extract content from HTML structure
+        window.__0x1_extractBodyContent = function(htmlContent) {
+          const tempDiv = originalCreateElement('div');
+          tempDiv.innerHTML = htmlContent;
+          
+          // Look for the body content
+          const bodyContent = tempDiv.querySelector('body');
+          return bodyContent ? bodyContent.innerHTML : htmlContent;
+        };
+
+        // Function to properly handle layout content
+        window.__0x1_processLayoutContent = function(content) {
+          if (window.__0x1_hasHtmlStructure(content)) {
+            console.log('[0x1] Detected Next.js 15-style layout with full HTML structure');
+            return window.__0x1_extractBodyContent(content);
+          }
+          return content;
+        };
+      })();
+    </script>
+    `;
+    
+    // Insert the layout compatibility script in the head
+    templateContent = templateContent.replace('</head>', `${layoutCompatScript}\n</head>`);
+    
     // Add forced error overlay visibility for missing app directory
     if (!appDirExists) {
       // Add script to show error overlay immediately on page load
@@ -189,6 +275,7 @@ export async function serveLiveReloadScript(): Promise<Response> {
     });
   } catch (error) {
     logger.error(`Error serving live reload script: ${error}`);
+
     return new Response(`console.error('Failed to load live reload script');`, {
       status: 500,
       headers: {
@@ -871,9 +958,9 @@ export const Redirect = BrowserRedirect;
     } catch (pathError) {
       // Ignore errors extracting path in error handler
     }
-    
+
     logger.error(`Error serving module ${errorModulePath}: ${error}`);
-    return new Response(`console.error('Failed to load module: ${errorModulePath}');`, {
+    return new Response(`console.error('Failed to load live reload script');`, {
       status: 500,
       headers: {
         "Content-Type": "application/javascript",
@@ -932,6 +1019,12 @@ export async function handleScriptFile(
     
     // For direct .tsx or .jsx file requests (unusual but possible)
     if (path.endsWith(".tsx") || path.endsWith(".jsx") || path.endsWith(".ts")) {
+      // If path starts with /0x1/ or is the jsx-utils.js file, serve framework module
+      if (path.startsWith('/0x1/') || path.includes('jsx-utils.js')) {
+        // Create a mock request object for the framework module handler
+        const mockRequest = new Request(`http://localhost/${path}`);
+        return await serveFrameworkModule(mockRequest, { debug });
+      }
       const fullPath = resolve(projectPath, path.slice(1)); // Remove leading slash
       
       if (existsSync(fullPath)) {

@@ -1,24 +1,51 @@
 /**
  * JSX Dev Runtime for 0x1 Framework
- * This file provides the necessary exports for Bun's automatic JSX transform in development mode
- * with enhanced error boundaries and debugging support.
+ * 
+ * A minimal, high-performance implementation aligned with React 19 and Next.js 15.
+ * Provides enhanced debugging capabilities while maintaining compatibility.
  */
 
-// Import the core functions and types from the main 0x1 modules
-import { jsx, jsxs, Fragment, createElement } from '0x1/jsx-runtime';
-import type { JSXAttributes, JSXNode, JSXChildren } from '0x1';
+// Import types from type definitions
+/// <reference path="../types/jsx.d.ts" />
+/// <reference path="../types/jsx-runtime.d.ts" />
 
-// Re-export the core functions and types
-export { Fragment, createElement };
-export type { JSXAttributes, JSXNode, JSXChildren };
+// Import core functions and types
+import type { ComponentFunction, JSXAttributes, JSXChildren, JSXNode } from './jsx-runtime';
+import { Fragment, createElement, jsx, jsxs } from './jsx-runtime';
 
-// Dev-only utility to track component rendering for better error reporting
+// Re-export core functions and types
+export { Fragment, createElement, jsx, jsxs };
+export type { JSXAttributes, JSXChildren, JSXNode };
+
+// React 19 and Next.js 15 symbol exports
+export const REACT_ELEMENT = Symbol.for('react.element');
+export const REACT_FRAGMENT = Symbol.for('react.fragment');
+export const REACT_SERVER_COMPONENT = Symbol.for('react.server.component');
+
+// Enhanced component function type with React 19 properties
+type EnhancedComponentFunction = ComponentFunction & {
+  displayName?: string;
+  $$typeof?: symbol;
+};
+
+// Define React Element type for React 19 compatibility
+type ReactElement = {
+  $$typeof: symbol;
+  type: string | EnhancedComponentFunction | object;
+  key: string | null;
+  ref: any;
+  props: Record<string, any>;
+  _owner: any;
+  [key: string]: any;
+};
+
+// Component stack tracking for enhanced error reporting
 const componentStack: string[] = [];
 
-// Error boundary utilities
+// Error boundary info interface
 interface ErrorInfo {
   componentStack: string;
-  jsxSource?: {
+  source?: {
     fileName: string;
     lineNumber: number;
     columnNumber: number;
@@ -26,86 +53,160 @@ interface ErrorInfo {
 }
 
 /**
- * jsxDEV function for development mode
- * This matches the React JSX-dev-runtime signature with source info
- * This enhanced version includes error boundary and source tracking
+ * Development mode JSX transformation function
+ * Matches React 19's implementation with enhanced error handling
  */
 export function jsxDEV(
-  type: string | ((props: JSXAttributes & { children?: JSXChildren }) => string | JSXNode),
+  type: string | EnhancedComponentFunction,
   props: JSXAttributes | null,
-  key?: string | null,
-  _isStaticChildren?: boolean,
+  key: string | null = null,
+  isStaticChildren = false,
   source?: { fileName: string; lineNumber: number; columnNumber: number },
-  _self?: any
-): JSXNode {
-  // Skip error boundaries for string-based elements (HTML tags)
+  self?: any
+): ReactElement {
+  // Fast path for HTML elements
   if (typeof type === 'string') {
-    return jsx(type, props || {}, key || undefined);
+    return {
+      $$typeof: REACT_ELEMENT,
+      type,
+      key,
+      ref: null,
+      props: props || {},
+      _owner: null
+    };
   }
 
-  // For component functions, add error boundaries in development mode
-  const typeName = type.name || 'AnonymousComponent';
+  // Type guard for server components
+  const isServerComponent = 
+    typeof type === 'object' && 
+    type !== null && 
+    '$$typeof' in type && 
+    (type as any).$$typeof === REACT_SERVER_COMPONENT;
+  
+  // Track component for error reporting
+  const typeName = typeof type === 'function' 
+    ? (type.displayName || type.name || 'Component') 
+    : (isServerComponent ? 'ServerComponent' : 'Unknown');
   componentStack.push(typeName);
 
   try {
-    // Regular jsx rendering with the component function
-    const result = jsx(type, props || {}, key || undefined);
-    componentStack.pop(); // Remove from stack after successful render
-    return result;
-  } catch (error) {
-    // Handle error with source information
-    const componentStackTrace = [...componentStack].reverse().join(' > ');
-    componentStack.pop(); // Clean up stack even on error
+    // Ensure key is string or undefined (not null) for jsx function
+    const keyParam = key === null ? undefined : key;
     
-    console.error(`Error rendering component: ${typeName}`);
-    console.error(`Component stack: ${componentStackTrace}`);
+    // Call jsx with the correct component function type
+    const jsxResult = jsx(type as ComponentFunction, props || {}, keyParam);
+    
+    componentStack.pop();
+    
+    // Create a valid ReactElement to return with proper types
+    const reactElement: ReactElement = {
+      $$typeof: REACT_ELEMENT,
+      type: typeof jsxResult === 'object' && jsxResult !== null && 'type' in jsxResult 
+            ? jsxResult.type 
+            : typeof type === 'string' ? type : 'div',
+      key: key,
+      ref: null,
+      props: typeof jsxResult === 'object' && jsxResult !== null && 'props' in jsxResult 
+            ? jsxResult.props 
+            : props || {},
+      _owner: null
+    };
+    
+    // Add source info for debugging
+    if (source) {
+      Object.defineProperty(reactElement, '_source', {
+        configurable: false,
+        enumerable: false,
+        writable: false,
+        value: source
+      });
+    }
+    
+    return reactElement;
+  } catch (error) {
+    // Create error trace
+    const componentStackTrace = [...componentStack].reverse().join(' > ');
+    componentStack.pop();
+    
+    // Log detailed error information
+    console.error(`[0x1] Error in component: ${typeName}`);
+    console.error(`[0x1] Component stack: ${componentStackTrace}`);
     
     if (source) {
-      console.error(`Source: ${source.fileName}:${source.lineNumber}:${source.columnNumber}`);
+      console.error(`[0x1] Source: ${source.fileName}:${source.lineNumber}:${source.columnNumber}`);
     }
     
-    if (error instanceof Error) {
-      console.error(`${error.name}: ${error.message}`);
-      console.error(error.stack);
-    } else {
-      console.error('Unknown error:', error);
-    }
-    
-    // Return an error boundary element instead of crashing
-    return createElement('div', { 
-      className: '0x1-error-boundary',
-      style: 'color: red; background: #ffeeee; padding: 10px; border: 1px solid red; border-radius: 4px;'
-    }, 
-      createElement('h3', null, `Error in component: ${typeName}`),
-      createElement('pre', { style: 'overflow: auto; max-height: 200px;' }, 
-        error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-      ),
-      createElement('details', null, 
-        createElement('summary', null, 'Component Stack'),
-        createElement('pre', null, componentStackTrace)
-      )
-    );
+    // Return a valid ReactElement with error UI
+    return {
+      $$typeof: REACT_ELEMENT,
+      type: 'div',
+      key: null,
+      ref: null,
+      props: {
+        className: '0x1-error-boundary',
+        style: `
+          color: #dc2626; 
+          background: rgba(254, 226, 226, 0.9);
+          padding: 0.75rem;
+          border-radius: 0.375rem;
+          border-left: 4px solid #dc2626;
+          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+          margin: 0.5rem 0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        `,
+        children: [
+          createElement('div', {
+            style: 'font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem;'
+          }, `🚫 Error in <${typeName}>`),
+          createElement('pre', {
+            style: 'margin: 0.5rem 0; font-size: 0.75rem; overflow-x: auto; padding: 0.5rem; background: rgba(0,0,0,0.05); border-radius: 0.25rem;'
+          }, error instanceof Error ? error.message : String(error)),
+          createElement('details', {
+            style: 'font-size: 0.75rem; margin-top: 0.5rem;'
+          }, 
+            createElement('summary', {style: 'cursor: pointer; opacity: 0.8;'}, 'Component Stack'),
+            createElement('div', {style: 'padding: 0.5rem; white-space: pre-wrap;'}, componentStackTrace)
+          )
+        ]
+      },
+      _owner: null
+    };
   }
 }
 
-// Also export the regular jsx/jsxs functions
-export { jsx, jsxs };
-
-// Export error boundary utilities for advanced use cases
-export function createErrorBoundary(fallback: (error: Error, errorInfo: ErrorInfo) => JSXNode) {
-  return function ErrorBoundary(props: { children?: any }) {
+/**
+ * Create a reusable error boundary component
+ */
+export function createErrorBoundary(fallback: (error: Error, info: ErrorInfo) => ReactElement) {
+  return function ErrorBoundary(props: { children?: any }): ReactElement {
     try {
-      // Directly use createElement with the children as-is to avoid type issues
-      if (!props.children) return createElement('div', null);
-      // Use a simple div as a wrapper instead of Fragment to avoid type issues
-      // Cast children to any to avoid type checking issues during compile time
-      // We're handling this at runtime anyway with the try/catch
-      return createElement('div', { className: '0x1-boundary-container' }, props.children as any);
-    } catch (error) {
-      if (error instanceof Error) {
-        return fallback(error, { componentStack: componentStack.join(' > ') });
+      if (!props.children) {
+        return {
+          $$typeof: REACT_ELEMENT,
+          type: 'div',
+          key: null,
+          ref: null,
+          props: {},
+          _owner: null
+        };
       }
-      return fallback(new Error(String(error)), { componentStack: componentStack.join(' > ') });
+      
+      return {
+        $$typeof: REACT_ELEMENT,
+        type: 'div',
+        key: null,
+        ref: null,
+        props: { 
+          className: '0x1-boundary',
+          children: props.children 
+        },
+        _owner: null
+      };
+    } catch (error) {
+      return fallback(
+        error instanceof Error ? error : new Error(String(error)), 
+        { componentStack: componentStack.join(' > ') }
+      );
     }
   };
 }

@@ -4,7 +4,7 @@
  */
 
 import chalk from 'chalk';
-import { existsSync, readdirSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import prompts from 'prompts';
@@ -773,25 +773,7 @@ async function copyTemplate(
       throw new Error(`Template '${templateType}' not found. Tried: ${templatePaths.length} locations.`);
     }
 
-    // Copy template files from source to project directory using Bun file API
-    const copyOptions = {
-      filter: (src: string) => {
-        // Skip node_modules and build artifacts
-        if (src.includes('node_modules') || src.includes('dist') || src.includes('.cache')) {
-          return false;
-        }
-        // Skip tailwind configuration if not requested
-        if (!useTailwind && (src.includes('tailwind.config') || src.includes('postcss.config'))) {
-          return false;
-        }
-        // Skip state management files if not needed
-        if (!useStateManagement && src.includes('/store/')) {
-          return false;
-        }
-        return true;
-      }
-    };
-
+    // Copy template files from source to project directory
     logger.debug(`Copying template from ${sourcePath} to ${projectPath}`);
     await copyTemplateFiles(sourcePath, projectPath, {
       useTailwind,
@@ -802,13 +784,75 @@ async function copyTemplate(
       projectStructure: 'app'
     });
     
-    // Create package.json with appropriate settings
-    await createPackageJson(projectPath, {
-      useTailwind,
-      useStateManagement,
-      minimal: templateType === 'minimal',
-      projectStructure: 'app'
-    });
+    // Update package.json from the template instead of creating a new one
+    const packageJsonPath = join(projectPath, 'package.json');
+    if (existsSync(packageJsonPath)) {
+      logger.debug(`Updating package.json at ${packageJsonPath}`);
+      
+      try {
+        // Read the template-copied package.json
+        const packageJsonContent = await Bun.file(packageJsonPath).text();
+        const packageJson = JSON.parse(packageJsonContent);
+        
+        // Update the project name from the project path
+        const projectName = projectPath.split('/').pop() || '';
+        packageJson.name = projectName.toLowerCase().replace(/\s+/g, '-');
+        
+        // Determine if we should use local framework path (for development)
+        const useLocalFramework = process.env.OX1_DEV === 'true' || 
+                                 existsSync(join(process.cwd(), 'package.json')) &&
+                                 JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')).name === '0x1';
+        
+        // Update 0x1 dependency if needed (for local development)
+        if (useLocalFramework) {
+          logger.debug('Using local 0x1 framework path for development');
+          packageJson.dependencies['0x1'] = 'file:../';
+          
+          // Update scripts to use local path
+          if (packageJson.scripts) {
+            Object.keys(packageJson.scripts).forEach(scriptName => {
+              if (typeof packageJson.scripts[scriptName] === 'string') {
+                packageJson.scripts[scriptName] = packageJson.scripts[scriptName]
+                  .replace(/\b0x1\b/g, '../bin/0x1');
+              }
+            });
+          }
+        }
+        
+        // Remove Tailwind-related dependencies if not using Tailwind
+        if (!useTailwind) {
+          if (packageJson.devDependencies) {
+            ['tailwindcss', '@tailwindcss/postcss', 'autoprefixer', 'postcss'].forEach(dep => {
+              delete packageJson.devDependencies[dep];
+            });
+          }
+          
+          // Remove Tailwind-related scripts
+          if (packageJson.scripts) {
+            ['build-css', 'watch-css'].forEach(script => {
+              delete packageJson.scripts[script];
+            });
+            
+            // Update dev script to not run Tailwind
+            if (packageJson.scripts.dev && packageJson.scripts.dev.includes('tailwindcss')) {
+              packageJson.scripts.dev = '0x1 dev';
+              if (useLocalFramework) {
+                packageJson.scripts.dev = '../bin/0x1 dev';
+              }
+            }
+          }
+        }
+        
+        // Write the updated package.json
+        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        logger.success('Updated package.json with project-specific settings');
+      } catch (err) {
+        logger.error(`Error updating package.json: ${err instanceof Error ? err.message : String(err)}`);
+        // Continue with the process even if package.json update fails
+      }
+    } else {
+      logger.warn('No package.json found in template. This is unusual and might cause issues.');
+    }
 
     logger.success(`Template files copied successfully to ${projectPath}`);
   } catch (error: unknown) {
@@ -816,8 +860,6 @@ async function copyTemplate(
     logger.error(`Failed to copy template: ${errorMessage}`);
     throw error;
   }
-  
-  // Note: Package.json creation is now handled inside the try block above
 }
 
 /**
@@ -983,7 +1025,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.168' // Use current version with caret for compatibility
+      "0x1": '^0.0.169' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

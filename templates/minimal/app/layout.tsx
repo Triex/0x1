@@ -2,7 +2,10 @@
  * 0x1 Minimal App - Root Layout
  * Using app directory structure
  */
-import './globals.css';
+// import { ThemeProvider } from "@/components/ThemeProvider";
+// import type { Metadata, Viewport } from "next";
+// import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
 
 export default function RootLayout({ children }: { children: any }) {
   return (

@@ -5,6 +5,15 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": ["dist/*"],
+      "jsx-runtime": ["types/jsx-runtime.d.ts"],
+      "jsx-dev-runtime": ["types/jsx-runtime.d.ts"],
+      "jsx": ["types/jsx.d.ts"],
+      "jsx-import-source": ["types/jsx-import-source.d.ts"]
+    }
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -30,6 +39,13 @@
       "import": "./dist/jsx-dev-runtime.js",
       "types": "./types/jsx-runtime.d.ts"
     },
+    "./jsx-runtime-bridge": {
+      "import": "./dist/jsx-runtime-bridge.js",
+      "types": "./src/jsx-runtime-bridge.ts"
+    },
+    "./jsx": {
+      "types": "./types/jsx.d.ts"
+    },
     "./store": {
       "import": "./dist/store.js",
       "types": "./dist/store.d.ts"
@@ -43,6 +59,7 @@
     "dist",
     "templates",
     "bin",
+    "types",
     "LICENSE"
   ],
   "npmignore": [
