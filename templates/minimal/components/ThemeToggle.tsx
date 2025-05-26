@@ -1,3 +1,4 @@
+"use client"
 /**
  * Theme Toggle Component
  */
@@ -13,23 +14,41 @@ export function ThemeToggle({
   className = "",
   iconOnly = false,
 }: ThemeToggleProps) {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("0x1-dark-mode");
-      if (saved) return saved === "dark";
-    }
-    return false;
-  });
+  // State to track if dark mode is active
+  const [isDark, setIsDark] = useState<boolean>(false);
 
+  // Initialize theme on component mount
   useEffect(() => {
-    const saved = localStorage.getItem("0x1-dark-mode");
-    if (saved) {
-      const shouldBeDark = saved === "dark";
+    // Check for saved preference first
+    const savedTheme = localStorage.getItem("0x1-dark-mode");
+
+    // If there's a saved preference, use it
+    if (savedTheme) {
+      const shouldBeDark = savedTheme === "dark";
       setIsDark(shouldBeDark);
       document.documentElement.classList.toggle("dark", shouldBeDark);
+    } else {
+      // If no saved preference, check system preference
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setIsDark(prefersDark);
+      document.documentElement.classList.toggle("dark", prefersDark);
+      localStorage.setItem("0x1-dark-mode", prefersDark ? "dark" : "light");
     }
+
+    // Set up listener for changes to color scheme preference
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem("0x1-dark-mode")) {
+        setIsDark(e.matches);
+        document.documentElement.classList.toggle("dark", e.matches);
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
+  // Function to toggle between light and dark themes
   const toggleTheme = () => {
     const newIsDark = !isDark;
     setIsDark(newIsDark);
@@ -45,8 +64,9 @@ export function ThemeToggle({
     >
       {iconOnly ? (
         <>
+          {/* Sun icon - Only visible in dark mode */}
           <svg
-            className="w-5 h-5 hidden dark:block"
+            className={`w-5 h-5 ${isDark ? 'block' : 'hidden'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -56,8 +76,9 @@ export function ThemeToggle({
               clipRule="evenodd"
             />
           </svg>
+          {/* Moon icon - Only visible in light mode */}
           <svg
-            className="w-5 h-5 block dark:hidden"
+            className={`w-5 h-5 ${isDark ? 'hidden' : 'block'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -66,15 +87,17 @@ export function ThemeToggle({
         </>
       ) : (
         <span className="flex items-center text-sm font-medium">
+          {/* Moon icon for light mode */}
           <svg
-            className="w-4 h-4 mr-2 block dark:hidden"
+            className={`w-4 h-4 mr-2 ${isDark ? 'hidden' : 'block'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
             <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
           </svg>
+          {/* Sun icon for dark mode */}
           <svg
-            className="w-4 h-4 mr-2 hidden dark:block"
+            className={`w-4 h-4 mr-2 ${isDark ? 'block' : 'hidden'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
