@@ -21,8 +21,8 @@ let lastProcessedTime = 0;
 // Debounce control variables for Tailwind processing
 let processingTailwind = false;
 let processingQueued = false;
-let lastLogTime = 0;
-const LOG_THROTTLE_MS = 5000; // Only log every 5 seconds
+let lastLogTime = 0; // Last time we logged a Tailwind processing message
+const LOG_THROTTLE_MS = 5000; // Only log every 5 seconds to reduce log spam
 
 // Keep track of temp files to ensure cleanup
 const tempFiles: string[] = [];
@@ -168,6 +168,11 @@ export default {
  * Ensure globals.css exists, create if not
  */
 async function ensureGlobalCss(projectPath: string): Promise<void> {
+  // Skip CSS creation for the framework root directory
+  if (projectPath.includes('/0x1') && !projectPath.includes('/templates/')) {
+    return;
+  }
+  
   // Check for Next.js style app directory first (modern approach)
   const appDir = join(projectPath, "app");
   const appGlobalsCssPath = join(appDir, "globals.css");
@@ -218,7 +223,7 @@ ${content}`);
     return;
   }
   
-  // Fallback to src directory structure
+  // Fallback to src directory structure (only for actual projects, not the framework itself)
   if (!existsSync(srcDir)) {
     await mkdir(srcDir, { recursive: true });
   }
@@ -538,31 +543,41 @@ processCss();
       
       const exitCode = await processResult.exited;
       
-      // Clean up temp file regardless of outcome
-      try {
-        if (existsSync(tempFilePath)) {
+      // Clean up temp file if it exists
+      if (tempFilePath && existsSync(tempFilePath)) {
+        try {
           unlinkSync(tempFilePath);
-          // Remove from tracked temp files
+          // Remove from temp files list
           const index = tempFiles.indexOf(tempFilePath);
           if (index > -1) {
             tempFiles.splice(index, 1);
           }
+        } catch (error) {
+          // Only log clean-up errors if they're not due to file not existing
+          if ((error as any).code !== 'ENOENT') {
+            logger.warn(`Failed to clean up temporary file: ${tempFilePath}`);
+          }
         }
-      } catch (e) {
-        // Log cleanup errors but continue processing
-        logger.debug(`Failed to clean up temp file ${tempFilePath}: ${e}`);
       }
       
-      if (exitCode !== 0) {
-        const stderr = await new Response(processResult.stderr).text();
-        logger.error(`Error processing Tailwind CSS: ${stderr}`);
+      const cssError = await new Response(processResult.stderr).text();
+      if (cssError) {
+        logger.error(`Error processing Tailwind CSS: ${cssError}`);
         processingTailwind = false;
         return false;
       }
       
       // Store the processed CSS in memory
-      const processedCss = await new Response(processResult.stdout).text();
-      processedTailwindCss = processedCss;
+      const cssOutput = await new Response(processResult.stdout).text();
+      if (cssOutput) {
+        // Only log success message if we're not throttling logs
+        const shouldLogSuccess = Date.now() - lastLogTime > LOG_THROTTLE_MS;
+        if (shouldLogSuccess) {
+          logger.success("Tailwind CSS processing complete!");
+          lastLogTime = Date.now();
+        }
+      }
+      processedTailwindCss = cssOutput;
       lastProcessedTime = Date.now();
     } catch (error) {
       logger.error(`Error executing Tailwind processor: ${error}`);
