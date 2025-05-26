@@ -527,14 +527,42 @@ export function createStandaloneServer({
       if (reqPath === "/0x1/error-boundary.js") {
         logRequestStatus(200, reqPath, "Serving error boundary component");
         
-        // Load the error boundary file from the framework
-        const errorBoundaryPath = join(frameworkPath, "src/core/error-boundary.ts");
+        // Find the correct path to the error boundary component by trying multiple potential locations
+        const potentialPaths = [
+          // Direct path in the framework directory
+          join(frameworkPath, "src/core/error-boundary.ts"),
+          
+          // Node modules path (when installed as a dependency)
+          join(projectPath, "node_modules/0x1/src/core/error-boundary.ts"),
+          
+          // Relative to binary location
+          join(dirname(process.argv[0]), "../src/core/error-boundary.ts"),
+          
+          // Absolute path based on common installation patterns
+          join(process.cwd(), "../../src/core/error-boundary.ts"),
+          
+          // Try from the user's home directory
+          join(process.env.HOME || "/", "Documents/00-Dev/0x1/src/core/error-boundary.ts")
+        ];
+        
+        // Find the first existing path
+        let errorBoundaryPath = potentialPaths[0]; // Default to first path
+        const existingPath = potentialPaths.find(path => existsSync(path));
+        
+        if (existingPath) {
+          errorBoundaryPath = existingPath;
+          logger.debug(`Found error boundary at: ${errorBoundaryPath}`);
+        } else {
+          logger.error(`Error boundary not found in any of the expected locations - using bundled fallback implementation`);
+        }
+        let transformedSource;
+        
         if (existsSync(errorBoundaryPath)) {
           try {
             const errorBoundarySource = await Bun.file(errorBoundaryPath).text();
             
             // Transform TypeScript to browser-compatible JavaScript
-            const transformedSource = `/* 0x1 Error Boundary - Browser Compatible Version */
+            transformedSource = `/* 0x1 Error Boundary - Browser Compatible Version */
 ${errorBoundarySource
   .replace(/import\s+type\s+[^;]+;/g, '') // Remove type imports
   .replace(/interface\s+[^{]+(\{[^}]*\})/g, '') // Remove interfaces
@@ -545,6 +573,368 @@ ${errorBoundarySource
 export default ErrorManager.getInstance();
 export { ErrorManager };
 `;
+        
+        
+        // If we couldn't load the file or there was an error processing it, use a built-in fallback
+        if (!transformedSource) {
+          transformedSource = `/* 0x1 Error Boundary - Built-in Fallback Implementation */
+
+class ErrorManager {
+  static instance;
+  errors = [];
+  minimized = false;
+  activeErrorIndex = 0;
+  floatingButton = null;
+  modalContainer = null;
+  
+  constructor() {}
+  
+  static getInstance() {
+    if (!ErrorManager.instance) {
+      ErrorManager.instance = new ErrorManager();
+    }
+    return ErrorManager.instance;
+  }
+  
+  addError(error) {
+    const id = \`error-\${Date.now()}-\${this.errors.length}\`;
+    const errorEntry = { id, error, timestamp: Date.now() };
+    this.errors.push(errorEntry);
+    this.activeErrorIndex = this.errors.length - 1;
+    
+    // Create or update floating button if minimized
+    if (this.minimized) {
+      this.updateFloatingButton();
+    }
+    
+    return errorEntry;
+  }
+  
+  getErrors() {
+    return [...this.errors];
+  }
+  
+  getCurrentError() {
+    return this.errors.length > 0 ? this.errors[this.activeErrorIndex] : null;
+  }
+  
+  navigateNext() {
+    if (this.errors.length === 0) return null;
+    this.activeErrorIndex = (this.activeErrorIndex + 1) % this.errors.length;
+    return this.getCurrentError();
+  }
+  
+  navigatePrevious() {
+    if (this.errors.length === 0) return null;
+    this.activeErrorIndex = (this.activeErrorIndex - 1 + this.errors.length) % this.errors.length;
+    return this.getCurrentError();
+  }
+  
+  isMinimized() {
+    return this.minimized;
+  }
+  
+  minimize() {
+    this.minimized = true;
+    if (this.modalContainer) {
+      this.modalContainer.style.display = 'none';
+    }
+    this.updateFloatingButton();
+  }
+  
+  restore() {
+    this.minimized = false;
+    if (this.floatingButton) {
+      document.body.removeChild(this.floatingButton);
+      this.floatingButton = null;
+    }
+    if (this.modalContainer) {
+      this.modalContainer.style.display = 'flex';
+    } else {
+      this.renderErrorModal();
+    }
+  }
+  
+  updateFloatingButton() {
+    if (!this.floatingButton) {
+      this.floatingButton = document.createElement('div');
+      this.floatingButton.className = '0x1-error-floating-button';
+      this.floatingButton.style.position = 'fixed';
+      this.floatingButton.style.bottom = '20px';
+      this.floatingButton.style.left = '20px';
+      this.floatingButton.style.backgroundColor = '#f43f5e';
+      this.floatingButton.style.color = 'white';
+      this.floatingButton.style.borderRadius = '50%';
+      this.floatingButton.style.width = '40px';
+      this.floatingButton.style.height = '40px';
+      this.floatingButton.style.display = 'flex';
+      this.floatingButton.style.alignItems = 'center';
+      this.floatingButton.style.justifyContent = 'center';
+      this.floatingButton.style.cursor = 'pointer';
+      this.floatingButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+      this.floatingButton.style.zIndex = '9999';
+      this.floatingButton.style.fontSize = '18px';
+      this.floatingButton.style.fontWeight = 'bold';
+      
+      this.floatingButton.textContent = \`\${this.errors.length}\`;
+      
+      this.floatingButton.addEventListener('click', () => {
+        this.restore();
+      });
+      
+      document.body.appendChild(this.floatingButton);
+    } else {
+      this.floatingButton.textContent = \`\${this.errors.length}\`;
+    }
+  }
+  
+  renderErrorModal() {
+    if (!this.modalContainer) {
+      this.modalContainer = document.createElement('div');
+      this.modalContainer.className = '0x1-error-modal';
+      this.modalContainer.style.position = 'fixed';
+      this.modalContainer.style.top = '0';
+      this.modalContainer.style.left = '0';
+      this.modalContainer.style.width = '100%';
+      this.modalContainer.style.height = '100%';
+      this.modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+      this.modalContainer.style.display = 'flex';
+      this.modalContainer.style.alignItems = 'center';
+      this.modalContainer.style.justifyContent = 'center';
+      this.modalContainer.style.zIndex = '9998';
+      
+      document.body.appendChild(this.modalContainer);
+    } else {
+      this.modalContainer.style.display = 'flex';
+      this.modalContainer.innerHTML = '';
+    }
+    
+    const currentError = this.getCurrentError();
+    if (currentError) {
+      const errorUI = createDefaultErrorUI(currentError.error, this);
+      this.modalContainer.appendChild(errorUI);
+    }
+  }
+  
+  clearError(id) {
+    const index = this.errors.findIndex(entry => entry.id === id);
+    if (index !== -1) {
+      this.errors.splice(index, 1);
+      
+      // Update active error index if needed
+      if (this.activeErrorIndex >= this.errors.length) {
+        this.activeErrorIndex = Math.max(0, this.errors.length - 1);
+      }
+      
+      // Update UI based on remaining errors
+      if (this.errors.length === 0) {
+        // No more errors, clean up
+        if (this.modalContainer) {
+          document.body.removeChild(this.modalContainer);
+          this.modalContainer = null;
+        }
+        if (this.floatingButton) {
+          document.body.removeChild(this.floatingButton);
+          this.floatingButton = null;
+        }
+      } else if (this.minimized) {
+        this.updateFloatingButton();
+      } else {
+        this.renderErrorModal();
+      }
+    }
+  }
+  
+  clearAllErrors() {
+    this.errors = [];
+    this.activeErrorIndex = 0;
+    
+    // Clean up UI
+    if (this.modalContainer) {
+      document.body.removeChild(this.modalContainer);
+      this.modalContainer = null;
+    }
+    if (this.floatingButton) {
+      document.body.removeChild(this.floatingButton);
+      this.floatingButton = null;
+    }
+  }
+}
+
+function createDefaultErrorUI(error, errorManager) {
+  const container = document.createElement('div');
+  container.className = '0x1-error-container';
+  container.style.backgroundColor = '#fff';
+  container.style.borderRadius = '8px';
+  container.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)';
+  container.style.width = '90%';
+  container.style.maxWidth = '700px';
+  container.style.maxHeight = '80vh';
+  container.style.overflow = 'auto';
+  container.style.padding = '24px';
+  container.style.fontSize = '14px';
+  container.style.color = '#333';
+  container.style.position = 'relative';
+  
+  // Error header
+  const header = document.createElement('div');
+  header.style.display = 'flex';
+  header.style.alignItems = 'center';
+  header.style.justifyContent = 'space-between';
+  header.style.marginBottom = '16px';
+  
+  const title = document.createElement('h2');
+  title.textContent = 'Error';
+  title.style.margin = '0';
+  title.style.color = '#f43f5e';
+  title.style.fontSize = '20px';
+  title.style.fontWeight = 'bold';
+  
+  const actionButtons = document.createElement('div');
+  
+  // Minimize button
+  const minimizeButton = document.createElement('button');
+  minimizeButton.textContent = 'Minimize';
+  minimizeButton.style.backgroundColor = '#e5e7eb';
+  minimizeButton.style.color = '#374151';
+  minimizeButton.style.border = 'none';
+  minimizeButton.style.borderRadius = '4px';
+  minimizeButton.style.padding = '6px 12px';
+  minimizeButton.style.marginRight = '8px';
+  minimizeButton.style.cursor = 'pointer';
+  minimizeButton.style.fontSize = '14px';
+  minimizeButton.addEventListener('click', () => {
+    if (errorManager) {
+      errorManager.minimize();
+    }
+  });
+  
+  // Dismiss button
+  const dismissButton = document.createElement('button');
+  dismissButton.textContent = 'Dismiss';
+  dismissButton.style.backgroundColor = '#f43f5e';
+  dismissButton.style.color = 'white';
+  dismissButton.style.border = 'none';
+  dismissButton.style.borderRadius = '4px';
+  dismissButton.style.padding = '6px 12px';
+  dismissButton.style.cursor = 'pointer';
+  dismissButton.style.fontSize = '14px';
+  dismissButton.addEventListener('click', () => {
+    if (errorManager) {
+      errorManager.clearAllErrors();
+    } else if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  });
+  
+  actionButtons.appendChild(minimizeButton);
+  actionButtons.appendChild(dismissButton);
+  
+  header.appendChild(title);
+  header.appendChild(actionButtons);
+  
+  container.appendChild(header);
+  
+  // Error message
+  const messageContainer = document.createElement('div');
+  messageContainer.style.backgroundColor = '#fef2f2';
+  messageContainer.style.border = '1px solid #fecaca';
+  messageContainer.style.borderRadius = '4px';
+  messageContainer.style.padding = '16px';
+  messageContainer.style.marginBottom = '16px';
+  
+  const errorName = document.createElement('div');
+  errorName.textContent = error.name || 'Error';
+  errorName.style.fontWeight = 'bold';
+  errorName.style.marginBottom = '8px';
+  errorName.style.color = '#b91c1c';
+  
+  const errorMessage = document.createElement('div');
+  errorMessage.textContent = error.message || 'An unknown error occurred';
+  errorMessage.style.wordBreak = 'break-word';
+  
+  messageContainer.appendChild(errorName);
+  messageContainer.appendChild(errorMessage);
+  
+  container.appendChild(messageContainer);
+  
+  // Stack trace
+  if (error.stack) {
+    const stackContainer = document.createElement('div');
+    stackContainer.style.marginBottom = '16px';
+    
+    const stackTitle = document.createElement('h3');
+    stackTitle.textContent = 'Stack Trace';
+    stackTitle.style.margin = '0 0 8px 0';
+    stackTitle.style.fontSize = '16px';
+    stackTitle.style.color = '#374151';
+    
+    const stackContent = document.createElement('pre');
+    stackContent.textContent = error.stack;
+    stackContent.style.backgroundColor = '#f8fafc';
+    stackContent.style.border = '1px solid #e2e8f0';
+    stackContent.style.borderRadius = '4px';
+    stackContent.style.padding = '12px';
+    stackContent.style.overflow = 'auto';
+    stackContent.style.fontSize = '12px';
+    stackContent.style.color = '#64748b';
+    stackContent.style.maxHeight = '200px';
+    
+    stackContainer.appendChild(stackTitle);
+    stackContainer.appendChild(stackContent);
+    
+    container.appendChild(stackContainer);
+  }
+  
+  // Helpful tips
+  const tipsContainer = document.createElement('div');
+  tipsContainer.style.backgroundColor = '#f0fdfa';
+  tipsContainer.style.border = '1px solid #ccfbf1';
+  tipsContainer.style.borderRadius = '4px';
+  tipsContainer.style.padding = '16px';
+  
+  const tipsTitle = document.createElement('h3');
+  tipsTitle.textContent = 'Helpful Tips';
+  tipsTitle.style.margin = '0 0 8px 0';
+  tipsTitle.style.fontSize = '16px';
+  tipsTitle.style.color = '#0f766e';
+  
+  tipsContainer.appendChild(tipsTitle);
+  
+  const tipsList = document.createElement('ul');
+  tipsList.style.margin = '0';
+  tipsList.style.paddingLeft = '20px';
+  
+  const createHelpItem = (text) => {
+    const item = document.createElement('li');
+    item.textContent = text;
+    item.style.marginBottom = '4px';
+    item.style.color = '#0f766e';
+    return item;
+  };
+  
+  tipsList.appendChild(createHelpItem('Check your component props and data types'));
+  tipsList.appendChild(createHelpItem('Verify that all required dependencies are installed'));
+  tipsList.appendChild(createHelpItem('Look for null or undefined values being accessed'));
+  tipsList.appendChild(createHelpItem('Ensure async operations are properly awaited'));
+  tipsList.appendChild(createHelpItem('Check the browser console for additional details'));
+  
+  tipsContainer.appendChild(tipsList);
+  container.appendChild(tipsContainer);
+  
+  return container;
+}
+
+// Error boundary component implementation
+function ErrorBoundary(props) {
+  return props.children;
+}
+
+// Export for client-side use
+const errorManager = ErrorManager.getInstance();
+export default errorManager;
+export { ErrorManager, ErrorBoundary };
+`;}
             
             return new Response(transformedSource, {
               status: 200,

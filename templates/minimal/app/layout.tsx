@@ -36,6 +36,7 @@ export default function RootLayout({ children }: { children: any }) {
           {children}
         </main>
         
+        {/* FIXME: push footer to bottom of screen/height */}
         <footer className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 py-4 mt-8">
           <div className="container mx-auto px-4 text-center text-sm text-gray-600 dark:text-gray-400">
             &copy; {new Date().getFullYear()} 0x1 Framework
