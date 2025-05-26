@@ -50,27 +50,35 @@
       }
     },
     
-    // Clear all errors
-    clearErrors() {
-      this.errors = [];
-      this.notifyListeners();
-      this.renderErrorUI();
-    },
-    
     // Toggle error expansion
     toggleErrorExpanded(errorId) {
       const error = this.errors.find(e => e.id === errorId);
       if (error) {
         error.expanded = !error.expanded;
-        this.renderErrorUI();
+        
+        // Update only the specific error card's stack and button text without re-rendering entire UI
+        const errorCard = document.querySelector(`[data-error-id="${errorId}"]`);
+        if (errorCard) {
+          const stackTrace = errorCard.querySelector('pre');
+          const toggleButton = errorCard.querySelector('button');
+          
+          if (stackTrace) {
+            stackTrace.style.display = error.expanded ? 'block' : 'none';
+          }
+          
+          if (toggleButton) {
+            toggleButton.textContent = error.expanded ? 'Hide Details' : 'Show Details';
+          }
+        }
       }
     },
     
-  // Close all errors and hide the UI
-  clearErrors() {
-    this.errors = [];
-    this.renderErrorUI();
-  },
+    // Close all errors and hide the UI
+    clearErrors() {
+      this.errors = [];
+      this.notifyListeners();
+      this.renderErrorUI();
+    },
     
     // Add a listener for error changes
     addListener(callback) {
@@ -107,6 +115,7 @@
       if (!errorContainer) {
         errorContainer = document.createElement('div');
         errorContainer.id = '0x1-error-container';
+        // Structure the overlay with a fixed header and scrollable content area
         errorContainer.style.cssText = `
           position: fixed;
           top: 0;
@@ -117,68 +126,19 @@
           backdrop-filter: blur(6px);
           -webkit-backdrop-filter: blur(6px);
           display: none;
-          align-items: flex-start;
-          justify-content: center;
           flex-direction: column;
-          padding: 32px;
+          align-items: center;
+          justify-content: flex-start;
           box-sizing: border-box;
           z-index: 999999;
-          overflow-y: auto;
           opacity: 0;
           transition: opacity 0.3s ease-out;
+          padding: 20px;
         `;
         document.body.appendChild(errorContainer);
-        
-        // Add animation styles for the container
-        const overlayAnimations = document.createElement('style');
-        overlayAnimations.textContent = `
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-          
-          @keyframes slideIn {
-            from { transform: translateY(20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-          }
-          
-          .error-list-animate-in > * {
-            animation: slideIn 0.3s ease-out forwards;
-            opacity: 0;
-          }
-          
-          .error-list-animate-in > *:nth-child(1) { animation-delay: 0.1s; }
-          .error-list-animate-in > *:nth-child(2) { animation-delay: 0.15s; }
-          .error-list-animate-in > *:nth-child(3) { animation-delay: 0.2s; }
-          .error-list-animate-in > *:nth-child(4) { animation-delay: 0.25s; }
-          .error-list-animate-in > *:nth-child(5) { animation-delay: 0.3s; }
-          .error-list-animate-in > *:nth-child(n+6) { animation-delay: 0.35s; }
-        `;
-        document.head.appendChild(overlayAnimations);
       }
-      
-      // Clear the container for fresh content
-      errorContainer.innerHTML = '';
-      
-      // Create error content wrapper
-      const errorOverlay = document.createElement('div');
-      errorOverlay.id = '0x1-error-overlay';
-      errorOverlay.style.cssText = `
-        position: relative;
-        width: 100%;
-        max-width: 800px;
-        margin: 60px auto 20px auto;
-        padding: 24px;
-        background-color: #1a1a2e;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        color: #e2e8f0;
-        border: 1px solid #2d2d44;
-      `;
-      errorContainer.appendChild(errorOverlay);
-      
-      // Create or get the error button
+
+      // Create error button if it doesn't exist yet
       let errorButton = document.getElementById('0x1-error-button');
       if (!errorButton) {
         errorButton = document.createElement('div');
@@ -187,24 +147,57 @@
           position: fixed;
           bottom: 20px;
           left: 20px;
-          background-color: #ef4444;
-          color: white;
+          width: 48px;
+          height: 48px;
           border-radius: 50%;
-          width: 44px;
-          height: 44px;
+          background-color: #7c3aed;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          z-index: 999998;
+          border: 2px solid #8b5cf6;
+          transition: transform 0.3s ease-out;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 16px;
+          color: white;
+          font-size: 20px;
           font-weight: bold;
-          cursor: pointer;
-          box-shadow: 0 8px 16px rgba(139, 92, 246, 0.3);
-          z-index: 999998;
-          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          border: 2px solid rgba(246, 139, 139, 0.8);
+          animation: errorButtonPulse 2s infinite;
         `;
         
-        // Add lightning bolt icon with pulse animation
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes errorButtonPulse {
+            0% {
+              box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.7);
+            }
+            70% {
+              box-shadow: 0 0 0 10px rgba(124, 58, 237, 0);
+            }
+            100% {
+              box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+            }
+          }
+          
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translate3d(0, 20px, 0);
+            }
+            to {
+              opacity: 1;
+              transform: translate3d(0, 0, 0);
+            }
+          }
+          
+          .error-list-animate-in {
+            animation: fadeInUp 0.3s ease forwards;
+          }
+        `;
+        document.head.appendChild(style);
+        
+        // Add lightning icon
         const lightningIcon = document.createElement('div');
         lightningIcon.style.cssText = `
           position: absolute;
@@ -216,56 +209,37 @@
           animation: pulse 2s infinite;
         `;
         lightningIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+        
         errorButton.appendChild(lightningIcon);
         
-        // Add pulse animation keyframes
-        const pulseAnimation = document.createElement('style');
-        pulseAnimation.textContent = `
-          @keyframes pulse {
-            0% {
-              transform: scale(1);
-              opacity: 1;
-            }
-            50% {
-              transform: scale(1.1);
-              opacity: 0.9;
-            }
-            100% {
-              transform: scale(1);
-              opacity: 1;
-            }
-          }
-        `;
-        document.head.appendChild(pulseAnimation);
-        
-        // Create count badge
-        const countBadge = document.createElement('div');
-        countBadge.id = '0x1-error-count';
-        countBadge.style.cssText = `
+        // Add badge showing error count
+        const errorCount = document.createElement('div');
+        errorCount.style.cssText = `
           position: absolute;
           top: -8px;
           right: -8px;
-          background-color: #1a1a2e;
-          color: #ef4444;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
-          min-width: 20px;
-          height: 20px;
+          background-color: #ef4444;
+          color: white;
+          font-size: 12px;
+          font-weight: bold;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 12px;
-          font-weight: bold;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-          padding: 0 4px;
-          border: 2px solid rgba(246, 139, 139, 0.8);
+          border: 2px solid #f8fafc;
         `;
-        errorButton.appendChild(countBadge);
+        errorCount.textContent = this.errors.length.toString();
+        errorButton.appendChild(errorCount);
         
-        // Toggle overlay visibility on click with smooth animations
-        errorButton.addEventListener('click', function() {
+        // Toggle error container visibility when button is clicked
+        errorButton.addEventListener('click', () => {
           const container = document.getElementById('0x1-error-container');
           if (container) {
-            if (container.style.display === 'none' || !container.style.display) {
+            const isVisible = container.style.display === 'flex';
+            
+            if (!isVisible) {
               // Show with animation
               container.style.display = 'flex';
               // Trigger a reflow to ensure the transition works
@@ -273,9 +247,9 @@
               container.style.opacity = '1';
               
               // Add animation class to error list
-              const errorList = container.querySelector('div:not(#0x1-error-overlay)');
-              if (errorList) {
-                errorList.classList.add('error-list-animate-in');
+              const errorListElement = container.querySelector('.scrollable');
+              if (errorListElement) {
+                errorListElement.classList.add('error-list-animate-in');
               }
             } else {
               // Hide with animation
@@ -283,151 +257,186 @@
               setTimeout(() => {
                 container.style.display = 'none';
                 // Remove animation class when hidden
-                const errorList = container.querySelector('.error-list-animate-in');
-                if (errorList) {
-                  errorList.classList.remove('error-list-animate-in');
+                const errorListElement = container.querySelector('.scrollable');
+                if (errorListElement) {
+                  errorListElement.classList.remove('error-list-animate-in');
                 }
               }, 300);
             }
           }
         });
-        document.body.appendChild(errorButton);
-      }
-      
-      // Update error count on badge
-      const countBadge = document.getElementById('0x1-error-count');
-      if (countBadge) {
-        countBadge.textContent = this.errors.length.toString();
         
-        // Add a subtle animation to the badge
-        countBadge.animate([
-          { transform: 'scale(0.8)', opacity: 0.8 },
-          { transform: 'scale(1.2)', opacity: 1 },
-          { transform: 'scale(1)', opacity: 1 }
-        ], {
-          duration: 300,
-          easing: 'ease-out'
+        // Add hover effect
+        errorButton.addEventListener('mouseover', () => {
+          errorButton.style.transform = 'scale(1.1)';
         });
+        errorButton.addEventListener('mouseout', () => {
+          errorButton.style.transform = 'scale(1)';
+        });
+        
+        document.body.appendChild(errorButton);
+      } else {
+        // Update error count
+        const errorCount = errorButton.querySelector('div:last-child');
+        if (errorCount) {
+          errorCount.textContent = this.errors.length.toString();
+        }
       }
       
-      // Build error list content inside errorOverlay
+      // Clear existing error overlay
+      const existingOverlay = document.getElementById('0x1-error-overlay');
+      if (existingOverlay) {
+        errorContainer.removeChild(existingOverlay);
+      }
       
-      // Add header
+      // Create error content wrapper
+      const errorOverlay = document.createElement('div');
+      errorOverlay.id = '0x1-error-overlay';
+      // Create a container with header and scrollable content
+      errorOverlay.style.cssText = `
+        position: relative;
+        width: 100%;
+        max-width: 800px;
+        display: flex;
+        flex-direction: column;
+        background-color: #1a1a2e;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        color: #e2e8f0;
+        border: 1px solid #2d2d44;
+        max-height: calc(100vh - 40px);
+        overflow: hidden;
+      `;
+      errorContainer.appendChild(errorOverlay);
+      
+      // Create header
       const header = document.createElement('div');
       header.style.cssText = `
         display: flex;
         justify-content: space-between;
         align-items: center;
         width: 100%;
-        max-width: 800px;
-        margin-bottom: 24px;
         padding: 16px 20px;
         background-color: #222236;
-        border-radius: 12px;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid #2d2d44;
+        border-bottom: 1px solid #2d2d44;
+        position: sticky;
+        top: 0;
+        z-index: 1;
       `;
       
       const titleContainer = document.createElement('div');
       titleContainer.style.cssText = `
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
       `;
       
-      // Add lightning icon to title
-      const titleIcon = document.createElement('div');
-      titleIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a78bf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+      // Add warning icon
+      const warningIcon = document.createElement('div');
+      warningIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
       
-      const title = document.createElement('h2');
-      title.textContent = 'Runtime Errors';
+      const title = document.createElement('div');
+      title.textContent = '0x1 Framework Error';
       title.style.cssText = `
-        margin: 0;
-        color: #a78bf6;
-        font-size: 20px;
         font-weight: 600;
+        color: #f8fafc;
+        font-size: 18px;
       `;
       
-      titleContainer.appendChild(titleIcon);
+      titleContainer.appendChild(warningIcon);
       titleContainer.appendChild(title);
       
+      // Create close button
       const buttonContainer = document.createElement('div');
-      buttonContainer.style.cssText = `
-        display: flex;
-        gap: 12px;
-      `;
-      
-      const dismissAllButton = document.createElement('button');
-      dismissAllButton.textContent = 'Dismiss All';
-      dismissAllButton.style.cssText = `
-        background-color: #2d2d44;
-        color: #e2e8f0;
-        border: 1px solid #4b4b66;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-      `;
-      dismissAllButton.addEventListener('mouseover', () => {
-        dismissAllButton.style.backgroundColor = '#3a3a57';
-        dismissAllButton.style.borderColor = '#5d5d82';
-      });
-      dismissAllButton.addEventListener('mouseout', () => {
-        dismissAllButton.style.backgroundColor = '#2d2d44';
-        dismissAllButton.style.borderColor = '#4b4b66';
-      });
-      dismissAllButton.addEventListener('click', () => {
-        this.clearErrors();
-      });
-      
       const closeButton = document.createElement('button');
-      closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
       closeButton.style.cssText = `
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        color: #94a3b8;
+        width: 32px;
+        height: 32px;
+        border-radius: 4px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #2d2d44;
-        border: 1px solid #4b4b66;
-        border-radius: 6px;
-        width: 32px;
-        height: 32px;
-        cursor: pointer;
-        color: #e2e8f0;
         transition: all 0.2s;
       `;
+      closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+      
       closeButton.addEventListener('mouseover', () => {
-        closeButton.style.backgroundColor = '#3a3a57';
-        closeButton.style.borderColor = '#5d5d82';
+        closeButton.style.backgroundColor = '#2d2d44';
+        closeButton.style.color = '#f8fafc';
       });
       closeButton.addEventListener('mouseout', () => {
-        closeButton.style.backgroundColor = '#2d2d44';
-        closeButton.style.borderColor = '#4b4b66';
+        closeButton.style.backgroundColor = 'transparent';
+        closeButton.style.color = '#94a3b8';
       });
       closeButton.addEventListener('click', () => {
-        errorContainer.style.display = 'none';
+        const container = document.getElementById('0x1-error-container');
+        if (container) {
+          container.style.opacity = '0';
+          setTimeout(() => {
+            container.style.display = 'none';
+          }, 300);
+        }
       });
       
-      buttonContainer.appendChild(dismissAllButton);
       buttonContainer.appendChild(closeButton);
-      
       header.appendChild(titleContainer);
       header.appendChild(buttonContainer);
       errorOverlay.appendChild(header);
       
-      // Add error cards
+      // Create a scrollable container for error content
+      const scrollableContainer = document.createElement('div');
+      scrollableContainer.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        width: 100%;
+        max-height: calc(100vh - 150px);
+        scrollbar-width: thin;
+        scrollbar-color: #4b4b66 #222236;
+      `;
+      
+      // Add custom scrollbar styling for webkit browsers
+      const scrollbarStyle = document.createElement('style');
+      scrollbarStyle.textContent = `
+        #0x1-error-overlay .scrollable::-webkit-scrollbar {
+          width: 8px;
+        }
+        #0x1-error-overlay .scrollable::-webkit-scrollbar-track {
+          background: #222236;
+          border-radius: 4px;
+        }
+        #0x1-error-overlay .scrollable::-webkit-scrollbar-thumb {
+          background-color: #4b4b66;
+          border-radius: 4px;
+        }
+        #0x1-error-overlay .scrollable::-webkit-scrollbar-thumb:hover {
+          background-color: #5d5d82;
+        }
+      `;
+      document.head.appendChild(scrollbarStyle);
+      scrollableContainer.classList.add('scrollable');
+      
+      // Add error cards inside the scrollable container
       const errorList = document.createElement('div');
       errorList.style.cssText = `
         width: 100%;
-        max-width: 800px;
         display: flex;
         flex-direction: column;
         gap: 16px;
       `;
       
       this.errors.forEach(errorObj => {
+        // Create error card
         const errorCard = document.createElement('div');
+        errorCard.setAttribute('data-error-id', errorObj.id);
         errorCard.style.cssText = `
           background-color: #222236;
           border-radius: 12px;
@@ -435,7 +444,6 @@
           width: 100%;
           overflow-wrap: break-word;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          border-left: 4px solid #8b5cf6;
           border: 1px solid #2d2d44;
           border-left: 4px solid #8b5cf6;
           transition: all 0.2s ease;
@@ -475,7 +483,7 @@
         errorTitle.textContent = errorObj.componentName ? `Error in ${errorObj.componentName}` : 'Runtime Error';
         errorTitle.style.cssText = `
           font-weight: 600;
-          color: #111827;
+          color: #ff0000;
           font-size: 16px;
         `;
         
@@ -565,9 +573,26 @@
         errorList.appendChild(errorCard);
       });
       
-      errorOverlay.appendChild(errorList);
+      // Add the error list to the scrollable container
+      scrollableContainer.appendChild(errorList);
       
-      // Add dismiss all button
+      // Add the scrollable container to the overlay
+      errorOverlay.appendChild(scrollableContainer);
+      
+      // Add a footer for the dismiss all button
+      const footer = document.createElement('div');
+      footer.style.cssText = `
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        padding: 16px;
+        background-color: #1a1a2e;
+        border-top: 1px solid #2d2d44;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+      `;
+      
+      // Add dismiss all button in the footer
       const dismissAll = document.createElement('button');
       dismissAll.style.cssText = `
         background-color: #2d2d44;
@@ -575,7 +600,6 @@
         border: 1px solid #4b4b66;
         border-radius: 6px;
         padding: 8px 16px;
-        margin-top: 16px;
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
@@ -597,7 +621,9 @@
         this.clearErrors();
       });
       
-      errorOverlay.appendChild(dismissAll);
+      // Add dismiss all button to footer and footer to overlay
+      footer.appendChild(dismissAll);
+      errorOverlay.appendChild(footer);
     }
   };
   
