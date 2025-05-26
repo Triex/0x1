@@ -18,6 +18,15 @@ const cssCache: Record<string, { content: string; timestamp: number; contentType
 let processedTailwindCss: string | null = null;
 let lastProcessedTime = 0;
 
+// Debounce control variables for Tailwind processing
+let processingTailwind = false;
+let processingQueued = false;
+let lastLogTime = 0;
+const LOG_THROTTLE_MS = 5000; // Only log every 5 seconds
+
+// Keep track of temp files to ensure cleanup
+const tempFiles: string[] = [];
+
 /**
  * Serve processed Tailwind CSS
  */
@@ -227,37 +236,126 @@ ${content}`);
  */
 /**
  * Start a watcher for Tailwind CSS files to automatically rebuild when changes are detected
+ * Improved with proper cleanup and debouncing
  */
 export function startTailwindWatcher(projectPath: string): { close: () => void } {
-  logger.info('Starting Tailwind CSS watcher...');
+  // Ensure Tailwind is initialized first
+  initializeTailwind(projectPath);
   
-  // Create a dummy watcher object
-  const watcher = {
-    close: () => {
-      logger.info('Stopping Tailwind CSS watcher');
+  // Process immediately on startup (but only once)
+  processTailwindCss(projectPath);
+  
+  // Create a more efficient polling mechanism with exponential backoff
+  // Start with 2 second interval, but reduce frequency if no changes are detected
+  let pollingInterval = 2000; // milliseconds
+  const maxPollingInterval = 10000; // max 10 seconds between checks
+  const intervalStep = 1000; // increase by 1 second each time
+  
+  // Track last change time to adjust polling frequency
+  let lastChangeTime = Date.now();
+  
+  // Create the polling interval
+  const interval = setInterval(async () => {
+    // Only process if not already processing
+    if (!processingTailwind && !processingQueued) {
+      await processTailwindCss(projectPath);
+      
+      // Adjust polling frequency based on activity
+      const timeSinceLastChange = Date.now() - lastChangeTime;
+      if (timeSinceLastChange > 30000) { // 30 seconds with no changes
+        // Gradually increase polling interval
+        pollingInterval = Math.min(pollingInterval + intervalStep, maxPollingInterval);
+        
+        // Restart the interval with new timing
+        clearInterval(interval);
+        startPolling();
+      }
     }
-  };
+  }, pollingInterval);
   
-  // Set up a file system watcher on a separate thread
-  try {
-    // For now, we'll just set up a timer to check for changes periodically
-    // In a real implementation, we would use a proper file watcher
-    const interval = setInterval(() => {
-      processTailwindCss(projectPath).catch(err => {
-        logger.error(`Error processing Tailwind CSS: ${err}`);
-      });
-    }, 5000); // Check every 5 seconds
-    
-    // Update the close method to clear the interval
-    watcher.close = () => {
-      clearInterval(interval);
-      logger.info('Stopping Tailwind CSS watcher');
-    };
-  } catch (error) {
-    logger.error(`Error starting Tailwind CSS watcher: ${error}`);
+  // Function to restart polling with current interval
+  function startPolling() {
+    setInterval(async () => {
+      if (!processingTailwind && !processingQueued) {
+        await processTailwindCss(projectPath);
+      }
+    }, pollingInterval);
   }
   
-  return watcher;
+  // Create a cleanup function that ensures all temp files are deleted
+  function cleanupTempFiles() {
+    // Clean up any temporary files that might still exist
+    if (tempFiles.length > 0) {
+      logger.info(`Cleaning up ${tempFiles.length} temporary Tailwind processor files...`);
+      
+      for (const tempFile of tempFiles) {
+        try {
+          if (existsSync(tempFile)) {
+            unlinkSync(tempFile);
+            logger.debug(`Cleaned up temporary file: ${tempFile}`);
+          }
+        } catch (error) {
+          logger.debug(`Failed to clean up temporary file ${tempFile}: ${error}`);
+        }
+      }
+      
+      // Clear the array
+      tempFiles.length = 0;
+    }
+    
+    // Also check for any remaining processor files in the .0x1 directory
+    const tempDir = join(projectPath, '.0x1');
+    if (existsSync(tempDir)) {
+      try {
+        // Use Bun.spawnSync to list files in the directory (more reliable than Bun.file)
+        const { stdout } = Bun.spawnSync(['ls', '-la', tempDir], {
+          cwd: projectPath,
+          stderr: 'pipe',
+          stdout: 'pipe'
+        });
+        
+        const output = new TextDecoder().decode(stdout);
+        const lines = output.split('\n');
+        
+        // Process each line to find tailwind processor files
+        for (const line of lines) {
+          const match = line.match(/\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\.tailwind-processor-.*\.mjs)/);
+          if (match && match[1]) {
+            const fileName = match[1];
+            try {
+              const filePath = join(tempDir, fileName);
+              if (existsSync(filePath)) {
+                unlinkSync(filePath);
+                logger.debug(`Cleaned up leftover processor file: ${fileName}`);
+              }
+            } catch (e) {
+              // Ignore errors during cleanup
+            }
+          }
+        }
+      } catch (error) {
+        // Ignore errors reading directory
+      }
+    }
+  }
+  
+  // Return a cleanup function with enhanced error handling
+  return {
+    close() {
+      try {
+        if (interval) {
+          clearInterval(interval);
+        }
+        
+        // Clean up all temporary files
+        cleanupTempFiles();
+        
+        logger.info("Stopping Tailwind CSS watcher");
+      } catch (error) {
+        logger.error(`Error shutting down Tailwind watcher: ${error}`);
+      }
+    }
+  };
 }
 
 /**
@@ -271,18 +369,31 @@ export function startTailwindWatcher(projectPath: string): { close: () => void }
 
 /**
  * Process Tailwind CSS in memory without generating unnecessary files
+ * With improved debouncing to prevent excessive processing and log spam
  */
 export async function processTailwindCss(projectPath: string): Promise<boolean> {
-  try {
+  // Implement debouncing for frequent calls
+  if (processingTailwind) {
+    // If already processing, queue up and return immediately
+    processingQueued = true;
+    return true;
+  }
+  
+  // Implement log throttling to reduce console spam
+  const shouldLog = Date.now() - lastLogTime > LOG_THROTTLE_MS;
+  if (shouldLog) {
     logger.info("Processing Tailwind CSS...");
-    
+    lastLogTime = Date.now();
+  }
+  
+  // Set processing flag
+  processingTailwind = true;
+  
+  try {
     // Define paths for input and output CSS files
     // Check for Next.js style app directory first
     const appGlobalsCssPath = join(projectPath, "app", "globals.css");
     const srcAppCssPath = join(projectPath, "src", "app.css");
-    
-    // We'll process in memory, but keep path references for error messages
-    const outputCssPathReference = join(projectPath, "0x1-internal", "processed-tailwind.css");
     
     // Determine which input CSS file to use
     let inputCssPath: string;
@@ -305,18 +416,13 @@ export async function processTailwindCss(projectPath: string): Promise<boolean> 
       // Check again after creation
       if (!existsSync(inputCssPath)) {
         logger.error(`Failed to create Tailwind CSS file at ${inputCssPath}`);
+        processingTailwind = false;
         return false;
       }
     }
     
     // Read the input CSS file
     const cssContent = readFileSync(inputCssPath, 'utf-8');
-    
-    // Ensure public directory exists
-    const publicDir = join(projectPath, "public");
-    if (!existsSync(publicDir)) {
-      await mkdir(publicDir, { recursive: true });
-    }
     
     // Ensure necessary dependencies are installed
     const dependencies = [
@@ -352,15 +458,14 @@ export async function processTailwindCss(projectPath: string): Promise<boolean> 
       if (exitCode !== 0) {
         const stderr = await new Response(installProcess.stderr).text();
         logger.error(`Error installing dependencies: ${stderr}`);
+        processingTailwind = false;
         return false;
       }
       
       logger.success('Dependencies installed successfully!');
     }
     
-    // Create a temporary processor script that properly uses Tailwind v4 with PostCSS
-    // Place it in memory using Bun.file() instead of writing to disk
-    
+    // Create a temporary processor script in memory and only write to disk when executing
     // Modern ESM script to process Tailwind CSS using v4 API directly
     const processorScript = `
 import { readFileSync } from 'fs';
@@ -394,6 +499,8 @@ async function processCss() {
 
     // Output the CSS to stdout for the parent process to capture
     console.log(result.css);
+    // Signal successful completion
+    process.exit(0);
   } catch (error) {
     console.error('Error processing Tailwind CSS:', error);
     process.exit(1);
@@ -407,6 +514,9 @@ processCss();
     const tempDir = join(projectPath, '.0x1');
     const tempFilePath = join(tempDir, `.tailwind-processor-${Date.now()}.mjs`);
     
+    // Add to list of temp files to ensure cleanup
+    tempFiles.push(tempFilePath);
+    
     // Ensure temp directory exists
     if (!existsSync(tempDir)) {
       await mkdir(tempDir, { recursive: true });
@@ -417,26 +527,36 @@ processCss();
       writeFileSync(tempFilePath, processorScript, 'utf-8');
       
       // Execute the processor script with bun
-      logger.info('Processing CSS with Tailwind...');
+      if (shouldLog) {
+        logger.info('Processing CSS with Tailwind...');
+      }
+      
       const processResult = Bun.spawn(['bun', 'run', tempFilePath], {
-      cwd: projectPath,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    
-    const exitCode = await processResult.exited;
-    
-      // Clean up temp file
+        cwd: projectPath,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      const exitCode = await processResult.exited;
+      
+      // Clean up temp file regardless of outcome
       try {
         if (existsSync(tempFilePath)) {
           unlinkSync(tempFilePath);
+          // Remove from tracked temp files
+          const index = tempFiles.indexOf(tempFilePath);
+          if (index > -1) {
+            tempFiles.splice(index, 1);
+          }
         }
       } catch (e) {
-        // Ignore cleanup errors
+        // Log cleanup errors but continue processing
+        logger.debug(`Failed to clean up temp file ${tempFilePath}: ${e}`);
       }
-    
+      
       if (exitCode !== 0) {
         const stderr = await new Response(processResult.stderr).text();
         logger.error(`Error processing Tailwind CSS: ${stderr}`);
+        processingTailwind = false;
         return false;
       }
       
@@ -446,16 +566,29 @@ processCss();
       lastProcessedTime = Date.now();
     } catch (error) {
       logger.error(`Error executing Tailwind processor: ${error}`);
+      processingTailwind = false;
       return false;
     }
     
-    // We'll keep the runtime script in memory instead of writing to the filesystem
-    // The runtime script will be served directly from memory via the server
+    // Success notification, but throttle logging
+    if (shouldLog) {
+      logger.success('Tailwind CSS processing complete!');
+    }
     
-    logger.success('Tailwind CSS processing complete!');
+    // Finish processing and check if another process is queued
+    processingTailwind = false;
+    
+    // If another process was queued during this one, process it immediately
+    if (processingQueued) {
+      processingQueued = false;
+      // Use setTimeout to avoid stack overflow from recursion
+      setTimeout(() => processTailwindCss(projectPath), 0);
+    }
+    
     return true;
   } catch (error) {
     logger.error(`Error processing Tailwind CSS: ${error}`);
+    processingTailwind = false;
     return false;
   }
 }
