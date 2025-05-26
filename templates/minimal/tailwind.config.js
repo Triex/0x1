@@ -23,7 +23,20 @@ export default {
           800: '#3730a3',
           900: '#312e81',
           950: '#1e1b4b'
+        },
+        background: {
+          light: '#fafafa',
+          dark: '#0f0f23',
+          'dark-secondary': '#1a1a2e',
+          'dark-card': '#222236'
+        },
+        accent: {
+          purple: '#a78bf6',
+          'purple-dark': '#8b5cf6'
         }
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       }
     },
   },

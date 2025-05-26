@@ -3,9 +3,6 @@
  * This file provides TypeScript type definitions for the JSX runtime used by 0x1.
  */
 
-// Ensure JSX types are available
-/// <reference path="jsx.d.ts" />
-
 // Define core types
 export type JSXAttributes = Record<string, any>;
 export type JSXChildren = (string | JSXNode | null | undefined | boolean | number)[];
@@ -25,6 +22,10 @@ export interface JSXNode {
 }
 
 export type ComponentFunction = (props: JSXAttributes & { children?: JSXChildren }) => string | JSXNode;
+
+// Fragment - declare type only, don't export the value to avoid redeclaration
+declare const Fragment: unique symbol;
+export { Fragment };
 
 // Make types available globally to support JSX in consuming apps
 declare global {
@@ -152,40 +153,21 @@ declare global {
  */
 declare module '0x1/jsx-runtime' {
   /**
-   * Create a JSX element (static children version)
+   * Direct JSX/TSX factory functions for the automatic JSX transform
    */
-  export function jsx(
-    type: string | ComponentFunction,
-    props: any,
-    key?: string
-  ): JSXNode;
+  export function jsx(type: string | ComponentFunction, props: any, key?: string): JSX.Element;
+  export function jsxs(type: string | ComponentFunction, props: any, key?: string): JSX.Element;
+  export function jsxDEV(type: string | ComponentFunction, props: any, key?: string, isStaticChildren?: boolean, source?: object, self?: any): JSX.Element;
+  
+  /**
+   * Legacy support for React APIs
+   */
+  export function createElement(type: string | ComponentFunction, props: any, ...children: any[]): JSX.Element;
 
   /**
-   * Create a JSX element (with potentially complex children structures)
+   * Server-side rendering
    */
-  export function jsxs(
-    type: string | ComponentFunction,
-    props: any,
-    key?: string
-  ): JSXNode;
-
-  /**
-   * Fragment component for grouping elements without a wrapper
-   */
-  export const Fragment: unique symbol;
-
-  /**
-   * Development version of JSX transformation function
-   * Used by the compiler in development mode
-   */
-  export function jsxDEV(
-    type: string | ComponentFunction,
-    props: any, 
-    key: string | undefined,
-    isStaticChildren: boolean,
-    source: { fileName: string; lineNumber: number; columnNumber: number },
-    self: any
-  ): JSXNode;
+  export function renderToString(node: JSX.Element): string;
 }
 
 /**
@@ -208,4 +190,5 @@ declare module 'react/jsx-dev-runtime' {
 }
 
 // Add this to make TypeScript recognize .tsx files as modules
-export {};
+export { };
+

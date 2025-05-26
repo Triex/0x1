@@ -30,6 +30,33 @@ async function buildFramework() {
   console.log('🚀 Building 0x1 framework...');
   
   try {
+    // First build the standalone packages
+    console.log('📦 Building standalone packages...');
+    
+    // Build 0x1-store
+    console.log('Building 0x1-store...');
+    const storeResult = Bun.spawnSync(['bun', 'run', 'build'], {
+      cwd: join(rootDir, '0x1-store'),
+    });
+    
+    if (storeResult.exitCode !== 0) {
+      console.error('Failed to build 0x1-store');
+      process.exit(1);
+    }
+    
+    // Build 0x1-router  
+    console.log('Building 0x1-router...');
+    const routerResult = Bun.spawnSync(['bun', 'run', 'build'], {
+      cwd: join(rootDir, '0x1-router'),
+    });
+    
+    if (routerResult.exitCode !== 0) {
+      console.error('Failed to build 0x1-router');
+      process.exit(1);
+    }
+    
+    console.log('✅ Standalone packages built successfully');
+
     // Ensure dist directory exists
     // Check if directory exists and create if it doesn't
     const distDirInfo = Bun.file(distDir);

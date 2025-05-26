@@ -1,30 +1,31 @@
 // src/jsx-runtime.ts
-function createElement(type, props, ...children) {
-  return {
-    type,
-    props: props || {},
-    children: children.flat().filter((child) => child !== undefined && child !== null && child !== false)
-  };
-}
-var Fragment = (props) => {
-  return {
-    type: "fragment",
-    props: {},
-    children: props.children || []
-  };
-};
+var Fragment = Symbol.for("0x1.fragment");
 function jsx(type, props, key) {
-  const { children, ...restProps } = props || {};
-  const normalizedChildren = children ? Array.isArray(children) ? children : [children] : [];
+  const { children, ...otherProps } = props || {};
+  if (typeof type === "function") {
+    return type({ children, ...otherProps });
+  }
   return {
     type,
-    props: restProps,
-    children: normalizedChildren,
+    props: otherProps,
+    children: Array.isArray(children) ? children : children !== undefined ? [children] : [],
     key: key || null
   };
 }
-function jsxs(type, props, _key) {
-  return jsx(type, props, _key);
+function jsxs(type, props, key) {
+  return jsx(type, props, key);
+}
+function createElement(type, props, ...children) {
+  if (type === Fragment) {
+    return {
+      type: Fragment,
+      props: {},
+      children: children.flat(),
+      key: null
+    };
+  }
+  const childArray = children.flat().filter((child) => child != null);
+  return jsx(type, { ...props, children: childArray });
 }
 
 // src/jsx-dev-runtime.ts
@@ -50,9 +51,10 @@ function jsxDEV(type, props, key = null, isStaticChildren = false, source, self)
     const keyParam = key === null ? undefined : key;
     const jsxResult = jsx(type, props || {}, keyParam);
     componentStack.pop();
+    const resultType = typeof jsxResult === "object" && jsxResult !== null && "type" in jsxResult ? jsxResult.type : typeof type === "string" ? type : "div";
     const reactElement = {
       $$typeof: REACT_ELEMENT,
-      type: typeof jsxResult === "object" && jsxResult !== null && "type" in jsxResult ? jsxResult.type : typeof type === "string" ? type : "div",
+      type: resultType,
       key,
       ref: null,
       props: typeof jsxResult === "object" && jsxResult !== null && "props" in jsxResult ? jsxResult.props : props || {},

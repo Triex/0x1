@@ -1,34 +1,45 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "composite": false,
+    "strict": true,
+    "downlevelIteration": true,
+    "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "0x1",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
+    "allowJs": true,
+    "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": false,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "./dist",
+    "verbatimModuleSyntax": false,
     "baseUrl": ".",
     "paths": {
       "0x1": ["./src/index.ts"],
-      "0x1/*": ["./src/*"]
-    },
-    "typeRoots": [
-      "./node_modules/@types",
-      "./types"
-    ]
+      "0x1/*": ["./src/*"],
+      "0x1/router": ["./src/router.ts", "./0x1-router/src/index.ts"],
+      "0x1/store": ["./src/store.ts", "./0x1-store/src/index.ts"],
+      "0x1-router": ["./0x1-router/src/index.ts"],
+      "0x1-store": ["./0x1-store/src/index.ts"]
+    }
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "types/**/*.d.ts"
+    "src/**/*",
+    "templates/**/*",
+    "0x1-router/src/**/*",
+    "0x1-store/src/**/*",
+    "types/**/*"
   ],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build"
+  ]
 }

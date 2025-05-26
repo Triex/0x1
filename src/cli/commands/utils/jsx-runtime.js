@@ -1,123 +1,118 @@
 // src/jsx-runtime.ts
-function createElement(type, props, ...children) {
-  return {
-    type,
-    props: props || {},
-    children: children.flat().filter((child) => child !== undefined && child !== null && child !== false)
-  };
-}
-var Fragment = (props) => {
-  return {
-    type: "fragment",
-    props: {},
-    children: props.children || []
-  };
-};
+var Fragment = Symbol.for("0x1.fragment");
 function jsx(type, props, key) {
-  const { children, ...restProps } = props || {};
-  const normalizedChildren = children ? Array.isArray(children) ? children : [children] : [];
+  const { children, ...otherProps } = props || {};
+  if (typeof type === "function") {
+    return type({ children, ...otherProps });
+  }
   return {
     type,
-    props: restProps,
-    children: normalizedChildren,
+    props: otherProps,
+    children: Array.isArray(children) ? children : children !== undefined ? [children] : [],
     key: key || null
   };
 }
-function jsxs(type, props, _key) {
-  return jsx(type, props, _key);
+function jsxs(type, props, key) {
+  return jsx(type, props, key);
 }
-function jsxDEV(type, props, key, isStaticChildren, source, self) {
-  const node = jsx(type, props, key);
-  if (source) {
-    node.__source = source;
+function createElement(type, props, ...children) {
+  if (type === Fragment) {
+    return {
+      type: Fragment,
+      props: {},
+      children: children.flat(),
+      key: null
+    };
   }
-  if (self) {
-    node.__self = self;
-  }
-  return node;
+  const childArray = children.flat().filter((child) => child != null);
+  return jsx(type, { ...props, children: childArray });
 }
 function renderToString(node) {
-  if (node === undefined || node === null || node === false || node === true) {
+  if (!node)
     return "";
-  }
   if (typeof node === "string" || typeof node === "number") {
     return String(node);
   }
-  if (node.type === "fragment") {
+  if (Array.isArray(node)) {
+    return node.map((child) => renderToString(child)).join("");
+  }
+  if (node.type === Fragment) {
     return node.children.map((child) => renderToString(child)).join("");
   }
   if (typeof node.type === "function") {
-    const result = node.type({
-      ...node.props,
-      children: node.children
-    });
-    if (typeof result === "string") {
-      return result;
-    }
+    const result = node.type(node.props);
     return renderToString(result);
   }
-  let html = `<${node.type}`;
-  for (const [key, value] of Object.entries(node.props)) {
-    if (key === "children" || value === undefined)
-      continue;
-    if (key === "className") {
-      html += ` class="${escapeHtml(String(value))}"`;
-      continue;
-    }
-    if (key === "htmlFor") {
-      html += ` for="${escapeHtml(String(value))}"`;
-      continue;
-    }
-    if (key.startsWith("on") && typeof value === "function") {
-      const eventName = key.toLowerCase();
-      html += ` ${eventName}="${escapeHtml(String(value))}"`;
-      continue;
-    }
+  const tag = node.type;
+  const attrs = Object.entries(node.props || {}).filter(([key, value]) => value != null && key !== "children").map(([key, value]) => {
     if (typeof value === "boolean") {
-      if (value) {
-        html += ` ${key}`;
-      }
-      continue;
+      return value ? key : "";
     }
-    html += ` ${key}="${escapeHtml(String(value))}"`;
+    const attrName = key === "className" ? "class" : key;
+    return `${attrName}="${String(value).replace(/"/g, "&quot;")}"`;
+  }).filter((attr) => attr).join(" ");
+  const children = node.children?.map((child) => renderToString(child)).join("") || "";
+  const selfClosing = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
+  if (selfClosing.includes(tag)) {
+    return `<${tag}${attrs ? " " + attrs : ""} />`;
   }
-  const voidElements = [
-    "area",
-    "base",
-    "br",
-    "col",
-    "embed",
-    "hr",
-    "img",
-    "input",
-    "link",
-    "meta",
-    "param",
-    "source",
-    "track",
-    "wbr"
-  ];
-  if (voidElements.includes(node.type)) {
-    return `${html} />`;
-  }
-  html += ">";
-  if (node.children && node.children.length > 0) {
-    for (const child of node.children) {
-      html += renderToString(child);
-    }
-  }
-  html += `</${node.type}>`;
-  return html;
+  return `<${tag}${attrs ? " " + attrs : ""}>${children}</${tag}>`;
 }
-function escapeHtml(html) {
-  return html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+function renderToDOM(node) {
+  if (!node)
+    return null;
+  if (typeof node === "string" || typeof node === "number") {
+    return document.createTextNode(String(node));
+  }
+  if (Array.isArray(node)) {
+    const fragment = document.createDocumentFragment();
+    node.forEach((child) => {
+      const childNode = renderToDOM(child);
+      if (childNode)
+        fragment.appendChild(childNode);
+    });
+    return fragment;
+  }
+  if (node.type === Fragment) {
+    const fragment = document.createDocumentFragment();
+    node.children.forEach((child) => {
+      const childNode = renderToDOM(child);
+      if (childNode)
+        fragment.appendChild(childNode);
+    });
+    return fragment;
+  }
+  if (typeof node.type === "function") {
+    const result = node.type(node.props);
+    return renderToDOM(result);
+  }
+  const element = document.createElement(node.type);
+  Object.entries(node.props || {}).forEach(([key, value]) => {
+    if (key === "children")
+      return;
+    if (key.startsWith("on") && typeof value === "function") {
+      const eventName = key.slice(2).toLowerCase();
+      element.addEventListener(eventName, value);
+    } else if (key === "className") {
+      element.className = String(value);
+    } else if (key === "style" && typeof value === "object") {
+      Object.assign(element.style, value);
+    } else if (value != null) {
+      element.setAttribute(key, String(value));
+    }
+  });
+  node.children?.forEach((child) => {
+    const childNode = renderToDOM(child);
+    if (childNode)
+      element.appendChild(childNode);
+  });
+  return element;
 }
 export {
   renderToString,
+  renderToDOM,
   jsxs,
-  jsxDEV,
   jsx,
   createElement,
-  Fragment as JSXFragment,
   Fragment
 };

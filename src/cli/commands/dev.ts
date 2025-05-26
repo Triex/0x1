@@ -4,23 +4,17 @@
  * Automatically detects and processes Tailwind CSS in parallel
  */
 
-import { serve, type Server, type ServerWebSocket, type Subprocess } from "bun";
-import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
-import { watch, readdir, writeFile } from "fs/promises";
-import { dirname, join, resolve, extname } from 'path';
+import type { Server, ServerWebSocket, Subprocess } from "bun";
+import { watch } from "fs/promises";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
-import { 
-  serveAppDirectoryHtml, 
-  serveLiveReloadScript, 
-  serveFrameworkModule,
-  handleWebSocketConnection, 
-  broadcastReload,
-  handleScriptFile
+import { findTailwindCssInput, getLocalIP, openBrowser } from "./utils/dev-server-utils.js";
+import {
+  broadcastReload
 } from "./utils/server-handlers.js";
-import { getLocalIP, openBrowser, transformBareImports, findTailwindCssInput } from "./utils/dev-server-utils.js";
-import { shutdownServer, startTailwindProcess, setupShutdown, type DevOptions } from "./utils/server-setup.js";
-import { discoverComponents, transpileFile } from "./utils/transpilation-utils.js";
+import { shutdownServer, startTailwindProcess, type DevOptions } from "./utils/server-setup.js";
 import * as tailwindHandler from "./utils/tailwind-handler.js";
 
 /**
@@ -147,7 +141,7 @@ async function createDevServer(options: {
   const { createStandaloneServer } = await import('./utils/standalone-server.js');
   
   // Create the development server using our standalone implementation that correctly handles MIME types
-  const server = createStandaloneServer({
+  const devServer = createStandaloneServer({
     port,
     host,
     projectPath,
@@ -205,6 +199,76 @@ async function createDevServer(options: {
       logger.error(`Watcher error: ${error}`);
     }
   })();
+
+  // Wrap HTML for server-side rendering
+  function wrapWithHTML(content: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0x1 App</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div id="root">${content}</div>
+    <script type="module" src="/app.js"></script>
+</body>
+</html>`;
+  }
+
+  // Create Bun server with proper fetch handler
+  const server = Bun.serve({
+    port,
+    hostname: host,
+    fetch(req, server) {
+      const url = new URL(req.url);
+      
+      // Handle WebSocket upgrade for live reload
+      if (url.pathname === '/ws') {
+        const success = server.upgrade(req);
+        return success 
+          ? undefined 
+          : new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      // Handle static files
+      if (url.pathname.startsWith('/public/')) {
+        const filePath = resolve(publicDir, url.pathname.slice(8));
+        const file = Bun.file(filePath);
+        return new Response(file);
+      }
+
+      // Handle CSS files
+      if (url.pathname.endsWith('.css')) {
+        const filePath = resolve(publicDir, url.pathname.slice(1));
+        const file = Bun.file(filePath);
+        return new Response(file, {
+          headers: { 'Content-Type': 'text/css' }
+        });
+      }
+
+      // Handle all other routes - render simple response for now
+      const content = '<h1>0x1 Development Server</h1><p>Your app is running!</p>';
+      return new Response(wrapWithHTML(content), {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    },
+    
+    websocket: {
+      message(ws, message) {
+        // Handle WebSocket messages if needed
+      },
+      open(ws) {
+        connectedClients.add(ws);
+        logger.debug('WebSocket client connected');
+      },
+      close(ws) {
+        connectedClients.delete(ws);
+        logger.debug('WebSocket client disconnected');
+      },
+    },
+  });
 
   // Make sure we return the server and watcher as required by function return type
   return { server, watcher: watcherWithClose };

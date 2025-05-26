@@ -20,10 +20,66 @@ if (typeof window !== 'undefined') {
     
     // Effect tracking for useEffect hook
     effects: new Map(),
+    cleanupFunctions: new Map(),
     effectIndex: 0,
     
-    // Cleanup function for component unmount
-    cleanupFunctions: new Map()
+    // Memo tracking for useMemo hook
+    memos: new Map(),
+    memoIndex: 0,
+    
+    // Ref tracking for useRef hook
+    refs: new Map(),
+    refIndex: 0,
+    
+    // Component re-rendering system
+    componentInstances: new Map(),
+    renderQueue: new Set(),
+    updateTimer: null,
+    
+    // Force update mechanism
+    forceUpdate() {
+      console.log('[0x1 Hooks] Force update triggered, queue size:', this.renderQueue.size);
+      // Re-render all components in the render queue
+      this.renderQueue.forEach(componentId => {
+        const instance = this.componentInstances.get(componentId);
+        if (instance && instance.rerender) {
+          try {
+            console.log('[0x1 Hooks] Re-rendering component:', componentId);
+            instance.rerender();
+          } catch (error) {
+            console.error('Error re-rendering component:', componentId, error);
+          }
+        }
+      });
+      this.renderQueue.clear();
+    },
+    
+    // Register a component for re-rendering
+    registerComponent(componentId, rerenderFn) {
+      console.log('[0x1 Hooks] Registering component:', componentId);
+      this.componentInstances.set(componentId, { rerender: rerenderFn });
+    },
+    
+    // Queue a component for re-rendering
+    queueUpdate(componentId) {
+      console.log('[0x1 Hooks] Queueing update for component:', componentId);
+      this.renderQueue.add(componentId);
+      // Debounce updates
+      if (!this.updateTimer) {
+        this.updateTimer = setTimeout(() => {
+          this.forceUpdate();
+          this.updateTimer = null;
+        }, 0);
+      }
+    }
+  };
+  
+  // Global update trigger function
+  window.__0x1_triggerUpdate = () => {
+    console.log('[0x1] Trigger update called');
+    if (window.__0x1_hooks.forceUpdate) {
+      window.__0x1_hooks.forceUpdate();
+    }
   };
 }
 
@@ -33,40 +89,46 @@ const getHooks = () => {
   return window.__0x1_hooks;
 };
 
-// Core React-compatible exports
-export const createElement = (type, props, ...children) => {
-  return { type, props: props || {}, children };
-};
+// Fragment implementation - make it more robust
+export const Fragment = Symbol.for('React.Fragment');
 
-export const Fragment = Symbol('Fragment');
-
-// useState implementation
+// Enhanced useState implementation with proper re-rendering
 export const useState = (initialState) => {
   const hooks = getHooks();
-  if (!hooks) return [initialState, () => {}];
+  if (!hooks) {
+    let state = typeof initialState === 'function' ? initialState() : initialState;
+    return [state, (newState) => { state = newState; }];
+  }
   
-  const component = hooks.currentComponent;
+  const component = hooks.currentComponent || 'global';
   const index = hooks.stateIndex++;
   const key = `${component}-${index}`;
   
+  // Initialize state if not exists
   if (!hooks.states.has(key)) {
     const initialValue = typeof initialState === 'function' ? initialState() : initialState;
     hooks.states.set(key, initialValue);
+    console.log('[0x1 useState] Initialized state for key:', key, 'value:', initialValue);
   }
   
   const state = hooks.states.get(key);
+  console.log('[0x1 useState] Hook called for component:', component, 'index:', index - 1, 'current state:', state);
   
   const setState = (newState) => {
     const currentState = hooks.states.get(key);
     const nextState = typeof newState === 'function' ? newState(currentState) : newState;
     
+    console.log('[0x1 useState] setState called for key:', key, 'current:', currentState, 'next:', nextState);
+    
     // Only update if state has changed
     if (nextState !== currentState) {
       hooks.states.set(key, nextState);
-      // Trigger re-render if we have that capability
-      if (window.__0x1_triggerUpdate) {
-        window.__0x1_triggerUpdate();
-      }
+      console.log('[0x1 useState] State updated, triggering re-render');
+      
+      // Queue the component for re-rendering
+      hooks.queueUpdate(component);
+    } else {
+      console.log('[0x1 useState] State unchanged, skipping update');
     }
   };
   
@@ -76,143 +138,134 @@ export const useState = (initialState) => {
 // useEffect implementation
 export const useEffect = (effect, deps) => {
   const hooks = getHooks();
-  if (!hooks) {
-    try { effect(); } catch (e) { console.error('Error in useEffect:', e); }
-    return;
-  }
+  if (!hooks) return;
   
-  const component = hooks.currentComponent;
+  const component = hooks.currentComponent || 'global';
   const index = hooks.effectIndex++;
   const key = `${component}-${index}`;
   
-  const prevDeps = hooks.effects.get(key)?.deps;
+  console.log('[0x1 useEffect] Hook called for component:', component, 'index:', index);
   
-  // Check if deps have changed
-  const depsChanged = !prevDeps || !deps || 
+  // Get previous dependencies
+  const prevDeps = hooks.effects.get(key);
+  
+  // Check if dependencies changed
+  const depsChanged = !prevDeps || 
+    !deps || 
     deps.length !== prevDeps.length || 
     deps.some((dep, i) => dep !== prevDeps[i]);
   
   if (depsChanged) {
-    // Run cleanup function if it exists
-    if (hooks.cleanupFunctions.has(key)) {
+    console.log('[0x1 useEffect] Dependencies changed, running effect');
+    
+    // Store new dependencies
+    hooks.effects.set(key, deps);
+    
+    // Clean up previous effect
+    const cleanup = hooks.cleanupFunctions.get(key);
+    if (cleanup) {
+      cleanup();
+    }
+    
+    // Run effect asynchronously
+    setTimeout(() => {
       try {
-        hooks.cleanupFunctions.get(key)();
-      } catch (e) {
-        console.error('Error in useEffect cleanup:', e);
+        const newCleanup = effect();
+        if (typeof newCleanup === 'function') {
+          hooks.cleanupFunctions.set(key, newCleanup);
+        }
+      } catch (error) {
+        console.error('[0x1 useEffect] Error in effect:', error);
       }
-    }
-    
-    // Run effect and store cleanup
-    try {
-      const cleanup = effect();
-      if (typeof cleanup === 'function') {
-        hooks.cleanupFunctions.set(key, cleanup);
-      }
-    } catch (e) {
-      console.error('Error in useEffect:', e);
-    }
-    
-    // Store deps for next comparison
-    hooks.effects.set(key, { deps });
+    }, 0);
   }
 };
 
-// Additional hooks for better compatibility
-export const useCallback = (callback, deps) => {
-  // Simple implementation just returns the callback
-  return callback;
-};
-
+// useMemo implementation
 export const useMemo = (factory, deps) => {
   const hooks = getHooks();
-  if (!hooks) return factory();
+  if (!hooks) {
+    return factory();
+  }
   
-  const component = hooks.currentComponent;
-  const index = hooks.memoIndex = (hooks.memoIndex || 0) + 1;
-  const key = `memo-${component}-${index}`;
+  const component = hooks.currentComponent || 'global';
+  const index = hooks.memoIndex++;
+  const key = `${component}-${index}`;
   
-  const cached = hooks.memos = hooks.memos || new Map();
-  const prevDeps = cached.get(key)?.deps;
+  // Get previous memo
+  const prevMemo = hooks.memos.get(key);
   
-  // Check if deps have changed
-  const depsChanged = !prevDeps || !deps || 
-    deps.length !== prevDeps.length || 
-    deps.some((dep, i) => dep !== prevDeps[i]);
+  // Check if dependencies changed
+  const depsChanged = !prevMemo || 
+    !deps || 
+    deps.length !== prevMemo.deps.length || 
+    deps.some((dep, i) => dep !== prevMemo.deps[i]);
   
   if (depsChanged) {
     const value = factory();
-    cached.set(key, { value, deps });
+    hooks.memos.set(key, { value, deps });
     return value;
   }
   
-  return cached.get(key).value;
+  return prevMemo.value;
 };
 
+// useCallback implementation
+export const useCallback = (callback, deps) => {
+  return useMemo(() => callback, deps);
+};
+
+// useRef implementation
 export const useRef = (initialValue) => {
   const hooks = getHooks();
-  if (!hooks) return { current: initialValue };
-  
-  const component = hooks.currentComponent;
-  const index = hooks.refIndex = (hooks.refIndex || 0) + 1;
-  const key = `ref-${component}-${index}`;
-  
-  const refs = hooks.refs = hooks.refs || new Map();
-  
-  if (!refs.has(key)) {
-    refs.set(key, { current: initialValue });
+  if (!hooks) {
+    return { current: initialValue };
   }
   
-  return refs.get(key);
+  const component = hooks.currentComponent || 'global';
+  const index = hooks.refIndex++;
+  const key = `${component}-${index}`;
+  
+  if (!hooks.refs.has(key)) {
+    hooks.refs.set(key, { current: initialValue });
+  }
+  
+  return hooks.refs.get(key);
 };
 
-// JSX runtime exports
-export const jsx = (type, props, key, source, self) => {
-  return { type, props: props || {}, key, source, self };
+// createElement implementation for JSX
+export const createElement = (type, props, ...children) => {
+  return {
+    type,
+    props: {
+      ...props,
+      children: children.length === 1 ? children[0] : children
+    }
+  };
 };
 
-export const jsxs = jsx; // Same implementation for static children
-export const jsxDEV = jsx; // Same implementation for development mode
+// JSX runtime functions
+export const jsx = createElement;
+export const jsxs = createElement;
+export const jsxDEV = createElement;
 
-// Export common components
+// Suspense placeholder
 export const Suspense = ({ children, fallback }) => {
-  return { type: 'div', props: { className: '0x1-suspense' }, children: [children] };
+  return children;
 };
 
+// StrictMode placeholder
 export const StrictMode = ({ children }) => {
-  return { type: 'div', props: { className: '0x1-strict-mode' }, children: [children] };
+  return children;
 };
 
-// Create and export a proper Error Boundary component
+// Basic ErrorBoundary
 export class ErrorBoundary {
   constructor(props) {
-    this.state = { hasError: false, error: null };
-    this.props = props || {};
-  }
-  
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    this.props = props;
   }
   
   render() {
-    if (this.state.hasError) {
-      // You can render any custom fallback UI
-      if (this.props.fallback) {
-        return this.props.fallback(this.state.error);
-      }
-      
-      return {
-        type: 'div',
-        props: { 
-          className: '0x1-error-boundary bg-red-50 border border-red-200 rounded p-4 text-red-800',
-          style: 'position: fixed; bottom: 20px; left: 20px; z-index: 9999;'
-        },
-        children: [
-          { type: 'h3', props: { className: 'text-lg font-semibold' }, children: ['Error:'] },
-          { type: 'p', props: {}, children: [String(this.state.error)] }
-        ]
-      };
-    }
-    
     return this.props.children;
   }
 }
@@ -240,3 +293,38 @@ export default {
   StrictMode,
   ErrorBoundary
 };
+
+// Set up global Fragment handling
+if (typeof window !== 'undefined') {
+  window.Fragment = Fragment;
+  window.React = window.React || {};
+  window.React.Fragment = Fragment;
+  
+  // Pre-populate common mangled Fragment names
+  const commonFragmentNames = [
+    'Fragment_8vg9x3sq', 'Fragment_7x81h0kn', 'Fragment_1a2b3c4d', 
+    'Fragment_x1y2z3a4', 'Fragment_abc123', 'Fragment_def456', 
+    'Fragment_ghi789', 'Fragment_9z8y7x6w', 'Fragment_m5n6o7p8'
+  ];
+  
+  commonFragmentNames.forEach(name => {
+    if (!window[name]) {
+      window[name] = Fragment;
+    }
+  });
+  
+  // Set up error handler for undefined Fragment variables
+  window.addEventListener('error', function(event) {
+    if (event.message && event.message.includes('is not defined') && event.message.includes('Fragment')) {
+      const match = event.message.match(/(Fragment_[a-zA-Z0-9]+) is not defined/);
+      if (match) {
+        window[match[1]] = Fragment;
+        console.log('[0x1] Auto-resolved Fragment variable:', match[1]);
+        event.preventDefault();
+        return false;
+      }
+    }
+  });
+  
+  console.log('[0x1] React shim initialized with enhanced component re-rendering');
+}

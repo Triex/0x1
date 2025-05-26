@@ -1,34 +1,55 @@
 /**
- * Tailwind CSS v4 global styles
- * Using the new simplified import syntax
+ * Tailwind CSS v4 global styles with beautiful dark-purple theme
  */
 
 /* Import Tailwind CSS - this is the only directive needed in v4 */
 @import "tailwindcss";
 
 /* Dark mode configuration */
-:root { color-scheme: light; }
-.dark { color-scheme: dark; }
-
-/* Custom CSS variables for theming */
-:root {
-  --background: #f9fafb; /* gray-50 */
-  --foreground: #111827; /* gray-900 */
-  --border: #e5e7eb; /* gray-200 */
-  --ring: #6366f1; /* indigo-500 */
+:root { 
+  color-scheme: light;
+  /* Light theme variables */
+  --background: #fafafa;
+  --foreground: #0f0f23;
+  --card: #ffffff;
+  --card-foreground: #0f0f23;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: #a78bf6;
+  --accent-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #ffffff;
+  --ring: #7c3aed;
 }
 
-.dark {
-  --background: #030712; /* gray-950 */
-  --foreground: #f9fafb; /* gray-50 */
-  --border: #1f2937; /* gray-800 */
-  --ring: #818cf8; /* indigo-400 */
+.dark { 
+  color-scheme: dark;
+  /* Dark theme variables - matching error boundary aesthetic */
+  --background: #0f0f23;
+  --foreground: #f8fafc;
+  --card: #1a1a2e;
+  --card-foreground: #f8fafc;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: #222236;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1e1b4b;
+  --muted-foreground: #94a3b8;
+  --accent: #a78bf6;
+  --accent-foreground: #0f0f23;
+  --border: #2e2e5c;
+  --input: #222236;
+  --ring: #a78bf6;
 }
 
 /* Base styles */
 @layer base {
   * {
-    border-color: var(--border);
+    border-color: hsl(var(--border));
   }
 
   body {
@@ -72,37 +93,92 @@
   }
 
   .btn-primary {
-    background-color: #4f46e5; /* indigo-600 */
+    background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
     color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 4px 14px 0 rgba(124, 58, 237, 0.2);
   }
   
   .btn-primary:hover {
-    background-color: #4338ca; /* indigo-700 */
+    background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px 0 rgba(124, 58, 237, 0.3);
   }
   
-  .dark .btn-primary {
-    background-color: #6366f1; /* indigo-500 */
-  }
-  
-  .dark .btn-primary:hover {
-    background-color: #4f46e5; /* indigo-600 */
+  .btn-primary:disabled {
+    pointer-events: none;
+    opacity: 0.5;
   }
 
   .btn-secondary {
-    background-color: #e5e7eb; /* gray-200 */
-    color: #111827; /* gray-900 */
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+    border: 1px solid var(--border);
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
   }
   
   .btn-secondary:hover {
-    background-color: #d1d5db; /* gray-300 */
+    background-color: var(--muted);
+    transform: translateY(-1px);
   }
   
-  .dark .btn-secondary {
-    background-color: #1f2937; /* gray-800 */
-    color: #f9fafb; /* gray-50 */
+  .btn-secondary:disabled {
+    pointer-events: none;
+    opacity: 0.5;
   }
-  
-  .dark .btn-secondary:hover {
-    background-color: #374151; /* gray-700 */
+
+  .card {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: all 0.2s ease-in-out;
+  }
+
+  .dark .card {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .card:hover {
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Gradient text effects */
+  .gradient-text {
+    background: linear-gradient(135deg, #7c3aed 0%, #a78bf6 50%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--secondary);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
   }
 }

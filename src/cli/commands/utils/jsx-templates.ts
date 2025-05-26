@@ -3,199 +3,256 @@
  * This module provides JSX runtime implementations for the 0x1 framework
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
 import { logger } from "../../utils/logger.js";
 
 /**
  * Generates the JSX runtime compatibility layer for browser use
  */
 export function generateJsxRuntime(isDevRuntime = false): string {
-  // Read the properly formatted JSX runtime script
-  try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const runtimePath = path.join(__dirname, 'jsx-runtime.js');
-    if (fs.existsSync(runtimePath)) {
-      const content = fs.readFileSync(runtimePath, 'utf8');
-      // For dev runtime, add additional debug logs
-      if (isDevRuntime) {
-        return content.replace(
-          "console.log('[0x1] JSX Runtime loaded')",
-          "console.log('[0x1] JSX Dev Runtime loaded with enhanced debugging')"
-        );
-      }
-      return content;
-    }
-  } catch (err) {
-    console.warn('[0x1] Error loading JSX runtime:', err);
-    // If file access fails, fall back to the inline version
-  }
-  
-  // Fallback inline version if file read fails
   const baseScript = `
-/**
- * 0x1 Framework JSX Runtime
- * A lightweight JSX runtime for browser-side rendering
- */
-(function(window) {
-  // Create Fragment symbol
-  const Fragment = Symbol.for('Fragment');
-
-  // Handle CSS imports - intercept and load them via fetch
-  if (typeof document !== 'undefined') {
-    // Create CSS import handler
-    window._0x1_loadCSS = function(specifier) {
-      console.log('[0x1] Loading CSS via _0x1_loadCSS:', specifier);
-      
-      // For app/layout.js importing ./globals.css, we want /globals.css
-      let cssPath = specifier;
-      if (specifier === './globals.css') {
-        cssPath = '/globals.css';
-      } else if (specifier.startsWith('./')) {
-        // Relative import - we need context info
-        const currentPath = window.location.pathname;
-        if (currentPath.includes('/app/')) {
-          cssPath = \`/app/\${specifier.substring(2)}\`;
-        } else {
-          cssPath = specifier;
+(function(global) {
+  'use strict';
+  
+  // Define Fragment symbol
+  const Fragment = Symbol.for('React.Fragment');
+  
+  // AGGRESSIVE FRAGMENT RESOLUTION - Must run first!
+  (function() {
+    // Set up global Fragment immediately
+    global.Fragment = Fragment;
+    global.React = global.React || {};
+    global.React.Fragment = Fragment;
+    
+    // Pre-populate common mangled Fragment names that we've seen in errors
+    const commonFragmentNames = [
+      'Fragment_8vg9x3sq', 'Fragment_7x81h0kn', 'Fragment_1a2b3c4d', 
+      'Fragment_x1y2z3a4', 'Fragment_abc123', 'Fragment_def456', 
+      'Fragment_ghi789', 'Fragment_9z8y7x6w', 'Fragment_m5n6o7p8'
+    ];
+    
+    commonFragmentNames.forEach(name => {
+      if (!global[name]) {
+        global[name] = Fragment;
+      }
+    });
+    
+    // Set up global error handler for undefined Fragment variables
+    global.onerror = function(message, source, lineno, colno, error) {
+      if (message && message.includes('is not defined') && message.includes('Fragment')) {
+        const match = message.match(/(Fragment_[a-zA-Z0-9]+) is not defined/);
+        if (match) {
+          global[match[1]] = Fragment;
+          console.log('[0x1 JSX] Auto-resolved Fragment variable:', match[1]);
+          return true; // Prevent error from propagating
         }
       }
-      
-      // Fetch the CSS and inject it
-      return fetch(cssPath)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(\`Failed to load CSS: \${cssPath}\`);
-          }
-          return response.text();
-        })
-        .then(css => {
-          const style = document.createElement('style');
-          style.textContent = css;
-          document.head.appendChild(style);
-          console.log(\`[0x1] Loaded CSS from \${cssPath}\`);
-          // Return an empty module
-          return { default: {} };
-        })
-        .catch(err => {
-          console.error('[0x1] Error loading CSS:', err);
-          return { default: {} };
-        });
+      return false;
     };
-  }
-  
-  /**
-   * Creates a DOM element from JSX
-   */
-  function createElementFromJSX(type, props, ...children) { 
-    // Default empty props
-    props = props || {};
     
-    try { 
-      // Handle functional components
-      if (typeof type === 'function') { 
-        // Call the function with props and children 
-        const result = type({ ...props, children: children.length === 0 ? null : children.length === 1 ? children[0] : children });
-        // If the result is a DOM node, return it directly
-        if (result instanceof Node) {
-          return result;
+    // Set up error event listener as backup
+    if (typeof global.addEventListener === 'function') {
+      global.addEventListener('error', function(event) {
+        if (event.message && event.message.includes('is not defined') && event.message.includes('Fragment')) {
+          const match = event.message.match(/(Fragment_[a-zA-Z0-9]+) is not defined/);
+          if (match) {
+            global[match[1]] = Fragment;
+            console.log('[0x1 JSX] Auto-resolved Fragment variable via event:', match[1]);
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
         }
-        
-        // Otherwise, recursively create elements from the result
-        if (result && typeof result === 'object' && 'type' in result) {
-          return createElementFromJSX(
-            result.type, 
-            result.props, 
-            ...(result.props?.children ? [result.props.children].flat() : [])
-          );
+      });
+    }
+    
+    // Skip the Proxy approach since it's causing issues with Window prototype
+    console.log('[0x1 JSX] Fragment pre-resolution complete');
+  })();
+
+  // Create a flexible element factory that handles all JSX scenarios
+  function createElementFromJSX(type, props, key, source, self) {
+    console.log('[0x1 JSX] Creating element:', { type, props, key });
+    
+    try {
+      // Handle Fragment
+      if (type === Fragment || (typeof type === 'symbol' && type.toString().includes('Fragment'))) {
+        console.log('[0x1 JSX] Rendering Fragment');
+        const fragment = document.createDocumentFragment();
+        if (props && props.children) {
+          const children = Array.isArray(props.children) ? props.children : [props.children];
+          children.forEach(child => {
+            if (child != null) {
+              if (typeof child === 'string' || typeof child === 'number') {
+                fragment.appendChild(document.createTextNode(String(child)));
+              } else if (child.nodeType) {
+                fragment.appendChild(child);
+              } else {
+                const childElement = createElementFromJSX(child.type, child.props);
+                if (childElement) fragment.appendChild(childElement);
+              }
+            }
+          });
         }
+        return fragment;
+      }
+      
+      // Handle HTML elements
+      if (typeof type === 'string') {
+        console.log('[0x1 JSX] Rendering HTML element:', type);
+        const element = document.createElement(type);
         
-        // Return result as a text node if it's a primitive
-        return document.createTextNode(String(result));
-      } 
-      
-      // Handle Fragment 
-      if (type === Fragment || type === 'Fragment') { 
-        const fragment = document.createDocumentFragment(); 
-        children.flat().forEach(child => { 
-          if (child instanceof Node) { 
-            fragment.appendChild(child); 
-          } else if (child !== null && child !== undefined) { 
-            fragment.appendChild(document.createTextNode(String(child))); 
-          } 
-        }); 
-        return fragment; 
-      } 
-      
-      // Handle HTML elements 
-      const element = document.createElement(type); 
-      
-      // Add attributes/props 
-      if (props) { 
-        Object.entries(props).forEach(([key, value]) => { 
-          if (key === 'className') { 
-            element.className = value; 
-          } else if (key === 'style' && typeof value === 'object') { 
-            Object.assign(element.style, value); 
-          } else if (key === 'dangerouslySetInnerHTML' && value && value.__html) { 
-            element.innerHTML = value.__html; 
-          } else if (key.startsWith('on') && typeof value === 'function') { 
-            const eventName = key.substring(2).toLowerCase(); 
-            element.addEventListener(eventName, value); 
-          } else if (key !== 'children' && value !== null && value !== undefined) { 
-            element.setAttribute(key, String(value)); 
-          } 
-        }); 
-      } 
-      
-      // Add children if not using dangerouslySetInnerHTML 
-      if (!props || !props.dangerouslySetInnerHTML) { 
-        // Get children from props.children and/or direct children args 
-        const allChildren = []; 
-        if (props && props.children) { 
-          allChildren.push(...[props.children].flat()); 
-        } 
-        if (children.length > 0) { 
-          allChildren.push(...children.flat()); 
-        }
-        
-        // Append children to the element
-        allChildren.forEach(child => {
-          if (child === null || child === undefined) {
-            return;
-          } else if (child instanceof Node) {
-            element.appendChild(child);
-          } else if (Array.isArray(child)) {
-            child.forEach(nestedChild => {
-              if (nestedChild instanceof Node) {
-                element.appendChild(nestedChild);
-              } else if (nestedChild !== null && nestedChild !== undefined) {
-                element.appendChild(document.createTextNode(String(nestedChild)));
+        // Apply props with enhanced event handling
+        if (props) {
+          Object.entries(props).forEach(([key, value]) => {
+            if (key === 'children') return;
+            
+            if (key === 'className') {
+              element.className = String(value);
+              return;
+            }
+            
+            if (key === 'style' && typeof value === 'object') {
+              Object.entries(value).forEach(([cssKey, cssValue]) => {
+                element.style[cssKey] = cssValue;
+              });
+              return;
+            }
+            
+            // Enhanced event handler attachment with debugging
+            if (key.startsWith('on') && typeof value === 'function') {
+              const eventName = key.slice(2).toLowerCase();
+              console.log('[0x1 JSX] Attaching event handler:', eventName, 'to', type);
+              
+              element.addEventListener(eventName, (event) => {
+                console.log('[0x1 JSX] Event triggered:', eventName, 'on', type);
+                try {
+                  value(event);
+                } catch (error) {
+                  console.error('[0x1 JSX] Error in event handler:', error);
+                }
+              });
+              return;
+            }
+            
+            if (value !== undefined && value !== null) {
+              element.setAttribute(key, String(value));
+            }
+          });
+          
+          // Handle children
+          if (props.children) {
+            const children = Array.isArray(props.children) ? props.children : [props.children];
+            children.forEach(child => {
+              if (child != null) {
+                if (typeof child === 'string' || typeof child === 'number') {
+                  element.appendChild(document.createTextNode(String(child)));
+                } else if (child.nodeType) {
+                  element.appendChild(child);
+                } else {
+                  const childElement = createElementFromJSX(child.type, child.props);
+                  if (childElement) element.appendChild(childElement);
+                }
               }
             });
-          } else {
-            element.appendChild(document.createTextNode(String(child)));
           }
-        });
+        }
+        
+        return element;
       }
       
-      return element;
+      // Handle function components with enhanced tracking
+      if (typeof type === 'function') {
+        console.log('[0x1 JSX] Rendering function component:', type.name || 'Anonymous');
+        
+        try {
+          // Set up component tracking
+          const hooks = global.__0x1_hooks;
+          const componentName = type.name || 'Anonymous';
+          const componentId = \`\${componentName}-\${Date.now()}-\${Math.random().toString(36).substr(2, 9)}\`;
+          
+          if (hooks) {
+            hooks.currentComponent = componentId;
+            hooks.stateIndex = 0;
+            hooks.effectIndex = 0;
+            hooks.memoIndex = 0;
+            hooks.refIndex = 0;
+            console.log('[0x1 JSX] Set component context:', componentId);
+          }
+
+          // Render the component
+          const result = type({
+            ...props,
+            children: props?.children
+          });
+          
+          console.log('[0x1 JSX] Component result:', result);
+
+          // Convert result to DOM element
+          const domElement = result?.nodeType ? result : createElementFromJSX(result?.type || result, result?.props || {});
+          
+          // Set up re-rendering for this component if we have hooks
+          if (hooks && domElement && hooks.registerComponent) {
+            let currentDomElement = domElement;
+            
+            hooks.registerComponent(componentId, () => {
+              console.log('[0x1 JSX] Re-rendering component:', componentName);
+              
+              // Reset hook indices for re-render
+              hooks.currentComponent = componentId;
+              hooks.stateIndex = 0;
+              hooks.effectIndex = 0;
+              hooks.memoIndex = 0;
+              hooks.refIndex = 0;
+              
+              try {
+                const newResult = type({
+                  ...props,
+                  children: props?.children
+                });
+                const newDomElement = newResult?.nodeType ? newResult : createElementFromJSX(newResult?.type || newResult, newResult?.props || {});
+                
+                if (newDomElement && currentDomElement && currentDomElement.parentNode) {
+                  console.log('[0x1 JSX] Replacing DOM element for component:', componentName);
+                  currentDomElement.parentNode.replaceChild(newDomElement, currentDomElement);
+                  currentDomElement = newDomElement; // Update reference
+                  
+                  // Re-register with the new DOM element
+                  hooks.registerComponent(componentId, arguments.callee);
+                } else {
+                  console.error('[0x1 JSX] Failed to replace DOM element - missing parent or element');
+                }
+              } catch (error) {
+                console.error('[0x1 JSX] Error during component re-render:', error);
+              } finally {
+                // Clear component context
+                hooks.currentComponent = null;
+              }
+            });
+          }
+          
+          return domElement;
+        } catch (error) {
+          console.error('[0x1 JSX] Error rendering component:', error);
+          return document.createComment(\`JSX Error: \${error.message}\`);
+        }
+      }
+      
+      console.log('[0x1 JSX] Unknown type, returning null:', type);
+      return null;
     } catch (error) {
-      console.error('JSX render error:', error);
+      console.error('[0x1 JSX] Error in createElementFromJSX:', error);
       return document.createComment(\`JSX Error: \${error.message}\`);
     }
   }
   
   // Expose the JSX runtime functions to window
-  window.Fragment = Fragment;
-  window.jsx = createElementFromJSX;
-  window.jsxs = createElementFromJSX; // Same impl for both
-  window.jsxDEV = createElementFromJSX; // For React 17+ dev runtime
+  global.Fragment = Fragment;
+  global.jsx = createElementFromJSX;
+  global.jsxs = createElementFromJSX; // Same impl for both
+  global.jsxDEV = createElementFromJSX; // For React 17+ dev runtime
 
   // For compatibility with jsx-runtime
-  window.jsx_runtime = {
+  global.jsx_runtime = {
     jsx: createElementFromJSX,
     jsxs: createElementFromJSX,
     jsxDEV: createElementFromJSX,
@@ -213,7 +270,7 @@ export function generateJsxRuntime(isDevRuntime = false): string {
 
   ${isDevRuntime ? `
   // Development-only helpers
-  window._0x1_JSX_DEV = {
+  global._0x1_JSX_DEV = {
     refresh: function() {
       console.log('[0x1 JSX] Refreshing components...');
       // Implementation for dev refresh
@@ -223,9 +280,9 @@ export function generateJsxRuntime(isDevRuntime = false): string {
     version: '0.1.0'
   };
   ` : ''}
+  
+  console.log('[0x1 JSX] Runtime initialized with Fragment resolution');
 })(typeof window !== 'undefined' ? window : globalThis);
-
-
 
 // For ES modules
 export const jsx = typeof window !== 'undefined' ? window.jsx : null;

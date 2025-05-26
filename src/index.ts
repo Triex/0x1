@@ -6,9 +6,8 @@
  * Main entry point exporting all core functionality
  */
 
-// Reference JSX type definitions to ensure they're available to consumers
-/// <reference path="../types/jsx.d.ts" />
-/// <reference path="../types/jsx-runtime.d.ts" />
+// Import JSX types instead of using triple slash references
+import './jsx-runtime.js';
 
 // Export core components and functionality
 export {
@@ -20,21 +19,14 @@ export {
   updateComponent
 } from './core/component.js';
 
-// Export Next.js-compatible Link component
+// Export Next.js-compatible Link component as the main Link export
 export { default as Link } from './components/link.js';
 export type { LinkProps } from './components/link.js';
 export type { Component, ComponentProps } from './core/component.js';
 
 // Export JSX runtime for TSX support
 // These exports take precedence for TSX files
-export {
-  createElement,
-  Fragment,
-  renderToString,
-  jsx,
-  jsxs,
-  jsxDEV
-} from './jsx-runtime.js';
+export * from './jsx-runtime.js';
 
 // Export JSX types
 export type {
@@ -42,42 +34,11 @@ export type {
   JSXChildren, JSXNode
 } from './jsx-runtime.js';
 
-// Define the JSX namespace to be picked up by TypeScript
-export namespace JSX {
-  export interface Element {
-    type: string | Function;
-    props: any;
-    children: any[];
-    __source?: {
-      fileName: string;
-      lineNumber: number;
-      columnNumber: number;
-    };
-    __self?: any;
-  }
-  
-  export interface ElementClass {
-    render(): Element;
-  }
-  
-  export interface ElementAttributesProperty {
-    props: any;
-  }
-  
-  export interface ElementChildrenAttribute {
-    children: any;
-  }
-  
-  export interface IntrinsicElements {
-    [elemName: string]: any;
-  }
-}
-
-// Export router and navigation with consistent naming
+// Export router and navigation with renamed legacy components to avoid conflicts  
 export {
-  Link as BasicLink, // Rename to avoid conflict with Next.js-compatible Link
-  NavLink as RouterNavLink, // Renamed to avoid duplicate exports
-  Redirect as RouterRedirect, // Renamed to avoid duplicate exports
+  Link as DOMLink, // Rename to avoid conflict with JSX Link
+  NavLink as DOMNavLink,
+  Redirect as RouterRedirect,
   type Page
 } from './core/navigation.js';
 
@@ -86,10 +47,7 @@ export { Router, type RouteParams } from './core/router.js';
 
 // Export the error boundary for catching and displaying runtime errors
 export {
-  ErrorBoundary,
-  createErrorBoundary,
-  createDefaultErrorUI,
-  withErrorBoundary
+  createDefaultErrorUI, createErrorBoundary, ErrorBoundary, withErrorBoundary
 } from './core/error-boundary.js';
 
 // Export hooks
@@ -122,3 +80,14 @@ export type { _0x1Config } from '../types/config.js';
 
 // Version info
 export const version = '0.0.169';
+
+// Re-export router from the standalone package
+export * from '0x1-router';
+
+// Re-export store from the standalone package  
+export * from '0x1-store';
+
+// Convenience sub-module exports for the 0x1/router and 0x1/store pattern
+export * as router from '0x1-router';
+export * as store from '0x1-store';
+

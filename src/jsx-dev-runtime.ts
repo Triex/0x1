@@ -28,10 +28,10 @@ type EnhancedComponentFunction = ComponentFunction & {
   $$typeof?: symbol;
 };
 
-// Define React Element type for React 19 compatibility
+// Define React Element type for React 19 compatibility (allow symbol types)
 type ReactElement = {
   $$typeof: symbol;
-  type: string | EnhancedComponentFunction | object;
+  type: string | EnhancedComponentFunction | object | symbol;
   key: string | null;
   ref: any;
   props: Record<string, any>;
@@ -99,11 +99,13 @@ export function jsxDEV(
     componentStack.pop();
     
     // Create a valid ReactElement to return with proper types
+    const resultType = typeof jsxResult === 'object' && jsxResult !== null && 'type' in jsxResult 
+      ? jsxResult.type 
+      : typeof type === 'string' ? type : 'div';
+    
     const reactElement: ReactElement = {
       $$typeof: REACT_ELEMENT,
-      type: typeof jsxResult === 'object' && jsxResult !== null && 'type' in jsxResult 
-            ? jsxResult.type 
-            : typeof type === 'string' ? type : 'div',
+      type: resultType as string | EnhancedComponentFunction | object | symbol,
       key: key,
       ref: null,
       props: typeof jsxResult === 'object' && jsxResult !== null && 'props' in jsxResult 

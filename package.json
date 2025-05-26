@@ -15,25 +15,16 @@
     }
   },
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./link": {
-      "import": "./dist/link.js",
-      "types": "./dist/link.d.ts"
-    },
-    "./router": {
-      "import": "./dist/router.js",
-      "types": "./dist/router.d.ts"
-    },
+    ".": "./src/index.ts",
+    "./link": "./src/link.ts",
+    "./router": "./0x1-router/src/index.ts",
     "./core/*": {
       "import": "./dist/core/*.js",
       "types": "./dist/core/*.d.ts"
     },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
-      "types": "./types/jsx-runtime.d.ts"
+      "types": "./dist/jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
       "import": "./dist/jsx-dev-runtime.js",
@@ -46,10 +37,7 @@
     "./jsx": {
       "types": "./types/jsx.d.ts"
     },
-    "./store": {
-      "import": "./dist/store.js",
-      "types": "./dist/store.d.ts"
-    }
+    "./store": "./0x1-store/src/index.ts"
   },
   "bin": {
     "0x1": "./bin/0x1"
@@ -119,7 +107,9 @@
     "prompts": "^2.4.2",
     "sharp": "^0.33.2",
     "tailwindcss": "^4.1.7",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "0x1-router": "workspace:*",
+    "0x1-store": "workspace:*"
   },
   "comments": {
     "removedDependencies": {
