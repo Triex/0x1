@@ -131,33 +131,62 @@ async function buildFramework() {
           console.log(`Transpiling ${fileName.replace(/\.js$/, '.ts')} to JS...`);
           const tempOut = join(srcDir, `.temp-${fileName}`);
           
-          // Use Bun to transpile the TS file
-          const buildRes = Bun.spawnSync([
-            'bun', 'build', tsFile,
-            '--outfile', tempOut,
-            '--target', 'browser',
-            '--format', 'esm'
-          ]);
-          
-          if (buildRes.exitCode === 0) {
-            const jsContent = await Bun.file(tempOut).text();
-            await Bun.write(destFile, jsContent);
-            Bun.spawnSync(['rm', tempOut]);
+          try {
+            // Use Bun's build API directly with proper TypeScript transpilation
+            const { success, logs } = await Bun.build({
+              entrypoints: [tsFile],
+              outdir: srcDir + '/temp',
+              target: 'browser',
+              format: 'esm',
+              minify: false,
+              sourcemap: 'none',
+              define: {
+                'process.env.NODE_ENV': '"production"'
+              },
+              // This is the key to ensuring TypeScript types are properly stripped
+              loader: {
+                '.ts': 'ts',
+                '.tsx': 'tsx'
+              }
+            });
             
-            // Create a symlink in the 0x1 directory pointing to the core file
-            // First, remove the file if it already exists
-            if (await Bun.file(destFile0x1).exists()) {
-              Bun.spawnSync(['rm', destFile0x1]);
+            if (success) {
+              // Get the filename without path
+              const baseName = tsFile.split('/').pop()?.replace('.ts', '.js') || '';
+              const tempJsFile = join(srcDir, 'temp', baseName);
+              
+              // Read the transpiled content
+              const jsContent = await Bun.file(tempJsFile).text();
+              
+              // Write directly to the destination
+              await Bun.write(destFile, jsContent);
+              
+              // Clean up temp files
+              Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+            } else {
+              console.warn(`Failed to build ${fileName.replace(/\.js$/, '.ts')}:`, logs.join('\n'));
+              // Skip this file and continue with others
+              continue;
             }
-            
-            // Create a relative symlink
-            Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
-            
-            console.log(`Transpiled and copied ${fileName} to dist/core/`);
-            console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
-          } else {
-            console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
+          } catch (error) {
+            console.warn(`Error building ${fileName.replace(/\.js$/, '.ts')}:`, error);
+            continue;
           }
+        
+          // File is already written directly, just create the symlink
+          // Create a symlink in the 0x1 directory pointing to the core file
+          // First, remove the file if it already exists
+          if (await Bun.file(destFile0x1).exists()) {
+            Bun.spawnSync(['rm', destFile0x1]);
+          }
+          
+          // Create a relative symlink
+          Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
+          
+          console.log(`Transpiled and copied ${fileName} to dist/core/`);
+          console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
+        } else {
+          console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
         }
       }
     }
@@ -359,20 +388,49 @@ async function buildFramework() {
         // Use direct output to the target destination to avoid temporary files
         const targetCliJsxRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-runtime.js');
         
-        // Use Bun to build the TS file to JS using the proper API syntax
-        const buildResult = Bun.spawnSync([
-          'bun', 'build', jsxRuntimeTS,
-          '--outfile', targetCliJsxRuntime,
-          '--target', 'browser'
-        ]);
-        
-        if (buildResult.exitCode === 0) {
-          // Read the content from the compiled file for further processing
-          jsxRuntimeContent = await Bun.file(targetCliJsxRuntime).text();
+        // Use Bun to build the TS file to JS with proper type stripping
+        // Use Bun's build API directly with proper TypeScript transpilation
+        try {
+          // Use Bun's build function to transpile TypeScript directly to JS
+          const { success, logs } = await Bun.build({
+            entrypoints: [jsxRuntimeTS],
+            outdir: srcDir + '/temp',
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': '"production"'
+            },
+            // This is the key part that ensures TypeScript types are properly stripped
+            loader: {
+              '.ts': 'ts',
+              '.tsx': 'tsx'
+            }
+          });
+          
+          if (!success) {
+            console.error('Failed to build JSX runtime:', logs.join('\n'));
+            throw new Error('Failed to build JSX runtime');
+          }
+          
+          // Read the transpiled JS content
+          const tempJsxFile = join(srcDir, 'temp', 'jsx-runtime.js');
+          jsxRuntimeContent = await Bun.file(tempJsxFile).text();
+          
+          // Write it to the target location
+          await Bun.write(targetCliJsxRuntime, jsxRuntimeContent);
+          
+          // Clean up temp files
+          Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+          
           console.log('✅ JSX runtime file generated and saved to cli/commands/utils/');
-        } else {
-          console.warn('⚠️ Failed to transpile TypeScript JSX runtime, falling back to JavaScript version');
+        } catch (error) {
+          console.error('Error building JSX runtime:', error);
+          throw new Error('Failed to build JSX runtime');
         }
+        
+        // JSX runtime content is already set if successful
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn('⚠️ Error transpiling TypeScript JSX runtime:', errorMessage);
@@ -410,20 +468,46 @@ async function buildFramework() {
         // Use direct output to the target destination to avoid temporary files
         const targetCliJsxDevRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-dev-runtime.js');
         
-        // Use Bun to build the TS file to JS using the proper API syntax
-        const buildResult = Bun.spawnSync([
-          'bun', 'build', jsxDevRuntimeTS,
-          '--outfile', targetCliJsxDevRuntime,
-          '--target', 'browser'
-        ]);
-        
-        if (buildResult.exitCode === 0) {
-          // Read the content from the compiled file for further processing
-          jsxDevRuntimeContent = await Bun.file(targetCliJsxDevRuntime).text();
-          console.log('✅ JSX dev runtime file generated and saved to cli/commands/utils/');
-        } else {
-          console.warn('⚠️ Failed to transpile TypeScript JSX dev runtime, falling back to JavaScript version');
+        // Use Bun's build API directly with proper TypeScript transpilation
+        try {
+          // Use Bun's build function to transpile TypeScript directly to JS
+          const { success, logs } = await Bun.build({
+            entrypoints: [jsxDevRuntimeTS],
+            outdir: srcDir + '/temp',
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': '"production"'
+            },
+            // This is the key part that ensures TypeScript types are properly stripped
+            loader: {
+              '.ts': 'ts',
+              '.tsx': 'tsx'
+            }
+          });
+          
+          if (success) {
+            // Read the transpiled JS content
+            const tempJsxDevFile = join(srcDir, 'temp', 'jsx-dev-runtime.js');
+            jsxDevRuntimeContent = await Bun.file(tempJsxDevFile).text();
+            
+            // Write it to the target location
+            await Bun.write(targetCliJsxDevRuntime, jsxDevRuntimeContent);
+            
+            // Clean up temp files
+            Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+            
+            console.log('✅ JSX dev runtime file generated and saved to cli/commands/utils/');
+          } else {
+            console.warn('Failed to build JSX dev runtime:', logs.join('\n'));
+          }
+        } catch (error) {
+          console.warn('Error building JSX dev runtime:', error);
         }
+        
+        // jsxDevRuntimeContent is already set if successful, no need to read again
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn('⚠️ Error transpiling TypeScript JSX dev runtime:', errorMessage);

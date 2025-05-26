@@ -14,6 +14,10 @@ import { unlinkSync } from "fs";
 // Cache for processed CSS to avoid redundant processing
 const cssCache: Record<string, { content: string; timestamp: number; contentType: string }> = {};
 
+// In-memory storage for processed Tailwind CSS
+let processedTailwindCss: string | null = null;
+let lastProcessedTime = 0;
+
 /**
  * Initialize Tailwind CSS v4 for a project
  * Sets up all necessary configurations and ensures Tailwind is installed
@@ -246,6 +250,18 @@ export function startTailwindWatcher(projectPath: string): { close: () => void }
   return watcher;
 }
 
+/**
+ * Get processed Tailwind CSS content
+ * This is used by the server to serve the CSS without writing to disk
+ */
+// This function is replaced with the detailed version below
+// export function getProcessedTailwindCss(): string {
+//   return processedTailwindCss || '/* Tailwind CSS processing pending */'; 
+// }
+
+/**
+ * Process Tailwind CSS in memory without generating unnecessary files
+ */
 export async function processTailwindCss(projectPath: string): Promise<boolean> {
   try {
     logger.info("Processing Tailwind CSS...");
@@ -255,8 +271,8 @@ export async function processTailwindCss(projectPath: string): Promise<boolean> 
     const appGlobalsCssPath = join(projectPath, "app", "globals.css");
     const srcAppCssPath = join(projectPath, "src", "app.css");
     
-    // Default output CSS path
-    const outputCssPath = join(projectPath, "public", "processed-tailwind.css");
+    // We'll process in memory, but keep path references for error messages
+    const outputCssPathReference = join(projectPath, "0x1-internal", "processed-tailwind.css");
     
     // Determine which input CSS file to use
     let inputCssPath: string;
@@ -333,18 +349,17 @@ export async function processTailwindCss(projectPath: string): Promise<boolean> 
     }
     
     // Create a temporary processor script that properly uses Tailwind v4 with PostCSS
-    const tempProcessorPath = join(projectPath, '.0x1-tailwind-processor.mjs');
+    // Place it in memory using Bun.file() instead of writing to disk
     
     // Modern ESM script to process Tailwind CSS using v4 API directly
     const processorScript = `
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import postcss from 'postcss';
 import tailwindcssPostcss from '@tailwindcss/postcss';
 
 // Define paths
-const inputPath = '${inputCssPath.replace(/\\/g, '\\\\')}';
-const outputPath = '${outputCssPath.replace(/\\/g, '\\\\')}';
+const inputPath = '${inputCssPath.replace(/\\/g, '\\')}';
 
 // Read input CSS
 const css = readFileSync(inputPath, 'utf8');
@@ -355,19 +370,20 @@ async function processCss() {
     const result = await postcss([
       tailwindcssPostcss({
         content: [
-          join('${projectPath.replace(/\\/g, '\\\\')}', 'src', '**', '*.{js,jsx,ts,tsx}'),
-          join('${projectPath.replace(/\\/g, '\\\\')}', 'index.html')
+          join('${projectPath.replace(/\\/g, '\\')}', '**', '*.{js,jsx,ts,tsx}'),
+          join('${projectPath.replace(/\\/g, '\\')}', 'app', '**', '*.{js,jsx,ts,tsx}'),
+          join('${projectPath.replace(/\\/g, '\\')}', 'components', '**', '*.{js,jsx,ts,tsx}'),
+          join('${projectPath.replace(/\\/g, '\\')}', 'src', '**', '*.{js,jsx,ts,tsx}'),
+          join('${projectPath.replace(/\\/g, '\\')}', 'index.html')
         ],
         darkMode: 'class',
       })
     ]).process(css, {
-      from: inputPath,
-      to: outputPath
+      from: inputPath
     });
 
-    // Write the processed CSS to the output file
-    writeFileSync(outputPath, result.css);
-    console.log('Tailwind CSS processing complete!');
+    // Output the CSS to stdout for the parent process to capture
+    console.log(result.css);
   } catch (error) {
     console.error('Error processing Tailwind CSS:', error);
     process.exit(1);
@@ -377,78 +393,54 @@ async function processCss() {
 processCss();
 `;
     
-    writeFileSync(tempProcessorPath, processorScript, 'utf-8');
+    // Use temp file with unique name for the processor script
+    const tempDir = join(projectPath, '.0x1');
+    const tempFilePath = join(tempDir, `.tailwind-processor-${Date.now()}.mjs`);
     
-    // Execute the processor script with bun
-    logger.info('Processing CSS with Tailwind...');
-    const processResult = Bun.spawn(['bun', 'run', tempProcessorPath], {
+    // Ensure temp directory exists
+    if (!existsSync(tempDir)) {
+      await mkdir(tempDir, { recursive: true });
+    }
+    
+    try {
+      // Write the temporary processor script
+      writeFileSync(tempFilePath, processorScript, 'utf-8');
+      
+      // Execute the processor script with bun
+      logger.info('Processing CSS with Tailwind...');
+      const processResult = Bun.spawn(['bun', 'run', tempFilePath], {
       cwd: projectPath,
       stdio: ['ignore', 'pipe', 'pipe']
     });
     
     const exitCode = await processResult.exited;
     
-    // Clean up the temporary processor file
-    if (existsSync(tempProcessorPath)) {
-      try { 
-        unlinkSync(tempProcessorPath); 
+      // Clean up temp file
+      try {
+        if (existsSync(tempFilePath)) {
+          unlinkSync(tempFilePath);
+        }
       } catch (e) {
-        // Ignore errors on cleanup
+        // Ignore cleanup errors
       }
-    }
     
-    if (exitCode !== 0) {
-      const stderr = await new Response(processResult.stderr).text();
-      logger.error(`Error processing Tailwind CSS: ${stderr}`);
+      if (exitCode !== 0) {
+        const stderr = await new Response(processResult.stderr).text();
+        logger.error(`Error processing Tailwind CSS: ${stderr}`);
+        return false;
+      }
+      
+      // Store the processed CSS in memory
+      const processedCss = await new Response(processResult.stdout).text();
+      processedTailwindCss = processedCss;
+      lastProcessedTime = Date.now();
+    } catch (error) {
+      logger.error(`Error executing Tailwind processor: ${error}`);
       return false;
     }
     
-    // Create the runtime script for dark mode toggling
-    const tailwindRuntime = `/* Tailwind CSS v4 Runtime */
-(function() {
-  console.log('[0x1] Initializing Tailwind CSS runtime');
-  
-  // Dark mode handling
-  const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  const isDarkMode = localStorage.getItem('0x1-dark-mode') === 'dark' ||
-                    (!localStorage.getItem('0x1-dark-mode') && darkModeMediaQuery.matches);
-  
-  if (isDarkMode) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
-  
-  // Set up listener for dark mode changes
-  darkModeMediaQuery.addEventListener('change', e => {
-    if (!localStorage.getItem('0x1-dark-mode')) {
-      if (e.matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    }
-  });
-  
-  // Initialize theme toggle buttons
-  document.addEventListener('DOMContentLoaded', () => {
-    const themeToggles = document.querySelectorAll('[id="theme-toggle"]');
-    themeToggles.forEach(toggle => {
-      toggle.addEventListener('click', () => {
-        if (document.documentElement.classList.contains('dark')) {
-          document.documentElement.classList.remove('dark');
-          localStorage.setItem('0x1-dark-mode', 'light');
-        } else {
-          document.documentElement.classList.add('dark');
-          localStorage.setItem('0x1-dark-mode', 'dark');
-        }
-      });
-    });
-  });
-})();`;
-    
-    const tailwindRuntimePath = join(projectPath, "public", "tailwindcss");
-    writeFileSync(tailwindRuntimePath, tailwindRuntime, 'utf-8');
+    // We'll keep the runtime script in memory instead of writing to the filesystem
+    // The runtime script will be served directly from memory via the server
     
     logger.success('Tailwind CSS processing complete!');
     return true;
@@ -456,6 +448,51 @@ processCss();
     logger.error(`Error processing Tailwind CSS: ${error}`);
     return false;
   }
+}
+
+/**
+ * Get the Tailwind runtime script for client-side dark mode toggling
+ */
+export function getTailwindRuntime(): { content: string; contentType: string } {
+  const tailwindRuntime = `/* Tailwind CSS v4 Runtime */
+  (function() {
+    console.log('[0x1] Initializing Tailwind CSS runtime');
+    
+    // Add debug info to help troubleshoot
+    console.log('[0x1] Tailwind runtime script loaded from:', document.currentScript?.src || 'inline');
+    
+    // Monitor dark mode preference changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      const darkModeOn = e.matches;
+      const userPreference = localStorage.getItem('darkMode');
+      console.log('[0x1] Dark mode preference changed:', darkModeOn ? 'dark' : 'light');
+      
+      // Only update if user hasn't explicitly set a preference
+      if (userPreference === null) {
+        if (darkModeOn) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    });
+    
+    // Function to toggle dark mode
+    window.toggleDarkMode = function() {
+      const isDark = document.documentElement.classList.contains('dark');
+      console.log('[0x1] Toggling dark mode from', isDark ? 'dark' : 'light', 'to', !isDark ? 'dark' : 'light');
+      
+      if (isDark) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('darkMode', 'light');
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('darkMode', 'dark');
+      }
+    };
+  })();`;
+  
+  return { content: tailwindRuntime, contentType: 'application/javascript' };
 }
 
 /**
@@ -493,6 +530,16 @@ export async function processCssFile(filePath: string, projectPath: string): Pro
     logger.error(`Error processing CSS file ${filePath}: ${error}`);
     return null;
   }
+}
+
+/**
+ * Serve processed Tailwind CSS
+ */
+export function getProcessedTailwindCss(): { content: string; contentType: string } {
+  return {
+    content: processedTailwindCss || '/* Tailwind CSS processing pending */',
+    contentType: 'text/css'
+  };
 }
 
 /**

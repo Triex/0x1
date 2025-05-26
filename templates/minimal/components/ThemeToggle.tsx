@@ -6,7 +6,8 @@
 export function ThemeToggle() {
   // This will be processed by the framework at runtime
   // using a client-side hydration approach similar to React
-
+  // const [isDark, setIsDark] = useState
+  
   // Toggle theme function - will be attached to onClick
   function toggleTheme() {
     const isDark = document.documentElement.classList.contains('dark');
@@ -26,7 +27,7 @@ export function ThemeToggle() {
       className="px-3 py-2 bg-indigo-600 dark:bg-indigo-700 hover:bg-indigo-700 dark:hover:bg-indigo-800 text-white rounded-md transition-colors"
       aria-label="Toggle dark mode"
     >
-      Toggle Theme
+      {document.documentElement.classList.contains('dark') ? 'Light' : 'Dark'} Theme
     </button>
           // <button
           //   id="theme-toggle"

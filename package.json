@@ -73,10 +73,11 @@
   "scripts": {
     "test": "bun test",
     "dev": "bun run --watch src/cli/index.ts dev",
-    "build": "bun run build:framework && bun run build:cli",
+    "build": "bun run build:framework && bun run fix-ts && bun run build:cli",
     "build:framework": "bun run scripts/build-framework.ts",
     "build:cli": "bun run scripts/build-cli-with-size.js",
     "build:templates": "cp -r templates dist/",
+    "fix-ts": "bun run scripts/fix-transpiled-js.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
@@ -112,9 +113,12 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.1.7",
     "lightningcss": "^1.24.0",
+    "postcss": "^8.5.3",
     "prompts": "^2.4.2",
     "sharp": "^0.33.2",
+    "tailwindcss": "^4.1.7",
     "zod": "^3.22.4"
   },
   "comments": {

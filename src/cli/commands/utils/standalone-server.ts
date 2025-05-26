@@ -130,7 +130,6 @@ export function createStandaloneServer({
   
   // Create the server instance - declaring first, initialized below
   let serverInstance: Server;
-  let liveReload: ReturnType<typeof createLiveReloadSystem>;
   
   // Create the server instance
   serverInstance = serve({
@@ -426,62 +425,81 @@ export function createStandaloneServer({
       if (reqPath === "/processed-tailwind.css") {
         const processedCssPath = join(projectPath, "public", "processed-tailwind.css");
         
-        if (existsSync(processedCssPath)) {
-          logRequestStatus(200, reqPath, `Serving processed Tailwind CSS`);
+        // Always attempt to process Tailwind CSS when the file is requested
+        try {
+          // Ensure Tailwind module is available
+          const tailwindHandler = await import("./tailwind-handler.js");
+          const success = await tailwindHandler.processTailwindCss(projectPath);
           
-          const cssContent = readFileSync(processedCssPath, "utf-8");
-          
-          return new Response(cssContent, {
+          // Check if processing was successful
+          if (success && existsSync(processedCssPath)) {
+            logRequestStatus(200, reqPath, `Processed and serving Tailwind CSS`);
+            
+            const cssContent = readFileSync(processedCssPath, "utf-8");
+            
+            return new Response(cssContent, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/css; charset=utf-8",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          } else if (existsSync(processedCssPath)) {
+            // If we couldn't process but the file exists, use the existing file
+            logRequestStatus(200, reqPath, `Serving existing processed Tailwind CSS`);
+            
+            const cssContent = readFileSync(processedCssPath, "utf-8");
+            
+            return new Response(cssContent, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/css; charset=utf-8",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          }
+        } catch (error) {
+          logger.error(`Error processing Tailwind CSS: ${error}`);
+        }
+        
+        // Fallback with clear error when CSS processing fails
+        logRequestStatus(404, reqPath, `Tailwind CSS processing failed`);
+        return new Response(`/* 
+ * 0x1 Framework - Tailwind CSS Processing Error
+ * 
+ * Please check the following:
+ * 1. Ensure tailwind.config.js exists in your project root
+ * 2. Check that tailwindcss is installed (npm/bun install tailwindcss)
+ * 3. Verify that app/globals.css exists and imports tailwindcss
+ */`, {
+          status: 404,
+          headers: {
+            "Content-Type": "text/css; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+          }
+        });
+      }
+      
+      // Handle Tailwind runtime script (support for both main path and app directory path)
+      if (reqPath === "/tailwindcss" || reqPath === "/app/tailwindcss") {
+        logRequestStatus(200, reqPath, `Serving Tailwind runtime script`);
+        
+        // Use in-memory runtime script from the handler if available
+        if (typeof tailwindHandler.getTailwindRuntime === 'function') {
+          const runtime = tailwindHandler.getTailwindRuntime();
+          return new Response(runtime.content, {
             status: 200,
             headers: {
-              "Content-Type": "text/css; charset=utf-8",
-              "Cache-Control": "no-cache, no-store, must-revalidate"
-            }
-          });
-        } else {
-          // If the processed file doesn't exist, try to process it on-demand
-          try {
-            // Ensure Tailwind module is available
-            const tailwindHandler = await import("./tailwind-handler.js");
-            await tailwindHandler.processTailwindCss(projectPath);
-            
-            // Check again after processing
-            if (existsSync(processedCssPath)) {
-              logRequestStatus(200, reqPath, `Processed and serving Tailwind CSS on-demand`);
-              
-              const cssContent = readFileSync(processedCssPath, "utf-8");
-              
-              return new Response(cssContent, {
-                status: 200,
-                headers: {
-                  "Content-Type": "text/css; charset=utf-8",
-                  "Cache-Control": "no-cache, no-store, must-revalidate"
-                }
-              });
-            }
-          } catch (error) {
-            logger.error(`Error processing Tailwind CSS on-demand: ${error}`);
-          }
-          
-          // Fallback if we couldn't process the CSS
-          logRequestStatus(404, reqPath, `Processed Tailwind CSS file not found`);
-          return new Response("/* Tailwind CSS processing failed */", {
-            status: 404,
-            headers: {
-              "Content-Type": "text/css; charset=utf-8",
+              "Content-Type": runtime.contentType,
               "Cache-Control": "no-cache, no-store, must-revalidate"
             }
           });
         }
-      }
-      
-      // Handle Tailwind runtime script
-      if (reqPath === "/tailwindcss") {
+        
+        // Check if Tailwind runtime exists in file system
         const tailwindRuntimePath = join(projectPath, "public", "tailwindcss");
         
         if (existsSync(tailwindRuntimePath)) {
-          logRequestStatus(200, reqPath, `Serving Tailwind runtime script`);
-          
           const runtimeScript = readFileSync(tailwindRuntimePath, "utf-8");
           
           return new Response(runtimeScript, {
@@ -492,11 +510,88 @@ export function createStandaloneServer({
             }
           });
         } else {
-          logRequestStatus(404, reqPath, `Tailwind runtime script not found`);
-          return new Response("console.error('[0x1] Tailwind runtime script not found');", {
+          // If no runtime script found, return clear error message
+          const errorScript = `/* Tailwind CSS v4 Runtime Error */
+(function() {
+  console.error('[0x1 ERROR] Tailwind CSS runtime not found');
+  console.error('[0x1 ERROR] Please run \`bun run dev\` again or ensure tailwind.config.js exists');
+  
+  // Add an error notification to the DOM
+  document.addEventListener('DOMContentLoaded', () => {
+    const errorNotification = document.createElement('div');
+    errorNotification.style.position = 'fixed';
+    errorNotification.style.top = '1rem';
+    errorNotification.style.right = '1rem';
+    errorNotification.style.padding = '1rem';
+    errorNotification.style.backgroundColor = '#f56565';
+    errorNotification.style.color = 'white';
+    errorNotification.style.borderRadius = '0.375rem';
+    errorNotification.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+    errorNotification.style.zIndex = '9999';
+    errorNotification.innerHTML = '<strong>Tailwind CSS Error:</strong> Runtime not found. Check console for details.';
+    document.body.appendChild(errorNotification);
+  });
+})();`;
+          
+          logger.error("Tailwind CSS runtime not found at " + tailwindRuntimePath);
+          logger.error("Ensure tailwind.config.js exists and run again");
+          
+          return new Response(errorScript, {
             status: 200, // Return 200 to avoid breaking the page
             headers: {
               "Content-Type": "application/javascript; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
+      }
+      
+      // Handle error boundary component
+      if (reqPath === "/0x1/error-boundary.js") {
+        logRequestStatus(200, reqPath, "Serving error boundary component");
+        
+        // Load the error boundary file from the framework
+        const errorBoundaryPath = join(frameworkPath, "src/core/error-boundary.ts");
+        if (existsSync(errorBoundaryPath)) {
+          try {
+            const errorBoundarySource = await Bun.file(errorBoundaryPath).text();
+            
+            // Transform TypeScript to browser-compatible JavaScript
+            const transformedSource = `/* 0x1 Error Boundary - Browser Compatible Version */
+${errorBoundarySource
+  .replace(/import\s+type\s+[^;]+;/g, '') // Remove type imports
+  .replace(/interface\s+[^{]+(\{[^}]*\})/g, '') // Remove interfaces
+  .replace(/:\s*[A-Za-z<>\[\]|,\s]+/g, '') // Remove type annotations
+}
+
+// Export for client-side use
+export default ErrorManager.getInstance();
+export { ErrorManager };
+`;
+            
+            return new Response(transformedSource, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/javascript",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          } catch (e) {
+            logger.error(`Error transforming error boundary: ${e}`);
+            return new Response(`console.error('[0x1] Error transforming error boundary: ${e}');`, {
+              status: 500,
+              headers: {
+                "Content-Type": "application/javascript",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+              }
+            });
+          }
+        } else {
+          logger.error(`❌ Error boundary component not found at: ${errorBoundaryPath}`);
+          return new Response("console.error('[0x1] Error boundary component not found');", {
+            status: 404,
+            headers: {
+              "Content-Type": "application/javascript",
               "Cache-Control": "no-cache, no-store, must-revalidate"
             }
           });
@@ -629,12 +724,14 @@ export function createStandaloneServer({
   });
   
   // Initialize the live reload system after server instance is created
-  liveReload = createLiveReloadSystem(serverInstance);
+  const liveReload = createLiveReloadSystem(serverInstance);
   
   // Add shutdown handler
   serverInstance.stop = async () => {
     // Clean up live reload system
-    liveReload.cleanup();
+    if (liveReload && typeof liveReload.cleanup === 'function') {
+      liveReload.cleanup();
+    }
     
     logger.info('Server shutdown complete');
     

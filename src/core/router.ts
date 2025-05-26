@@ -34,7 +34,7 @@ export interface RouterOptions {
 }
 
 /**
- * Creates a router instance that manages navigation and renders components
+ * Router class that manages navigation and renders components
  */
 export class Router {
   private routes: Route[] = [];
@@ -971,3 +971,9 @@ private extractParams(route: Route, path: string): RouteParams {
 export function createRouter(options: RouterOptions): Router {
   return new Router(options);
 }
+
+// Ensure createRouter is included in default exports
+export default {
+  Router,
+  createRouter,
+};

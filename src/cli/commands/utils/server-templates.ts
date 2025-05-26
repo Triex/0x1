@@ -75,7 +75,7 @@ export const PROCESS_POLYFILL = `
 
 export const STYLES = `
   <!-- Include global stylesheets -->
-  <link rel="stylesheet" href="/globals.css">
+  <link rel="stylesheet" href="/app/globals.css">
   <!-- Processed Tailwind CSS -->
   <link rel="stylesheet" href="/processed-tailwind.css">
   <!-- Tailwind CSS v4 runtime script (for dark mode) -->
@@ -93,7 +93,7 @@ export const IMPORT_MAP = `
       "app/": "/app/",
       "src/": "/src/",
       "react": "/__0x1_react_shim.js",
-      "react/jsx-runtime": "/__0x1_jsx_runtime.js",
+      "react/jsx-runtime": "/0x1/jsx-runtime.js",
       "react/jsx-dev-runtime": "/__0x1_jsx_dev_runtime.js"
     }
   }
@@ -301,16 +301,76 @@ export const APP_SCRIPT = `
     console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");
 
     // Import the router and required components
-    import { createRouter } from "/0x1/router.js";
+    // Use dynamic import for better compatibility
+    let Router, createRouter;
+    try {
+      const routerModule = await import('/0x1/router.js');
+      console.log('[0x1] Router module imports:', Object.keys(routerModule));
+      
+      // Check if the global Router is available (from window.Router)
+      if (window.Router) {
+        Router = window.Router;
+        console.log('[0x1] Using globally defined Router');
+      } else {
+        // Get the Router class from the module
+        Router = routerModule.Router;
+      }
+      
+      // Get or create the router function
+      createRouter = routerModule.createRouter || function(options) {
+        console.log('[0x1] Using fallback router creation');
+        // Ensure Router is actually a constructor
+        if (typeof Router === 'function') {
+          return new Router(options);
+        } else {
+          console.error('[0x1] Router is not a constructor:', Router);
+          throw new Error('Router is not properly defined');
+        }
+      };
+    } catch (e) {
+      console.error('[0x1] Error importing router:', e);
+      // Provide emergency fallback
+      Router = class EmergencyRouter { 
+        constructor(options) {
+          console.log('[0x1] Using emergency router');
+          this.options = options;
+        }
+      };
+      createRouter = (options) => new Router(options);
+    }
     
     console.log("[0x1 DEBUG] Router module loaded successfully");
 
-    // Function to get app components with enhanced import resolution
+    // Helper function to load a component module with error handling
     async function loadComponent(path) {
+      console.log('[0x1 DEBUG] Loading component:', path);
+      
+      // Normalize path for dynamic import
+      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+      
       try {
-        // Normalize path to ensure proper loading
-        const normalizedPath = path.startsWith("/") ? path : \`/\${path}\`;
-        console.log(\`[0x1 DEBUG] Loading component: \${normalizedPath}\`);
+        // Try to preload the error boundary for use in case of failures
+        let ErrorBoundaryManager = null;
+        try {
+          ErrorBoundaryManager = await import('/0x1/error-boundary.js')
+            .then(m => m.default || m.ErrorManager)
+            .catch(() => null);
+          
+          if (ErrorBoundaryManager) {
+            console.log('[0x1] Error boundary module loaded and ready');
+          }
+        } catch (e) {
+          console.warn('[0x1] Error loading error boundary (non-critical):', e);
+        }
+        
+        // Check if the component exists with a HEAD request first
+        const exists = await fetch(normalizedPath, { method: 'HEAD' })
+          .then(res => res.ok)
+          .catch(() => false);
+        
+        if (!exists) {
+          throw new Error("Component not found at path: " + normalizedPath);
+        }
         
         // Dynamically import the component module
         const module = await import(normalizedPath);
@@ -322,14 +382,110 @@ export const APP_SCRIPT = `
         
         return module;
       } catch (error) {
-        console.error(\`[0x1 ERROR] Failed to load component \${path}: \${error.message}\`);
-        return { 
-          default: () => {
-            const errorEl = document.createElement("div");
-            errorEl.className = "error-container";
-            errorEl.innerHTML = \`<h2>Error Loading Component</h2><p>\${path}</p><pre>\${error.message}</pre>\`;
-            return errorEl;
+        console.error("[0x1 ERROR] Failed to load component " + path + ": " + error.message);
+        
+        // Try to use the error boundary if available
+        try {
+          // Try to load the error boundary dynamically if not already loaded
+          const ErrorBoundaryManager = await import('/0x1/error-boundary.js')
+            .then(m => m.default || m.ErrorManager)
+            .catch(() => null);
+          
+          if (ErrorBoundaryManager && typeof ErrorBoundaryManager.getInstance === 'function') {
+            const manager = ErrorBoundaryManager.getInstance();
+            
+            if (typeof manager.createBoundary === 'function') {
+              console.log('[0x1] Using error boundary to display component error');
+              return {
+                default: () => {
+                  // Use the error boundary to render the error
+                  const BoundaryComponent = manager.createBoundary({
+                    error: error,
+                    componentPath: path
+                  });
+                  
+                  if (BoundaryComponent) {
+                    return BoundaryComponent;
+                  }
+                  
+                  // Fallback if boundary component creation failed
+                  throw error;
+                }
+              };
+            }
           }
+        } catch (e) {
+          console.warn('[0x1] Error using error boundary:', e);
+        }
+        
+        // Clear and direct error display using Tailwind CSS v4 styling
+        return { 
+          default: () => ({
+            type: 'div',
+            props: {
+              className: 'error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 dark:border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md',
+              children: [
+                {
+                  type: 'h2',
+                  props: {
+                    className: 'text-xl font-bold text-red-700 dark:text-red-400 mb-2',
+                    children: '0x1 Component Error'
+                  }
+                },
+                {
+                  type: 'div',
+                  props: {
+                    className: 'mb-3 flex items-center',
+                    children: [
+                      {
+                        type: 'span',
+                        props: {
+                          className: 'inline-block mr-2 bg-red-100 dark:bg-red-800/40 text-red-800 dark:text-red-300 px-2 py-1 text-xs font-mono rounded',
+                          children: '404'
+                        }
+                      },
+                      {
+                        type: 'span',
+                        props: {
+                          className: 'font-mono text-gray-700 dark:text-gray-300',
+                          children: path
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  type: 'pre',
+                  props: {
+                    className: 'p-3 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-200 dark:border-gray-700',
+                    children: error.message || 'Unknown error'
+                  }
+                },
+                {
+                  type: 'div',
+                  props: {
+                    className: 'mt-4 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border-l-4 border-yellow-400',
+                    children: [
+                      {
+                        type: 'p',
+                        props: {
+                          className: 'text-sm font-medium text-yellow-800 dark:text-yellow-300',
+                          children: 'Required Action:'
+                        }
+                      },
+                      {
+                        type: 'p',
+                        props: {
+                          className: 'text-sm text-gray-700 dark:text-gray-300 mt-1',
+                          children: 'Create the missing component file at the specified path.'
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          })
         };
       }
     }
@@ -366,43 +522,88 @@ export const APP_SCRIPT = `
     // Main initialization function
     async function initializeApp() {
       try {
-        // Load root components first to check their structure
-        const pageModule = await loadComponent("/app/page.js");
-        const layoutModule = await loadComponent("/app/layout.js");
-        
-        // Check if the layout is a Next.js 15-style layout
-        const hasFullHtmlLayout = isNextJsLayout(layoutModule.default);
-        
-        if (hasFullHtmlLayout) {
-          console.log("[0x1] Detected Next.js 15-style layout with full HTML structure");
+        // Check if we're looking at a static landing page
+        // If the document has no #app element, we're on the static landing page
+        // and should avoid router initialization
+        const appContainer = document.getElementById('app');
+        if (!appContainer) {
+          console.log('[0x1] Static landing page detected, skipping router initialization');
+          return;
         }
         
-        // Create router instance with appropriate options
+        console.log('[0x1] Initializing app with Router:', typeof Router);
+        console.log('[0x1] createRouter function available:', typeof createRouter);
+        
+        if (typeof Router !== 'function') {
+          console.error('[0x1] Router is not a constructor - trying to fix');
+          
+          // Try to get Router from global scope
+          if (typeof window.Router === 'function') {
+            Router = window.Router;
+            console.log('[0x1] Using Router from global scope');
+          } else {
+            // Emergency fallback - define a minimal Router class
+            Router = class Router {
+              routes = [];
+              constructor(options = {}) {
+                console.log('[0x1] Using emergency Router implementation');
+                this.options = options;
+                this.rootElement = options.rootElement || document.getElementById('app');
+                this.routes = [];
+              }
+              
+              addRoute(path, component, options = {}) {
+                this.routes.push({ path, component, options });
+                return this;
+              }
+              
+              handleNavigation() { return this; }
+              navigate() { return this; }
+            };
+            
+            // Define createRouter if not available
+            if (typeof createRouter !== 'function') {
+              createRouter = (options) => new Router(options);
+            }
+          }
+        }
+        
+        // Try to load root components - but provide fallbacks if they don't exist
+        let pageModule, layoutModule;
+        let componentsExist = false;
+        
+        try {
+          pageModule = await loadComponent("/app/page.js");
+          layoutModule = await loadComponent("/app/layout.js");
+          
+          // Check if any of the actual component modules were loaded
+          if (pageModule?.default && typeof pageModule.default === 'function') {
+            componentsExist = true;
+          }
+        } catch (e) {
+          console.warn('[0x1] Could not load app components:', e);
+        }
+        
+        // If there are no components and we're on the landing page, don't initialize the router
+        if (!componentsExist && document.title === '0x1 Dev Server') {
+          console.log('[0x1] No components found and landing page detected, skipping router initialization');
+          return;
+        }
+        
+        // Create router instance
         const router = createRouter({
-          rootElement: document.getElementById("app"),
-          defaultRoute: "/",
-          onNavigate: (path) => {
-            console.log(\`[0x1 DEBUG] Navigating to: \${path}\`);
-          },
-          // Add layout as rootLayout if not a full HTML structure layout
-          rootLayout: hasFullHtmlLayout ? null : layoutModule.default
+          rootElement: appContainer,
+          mode: 'history'
         });
         
-        // Register base route (with layout or standalone depending on structure)
-        if (hasFullHtmlLayout) {
-          // For Next.js 15-style layouts, we use a special wrapped layout
-          router.addRoute("/", (props) => {
-            // Call the page component first
-            const pageContent = pageModule.default(props);
-            
-            // Then call the layout with children set to page content
-            return layoutModule.default({ ...props, children: pageContent });
-          });
+        // Add home route - use fallback if needed
+        if (componentsExist) {
+          console.log('[0x1] Using app components for rendering');
+          router.addRoute('/', pageModule?.default, { layout: layoutModule?.default });
         } else {
-          // Standard approach with separate layout registration
-          router.addRoute("/", pageModule.default, {
-            layout: layoutModule.default
-          });
+          console.log('[0x1] Using placeholder component');
+          // Just add a minimal placeholder component since real routing isn't needed
+          router.addRoute('/', () => ({ type: 'div' }));
         }
         
         // Handle navigation
@@ -427,13 +628,14 @@ export const APP_SCRIPT = `
         console.log("[0x1 DEBUG] App initialization complete");
       } catch (error) {
         console.error("[0x1 ERROR] App initialization failed:", error);
-        document.getElementById("app").innerHTML = \`
-          <div class="error-container">
-            <h1>Initialization Error</h1>
-            <p>\${error.message}</p>
-            <pre>\${error.stack}</pre>
-          </div>
-        \`;
+        const errorMsg = error.message || 'Unknown error';
+        const errorStack = error.stack || '';
+        document.getElementById("app").innerHTML = 
+          '<div class="error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md">' +
+          '<h1 class="text-xl font-bold text-red-700 mb-2">Initialization Error</h1>' +
+          '<p class="mb-2">' + errorMsg + '</p>' +
+          '<pre class="p-3 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-200">' + errorStack + '</pre>' +
+          '</div>';
       }
     }
     
@@ -462,7 +664,7 @@ export function generateLiveReloadScript(host?: string): string {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   // Use provided host if available, otherwise fallback to window.location.host
   const hostName = '${host || "' + window.location.host + '"}'; 
-  const wsUrl = \`\${wsProtocol}//\${hostName}/__0x1_ws\`;
+  const wsUrl = wsProtocol + '//' + hostName + '/__0x1_ws';
   
   // Connect to WebSocket server
   function connect() {
@@ -561,67 +763,7 @@ export function generateLiveReloadScript(host?: string): string {
 })();`;
 }
 
-/**
- * Generates a simplified landing page for the root URL
- */
-export function generateLandingPage(title: string = '0x1 Dev Server'): string { 
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <!-- Multiple favicon format support -->
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="stylesheet" href="/globals.css">
-  <style>
-    /* Base styling for 0x1 framework */
-    * { box-sizing: border-box; }
-    body { 
-      font-family: system-ui, -apple-system, sans-serif; 
-      margin: 0; 
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 2rem;
-      text-align: center;
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    h1 {
-      font-size: 2.5rem;
-      margin-bottom: 0.5rem;
-      background: linear-gradient(90deg, #6366f1, #8b5cf6, #d946ef);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    p {
-      margin: 1rem 0;
-      font-size: 1.25rem;
-      color: #666;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>0x1 Dev Server</h1>
-    <p>Your development server is running successfully!</p>
-    <p>Start building your app in the <code>app</code> directory.</p>
-  </div>
-  <script src="/__0x1_live_reload.js"></script>
-</body>
-</html>`;
-}
+// Landing page implementation moved to standalone-server.ts
 
 /**
  * Compose a complete HTML template from sections
@@ -672,4 +814,35 @@ export function loadComponent(path: string): Promise<any> {
   // This is just a type definition for the client-side function
   // The actual implementation is in the APP_SCRIPT
   return Promise.resolve({});
+}
+
+/**
+ * Generate a page with clear error message when app components are missing
+ */
+export function generateLandingPage(): string {
+  return composeHtmlTemplate({
+    title: '0x1 Framework - Missing App Components',
+    includeImportMap: false,
+    includeAppScript: false,
+    bodyContent: `
+      <div class="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+        <div class="w-full max-w-3xl p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border-l-4 border-red-500">
+          <h1 class="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">Missing App Components</h1>
+          <p class="text-gray-700 dark:text-gray-300 mb-6">0x1 couldn't find the required app components.</p>
+          
+          <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-6">
+            <p class="font-mono text-sm mb-2">To get started, create the following files:</p>
+            <ul class="list-disc list-inside font-mono text-sm space-y-2 text-gray-800 dark:text-gray-200">
+              <li>app/layout.js or app/layout.tsx</li>
+              <li>app/page.js or app/page.tsx</li>
+            </ul>
+          </div>
+          
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            <p>Once you've created these files, the server will automatically detect and use them.</p>
+          </div>
+        </div>
+      </div>
+    `
+  });
 }
