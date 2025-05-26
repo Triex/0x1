@@ -9,3 +9,8 @@ dist
 
 # macOS
 .DS_Store
+
+# Artifacts
+
+# Tailwind CSS build artifacts
+src/app.css

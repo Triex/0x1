@@ -167,8 +167,18 @@ export default {
  * Ensure globals.css exists, create if not
  */
 async function ensureGlobalCss(projectPath: string): Promise<void> {
+  // Determine if we're in the framework root directory (not a template or project)
+  const isFrameworkRoot = (
+    // Check for framework directory markers
+    existsSync(join(projectPath, 'src/cli/commands')) && 
+    existsSync(join(projectPath, 'scripts/build-framework.ts')) &&
+    // Not in a template directory
+    !projectPath.includes('/templates/')
+  );
+  
   // Skip CSS creation for the framework root directory
-  if (projectPath.includes('/0x1') && !projectPath.includes('/templates/')) {
+  if (isFrameworkRoot) {
+    logger.debug("Skipping CSS creation for framework root directory");
     return;
   }
   
@@ -421,6 +431,26 @@ export function startTailwindWatcher(projectPath: string): { close: () => void }
       
       // Clear the array
       tempFiles.length = 0;
+    }
+    
+    // Also clean up src/app.css in the framework root directory if it exists
+    // This prevents accidental generation during development or builds
+    const frameworkRootMarkers = [
+      'src/cli/commands',
+      'scripts/build-framework.ts'
+    ];
+    
+    // Check if this looks like the framework root
+    if (frameworkRootMarkers.every(marker => existsSync(join(process.cwd(), marker)))) {
+      const srcAppCssPath = join(process.cwd(), 'src', 'app.css');
+      if (existsSync(srcAppCssPath)) {
+        try {
+          unlinkSync(srcAppCssPath);
+          logger.info(`Removed unnecessary src/app.css from framework root`);
+        } catch (error) {
+          logger.debug(`Failed to clean up src/app.css: ${error}`);
+        }
+      }
     }
     
     // Also check for any remaining processor files in the .0x1 directory
