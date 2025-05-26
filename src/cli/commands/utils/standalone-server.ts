@@ -421,50 +421,31 @@ export function createStandaloneServer({
       }
       */
       
-      // Handle processed Tailwind CSS file requests
+      // Handle processed Tailwind CSS requests
       if (reqPath === "/processed-tailwind.css") {
-        const processedCssPath = join(projectPath, "public", "processed-tailwind.css");
-        
-        // Always attempt to process Tailwind CSS when the file is requested
         try {
           // Ensure Tailwind module is available
           const tailwindHandler = await import("./tailwind-handler.js");
           const success = await tailwindHandler.processTailwindCss(projectPath);
           
-          // Check if processing was successful
-          if (success && existsSync(processedCssPath)) {
-            logRequestStatus(200, reqPath, `Processed and serving Tailwind CSS`);
+          // Get the processed CSS directly from the tailwind handler
+          const cssResult = tailwindHandler.getProcessedTailwindCss();
+          
+          if (success && cssResult.content) {
+            logRequestStatus(200, reqPath, `Serving processed Tailwind CSS from memory`);
             
-            const cssContent = readFileSync(processedCssPath, "utf-8");
-            
-            return new Response(cssContent, {
+            return new Response(cssResult.content, {
               status: 200,
               headers: {
-                "Content-Type": "text/css; charset=utf-8",
-                "Cache-Control": "no-cache, no-store, must-revalidate"
-              }
-            });
-          } else if (existsSync(processedCssPath)) {
-            // If we couldn't process but the file exists, use the existing file
-            logRequestStatus(200, reqPath, `Serving existing processed Tailwind CSS`);
-            
-            const cssContent = readFileSync(processedCssPath, "utf-8");
-            
-            return new Response(cssContent, {
-              status: 200,
-              headers: {
-                "Content-Type": "text/css; charset=utf-8",
+                "Content-Type": cssResult.contentType,
                 "Cache-Control": "no-cache, no-store, must-revalidate"
               }
             });
           }
-        } catch (error) {
-          logger.error(`Error processing Tailwind CSS: ${error}`);
-        }
-        
-        // Fallback with clear error when CSS processing fails
-        logRequestStatus(404, reqPath, `Tailwind CSS processing failed`);
-        return new Response(`/* 
+          
+          // If processing failed or no CSS is available
+          logRequestStatus(404, reqPath, `Tailwind CSS processing failed`);
+          return new Response(`/* 
  * 0x1 Framework - Tailwind CSS Processing Error
  * 
  * Please check the following:
@@ -472,12 +453,23 @@ export function createStandaloneServer({
  * 2. Check that tailwindcss is installed (npm/bun install tailwindcss)
  * 3. Verify that app/globals.css exists and imports tailwindcss
  */`, {
-          status: 404,
-          headers: {
-            "Content-Type": "text/css; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-          }
-        });
+            status: 404,
+            headers: {
+              "Content-Type": "text/css; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        } catch (error) {
+          // Handle any errors during processing
+          logRequestStatus(500, reqPath, `Error processing Tailwind CSS: ${error}`);
+          return new Response(`/* Error processing Tailwind CSS */`, {
+            status: 500,
+            headers: {
+              "Content-Type": "text/css; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
       }
       
       // Handle Tailwind runtime script (support for both main path and app directory path)
@@ -488,21 +480,6 @@ export function createStandaloneServer({
         if (typeof tailwindHandler.getTailwindRuntime === 'function') {
           const runtime = tailwindHandler.getTailwindRuntime();
           return new Response(runtime.content, {
-            status: 200,
-            headers: {
-              "Content-Type": runtime.contentType,
-              "Cache-Control": "no-cache, no-store, must-revalidate"
-            }
-          });
-        }
-        
-        // Check if Tailwind runtime exists in file system
-        const tailwindRuntimePath = join(projectPath, "public", "tailwindcss");
-        
-        if (existsSync(tailwindRuntimePath)) {
-          const runtimeScript = readFileSync(tailwindRuntimePath, "utf-8");
-          
-          return new Response(runtimeScript, {
             status: 200,
             headers: {
               "Content-Type": "application/javascript; charset=utf-8",
@@ -533,7 +510,7 @@ export function createStandaloneServer({
   });
 })();`;
           
-          logger.error("Tailwind CSS runtime not found at " + tailwindRuntimePath);
+          logger.error("Tailwind CSS runtime not found");
           logger.error("Ensure tailwind.config.js exists and run again");
           
           return new Response(errorScript, {

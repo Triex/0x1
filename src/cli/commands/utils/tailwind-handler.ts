@@ -5,18 +5,28 @@
  * following Next.js 15's approach where Tailwind "just works".
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, dirname, sep } from "path";
-import { logger } from "../../utils/logger.js";
-import { mkdir, stat } from "fs/promises";
 import { unlinkSync } from "fs";
+import { mkdir, stat } from "fs/promises";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, sep } from "path";
+import { logger } from "../../utils/logger.js";
 
 // Cache for processed CSS to avoid redundant processing
 const cssCache: Record<string, { content: string; timestamp: number; contentType: string }> = {};
 
-// In-memory storage for processed Tailwind CSS
+// Store in-memory cache of processed CSS
 let processedTailwindCss: string | null = null;
 let lastProcessedTime = 0;
+
+/**
+ * Serve processed Tailwind CSS
+ */
+export function getProcessedTailwindCss(): { content: string; contentType: string } {
+  return {
+    content: processedTailwindCss || '/* Tailwind CSS processing pending */',
+    contentType: 'text/css'
+  };
+}
 
 /**
  * Initialize Tailwind CSS v4 for a project
@@ -530,16 +540,6 @@ export async function processCssFile(filePath: string, projectPath: string): Pro
     logger.error(`Error processing CSS file ${filePath}: ${error}`);
     return null;
   }
-}
-
-/**
- * Serve processed Tailwind CSS
- */
-export function getProcessedTailwindCss(): { content: string; contentType: string } {
-  return {
-    content: processedTailwindCss || '/* Tailwind CSS processing pending */',
-    contentType: 'text/css'
-  };
 }
 
 /**
