@@ -4,7 +4,7 @@
  */
 
 import chalk from 'chalk';
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import prompts from 'prompts';
@@ -931,7 +931,12 @@ async function copyTemplateFiles(
   }
 ): Promise<void> {
   // Ensure options are properly set with defaults
-  const { projectStructure = 'app', isMinimalStructure = false } = options;
+  const { 
+    projectStructure = 'app', 
+    isMinimalStructure = false, 
+    useStateManagement = false,
+    themeMode = 'dark'
+  } = options;
   
   logger.info(`💠 Copying template files from ${sourcePath} to ${destPath}`);
   
@@ -976,6 +981,10 @@ async function copyTemplateFiles(
       }
       
       logger.debug('Successfully copied template files');
+      
+      // Post-processing: Handle ThemeToggle component and theme mode
+      await handleThemeOptions(destPath, { useStateManagement, themeMode });
+      
     } catch (error) {
       logger.error(`Error copying template: ${error}`);
       throw error;
@@ -994,6 +1003,87 @@ async function copyTemplateFiles(
   } catch (error) {
     logger.error(`Error creating package.json: ${error}`);
     throw error;
+  }
+}
+
+/**
+ * Handle theme-related post-processing for template
+ * - Selects appropriate ThemeToggle component based on state management
+ * - Sets initial theme mode in both components and config
+ */
+async function handleThemeOptions(
+  projectPath: string, 
+  options: {
+    useStateManagement?: boolean;
+    themeMode?: string;
+  }
+): Promise<void> {
+  const { useStateManagement = false, themeMode = 'dark' } = options;
+  
+  try {
+    // Components directory path
+    const componentsDir = join(projectPath, 'components');
+    
+    // Check if we have special ThemeToggle variants available
+    const themeToggleNoStatePath = join(componentsDir, 'ThemeToggle_nostate.tsx');
+    const themeToggleStatePath = join(componentsDir, 'ThemeToggle_state.tsx');
+    const themeTogglePath = join(componentsDir, 'ThemeToggle.tsx');
+    
+    // If we have variant components, use the appropriate one
+    if (existsSync(themeToggleNoStatePath) && existsSync(themeToggleStatePath)) {
+      logger.debug(`Found ThemeToggle variants. Using ${useStateManagement ? 'state' : 'nostate'} version`);
+      
+      const sourceFile = useStateManagement ? themeToggleStatePath : themeToggleNoStatePath;
+      
+      // Read the source file content
+      const themeToggleContent = await Bun.file(sourceFile).text();
+      
+      // Write the content to the main ThemeToggle file
+      await Bun.write(themeTogglePath, themeToggleContent);
+      
+      // Remove the variant files
+      try {
+        unlinkSync(themeToggleNoStatePath);
+        unlinkSync(themeToggleStatePath);
+        logger.debug('Removed ThemeToggle variant files');
+      } catch (e) {
+        logger.warn(`Could not remove ThemeToggle variant files: ${e}`);
+      }
+    } else {
+      logger.debug('No ThemeToggle variants found, using default');
+    }
+    
+    // Update the theme mode in the HTML file if needed
+    if (themeMode !== 'dark') {
+      // In a modern app structure, we update the theme init script in layout.tsx
+      const layoutPath = join(projectPath, 'app', 'layout.tsx');
+      
+      if (existsSync(layoutPath)) {
+        let layoutContent = await Bun.file(layoutPath).text();
+        
+        // Replace dark theme mode with user preference in initialization script
+        if (themeMode === 'light') {
+          // In light mode, we remove dark class by default
+          layoutContent = layoutContent.replace(
+            "document.documentElement.classList.add('dark');",
+            "document.documentElement.classList.remove('dark');"
+          );
+        } else if (themeMode === 'system') {
+          // In system mode, we keep the system preference detection but remove explicit adds
+          layoutContent = layoutContent.replace(
+            "document.documentElement.classList.add('dark');",
+            "// Using system preference for initial theme"
+          );
+        }
+        
+        await Bun.write(layoutPath, layoutContent);
+        logger.debug(`Updated layout.tsx with ${themeMode} theme mode`);
+      }
+    }
+    
+  } catch (error) {
+    logger.warn(`Error handling theme options: ${error}`);
+    // Non-critical error, continue with the process
   }
 }
 

@@ -18,9 +18,55 @@ import * as tailwindHandler from './tailwind-handler.js';
 
 // Path resolution helpers
 const currentFilePath = fileURLToPath(import.meta.url);
-const frameworkPath = resolve(dirname(currentFilePath), '../../../../');
+
+// Calculate the absolute path to the framework root
+// src/cli/commands/utils/ -> go up 4 levels to reach framework root
+const frameworkPath = process.cwd().includes('00-Dev/0x1') 
+  ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+  : resolve(dirname(currentFilePath), '../../../../');
+
+logger.debug(`Current file path: ${currentFilePath}`);
+logger.debug(`Current working directory: ${process.cwd()}`);
+logger.debug(`Framework path resolved to: ${frameworkPath}`);
+
 const frameworkDistPath = resolve(frameworkPath, "dist");
 const frameworkCorePath = join(frameworkDistPath, "core");
+const distDir = frameworkDistPath; // Using framework dist path as our dist directory
+
+/**
+ * Helper function to locate a file across multiple possible locations
+ * Returns the path if found, or null if not found
+ */
+function locateFile(filename: string): string | null {
+  // Log path resolution details for debugging
+  logger.debug(`Resolving file: ${filename}`);
+  logger.debug(`Framework path: ${frameworkPath}`);
+  logger.debug(`Current file path: ${currentFilePath}`);
+  
+  // Define standard locations to check in priority order with absolute paths
+  const possibleLocations = [
+    join(dirname(currentFilePath), filename),                      // Current directory
+    join(frameworkPath, 'src', 'cli', 'commands', 'utils', filename), // Source tree
+    join(frameworkPath, 'dist', filename),                          // Dist root
+    join(frameworkPath, 'dist', 'browser', filename)                // Browser dist
+  ];
+  
+  // Log all paths being checked
+  logger.debug(`Checking paths for ${filename}:`);
+  possibleLocations.forEach(path => logger.debug(`- ${path}`));
+  
+  // Try each location
+  for (const path of possibleLocations) {
+    if (existsSync(path)) {
+      logger.debug(`Found file at: ${path}`);
+      return path;
+    }
+  }
+  
+  // Not found anywhere
+  logger.debug(`File not found: ${filename}`);
+  return null;
+}
 
 /**
  * Map file extensions to MIME types
@@ -314,6 +360,151 @@ export function createStandaloneServer({
         const componentBasePath = reqPath.replace(".js", "");
         const response = handleComponentRequest(reqPath, projectPath, componentBasePath);
         if (response) return response;
+      }
+      
+      // Handle React/0x1 module requests
+      if (reqPath === '/node_modules/0x1/index.js' || 
+          reqPath === '/node_modules/react/index.js' ||
+          reqPath === '/node_modules/0x1' || 
+          reqPath === '/node_modules/react' ||
+          reqPath === '/node_modules/0x1/jsx-runtime.js' || 
+          reqPath === '/node_modules/0x1/jsx-dev-runtime.js') {
+        try {
+          // In development, we should always prioritize using the source file for latest changes
+          const sourceReactShimPath = join(frameworkPath, 'src', 'cli', 'commands', 'utils', 'react-shim.js');
+          const reactShimPath = join(frameworkPath, 'dist', 'react-shim.js');
+          const reactShimPathBrowser = join(frameworkPath, 'dist', 'browser', 'react-shim.js');
+          
+          logger.debug(`Framework path: ${frameworkPath}`);
+          logger.debug(`Checking React shim at source: ${sourceReactShimPath}`);
+          
+          // Always prioritize the source file in development mode for immediate changes
+          if (existsSync(sourceReactShimPath)) {
+            logger.debug(`Found React shim at source: ${sourceReactShimPath}`);
+            logRequestStatus(200, reqPath, 'Serving React shim from source');
+            return new Response(readFileSync(sourceReactShimPath, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          }
+          
+          // Fallback to dist versions if source isn't available
+          if (existsSync(reactShimPath)) {
+            logger.debug(`Found React shim at: ${reactShimPath}`);
+            logRequestStatus(200, reqPath, `Serving React shim from dist`);
+            return new Response(readFileSync(reactShimPath, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          } else if (existsSync(reactShimPathBrowser)) {
+            logger.debug(`Found React shim at: ${reactShimPathBrowser}`);
+            logRequestStatus(200, reqPath, `Serving React shim from browser dist`);
+            return new Response(readFileSync(reactShimPathBrowser, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          }
+          
+          // Log detailed error if all attempts fail
+          logger.error(`React shim not found at any path. Tried:\n- ${sourceReactShimPath}\n- ${reactShimPath}\n- ${reactShimPathBrowser}`);
+          logRequestStatus(500, reqPath, 'React shim module not found');
+          return new Response(`console.error('[0x1] React shim module not found at expected path');`, {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+          });
+        } catch (error) {
+          logger.error(`Error serving React shim: ${error}`);
+          return new Response(`console.error('[0x1] Error serving React shim: ${error}');`, {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+          });
+        }
+      }
+      
+      // Handle Error Boundary client requests from any possible path
+      if (reqPath === '/0x1-error-boundary.js' || 
+          reqPath === '/error-boundary-client.js' || 
+          reqPath === '/browser/error-boundary-client.js') {
+        try {
+          // In development, we should always prioritize using the source file for latest changes
+          const sourceErrorBoundaryPath = join(frameworkPath, 'src', 'cli', 'commands', 'utils', 'error-boundary-client.js');
+          const errorBoundaryPath = join(frameworkPath, 'dist', 'error-boundary-client.js');
+          const errorBoundaryPathBrowser = join(frameworkPath, 'dist', 'browser', 'error-boundary-client.js');
+          
+          logger.debug(`Framework path: ${frameworkPath}`);
+          logger.debug(`Checking error boundary client at source: ${sourceErrorBoundaryPath}`);
+          
+          // Always prioritize the source file in development mode for immediate changes
+          if (existsSync(sourceErrorBoundaryPath)) {
+            logger.debug(`Found error boundary client at source: ${sourceErrorBoundaryPath}`);
+            logRequestStatus(200, reqPath, 'Serving error boundary client from source');
+            return new Response(readFileSync(sourceErrorBoundaryPath, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          }
+          
+          // Fallback to dist versions if source isn't available
+          if (existsSync(errorBoundaryPath)) {
+            logger.debug(`Found error boundary client at: ${errorBoundaryPath}`);
+            logRequestStatus(200, reqPath, `Serving error boundary client from dist`);
+            return new Response(readFileSync(errorBoundaryPath, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          } else if (existsSync(errorBoundaryPathBrowser)) {
+            logger.debug(`Found error boundary client at: ${errorBoundaryPathBrowser}`);
+            logRequestStatus(200, reqPath, `Serving error boundary client from browser dist`);
+            return new Response(readFileSync(errorBoundaryPathBrowser, 'utf-8'), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+              }
+            });
+          }
+          
+          // Log detailed error if all attempts fail
+          logger.error(`Error boundary client not found at any path. Tried:\n- ${sourceErrorBoundaryPath}\n- ${errorBoundaryPath}\n- ${errorBoundaryPathBrowser}`);
+          logRequestStatus(404, reqPath, 'Error boundary client not found');
+          return new Response(`console.error('[0x1] Error boundary client not found at expected path');`, {
+            status: 404,
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+          });
+        } catch (error) {
+          logger.error(`Error serving error boundary client: ${error}`);
+          return new Response(`console.error('[0x1] Error serving error boundary client: ${error}');`, {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+          });
+        }
       }
       
       // Handle CSS module JS mapping requests

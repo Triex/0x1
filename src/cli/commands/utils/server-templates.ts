@@ -292,14 +292,74 @@ export const BODY_START = `</head>
   </script>
 
   <!-- Live reload script - using standardized path to avoid duplication -->
-  <script src="/__0x1_live_reload.js"></script>`;
+  <script src="/__0x1_live_reload.js"></script>
+
+  <!-- Error boundary script for elegant error handling -->
+  <script src="/0x1-error-boundary.js"></script>`;
+
+export const ERROR_BOUNDARY_SCRIPT = `
+  <!-- Error boundary script for elegant error handling -->
+  <script src="/0x1-error-boundary.js"></script>
+`;
 
 export const APP_SCRIPT = `
   <!-- App initialization script -->
   <script type="module">
-    console.log("[0x1 DEBUG] Framework initializing");
-    console.log("[0x1 DEBUG] Auto-discovery enabled, loading components from app directory");
-
+    // Debug mode detection
+    const debugMode = new URLSearchParams(window.location.search).has('debug');
+    if (debugMode) {
+      console.log('[0x1 DEBUG] Framework initializing');
+      console.log('[0x1 DEBUG] Auto-discovery enabled, loading components from app directory');
+    }
+    
+    // Setup global hook tracking for React hook compatibility
+    window.__0x1_hooks = window.__0x1_hooks || {
+      states: new Map(),
+      stateIndex: 0,
+      currentComponent: null,
+      effects: new Map(),
+      effectIndex: 0,
+      cleanupFunctions: new Map()
+    };
+    
+    window.__0x1_triggerUpdate = () => {
+      // This will be replaced with the actual update function when components are mounted
+      console.log('[0x1] State update requested - no active components to update');
+    };
+    
+    // Function to load a component with proper error handling
+    async function loadComponent(path) {
+      if (debugMode) {
+        console.log('[0x1 DEBUG] Loading component:', path);
+      }
+      
+      try {
+        // Dynamic import with proper error handling
+        const module = await import(path);
+        return module;
+      } catch (error) {
+        console.error('[0x1 ERROR] Failed to load component:', path, error.message);
+        
+        // Add to error boundary if available
+        if (window.__0x1_errorBoundary) {
+          window.__0x1_errorBoundary.addError(error, path);
+        }
+        
+        return { 
+          default: () => {
+            return { 
+              type: 'div', 
+              props: { className: 'error-container' },
+              children: [
+                { type: 'h2', props: { className: 'error-title' }, children: ['Error loading component'] },
+                { type: 'p', props: { className: 'error-message' }, children: [error.message] }
+              ]
+            };
+          }
+        };
+      }
+    }
+    
     // Import the router and required components
     // Use dynamic import for better compatibility
     let Router, createRouter;
@@ -341,154 +401,154 @@ export const APP_SCRIPT = `
     
     console.log("[0x1 DEBUG] Router module loaded successfully");
 
-    // Helper function to load a component module with error handling
-    async function loadComponent(path) {
-      console.log('[0x1 DEBUG] Loading component:', path);
+    // // Helper function to load a component module with error handling
+    // async function loadComponent(path) {
+    //   console.log('[0x1 DEBUG] Loading component:', path);
       
-      // Normalize path for dynamic import
-      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+    //   // Normalize path for dynamic import
+    //   const normalizedPath = path.startsWith('/') ? path : '/' + path;
       
-      try {
-        // Try to preload the error boundary for use in case of failures
-        let ErrorBoundaryManager = null;
-        try {
-          ErrorBoundaryManager = await import('/0x1/error-boundary.js')
-            .then(m => m.default || m.ErrorManager)
-            .catch(() => null);
+    //   try {
+    //     // Try to preload the error boundary for use in case of failures
+    //     let ErrorBoundaryManager = null;
+    //     try {
+    //       ErrorBoundaryManager = await import('/0x1/error-boundary.js')
+    //         .then(m => m.default || m.ErrorManager)
+    //         .catch(() => null);
           
-          if (ErrorBoundaryManager) {
-            console.log('[0x1] Error boundary module loaded and ready');
-          }
-        } catch (e) {
-          console.warn('[0x1] Error loading error boundary (non-critical):', e);
-        }
+    //       if (ErrorBoundaryManager) {
+    //         console.log('[0x1] Error boundary module loaded and ready');
+    //       }
+    //     } catch (e) {
+    //       console.warn('[0x1] Error loading error boundary (non-critical):', e);
+    //     }
         
-        // Check if the component exists with a HEAD request first
-        const exists = await fetch(normalizedPath, { method: 'HEAD' })
-          .then(res => res.ok)
-          .catch(() => false);
+    //     // Check if the component exists with a HEAD request first
+    //     const exists = await fetch(normalizedPath, { method: 'HEAD' })
+    //       .then(res => res.ok)
+    //       .catch(() => false);
         
-        if (!exists) {
-          throw new Error("Component not found at path: " + normalizedPath);
-        }
+    //     if (!exists) {
+    //       throw new Error("Component not found at path: " + normalizedPath);
+    //     }
         
-        // Dynamically import the component module
-        const module = await import(normalizedPath);
+    //     // Dynamically import the component module
+    //     const module = await import(normalizedPath);
         
-        // Load any associated CSS if present
-        if (window.__0x1_loadComponentStyles) {
-          window.__0x1_loadComponentStyles(normalizedPath);
-        }
+    //     // Load any associated CSS if present
+    //     if (window.__0x1_loadComponentStyles) {
+    //       window.__0x1_loadComponentStyles(normalizedPath);
+    //     }
         
-        return module;
-      } catch (error) {
-        console.error("[0x1 ERROR] Failed to load component " + path + ": " + error.message);
+    //     return module;
+    //   } catch (error) {
+    //     console.error("[0x1 ERROR] Failed to load component " + path + ": " + error.message);
         
-        // Try to use the error boundary if available
-        try {
-          // Try to load the error boundary dynamically if not already loaded
-          const ErrorBoundaryManager = await import('/0x1/error-boundary.js')
-            .then(m => m.default || m.ErrorManager)
-            .catch(() => null);
+    //     // Try to use the error boundary if available
+    //     try {
+    //       // Try to load the error boundary dynamically if not already loaded
+    //       const ErrorBoundaryManager = await import('/0x1/error-boundary.js')
+    //         .then(m => m.default || m.ErrorManager)
+    //         .catch(() => null);
           
-          if (ErrorBoundaryManager && typeof ErrorBoundaryManager.getInstance === 'function') {
-            const manager = ErrorBoundaryManager.getInstance();
+    //       if (ErrorBoundaryManager && typeof ErrorBoundaryManager.getInstance === 'function') {
+    //         const manager = ErrorBoundaryManager.getInstance();
             
-            if (typeof manager.createBoundary === 'function') {
-              console.log('[0x1] Using error boundary to display component error');
-              return {
-                default: () => {
-                  // Use the error boundary to render the error
-                  const BoundaryComponent = manager.createBoundary({
-                    error: error,
-                    componentPath: path
-                  });
+    //         if (typeof manager.createBoundary === 'function') {
+    //           console.log('[0x1] Using error boundary to display component error');
+    //           return {
+    //             default: () => {
+    //               // Use the error boundary to render the error
+    //               const BoundaryComponent = manager.createBoundary({
+    //                 error: error,
+    //                 componentPath: path
+    //               });
                   
-                  if (BoundaryComponent) {
-                    return BoundaryComponent;
-                  }
+    //               if (BoundaryComponent) {
+    //                 return BoundaryComponent;
+    //               }
                   
-                  // Fallback if boundary component creation failed
-                  throw error;
-                }
-              };
-            }
-          }
-        } catch (e) {
-          console.warn('[0x1] Error using error boundary:', e);
-        }
+    //               // Fallback if boundary component creation failed
+    //               throw error;
+    //             }
+    //           };
+    //         }
+    //       }
+    //     } catch (e) {
+    //       console.warn('[0x1] Error using error boundary:', e);
+    //     }
         
-        // Clear and direct error display using Tailwind CSS v4 styling
-        return { 
-          default: () => ({
-            type: 'div',
-            props: {
-              className: 'error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 dark:border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md',
-              children: [
-                {
-                  type: 'h2',
-                  props: {
-                    className: 'text-xl font-bold text-red-700 dark:text-red-400 mb-2',
-                    children: '0x1 Component Error'
-                  }
-                },
-                {
-                  type: 'div',
-                  props: {
-                    className: 'mb-3 flex items-center',
-                    children: [
-                      {
-                        type: 'span',
-                        props: {
-                          className: 'inline-block mr-2 bg-red-100 dark:bg-red-800/40 text-red-800 dark:text-red-300 px-2 py-1 text-xs font-mono rounded',
-                          children: '404'
-                        }
-                      },
-                      {
-                        type: 'span',
-                        props: {
-                          className: 'font-mono text-gray-700 dark:text-gray-300',
-                          children: path
-                        }
-                      }
-                    ]
-                  }
-                },
-                {
-                  type: 'pre',
-                  props: {
-                    className: 'p-3 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-200 dark:border-gray-700',
-                    children: error.message || 'Unknown error'
-                  }
-                },
-                {
-                  type: 'div',
-                  props: {
-                    className: 'mt-4 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border-l-4 border-yellow-400',
-                    children: [
-                      {
-                        type: 'p',
-                        props: {
-                          className: 'text-sm font-medium text-yellow-800 dark:text-yellow-300',
-                          children: 'Required Action:'
-                        }
-                      },
-                      {
-                        type: 'p',
-                        props: {
-                          className: 'text-sm text-gray-700 dark:text-gray-300 mt-1',
-                          children: 'Create the missing component file at the specified path.'
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          })
-        };
-      }
-    }
+    //     // Clear and direct error display using Tailwind CSS v4 styling
+    //     return { 
+    //       default: () => ({
+    //         type: 'div',
+    //         props: {
+    //           className: 'error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 dark:border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md',
+    //           children: [
+    //             {
+    //               type: 'h2',
+    //               props: {
+    //                 className: 'text-xl font-bold text-red-700 dark:text-red-400 mb-2',
+    //                 children: '0x1 Component Error'
+    //               }
+    //             },
+    //             {
+    //               type: 'div',
+    //               props: {
+    //                 className: 'mb-3 flex items-center',
+    //                 children: [
+    //                   {
+    //                     type: 'span',
+    //                     props: {
+    //                       className: 'inline-block mr-2 bg-red-100 dark:bg-red-800/40 text-red-800 dark:text-red-300 px-2 py-1 text-xs font-mono rounded',
+    //                       children: '404'
+    //                     }
+    //                   },
+    //                   {
+    //                     type: 'span',
+    //                     props: {
+    //                       className: 'font-mono text-gray-700 dark:text-gray-300',
+    //                       children: path
+    //                     }
+    //                   }
+    //                 ]
+    //               }
+    //             },
+    //             {
+    //               type: 'pre',
+    //               props: {
+    //                 className: 'p-3 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-200 dark:border-gray-700',
+    //                 children: error.message || 'Unknown error'
+    //               }
+    //             },
+    //             {
+    //               type: 'div',
+    //               props: {
+    //                 className: 'mt-4 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border-l-4 border-yellow-400',
+    //                 children: [
+    //                   {
+    //                     type: 'p',
+    //                     props: {
+    //                       className: 'text-sm font-medium text-yellow-800 dark:text-yellow-300',
+    //                       children: 'Required Action:'
+    //                     }
+    //                   },
+    //                   {
+    //                     type: 'p',
+    //                     props: {
+    //                       className: 'text-sm text-gray-700 dark:text-gray-300 mt-1',
+    //                       children: 'Create the missing component file at the specified path.'
+    //                     }
+    //                   }
+    //                 ]
+    //               }
+    //             }
+    //           ]
+    //         }
+    //       })
+    //     };
+    //   }
+    // }
     
     // Helper to check if an element is a Next.js 15-style layout
     function isNextJsLayout(component) {

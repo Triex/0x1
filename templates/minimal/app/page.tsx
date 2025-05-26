@@ -6,7 +6,8 @@ import { Counter } from '../components/Counter';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 // Home page component with proper Next.js style
-export default function HomePage() {
+// Export as both named and default export for maximum compatibility
+export function HomePage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="text-center">
@@ -54,3 +55,6 @@ export default function HomePage() {
     </div>
   );
 }
+
+// Explicitly export as default for compatibility with different import styles
+export default HomePage;

@@ -13,7 +13,7 @@ interface ThemeToggleProps {
 export function ThemeToggle({ className = '', iconOnly = false }: ThemeToggleProps) {
   // Initialize state based on system preference or saved preference
   const [isDark, setIsDark] = useState<boolean>(false);
-
+  
   // Effect to initialize theme based on localStorage or system preference
   useEffect(() => {
     // Check for saved preference
@@ -25,7 +25,7 @@ export function ThemeToggle({ className = '', iconOnly = false }: ThemeTogglePro
       setIsDark(true);
       document.documentElement.classList.add('dark');
     }
-
+    
     // Set up listener for system preference changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => {
@@ -35,23 +35,23 @@ export function ThemeToggle({ className = '', iconOnly = false }: ThemeTogglePro
         document.documentElement.classList.toggle('dark', e.matches);
       }
     };
-
+    
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
-
+  
   // Toggle theme function
   function toggleTheme() {
     const newIsDark = !isDark;
     setIsDark(newIsDark);
-
+    
     // Toggle dark class on html element
     document.documentElement.classList.toggle('dark', newIsDark);
-
+    
     // Save user preference
     localStorage.setItem('0x1-dark-mode', newIsDark ? 'dark' : 'light');
   }
-
+  
   return (
     <button
       onClick={toggleTheme}

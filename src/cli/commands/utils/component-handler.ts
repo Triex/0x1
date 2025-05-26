@@ -41,7 +41,7 @@ export function handleComponentRequest(
       try {
         logger.debug(`Transpiling ${componentPath} using Bun.Transpiler`);
         
-        // Simple, clean transpiler configuration that works without type errors
+        // Enhanced transpiler configuration for better browser compatibility
         const transpiler = new Bun.Transpiler({
           loader: extension === 'tsx' ? 'tsx' : 'jsx',
           target: 'browser',
@@ -56,12 +56,29 @@ export function handleComponentRequest(
           }
         });
         
+        // We'll handle import resolution manually after transpilation instead
+        
         // Extract CSS imports before transpilation for separate handling
         const cssImports: string[] = [];
         sourceCode.replace(/import\s+["'](.+?\.css)["'];?/g, (match, path) => {
           cssImports.push(path);
           return match; // Don't modify original code yet
         });
+        
+        // Look for named exports to handle them properly
+        let defaultExportName: string | null = null;
+        const namedExportMatch = sourceCode.match(/export\s+(function|const|class|let|var)\s+([A-Za-z0-9_$]+)/);
+        if (namedExportMatch) {
+          defaultExportName = namedExportMatch[2];
+          logger.debug(`Found named export: ${defaultExportName}`);
+        }
+        
+        // Also check for default exports
+        const defaultExportMatch = sourceCode.match(/export\s+default\s+(function|class|const|let|var)?\s*([A-Za-z0-9_$]+)?/);
+        if (defaultExportMatch && defaultExportMatch[2]) {
+          defaultExportName = null; // Already has default export
+          logger.debug(`Found default export in: ${componentPath}`);
+        }
         
         // Replace CSS imports with empty statements to avoid browser resolution errors
         let modifiedSource = sourceCode.replace(/import\s+["'].+?\.css["'];?/g, '// CSS import removed during transpilation');
@@ -78,9 +95,28 @@ export function handleComponentRequest(
         // Process the transpiled code to fix import paths but preserve Next.js 15-style layouts with full HTML structure
         // We no longer strip HTML structure, since Next.js 15 uses it in layouts
         let processedCode = transpiledCode
-          .replace(/from\s+["']react["']/g, 'from "0x1"')
-          .replace(/from\s+["']react\/jsx-runtime["']/g, 'from "0x1/jsx-runtime"')
-          .replace(/from\s+["']react\/jsx-dev-runtime["']/g, 'from "0x1/jsx-dev-runtime"');
+          // Fix react imports
+          .replace(/from\s+["']react["']/g, 'from "/node_modules/0x1/index.js"')
+          .replace(/from\s+["']react\/jsx-runtime["']/g, 'from "/node_modules/0x1/jsx-runtime.js"')
+          .replace(/from\s+["']react\/jsx-dev-runtime["']/g, 'from "/node_modules/0x1/jsx-dev-runtime.js"')
+          // Fix window reference checks to prevent client-side errors
+          .replace(/typeof\s+window\s+(===|!==|==|!=)\s+['"]undefined['"]/, 'false')
+          // Ensure imports use absolute URLs for browser compatibility
+          .replace(/from\s+["']\.\/([^"']+)["']/g, (match, p1) => {
+            // Convert relative imports to absolute URLs
+            const componentDir = componentBasePath.split('/').slice(0, -1).join('/');
+            return `from "/${componentDir}/${p1}"`.replace(/\/+/g, '/');
+          })
+          // Fix dynamic imports to use absolute URLs
+          .replace(/import\(["']\.\/([^"']+)["']\)/g, (match, p1) => {
+            const componentDir = componentBasePath.split('/').slice(0, -1).join('/');
+            return `import("/${componentDir}/${p1}")`.replace(/\/+/g, '/');
+          });
+          
+        // Add module exports to the processed code if it has named exports that should be default
+        if (defaultExportName) {
+          processedCode += `\n// Ensuring component has a default export\nexport default ${defaultExportName};\n`;
+        }
         
         // Add CSS loading code for extracted imports
         if (cssImports.length > 0) {
@@ -195,7 +231,7 @@ export function handleComponentRequest(
 export function generateComponentCode(componentPath: string, sourceCode: string): string {
   // Determine original and relative paths
   const originalPath = componentPath;
-  const relativePath = originalPath.replace(/^\/?app\//, '');
+  const relativePath = originalPath.replace(/^\/?(app\/)?/, '');
   
   // Extract component name from path
   const componentName = originalPath.split('/').pop()?.replace(/\.(tsx|jsx|js|ts)$/, '') || 'Component';
@@ -203,8 +239,41 @@ export function generateComponentCode(componentPath: string, sourceCode: string)
   // Determine component type (layout or page)
   const componentType = componentPath.toLowerCase().includes('/layout.') ? 'layout' : 'page';
   
-  // Return simple component handler code with no extra wrapping
-  return sourceCode;
+  // Ensure the component has a proper default export and named export for maximum compatibility
+  // This ensures it can be loaded via import() in the browser
+  let wrappedCode = sourceCode;
+  
+  // Check if source code already has 'export default' declaration
+  // If not, we need to ensure one exists
+  if (!sourceCode.includes('export default') && !sourceCode.includes('export { default }')) {
+    // Look for named exports that we might want to make default as well
+    const namedExportMatch = sourceCode.match(/export\s+(?:function|const|class|let|var)\s+([A-Za-z0-9_$]+)/);
+    if (namedExportMatch && namedExportMatch[1]) {
+      // Found a named export, make it the default export too
+      const exportName = namedExportMatch[1];
+      wrappedCode += `\n// Adding explicit default export for browser compatibility\nexport default ${exportName};\n`;
+    } else {
+      // No export found, create an empty component as fallback
+      logger.warn(`No exports found in ${componentPath}, creating fallback`);
+      wrappedCode = generateFallbackComponent(componentName, 'No exports found in component');
+    }
+  }
+  
+  // Special handling for modules that use dynamic imports or window references
+  // Ensure they're properly initialized
+  wrappedCode = wrappedCode.replace(
+    /typeof\s+window\s+(===|!==|==|!=)\s+['"]undefined['"]/, 
+    'false'
+  );
+  
+  // Add proper browser-compatible module wrapper
+  const finalCode = `
+// 0x1 Transpiled Component: ${componentName}
+// Original path: ${originalPath}
+${wrappedCode}
+`;
+  
+  return finalCode;
 }
 
 /**

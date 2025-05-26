@@ -564,6 +564,36 @@ async function buildFramework() {
       console.log('✅ Created minimal fallback live-reload script');
     }
     
+    // Copy React shim module for React compatibility
+    const reactShimSrcPath = join(srcDir, 'cli', 'commands', 'utils', 'react-shim.js');
+    const reactShimDestPath = join(distDir, 'browser', 'react-shim.js');
+    // Also copy to the root dist directory for compatibility with imports
+    const reactShimRootDestPath = join(distDir, 'react-shim.js');
+    
+    if (await Bun.file(reactShimSrcPath).exists()) {
+      const reactShimContent = await Bun.file(reactShimSrcPath).text();
+      await Bun.write(reactShimDestPath, reactShimContent);
+      await Bun.write(reactShimRootDestPath, reactShimContent);
+      console.log('✅ React shim module copied to dist/browser/ and dist/');
+    } else {
+      console.warn('⚠️ React shim module not found at', reactShimSrcPath);
+    }
+    
+    // Copy Error Boundary client for better error handling
+    const errorBoundarySrcPath = join(srcDir, 'cli', 'commands', 'utils', 'error-boundary-client.js');
+    const errorBoundaryDestPath = join(distDir, 'browser', 'error-boundary-client.js');
+    // Also copy to the root dist directory for compatibility with imports
+    const errorBoundaryRootDestPath = join(distDir, 'error-boundary-client.js');
+    
+    if (await Bun.file(errorBoundarySrcPath).exists()) {
+      const errorBoundaryContent = await Bun.file(errorBoundarySrcPath).text();
+      await Bun.write(errorBoundaryDestPath, errorBoundaryContent);
+      await Bun.write(errorBoundaryRootDestPath, errorBoundaryContent);
+      console.log('✅ Error boundary client copied to dist/browser/ and dist/');
+    } else {
+      console.warn('⚠️ Error boundary client not found at', errorBoundarySrcPath);
+    }
+    
     console.log('🎉 Build completed successfully!');
   } catch (error) {
     console.error('❌ Build failed with error:', error);
