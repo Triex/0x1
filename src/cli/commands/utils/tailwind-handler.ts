@@ -5,10 +5,9 @@
  * following Next.js 15's approach where Tailwind "just works".
  */
 
-import { unlinkSync } from "fs";
+import { existsSync, readFileSync, unlinkSync, watch, writeFileSync } from "fs";
 import { mkdir, stat } from "fs/promises";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, sep } from "path";
+import { extname, join, sep } from "path";
 import { logger } from "../../utils/logger.js";
 
 // Cache for processed CSS to avoid redundant processing
@@ -236,56 +235,172 @@ ${content}`);
 }
 
 /**
- * Process Tailwind CSS using direct module imports
- * Using the proper Tailwind CSS v4 approach with PostCSS
- */
-/**
- * Start a watcher for Tailwind CSS files to automatically rebuild when changes are detected
- * Improved with proper cleanup and debouncing
+ * Start a file watcher for Tailwind CSS that only rebuilds when relevant files change
+ * Uses Node.js fs.watch API that Bun supports
  */
 export function startTailwindWatcher(projectPath: string): { close: () => void } {
   // Ensure Tailwind is initialized first
   initializeTailwind(projectPath);
   
-  // Process immediately on startup (but only once)
+  // Set up file patterns to watch
+  const cssExtensions = ['.css'];
+  const jsExtensions = ['.js', '.jsx', '.ts', '.tsx'];
+  
+  // Track last processed time to prevent duplicate processing
+  let lastProcessedTime = Date.now();
+  const debounceTime = 1000; // ms - more aggressive debounce to reduce processing
+  
+  // Track which watchers are active
+  const watchers: Array<{ close: () => void }> = [];
+  
+  // Process immediately on startup (just once)
   processTailwindCss(projectPath);
   
-  // Create a more efficient polling mechanism with exponential backoff
-  // Start with 2 second interval, but reduce frequency if no changes are detected
-  let pollingInterval = 2000; // milliseconds
-  const maxPollingInterval = 10000; // max 10 seconds between checks
-  const intervalStep = 1000; // increase by 1 second each time
-  
-  // Track last change time to adjust polling frequency
-  let lastChangeTime = Date.now();
-  
-  // Create the polling interval
-  const interval = setInterval(async () => {
-    // Only process if not already processing
-    if (!processingTailwind && !processingQueued) {
-      await processTailwindCss(projectPath);
-      
-      // Adjust polling frequency based on activity
-      const timeSinceLastChange = Date.now() - lastChangeTime;
-      if (timeSinceLastChange > 30000) { // 30 seconds with no changes
-        // Gradually increase polling interval
-        pollingInterval = Math.min(pollingInterval + intervalStep, maxPollingInterval);
-        
-        // Restart the interval with new timing
-        clearInterval(interval);
-        startPolling();
-      }
-    }
-  }, pollingInterval);
-  
-  // Function to restart polling with current interval
-  function startPolling() {
-    setInterval(async () => {
-      if (!processingTailwind && !processingQueued) {
+  // Helper to process changes with debouncing by file type
+  const handleFileChange = async (filePath: string) => {
+    const ext = extname(filePath).toLowerCase();
+    const now = Date.now();
+    
+    // Always process CSS changes with minimal debounce
+    if (cssExtensions.includes(ext)) {
+      if (now - lastProcessedTime > debounceTime) {
+        lastProcessedTime = now;
+        // Only log if we're outside the throttle window
+        if (now - lastLogTime > LOG_THROTTLE_MS) {
+          logger.info(`Processing Tailwind CSS - CSS file changed: ${filePath}`);
+          lastLogTime = now;
+        }
         await processTailwindCss(projectPath);
       }
-    }, pollingInterval);
+      return;
+    }
+    
+    // For JS/TS files (might contain Tailwind classes), debounce more aggressively
+    if (jsExtensions.includes(ext)) {
+      if (now - lastProcessedTime > 2000) { // 2 second debounce for code files
+        lastProcessedTime = now;
+        await processTailwindCss(projectPath);
+      }
+    }
+  };
+  
+  try {
+    // Main directories to watch for changes
+    const mainDirs = [
+      join(projectPath, 'app'),
+      join(projectPath, 'src'),
+      join(projectPath, 'components'),
+      join(projectPath, 'pages')
+    ].filter(dir => existsSync(dir));
+    
+    // Helper to watch a directory and its immediate subdirectories
+    const watchDirAndSubdirs = (dir: string) => {
+      try {
+        // Watch the main directory
+        setupWatcher(dir);
+        
+        // Find and watch immediate subdirectories
+        try {
+          const items = Bun.spawnSync(['ls', '-la', dir], {
+            stdout: 'pipe'
+          });
+          
+          const output = new TextDecoder().decode(items.stdout);
+          const lines = output.split('\n');
+          
+          for (const line of lines) {
+            // Look for directory entries
+            if (line.startsWith('d')) {
+              const parts = line.split(/\s+/);
+              const name = parts[parts.length - 1];
+              
+              // Skip . and .. entries
+              if (name !== '.' && name !== '..' && !name.startsWith('.')) {
+                const subdirPath = join(dir, name);
+                if (existsSync(subdirPath)) {
+                  setupWatcher(subdirPath);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore errors when reading directories
+        }
+      } catch (err) {
+        logger.debug(`Failed to watch directory ${dir}: ${err}`);
+      }
+    };
+    
+    // Setup a watcher for a single directory
+    const setupWatcher = (dir: string) => {
+      try {
+        // Use Node.js fs.watch API that Bun implements
+        const watcher = watch(
+          dir, 
+          { persistent: true }, // Don't use recursive option as it's not widely supported
+          (eventType: string, filename: string | Buffer | null) => {
+            // Skip if no filename provided (can happen on some platforms)
+            if (!filename) return;
+            
+            // Convert Buffer to string if needed
+            const filenameStr = typeof filename === 'string' ? filename : filename.toString();
+            
+            // Only process on 'change' events for files we care about
+            if (eventType === 'change') {
+              const ext = extname(filenameStr).toLowerCase();
+              if ([...cssExtensions, ...jsExtensions].includes(ext)) {
+                handleFileChange(join(dir, filenameStr));
+              }
+            }
+          }
+        );
+        
+        watchers.push(watcher);
+      } catch (err) {
+        logger.debug(`Failed to watch directory ${dir}: ${err}`);
+      }
+    };
+    
+    // Watch each main directory and its subdirectories
+    for (const dir of mainDirs) {
+      watchDirAndSubdirs(dir);
+    }
+    
+    logger.info(`Tailwind CSS file watcher started - monitoring ${watchers.length} directories`);
+  } catch (error) {
+    logger.error(`Failed to start Tailwind watcher: ${error}`);
+    // Fall back to less frequent polling
+    const fallbackInterval = setInterval(async () => {
+      await processTailwindCss(projectPath);
+    }, 10000); // Every 10 seconds
+    
+    // Return cleanup function for polling fallback
+    return {
+      close() {
+        clearInterval(fallbackInterval);
+        cleanupTempFiles();
+        logger.info("Stopping Tailwind CSS watcher");
+      }
+    };
   }
+  
+  // Return a cleanup function that closes all watchers
+  return {
+    close() {
+      try {
+        // Close all active watchers
+        for (const watcher of watchers) {
+          watcher.close();
+        }
+        
+        // Clean up all temporary files
+        cleanupTempFiles();
+        logger.info("Stopping Tailwind CSS watcher");
+      } catch (error) {
+        logger.error(`Error shutting down Tailwind watcher: ${error}`);
+      }
+    }
+  };
   
   // Create a cleanup function that ensures all temp files are deleted
   function cleanupTempFiles() {
@@ -344,17 +459,12 @@ export function startTailwindWatcher(projectPath: string): { close: () => void }
     }
   }
   
-  // Return a cleanup function with enhanced error handling
+  // Return a simple cleanup function that just handles temp files
   return {
     close() {
       try {
-        if (interval) {
-          clearInterval(interval);
-        }
-        
         // Clean up all temporary files
         cleanupTempFiles();
-        
         logger.info("Stopping Tailwind CSS watcher");
       } catch (error) {
         logger.error(`Error shutting down Tailwind watcher: ${error}`);
