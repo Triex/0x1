@@ -366,7 +366,7 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.170**
+Current version: **0.0.171**
 
 This release provides all core functionality with a stable API, including:
 - Enhanced app directory structure with full layout component support
