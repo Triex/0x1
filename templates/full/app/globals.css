@@ -41,26 +41,26 @@
 .dark {
   color-scheme: dark;
   /* Dark theme variables - striking deep purple-black */
-  --background: #08081a;
+  --background: #0f0f23;
   --foreground: #f0f0ff;
-  --card: #121230;
+  --card: #1a1a2e;
   --card-foreground: #f0f0ff;
-  --primary: #8b5cf6;
+  --primary: #a78bfa;
   --primary-foreground: #ffffff;
-  --secondary: #1e1e42;
+  --secondary: #2a2a4a;
   --secondary-foreground: #e2e2ff;
-  --muted: #191940;
-  --muted-foreground: #9ca3da;
-  --accent: #a78bfa;
+  --muted: #252550;
+  --muted-foreground: #a0a0d0;
+  --accent: #c4b5fd;
   --accent-foreground: #ffffff;
-  --border: #2e2e6a;
-  --input: #1e1e42;
-  --ring: #a78bfa;
+  --border: #3a3a6a;
+  --input: #2a2a4a;
+  --ring: #c4b5fd;
 
   /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
-  --gradient-secondary: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
-  --gradient-accent: linear-gradient(135deg, #a78bfa 0%, #c4b5fd 100%);
+  --gradient-primary: linear-gradient(135deg, #a78bfa 0%, #c4b5fd 100%);
+  --gradient-secondary: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+  --gradient-accent: linear-gradient(135deg, #c4b5fd 0%, #ddd6fe 100%);
 
   /* Shadows */
   --shadow-sm: 0 2px 4px rgba(11, 11, 31, 0.3);
@@ -89,8 +89,8 @@
 
   .dark body {
     background-image:
-      radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.12) 0%, transparent 30%),
-      radial-gradient(circle at 0% 100%, rgba(167, 139, 250, 0.12) 0%, transparent 30%);
+      radial-gradient(circle at 100% 0%, rgba(167, 139, 250, 0.15) 0%, transparent 35%),
+      radial-gradient(circle at 0% 100%, rgba(196, 181, 253, 0.15) 0%, transparent 35%);
   }
 
   html {

@@ -38,8 +38,8 @@ export default function RootLayout({ children }: { children: JSX.Element }) {
         {/* Script to handle initial theme setting */}
         {themeInitScript && <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />}
       </head>
-      <body className="h-full flex flex-col bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-gray-950 dark:via-violet-950/40 dark:to-purple-900/20">
-        <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60 dark:border-border/40 dark:bg-background/95 dark:supports-[backdrop-filter]:bg-background/60">
+      <body className="h-full flex flex-col">
+        <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none">
@@ -63,8 +63,8 @@ export default function RootLayout({ children }: { children: JSX.Element }) {
           {children}
         </main>
 
-        <footer className="border-t border-slate-200/60 bg-white/60 backdrop-blur-md py-6 mt-auto dark:border-border/40 dark:bg-card/50">
-          <div className="container mx-auto px-4 text-center text-sm text-slate-600 dark:text-muted-foreground">
+        <footer className="border-t border-border/40 glass-panel py-6 mt-auto">
+          <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
             <p>&copy; {new Date().getFullYear()} 0x1 Framework - Built with ⚡ and 💜</p>
           </div>
         </footer>

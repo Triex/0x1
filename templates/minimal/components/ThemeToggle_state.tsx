@@ -1,6 +1,6 @@
 "use client"
 /**
- * Theme Toggle Component (With State Managemenet)
+ * Theme Toggle Component
  */
 
 import { useEffect, useState } from "0x1";
@@ -59,14 +59,14 @@ export function ThemeToggle({
   return (
     <button
       onClick={toggleTheme}
-      className={`flex items-center justify-center p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 transition-colors ${className}`}
+      className={`flex items-center justify-center p-2 rounded-lg text-foreground/80 hover:text-foreground hover:bg-muted dark:hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200 ${className}`}
       aria-label="Toggle Dark Mode"
     >
       {iconOnly ? (
         <>
           {/* Sun icon - Only visible in dark mode */}
           <svg
-            className={`w-5 h-5 ${isDark ? 'block' : 'hidden'}`}
+            className={`w-5 h-5 transition-all duration-200 ${isDark ? 'block rotate-0' : 'hidden -rotate-90'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -78,7 +78,7 @@ export function ThemeToggle({
           </svg>
           {/* Moon icon - Only visible in light mode */}
           <svg
-            className={`w-5 h-5 ${isDark ? 'hidden' : 'block'}`}
+            className={`w-5 h-5 transition-all duration-200 ${isDark ? 'hidden rotate-90' : 'block rotate-0'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -89,7 +89,7 @@ export function ThemeToggle({
         <span className="flex items-center text-sm font-medium">
           {/* Moon icon for light mode */}
           <svg
-            className={`w-4 h-4 mr-2 ${isDark ? 'hidden' : 'block'}`}
+            className={`w-4 h-4 mr-2 transition-all duration-200 ${isDark ? 'hidden rotate-90' : 'block rotate-0'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -97,7 +97,7 @@ export function ThemeToggle({
           </svg>
           {/* Sun icon for dark mode */}
           <svg
-            className={`w-4 h-4 mr-2 ${isDark ? 'block' : 'hidden'}`}
+            className={`w-4 h-4 mr-2 transition-all duration-200 ${isDark ? 'block rotate-0' : 'hidden -rotate-90'}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >

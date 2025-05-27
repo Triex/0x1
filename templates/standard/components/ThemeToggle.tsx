@@ -59,7 +59,7 @@ export function ThemeToggle({
   return (
     <button
       onClick={toggleTheme}
-      className={`flex items-center justify-center p-2 rounded-lg text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-gray-800 transition-all duration-200 ${className}`}
+      className={`flex items-center justify-center p-2 rounded-lg text-foreground/80 hover:text-foreground hover:bg-muted dark:hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200 ${className}`}
       aria-label="Toggle Dark Mode"
     >
       {iconOnly ? (
