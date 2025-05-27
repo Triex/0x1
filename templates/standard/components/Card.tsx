@@ -1,16 +1,18 @@
 /**
- * Card component for displaying content in a boxed layout
+ * Reusable Card Component
  */
+
 interface CardProps {
   title: string;
   content: string;
   link?: {
-    text: string;
     url: string;
+    text: string;
   };
+  children?: any;
 }
 
-export function Card(props: CardProps): HTMLElement {
+export function Card(props: CardProps): JSX.Element {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-100 dark:border-gray-700">
       <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{props.title}</h3>
@@ -21,6 +23,7 @@ export function Card(props: CardProps): HTMLElement {
           <span className="ml-1">&rarr;</span>
         </a>
       )}
+      {props.children}
     </div>
   );
 }

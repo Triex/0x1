@@ -20,7 +20,7 @@
   <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/v/0x1.svg?style=flat-square" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/0x1"><img src="https://img.shields.io/npm/dm/0x1.svg?style=flat-square&color=yellowgreen" alt="npm downloads"></a>
   <a href="https://github.com/Triex/0x1"><img src="https://img.shields.io/github/stars/Triex/0x1?style=flat-square" alt="github stars"></a>
-  <img src="https://img.shields.io/badge/bundle_size-<20kb-blue?style=flat-square" alt="bundle size" />
+  <img src="https://img.shields.io/badge/bundle_size-<30kb-blue?style=flat-square" alt="bundle size" />
   <img src="https://img.shields.io/badge/dependencies-0-green?style=flat-square" alt="dependencies" />
 </p>
 
@@ -36,7 +36,7 @@
 ## ⚡ Features
 
 ### 💨 Extreme Performance
-- **Tiny runtime**: <20kb total JS bundle size
+- **Tiny runtime**: <30kb total JS bundle size
 - **Zero hydration cost**: No client-side hydration overhead
 - **Native ESM**: Browser-native module loading without bundling
 - **Precomputed content**: Minimal JS for maximum speed
@@ -47,6 +47,7 @@
 - **Minimal abstractions**: Near-vanilla performance with type-checked templates
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
+- **SSE/WebSocket Live Reload**: Fast, reliable development with fallback options
 
 ### 🧩 Component System
 
@@ -90,6 +91,8 @@
 ### 🔨️ Developer Experience
 - **Bun-first architecture**: Fully optimized for Bun's capabilities with zero compromises
 - **Lightning-fast hot reload**: Sub-second refresh times using Bun's native watch capabilities
+- **SSE + WebSocket live reload**: Reliable with automatic fallback for maximum compatibility
+- **Beautiful dev server output**: Clear status codes, routes, and component info in terminal (pending tidy/minimalisation)
 - **Bun-powered build system**: Takes full advantage of Bun's bundling and transpilation speed
 - **Native file operations**: Uses Bun's optimized file APIs for maximum performance
 - **Tailwind integration**: Zero-config styling with built-in support and automatic optimization
@@ -134,11 +137,16 @@ cd my-app
 
 # Start with a specific port
 0x1 dev --port=8080
+
+# Enable debug logging
+0x1 dev --debug
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 
-> **Port Management:** If the specified port (default: 3000) is already in use, the dev server will automatically try the next available port and notify you. This ensures seamless development without manual port configuration.
+> **Port Management:** If the specified port (default: 3000) is already in use, the dev server will automatically try the next available port and notify you.
+
+> **Beautiful Dev Output:** The development server displays detailed information about routes, components, and file requests with colored status codes in the terminal.
 
 ### Build and Deploy
 
@@ -169,7 +177,7 @@ Open [http://localhost:3000](http://localhost:3000) to view your app in action!
 # Then deploy the 'dist' directory
 ```
 
-The framework is specially optimized for Vercel Edge Runtime and Netlify Edge Functions, providing the best possible performance at the edge.
+The framework is specially optimized for Vercel Edge Runtime and Netlify Edge Functions, providing the best possible performance at the edge. The `0x1 build` command generates an optimized bundle with minimal JavaScript footprint.
 
 ## 💡 Community & Support
 
@@ -320,13 +328,17 @@ A standard 0x1 project includes these key files and folders:
 my-app/
 ├── app/                    # App directory structure (Next.js 15-compatible)
 │   ├── page.tsx            # Home page component
-│   └── layout.tsx          # Root layout
+│   ├── layout.tsx          # Root layout 
+│   └── not-found.tsx       # Custom 404 page
 ├── components/             # Reusable components
+│   ├── Header.tsx          # Header component example
 ├── styles/                 # CSS styles
 ├── public/                 # Static assets
+│   └── favicon.svg         # Favicon
 ├── 0x1.config.ts           # 0x1 configuration
 ├── package.json            # Project dependencies
-├── tailwind.config.js      # Tailwind configuration (optional)
+├── tailwind.config.js      # Tailwind configuration
+├── postcss.config.js       # PostCSS configuration for Tailwind
 └── tsconfig.json           # TypeScript configuration
 ```
 
@@ -354,14 +366,17 @@ The framework is specially optimized for modern edge runtimes, providing the bes
 
 ## 📦 Version Information
 
-Current version: **0.0.165**
+Current version: **0.0.168**
 
 This release provides all core functionality with a stable API, including:
-- Fixed router regex pattern for robust routing
-- Enhanced module loading with improved resolution for Next.js compatibility
+- Enhanced app directory structure with full layout component support
+- Improved development server with beautiful status logging
+- SSE + WebSocket live reload with automatic fallback
+- Fixed router handling of layout and page components
 - Automatic JSX runtime imports for layout components
-- Optimized Tailwind CSS detection for app directory structure
+- Optimized Tailwind CSS detection and integration
 - Clean export structure to prevent duplicates
+- Fixed component discovery in app directory
 
 ### CLI Access Notes
 

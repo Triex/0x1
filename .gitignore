@@ -6,3 +6,11 @@ node_modules
 
 # Build output
 dist
+
+# macOS
+.DS_Store
+
+# Artifacts
+
+# Tailwind CSS build artifacts
+src/app.css

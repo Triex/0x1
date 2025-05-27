@@ -778,7 +778,8 @@ export default {
           let jsContent = await Bun.file(tempJsFile).text();
 
           // Add our JSX runtime imports at the top
-          const jsxRuntimeImport = `// Add JSX runtime imports\nimport { createElement, Fragment, jsx, jsxs, jsxDEV } from '/0x1/jsx-runtime.js';\n\n`;
+          // Make sure we're defining Fragment properly with a consistent identifier
+          const jsxRuntimeImport = `// Add JSX runtime imports\nimport { createElement, Fragment, jsx, jsxs, jsxDEV } from '/0x1/jsx-runtime.js';\n\n// Ensure Fragment is globally available with a consistent name\nwindow.Fragment = Fragment;\n\n`;
 
           jsContent = jsxRuntimeImport + jsContent;
           await Bun.write(tempJsFile, jsContent);

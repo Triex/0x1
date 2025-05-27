@@ -234,7 +234,10 @@ ${preamble}`;
         // Define global JSX functions for better compatibility
         '__jsx': 'jsx',
         '__jsxs': 'jsxs',
-        '__fragment': 'Fragment'
+        '__fragment': 'Fragment',
+        // Ensure Fragment is properly defined for shorthand syntax
+        'Fragment': 'Fragment',
+        'React.Fragment': 'Fragment'
       },
       external: EXTERNAL_MODULES,
     };
@@ -247,6 +250,7 @@ ${preamble}`;
       buildConfig.jsx = {
         factory: 'jsx',  // Use the literal function name instead of __jsx
         fragment: 'Fragment',
+        pragmaFrag: 'Fragment', // Explicit Fragment pragma for better shorthand support
         runtime: 'automatic',
         development: true
       };

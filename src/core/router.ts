@@ -34,7 +34,7 @@ export interface RouterOptions {
 }
 
 /**
- * Creates a router instance that manages navigation and renders components
+ * Router class that manages navigation and renders components
  */
 export class Router {
   private routes: Route[] = [];
@@ -58,15 +58,33 @@ export class Router {
     this.suspense = options.suspense || false;
     this.notFoundComponent =
       options.notFoundComponent ||
-      (() => {
-        const element = document.createElement("div");
-        element.className = "0x1-not-found";
-        element.innerHTML = `
-        <h1>Page Not Found</h1>
-        <p>The requested page could not be found.</p>
-        <a href="/">Go Home</a>
-      `;
-        return element;
+      ((props) => {
+        // Create a properly styled not-found component as a fallback
+        const container = document.createElement("div");
+        container.className = "flex flex-col items-center justify-center min-h-screen text-center px-4";
+        
+        const errorCode = document.createElement("h1");
+        errorCode.className = "text-5xl font-bold text-gray-800 dark:text-gray-200 mb-4";
+        errorCode.textContent = "404";
+        container.appendChild(errorCode);
+        
+        const title = document.createElement("h2");
+        title.className = "text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-6";
+        title.textContent = "Page Not Found";
+        container.appendChild(title);
+        
+        const text = document.createElement("p");
+        text.className = "text-gray-600 dark:text-gray-400 mb-8";
+        text.textContent = "The page you are looking for doesn't exist or has been moved.";
+        container.appendChild(text);
+        
+        const link = document.createElement("a");
+        link.href = "/";
+        link.className = "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors";
+        link.textContent = "Back to Home";
+        container.appendChild(link);
+        
+        return container;
       });
 
     // Initialize app directory components if provided
@@ -237,7 +255,7 @@ export class Router {
         let componentFn = route.component;
 
         // Always apply layouts (app directory mode)
-        componentFn = this.applyLayouts(componentFn, params, route.layouts);
+        componentFn = this.applyLayouts(componentFn, route.layouts, params);
 
         // Execute the component function
         const result = componentFn(params);
@@ -246,16 +264,7 @@ export class Router {
         this.renderResult(result);
       } else {
         // Not found case
-        let notFoundFn = this.notFoundComponent;
-
-        // Always apply layouts to not found page (app directory mode)
-        notFoundFn = this.applyLayouts(notFoundFn, {});
-
-        // Execute not found component
-        const result = notFoundFn({});
-
-        // Handle the result
-        this.renderResult(result);
+        this.handleNotFound();
       }
     } catch (error) {
       console.error("Error rendering route:", error);
@@ -286,54 +295,261 @@ export class Router {
     );
   }
 
-  /**
-   * Helper method to render a component result
-   */
-  private renderResult(result: any): void {
-    if (result instanceof HTMLElement || result instanceof DocumentFragment) {
-      // Clear the container before appending to avoid duplicates
-      this.rootElement.innerHTML = '';
-      this.rootElement.appendChild(result);
-    } else if (typeof result === "string") {
-      this.rootElement.innerHTML = result;
-    } else if (result && typeof result === "object" && result.type) {
-      // Handle React-style elements (JSX objects) from our stub components
-      try {
-        // Use a dynamic import to get the renderToString function from our JSX runtime
-        // This prevents circular dependencies and allows us to render React-style elements
-        import('../jsx-runtime.js')
-          .then(jsxRuntime => {
-            if (typeof jsxRuntime.renderToString === 'function') {
-              try {
-                const html = jsxRuntime.renderToString(result);
-                this.rootElement.innerHTML = html;
-              } catch (renderError) {
-                console.error("Error during JSX rendering:", renderError);
-                // Safely access error message in case renderError is not an Error object
-                const errorMessage = renderError instanceof Error ? renderError.message : String(renderError);
-                this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Failed to render JSX: ${errorMessage}</p></div>`;
-              }
-            } else {
-              console.error("renderToString function not found in jsx-runtime");
-              this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Could not render JSX element - renderToString not available.</p></div>`;
-            }
-          })
-          .catch(err => {
-            console.error("Failed to import jsx-runtime:", err);
-            this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Could not load JSX runtime module.</p></div>`;
-          });
-      } catch (err) {
-        console.error("Error handling JSX element:", err);
-        this.rootElement.innerHTML = `<div class="0x1-error"><h1>Render Error</h1><p>Failed to process JSX element.</p></div>`;
-      }
-    } else {
-      console.error("Invalid component result:", result);
+  private handleNotFound(): void {
+    // Check if we have a not-found component
+    const notFoundComponent = this.notFoundComponent;
+
+    if (!notFoundComponent) {
       this.rootElement.innerHTML = `
-        <div class="0x1-error">
-          <h1>Render Error</h1>
-          <p>Component returned an invalid result.</p>
+        <div class="0x1-not-found">
+          <h1>Page Not Found</h1>
+          <p>The requested page could not be found.</p>
         </div>
       `;
+      return;
+    }
+
+    try {
+      // Get the component function
+      const notFoundFn = notFoundComponent;
+
+      if (typeof notFoundFn !== "function") {
+        throw new Error("Not found component is not a function");
+      }
+
+      // Execute not found component
+      const result = notFoundFn({});
+
+      // Handle the result
+      this.renderResult(result);
+    } catch (error) {
+      console.error("Error rendering route:", error);
+      this.rootElement.innerHTML = `
+        <div class="0x1-error">
+          <h1>Error</h1>
+          <p>An error occurred while rendering this page.</p>
+          <pre>${error}</pre>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Render the result of a component
+   */
+  /**
+   * Render a JSX element to a DOM element
+   */
+  private renderElement(jsxElement: any): HTMLElement | Text | null {
+    if (!jsxElement) return null;
+
+    // Handle strings and numbers (text nodes)
+    if (typeof jsxElement === 'string' || typeof jsxElement === 'number') {
+      return document.createTextNode(String(jsxElement));
+    }
+
+    // Handle function components
+    if (typeof jsxElement.type === 'function') {
+      try {
+        const result = jsxElement.type({
+          ...jsxElement.props,
+          children: jsxElement.children
+        });
+        return this.renderElement(result);
+      } catch (err) {
+        console.error('[0x1 ERROR] Error rendering function component:', err);
+        return document.createTextNode(`[Component Error: ${err instanceof Error ? err.message : 'Unknown error'}]`);
+      }
+    }
+
+    // Handle intrinsic elements (div, span, etc)
+    if (typeof jsxElement.type === 'string') {
+      const element = document.createElement(jsxElement.type);
+
+      // Add attributes
+      Object.entries(jsxElement.props || {}).forEach(([key, value]) => {
+        if (key === 'children') return; // Skip children
+
+        // Handle special attributes
+        if (key === 'className') {
+          element.className = String(value);
+          return;
+        }
+
+        if (key === 'style' && typeof value === 'object' && value !== null) {
+          Object.entries(value).forEach(([styleName, styleValue]) => {
+            // @ts-ignore - This is fine for runtime use
+            element.style[styleName] = styleValue;
+          });
+          return;
+        }
+
+        // Handle event handlers
+        if (key.startsWith('on') && typeof value === 'function') {
+          const eventName = key.toLowerCase().substring(2);
+          element.addEventListener(eventName, value);
+          return;
+        }
+
+        // Handle boolean attributes
+        if (typeof value === 'boolean') {
+          if (value) {
+            element.setAttribute(key, '');
+          }
+          return;
+        }
+
+        // Handle all other attributes
+        if (value !== undefined && value !== null) {
+          element.setAttribute(key, String(value));
+        }
+      });
+
+      // Add children
+      (jsxElement.children || []).forEach((child: any) => {
+        const childElement = this.renderElement(child);
+        if (childElement) {
+          element.appendChild(childElement);
+        }
+      });
+
+      return element;
+    }
+
+    // If nothing worked, return null
+    return null;
+  }
+
+  /**
+   * Utility function to render an error message
+   */
+  private renderErrorMessage(message: string): void {
+    this.rootElement.innerHTML = `
+      <div class="0x1-error-message" style="padding: 2rem; color: #e53e3e; background-color: #fff5f5; border-left: 4px solid #e53e3e; margin: 1rem 0;">
+        <h3 style="margin: 0 0 0.5rem 0;">Error</h3>
+        <p style="margin: 0;">${message}</p>
+      </div>
+    `;
+  }
+
+  /**
+   * Render the result of a component
+   */
+  private renderResult(result: any): void {
+    console.log('[0x1 DEBUG] Router rendering result type:', result ? typeof result : 'null/undefined');
+    
+    // No result means we couldn't render anything
+    if (!result) {
+      console.error('[0x1 ERROR] Render result is null/undefined');
+      this.renderErrorMessage('No content to render. Please check your component implementation.');
+      return;
+    }
+
+    try {
+      // Case 1: Result is a DOM element (this is the main case we now support directly)
+      if (result instanceof HTMLElement || result instanceof DocumentFragment || result instanceof Text) {
+        console.log('[0x1 DEBUG] Rendering DOM element directly');
+        // Clear container and append element
+        this.rootElement.innerHTML = '';
+        this.rootElement.appendChild(result);
+        return;
+      }
+
+      // Case 2: Result is a string (HTML content)
+      if (typeof result === 'string') {
+        console.log('[0x1 DEBUG] Rendering string result');
+        this.rootElement.innerHTML = result;
+        return;
+      }
+      
+      // Case 3: If it's a function, try to call it (it might be a component function)
+      if (typeof result === 'function') {
+        try {
+          console.log('[0x1 DEBUG] Executing function component');
+          const functionResult = result({});
+          this.renderResult(functionResult);
+          return;
+        } catch (err) {
+          console.error('[0x1 ERROR] Error executing function component:', err);
+          this.renderErrorMessage(`Component execution error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          return;
+        }
+      }
+
+      // Case 4: Handle JSX element objects (legacy support)
+      if (result && typeof result === 'object') {
+        // It might be a JSX element with type property
+        if (result.type) {
+          try {
+            // For function components
+            if (typeof result.type === 'function') {
+              console.log('[0x1 DEBUG] Executing JSX function component');
+              try {
+                const functionResult = result.type({
+                  ...result.props,
+                  children: result.children
+                });
+                this.renderResult(functionResult);
+                return;
+              } catch (err) {
+                console.error('[0x1 ERROR] Error in JSX function component:', err);
+                this.renderErrorMessage(`Component error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                return;
+              }
+            }
+            
+            // For intrinsic elements (div, span, etc.)
+            if (typeof result.type === 'string') {
+              console.log('[0x1 DEBUG] Creating DOM element from JSX');
+              try {
+                const element = this.renderElement(result);
+                if (element) {
+                  this.rootElement.innerHTML = '';
+                  this.rootElement.appendChild(element);
+                  return;
+                }
+              } catch (err) {
+                console.error('[0x1 ERROR] Error rendering JSX element:', err);
+                this.renderErrorMessage(`JSX rendering error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                return;
+              }
+            }
+          } catch (err) {
+            console.error('[0x1 ERROR] JSX processing error:', err);
+          }
+        }
+        
+        // It might be an object with a render method (component instance)
+        if (result.render && typeof result.render === 'function') {
+          try {
+            console.log('[0x1 DEBUG] Calling render method on object');
+            const renderResult = result.render();
+            this.renderResult(renderResult);
+            return;
+          } catch (err) {
+            console.error('[0x1 ERROR] Error calling render method:', err);
+          }
+        }
+      }
+      
+      // If nothing else worked, try to convert to string
+      try {
+        console.log('[0x1 DEBUG] Attempting to convert result to string');
+        const stringResult = String(result);
+        if (stringResult && stringResult.length > 0 && stringResult !== '[object Object]') {
+          this.rootElement.innerHTML = stringResult;
+          return;
+        }
+      } catch (err) {
+        console.error('[0x1 ERROR] Failed to convert result to string:', err);
+      }
+      
+      // Last resort: show detailed error message with result inspection
+      console.error("[0x1 ERROR] Could not render component result:", result);
+      this.renderErrorMessage(`Failed to render component. Check console for details.\n\nResult type: ${typeof result}\nResult: ${JSON.stringify(result, null, 2)}`);
+    } catch (err) {
+      console.error('[0x1 ERROR] Unexpected error in renderResult:', err);
+      this.renderErrorMessage(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 
@@ -474,8 +690,9 @@ export class Router {
       // Handle root path separately to avoid regex issues
       if (path === "/") {
         // CRITICAL FIX: Fixed root path regex pattern that was causing SyntaxError
-        // Using a simpler pattern that correctly matches / or empty path without errors
-        return new RegExp("^/$");
+        // Using a simpler pattern that correctly matches the root path without errors
+        return new RegExp("^\/");
+        // return new RegExp("^/$");
       }
       
       // Convert path pattern to regex by carefully handling special characters
@@ -514,52 +731,40 @@ export class Router {
         }
       }
       
-      // Make trailing slash optional (Next.js compatibility)
-      finalPattern += "\\/?$";
-      
-      // Validate the regex pattern before creating the RegExp
-      // This helps catch malformed patterns early
-      try {
-        new RegExp(finalPattern);
-      } catch (regexErr) {
-        console.error(`Invalid regex pattern created: ${finalPattern}`, regexErr);
-        return new RegExp("^\\/.*$"); // Fallback to permissive regex
-      }
-      
-      // Create and return the RegExp object
+      // Complete the pattern and return the RegExp
       return new RegExp(finalPattern);
     } catch (error) {
       console.error(`Error creating regex from path '${path}':`, error);
       // Fallback to a very permissive regex that matches any path
-      return new RegExp("^\\/.*$");
+      return new RegExp("^\/.*$");
     }
   }
 
-  /**
-   * Extract parameters from a path based on a route pattern
-   */
-  private extractParams(route: Route, path: string): RouteParams {
-    const params: RouteParams = {};
+/**
+ * Extract parameters from a path based on a route pattern
+ */
+private extractParams(route: Route, path: string): RouteParams {
+  const params: RouteParams = {};
 
-    if (!route.path.includes(":")) return params;
+  if (!route.path.includes(":")) return params;
 
-    const paramNames = route.path
-      .match(/:\w+/g)
-      ?.map((param) => param.substring(1));
+  const paramNames = route.path
+    .match(/:\w+/g)
+    ?.map((param) => param.substring(1));
 
-    if (!paramNames) return params;
+  if (!paramNames) return params;
 
-    const pathRegex = this.pathToRegex(route.path);
-    const matches = path.match(pathRegex);
+  const pathRegex = this.pathToRegex(route.path);
+  const matches = path.match(pathRegex);
 
-    if (matches) {
-      paramNames.forEach((name, index) => {
-        params[name] = matches[index + 1];
-      });
-    }
-
-    return params;
+  if (matches) {
+    paramNames.forEach((name, index) => {
+      params[name] = matches[index + 1];
+    });
   }
+
+  return params;
+}
 
   /**
    * Initialize routes from app directory components
@@ -657,34 +862,58 @@ export class Router {
   }
 
   /**
-   * Apply layouts to page components
-   * Supports nested layouts and error boundaries
+   * Apply layouts to the component
+   * @param component The page component to wrap with layouts
+   * @param layouts Array of layout components to apply
+   * @param params Route parameters
+   * @returns A wrapped component function that handles the layout nesting
    */
-  private applyLayouts(
-    component: Component,
-    params: RouteParams = {},
-    layouts?: Component[]
-  ): Component {
-    // Start with the page component
-    let wrappedComponent = component;
+  private applyLayouts(component: Component, layouts: Component[] = [], params: RouteParams = {}): Component {
+    console.log('[0x1 DEBUG] Starting applyLayouts');
+    
+    // If no layouts, just return the component directly
+    if (!layouts || layouts.length === 0 && !this.rootLayout) {
+      console.log('[0x1 DEBUG] No layouts to apply, returning component directly');
+      return component;
+    }
 
-    // If we have specific layouts for this route, apply them in order
+    // We'll start with the page component and wrap it with layouts
+    let wrappedComponent = component;
+    
+    // Apply specific layouts if they exist (from innermost to outermost)
     if (layouts && layouts.length > 0) {
-      // Apply layouts from innermost to outermost (reverse order)
+      console.log(`[0x1 DEBUG] Applying ${layouts.length} specific layouts to component`);
+      
+      // Process layouts from innermost to outermost (parent layouts wrap child layouts)
       for (let i = layouts.length - 1; i >= 0; i--) {
         const currentLayout = layouts[i];
         const prevComponent = wrappedComponent;
-
-        wrappedComponent = () => {
+        
+        console.log(`[0x1 DEBUG] Wrapping with layout ${i}: ${currentLayout.name || 'Anonymous'}`);
+        
+        // Create a new component function that will execute the layout with the inner content
+        wrappedComponent = (props: any = {}) => {
           try {
-            const pageContent = prevComponent(params);
-            return (
-              currentLayout({ children: pageContent, params }) ||
-              document.createDocumentFragment()
-            );
+            // First render the inner component/page
+            console.log(`[0x1 DEBUG] Executing inner component for layout ${i}`);
+            const innerContent = prevComponent(props);
+            console.log(`[0x1 DEBUG] Inner content type:`, typeof innerContent);
+            
+            // Then pass it as children to the layout
+            const layoutProps = { ...props, children: innerContent, params };
+            console.log(`[0x1 DEBUG] Passing to layout ${i} with props:`, Object.keys(layoutProps));
+            
+            // Render the layout with the inner content as children
+            return currentLayout(layoutProps) || document.createDocumentFragment();
           } catch (error) {
-            console.error(`Error in layout at position ${i}:`, error);
-            return document.createDocumentFragment();
+            console.error(`[0x1 ERROR] Error in layout ${i}:`, error);
+            // Fall back to showing just the inner content if we can
+            try {
+              return prevComponent(props);
+            } catch (innerError) {
+              console.error(`[0x1 ERROR] Error in inner component:`, innerError);
+              return document.createDocumentFragment();
+            }
           }
         };
       }
@@ -692,18 +921,41 @@ export class Router {
 
     // Finally, apply the root layout if available
     if (this.rootLayout) {
+      console.log('[0x1 DEBUG] Applying root layout as outermost wrapper');
       const finalComponent = wrappedComponent;
       const rootLayout = this.rootLayout; // Store in local variable to avoid TypeScript null check issues
-      wrappedComponent = () => {
+      
+      wrappedComponent = (props: any = {}) => {
         try {
-          const pageContent = finalComponent(params);
-          return (
-            rootLayout({ children: pageContent, params }) ||
-            document.createDocumentFragment()
-          );
+          console.log('[0x1 DEBUG] Executing inner content before root layout');
+          const innerContent = finalComponent(props);
+          console.log('[0x1 DEBUG] Inner content type before root layout:', typeof innerContent);
+          
+          if (innerContent instanceof Node) {
+            console.log('[0x1 DEBUG] Inner content is a DOM node');
+          } else {
+            console.log('[0x1 DEBUG] Inner content is NOT a DOM node, type:', typeof innerContent);
+          }
+          
+          // Create props with children and params
+          const layoutProps = { ...props, children: innerContent, params };
+          console.log('[0x1 DEBUG] Passing to root layout with props:', Object.keys(layoutProps));
+          
+          const result = rootLayout(layoutProps);
+          if (!result) {
+            console.error('[0x1 ERROR] Root layout returned null/undefined');
+            return document.createDocumentFragment();
+          }
+          return result;
         } catch (error) {
-          console.error("Error in root layout:", error);
-          return document.createDocumentFragment();
+          console.error('[0x1 ERROR] Error in root layout:', error);
+          // Fall back to showing just the inner content if we can
+          try {
+            return finalComponent(props);
+          } catch (innerError) {
+            console.error('[0x1 ERROR] Error in inner component:', innerError);
+            return document.createDocumentFragment();
+          }
         }
       };
     }
@@ -719,3 +971,9 @@ export class Router {
 export function createRouter(options: RouterOptions): Router {
   return new Router(options);
 }
+
+// Ensure createRouter is included in default exports
+export default {
+  Router,
+  createRouter,
+};

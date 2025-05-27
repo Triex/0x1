@@ -117,7 +117,7 @@ Automatically added to HTML templates:
 ```html
 <!-- Preload critical assets -->
 <link rel="preload" href="/app.js" as="script" fetchpriority="high">
-<link rel="preload" href="/main.css" as="style">
+<link rel="preload" href="/globals.css" as="style">
 
 <!-- Preconnect to origin -->
 <link rel="preconnect" href="https://example.com" crossorigin>

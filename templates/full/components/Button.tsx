@@ -24,7 +24,7 @@ export function Button({
   icon
 }: ButtonProps) {
   // Compute classes based on props
-  const baseClasses = "inline-flex items-center justify-center font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2";
+  const baseClasses = "inline-flex items-center justify-center font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer";
   
   // Size classes
   const sizeClasses = {

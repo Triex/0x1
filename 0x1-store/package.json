@@ -4,8 +4,15 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir=dist",
+    "build": "bun build ./src/index.ts --outdir=dist --target=node",
+    "typecheck": "tsc --noEmit",
     "prepublish": "bun run build"
   },
   "dependencies": {},
@@ -13,7 +20,8 @@
     "typescript": "^5.4.5"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "engines": {
     "bun": ">=1.0.0"

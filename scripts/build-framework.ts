@@ -30,6 +30,33 @@ async function buildFramework() {
   console.log('🚀 Building 0x1 framework...');
   
   try {
+    // First build the standalone packages
+    console.log('📦 Building standalone packages...');
+    
+    // Build 0x1-store
+    console.log('Building 0x1-store...');
+    const storeResult = Bun.spawnSync(['bun', 'run', 'build'], {
+      cwd: join(rootDir, '0x1-store'),
+    });
+    
+    if (storeResult.exitCode !== 0) {
+      console.error('Failed to build 0x1-store');
+      process.exit(1);
+    }
+    
+    // Build 0x1-router  
+    console.log('Building 0x1-router...');
+    const routerResult = Bun.spawnSync(['bun', 'run', 'build'], {
+      cwd: join(rootDir, '0x1-router'),
+    });
+    
+    if (routerResult.exitCode !== 0) {
+      console.error('Failed to build 0x1-router');
+      process.exit(1);
+    }
+    
+    console.log('✅ Standalone packages built successfully');
+
     // Ensure dist directory exists
     // Check if directory exists and create if it doesn't
     const distDirInfo = Bun.file(distDir);
@@ -131,33 +158,62 @@ async function buildFramework() {
           console.log(`Transpiling ${fileName.replace(/\.js$/, '.ts')} to JS...`);
           const tempOut = join(srcDir, `.temp-${fileName}`);
           
-          // Use Bun to transpile the TS file
-          const buildRes = Bun.spawnSync([
-            'bun', 'build', tsFile,
-            '--outfile', tempOut,
-            '--target', 'browser',
-            '--format', 'esm'
-          ]);
-          
-          if (buildRes.exitCode === 0) {
-            const jsContent = await Bun.file(tempOut).text();
-            await Bun.write(destFile, jsContent);
-            Bun.spawnSync(['rm', tempOut]);
+          try {
+            // Use Bun's build API directly with proper TypeScript transpilation
+            const { success, logs } = await Bun.build({
+              entrypoints: [tsFile],
+              outdir: srcDir + '/temp',
+              target: 'browser',
+              format: 'esm',
+              minify: false,
+              sourcemap: 'none',
+              define: {
+                'process.env.NODE_ENV': '"production"'
+              },
+              // This is the key to ensuring TypeScript types are properly stripped
+              loader: {
+                '.ts': 'ts',
+                '.tsx': 'tsx'
+              }
+            });
             
-            // Create a symlink in the 0x1 directory pointing to the core file
-            // First, remove the file if it already exists
-            if (await Bun.file(destFile0x1).exists()) {
-              Bun.spawnSync(['rm', destFile0x1]);
+            if (success) {
+              // Get the filename without path
+              const baseName = tsFile.split('/').pop()?.replace('.ts', '.js') || '';
+              const tempJsFile = join(srcDir, 'temp', baseName);
+              
+              // Read the transpiled content
+              const jsContent = await Bun.file(tempJsFile).text();
+              
+              // Write directly to the destination
+              await Bun.write(destFile, jsContent);
+              
+              // Clean up temp files
+              Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+            } else {
+              console.warn(`Failed to build ${fileName.replace(/\.js$/, '.ts')}:`, logs.join('\n'));
+              // Skip this file and continue with others
+              continue;
             }
-            
-            // Create a relative symlink
-            Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
-            
-            console.log(`Transpiled and copied ${fileName} to dist/core/`);
-            console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
-          } else {
-            console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
+          } catch (error) {
+            console.warn(`Error building ${fileName.replace(/\.js$/, '.ts')}:`, error);
+            continue;
           }
+        
+          // File is already written directly, just create the symlink
+          // Create a symlink in the 0x1 directory pointing to the core file
+          // First, remove the file if it already exists
+          if (await Bun.file(destFile0x1).exists()) {
+            Bun.spawnSync(['rm', destFile0x1]);
+          }
+          
+          // Create a relative symlink
+          Bun.spawnSync(['ln', '-s', `../core/${fileName}`, destFile0x1]);
+          
+          console.log(`Transpiled and copied ${fileName} to dist/core/`);
+          console.log(`Created symlink in dist/0x1/ -> ../core/${fileName}`);
+        } else {
+          console.warn(`⚠️ Failed to transpile ${fileName.replace(/\.js$/, '.ts')}`);
         }
       }
     }
@@ -233,15 +289,7 @@ async function buildFramework() {
         // Then run TypeScript type checking and emit declarations
         console.log('📦 Compiling TypeScript with JSX support...');
         const tsResult = await Bun.spawn({
-          cmd: ['bun', 'x', 'tsc'],
-          cwd: rootDir,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: {
-            ...process.env,
-            NODE_ENV: 'production',
-            FORCE_COLOR: '1'
-          },
-          args: [
+          cmd: ['bun', 'x', 'tsc', 
             '--project', 'tsconfig.json',
             '--jsx', 'react-jsx',
             '--jsxImportSource', '0x1',
@@ -249,7 +297,14 @@ async function buildFramework() {
             '--declaration',
             '--emitDeclarationOnly',
             '--noEmit', 'false'
-          ]
+          ],
+          cwd: rootDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            NODE_ENV: 'production',
+            FORCE_COLOR: '1'
+          }
         });
         
         // Pipe the output to the current process
@@ -357,20 +412,52 @@ async function buildFramework() {
         // Transpile TS to JS using Bun directly
         console.log('Found TypeScript JSX runtime, transpiling it...');
         
-        // Write to a temporary file for transpilation
-        const tempOutputFile = join(srcDir, '.temp-jsx-runtime.js');
+        // Use direct output to the target destination to avoid temporary files
+        const targetCliJsxRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-runtime.js');
         
-        // Use Bun to build the TS file to JS
-        const bunBuildCmd = `bun build ${jsxRuntimeTS} --outfile ${tempOutputFile} --target browser`;
-        const buildResult = Bun.spawnSync(bunBuildCmd.split(' '));
-        
-        if (buildResult.exitCode === 0) {
-          jsxRuntimeContent = await Bun.file(tempOutputFile).text();
-          // Cleanup temp file
-          Bun.spawnSync(['rm', tempOutputFile]);
-        } else {
-          console.warn('⚠️ Failed to transpile TypeScript JSX runtime, falling back to JavaScript version');
+        // Use Bun to build the TS file to JS with proper type stripping
+        // Use Bun's build API directly with proper TypeScript transpilation
+        try {
+          // Use Bun's build function to transpile TypeScript directly to JS
+          const { success, logs } = await Bun.build({
+            entrypoints: [jsxRuntimeTS],
+            outdir: srcDir + '/temp',
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': '"production"'
+            },
+            // This is the key part that ensures TypeScript types are properly stripped
+            loader: {
+              '.ts': 'ts',
+              '.tsx': 'tsx'
+            }
+          });
+          
+          if (!success) {
+            console.error('Failed to build JSX runtime:', logs.join('\n'));
+            throw new Error('Failed to build JSX runtime');
+          }
+          
+          // Read the transpiled JS content
+          const tempJsxFile = join(srcDir, 'temp', 'jsx-runtime.js');
+          jsxRuntimeContent = await Bun.file(tempJsxFile).text();
+          
+          // Write it to the target location
+          await Bun.write(targetCliJsxRuntime, jsxRuntimeContent);
+          
+          // Clean up temp files
+          Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+          
+          console.log('✅ JSX runtime file generated and saved to cli/commands/utils/');
+        } catch (error) {
+          console.error('Error building JSX runtime:', error);
+          throw new Error('Failed to build JSX runtime');
         }
+        
+        // JSX runtime content is already set if successful
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn('⚠️ Error transpiling TypeScript JSX runtime:', errorMessage);
@@ -405,23 +492,49 @@ async function buildFramework() {
       try {
         console.log('Found TypeScript JSX dev runtime, transpiling it...');
         
-        // Write to a temporary file for transpilation
-        const tempOutputFile = join(srcDir, '.temp-jsx-dev-runtime.js');
+        // Use direct output to the target destination to avoid temporary files
+        const targetCliJsxDevRuntime = join(srcDir, 'cli', 'commands', 'utils', 'jsx-dev-runtime.js');
         
-        // Use Bun to build the TS file to JS
-        const buildResult = Bun.spawnSync([
-          'bun', 'build', jsxDevRuntimeTS, 
-          '--outfile', tempOutputFile,
-          '--target', 'browser'
-        ]);
-        
-        if (buildResult.exitCode === 0) {
-          jsxDevRuntimeContent = await Bun.file(tempOutputFile).text();
-          // Cleanup temp file
-          Bun.spawnSync(['rm', tempOutputFile]);
-        } else {
-          console.warn('⚠️ Failed to transpile TypeScript JSX dev runtime, falling back to JavaScript version');
+        // Use Bun's build API directly with proper TypeScript transpilation
+        try {
+          // Use Bun's build function to transpile TypeScript directly to JS
+          const { success, logs } = await Bun.build({
+            entrypoints: [jsxDevRuntimeTS],
+            outdir: srcDir + '/temp',
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': '"production"'
+            },
+            // This is the key part that ensures TypeScript types are properly stripped
+            loader: {
+              '.ts': 'ts',
+              '.tsx': 'tsx'
+            }
+          });
+          
+          if (success) {
+            // Read the transpiled JS content
+            const tempJsxDevFile = join(srcDir, 'temp', 'jsx-dev-runtime.js');
+            jsxDevRuntimeContent = await Bun.file(tempJsxDevFile).text();
+            
+            // Write it to the target location
+            await Bun.write(targetCliJsxDevRuntime, jsxDevRuntimeContent);
+            
+            // Clean up temp files
+            Bun.spawnSync(['rm', '-rf', join(srcDir, 'temp')]);
+            
+            console.log('✅ JSX dev runtime file generated and saved to cli/commands/utils/');
+          } else {
+            console.warn('Failed to build JSX dev runtime:', logs.join('\n'));
+          }
+        } catch (error) {
+          console.warn('Error building JSX dev runtime:', error);
         }
+        
+        // jsxDevRuntimeContent is already set if successful, no need to read again
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn('⚠️ Error transpiling TypeScript JSX dev runtime:', errorMessage);
@@ -476,6 +589,36 @@ async function buildFramework() {
 })();`;
       await Bun.write(liveReloadDestPath, minimalLiveReload);
       console.log('✅ Created minimal fallback live-reload script');
+    }
+    
+    // Copy React shim module for React compatibility
+    const reactShimSrcPath = join(srcDir, 'cli', 'commands', 'utils', 'react-shim.js');
+    const reactShimDestPath = join(distDir, 'browser', 'react-shim.js');
+    // Also copy to the root dist directory for compatibility with imports
+    const reactShimRootDestPath = join(distDir, 'react-shim.js');
+    
+    if (await Bun.file(reactShimSrcPath).exists()) {
+      const reactShimContent = await Bun.file(reactShimSrcPath).text();
+      await Bun.write(reactShimDestPath, reactShimContent);
+      await Bun.write(reactShimRootDestPath, reactShimContent);
+      console.log('✅ React shim module copied to dist/browser/ and dist/');
+    } else {
+      console.warn('⚠️ React shim module not found at', reactShimSrcPath);
+    }
+    
+    // Copy Error Boundary client for better error handling
+    const errorBoundarySrcPath = join(srcDir, 'cli', 'commands', 'utils', 'error-boundary-client.js');
+    const errorBoundaryDestPath = join(distDir, 'browser', 'error-boundary-client.js');
+    // Also copy to the root dist directory for compatibility with imports
+    const errorBoundaryRootDestPath = join(distDir, 'error-boundary-client.js');
+    
+    if (await Bun.file(errorBoundarySrcPath).exists()) {
+      const errorBoundaryContent = await Bun.file(errorBoundarySrcPath).text();
+      await Bun.write(errorBoundaryDestPath, errorBoundaryContent);
+      await Bun.write(errorBoundaryRootDestPath, errorBoundaryContent);
+      console.log('✅ Error boundary client copied to dist/browser/ and dist/');
+    } else {
+      console.warn('⚠️ Error boundary client not found at', errorBoundarySrcPath);
     }
     
     console.log('🎉 Build completed successfully!');

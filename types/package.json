@@ -9,8 +9,7 @@
     "./jsx-dev-runtime": "./jsx-runtime.d.ts"
   },
   "dependencies": {
-    "@types/node": "^18.0.0",
-    "@types/react": "^18.0.0"
+    "@types/node": "^18.0.0"
   },
   "peerDependencies": {
     "typescript": ">=4.7.0"

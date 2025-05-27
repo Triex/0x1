@@ -1,39 +1,43 @@
 {
   "name": "0x1",
-  "version": "0.0.165",
+  "version": "0.0.168",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": ["dist/*"],
+      "jsx-runtime": ["types/jsx-runtime.d.ts"],
+      "jsx-dev-runtime": ["types/jsx-runtime.d.ts"],
+      "jsx": ["types/jsx.d.ts"],
+      "jsx-import-source": ["types/jsx-import-source.d.ts"]
+    }
+  },
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./link": {
-      "import": "./dist/link.js",
-      "types": "./dist/link.d.ts"
-    },
-    "./router": {
-      "import": "./dist/router.js",
-      "types": "./dist/router.d.ts"
-    },
+    ".": "./src/index.ts",
+    "./link": "./src/link.ts",
+    "./router": "./0x1-router/src/index.ts",
     "./core/*": {
       "import": "./dist/core/*.js",
       "types": "./dist/core/*.d.ts"
     },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
-      "types": "./types/jsx-runtime.d.ts"
+      "types": "./dist/jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
       "import": "./dist/jsx-dev-runtime.js",
       "types": "./types/jsx-runtime.d.ts"
     },
-    "./store": {
-      "import": "./dist/store.js",
-      "types": "./dist/store.d.ts"
-    }
+    "./jsx-runtime-bridge": {
+      "import": "./dist/jsx-runtime-bridge.js",
+      "types": "./src/jsx-runtime-bridge.ts"
+    },
+    "./jsx": {
+      "types": "./types/jsx.d.ts"
+    },
+    "./store": "./0x1-store/src/index.ts"
   },
   "bin": {
     "0x1": "./bin/0x1"
@@ -43,6 +47,7 @@
     "dist",
     "templates",
     "bin",
+    "types",
     "LICENSE"
   ],
   "npmignore": [
@@ -56,10 +61,11 @@
   "scripts": {
     "test": "bun test",
     "dev": "bun run --watch src/cli/index.ts dev",
-    "build": "bun run build:framework && bun run build:cli",
+    "build": "bun run build:framework && bun run fix-ts && bun run build:cli",
     "build:framework": "bun run scripts/build-framework.ts",
     "build:cli": "bun run scripts/build-cli-with-size.js",
     "build:templates": "cp -r templates dist/",
+    "fix-ts": "bun run scripts/fix-transpiled-js.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
@@ -95,10 +101,15 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.1.7",
     "lightningcss": "^1.24.0",
+    "postcss": "^8.5.3",
     "prompts": "^2.4.2",
     "sharp": "^0.33.2",
-    "zod": "^3.22.4"
+    "tailwindcss": "^4.1.7",
+    "zod": "^3.22.4",
+    "0x1-router": "workspace:*",
+    "0x1-store": "workspace:*"
   },
   "comments": {
     "removedDependencies": {
