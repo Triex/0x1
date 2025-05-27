@@ -198,6 +198,72 @@ export function createSelector2<T, R1, R2, Result>(
 }
 
 /**
+ * Create a slice with reducer and actions
+ */
+export function createSlice<T>({
+  name,
+  initialState,
+  reducers
+}: {
+  name: string;
+  initialState: T;
+  reducers: Record<string, (state: T, payload?: any) => T | void>;
+}) {
+  const actionCreators: Record<string, (payload?: any) => Action> = {};
+  const reducer: Reducer<T> = (state = initialState, action) => {
+    const reducerFunction = reducers[action.type.replace(`${name}/`, '')];
+    
+    if (reducerFunction) {
+      // Allow either immutable or mutable updates
+      const result = reducerFunction(state, action.payload);
+      return result === undefined ? state : result;
+    }
+    
+    return state;
+  };
+  
+  // Create action creators for each reducer
+  Object.keys(reducers).forEach(actionType => {
+    const fullActionType = `${name}/${actionType}`;
+    
+    const actionCreator = (payload?: any) => ({
+      type: fullActionType,
+      payload
+    });
+    
+    // Add the type property to the action creator
+    Object.defineProperty(actionCreator, 'type', {
+      value: fullActionType,
+      writable: false
+    });
+    
+    actionCreators[actionType] = actionCreator;
+  });
+  
+  return {
+    name,
+    reducer,
+    actions: actionCreators
+  };
+}
+
+/**
+ * Middleware for logging actions and state changes
+ */
+export const logger: Middleware<any> = store => next => action => {
+  console.group(`Action: ${action.type}`);
+  console.log('Previous State:', store.getState());
+  console.log('Action:', action);
+  
+  const result = next(action);
+  
+  console.log('Next State:', store.getState());
+  console.groupEnd();
+  
+  return result;
+};
+
+/**
  * Connect a component to the store
  */
 export function connect<T, P extends object>(

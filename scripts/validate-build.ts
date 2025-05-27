@@ -21,10 +21,10 @@ const requiredFiles = [
   'dist/core/navigation.js',
   'dist/core/error-boundary.js',
   
-  // 0x1 router
+  // 0x1 router (built from 0x1-router package)
   'dist/core/router.js',
   
-  // 0x1 store
+  // 0x1 store (built from 0x1-store package)
   'dist/core/store.js',
   
   // Essential type definitions only

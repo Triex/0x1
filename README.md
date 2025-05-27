@@ -693,7 +693,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.178)
+### Current State (v0.0.179)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
@@ -825,6 +825,7 @@ Another key point is that AI's understand Next/React, and can generate code for 
 
 Ultimately; adding crypto features to give the framework a real use case, and ability to grow rapidly. (Hence 0x1)
 
+- [ ] Create robust tests for all features, and ensure they are working as expected. (e2e & unit)
 - [ ] `Crypto` template option with various crypto features as options, inc;
   - [ ] `Wallet Connect`, basic connect for `ERC20` EVM tokens, and SOL, etc. OR allow all chains.
   - [ ] `Coin dApp / Dashboard`, view connected wallet coin holdings, transactions + coin price, market cap, etc as appropriate.

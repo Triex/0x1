@@ -215,9 +215,18 @@ class Router {
 
   // Match route with params extraction
   public matchRoute(path: string): RouteMatch | null {
+    if (this.options.debug) {
+      console.log(`[0x1 Router] Matching path: ${path}`);
+      console.log(`[0x1 Router] Available routes:`, this.routes.map(r => `${r.path} (exact: ${r.exact})`));
+    }
+    
     for (const route of this.routes) {
       const match = this.pathToRegExp(route.path, route.exact);
       const result = path.match(match.regex);
+      
+      if (this.options.debug) {
+        console.log(`[0x1 Router] Testing route ${route.path} with regex ${match.regex} against ${path}: ${!!result}`);
+      }
       
       if (result) {
         const params: Record<string, string> = {};
@@ -225,9 +234,18 @@ class Router {
           params[key] = result[index + 1] || '';
         });
         
+        if (this.options.debug) {
+          console.log(`[0x1 Router] ✅ Route matched: ${route.path}`, { params });
+        }
+        
         return { route, params };
       }
     }
+    
+    if (this.options.debug) {
+      console.log(`[0x1 Router] ❌ No route found for: ${path}`);
+    }
+    
     return null;
   }
 
@@ -682,6 +700,11 @@ class Router {
     return this.routes
       .filter(route => !route.path.includes(':'))
       .map(route => route.path);
+  }
+  
+  // Debug method to expose routes
+  public getRoutes(): Route[] {
+    return this.routes;
   }
 }
 

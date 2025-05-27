@@ -1050,21 +1050,113 @@ if (typeof module !== 'undefined' && module.exports) {
         try {
           // Generate a dynamic app.js that loads and renders the app components
           const appScript = `
-// 0x1 Framework App Bundle
-console.log('0x1 App Started');
+// 0x1 Framework App Bundle - Generated at ${new Date().toISOString()}
+console.log('0x1 App Started - Build: ${Date.now()}');
 
 // Import the router and components
 import { createRouter } from '/0x1/router.js';
 
-// Component loader function
+// Component loader function with enhanced debugging
 async function loadComponent(path) {
   try {
+    console.log(\`[0x1] 🔍 Attempting to load component: \${path}\`);
     const module = await import(path);
+    console.log(\`[0x1] ✅ Successfully loaded component: \${path}\`, Object.keys(module));
     return module;
   } catch (error) {
-    console.warn('Failed to load component:', path, error);
+    console.log(\`[0x1] ❌ Failed to load component: \${path}\`, error.message);
     return null;
   }
+}
+
+// Discover all available routes in the app directory dynamically
+async function discoverRoutes() {
+  const routes = [];
+  
+  // Function to check if a route exists by making a HEAD request
+  async function routeExists(path) {
+    try {
+      console.log(\`[0x1] 🔍 Checking if route exists: \${path}\`);
+      const response = await fetch(path, { method: 'HEAD' });
+      const exists = response.ok;
+      console.log(\`[0x1] \${exists ? '✅' : '❌'} Route \${path}: \${response.status} \${response.statusText}\`);
+      return exists;
+    } catch (error) {
+      console.log(\`[0x1] ❌ Route check failed for \${path}:\`, error.message);
+      return false;
+    }
+  }
+  
+  // Define possible route patterns to discover
+  const routePatterns = [
+    // Root route
+    { path: '/', component: '/app/page.js' },
+    
+    // Direct app directory routes (Next.js 13+ app router style)
+    { path: '/features', component: '/app/features/page.js' },
+    { path: '/about', component: '/app/about/page.js' },
+    { path: '/contact', component: '/app/contact/page.js' },
+    { path: '/dashboard', component: '/app/dashboard/page.js' },
+    { path: '/blog', component: '/app/blog/page.js' },
+    { path: '/docs', component: '/app/docs/page.js' },
+    { path: '/pricing', component: '/app/pricing/page.js' },
+    { path: '/login', component: '/app/login/page.js' },
+    { path: '/signup', component: '/app/signup/page.js' },
+    
+    // Pages directory routes (traditional structure)
+    { path: '/features', component: '/app/pages/features/page.js' },
+    { path: '/about', component: '/app/pages/about/page.js' },
+    { path: '/contact', component: '/app/pages/contact/page.js' },
+    { path: '/dashboard', component: '/app/pages/dashboard/page.js' },
+    { path: '/blog', component: '/app/pages/blog/page.js' },
+    { path: '/docs', component: '/app/pages/docs/page.js' },
+    { path: '/pricing', component: '/app/pages/pricing/page.js' },
+    { path: '/login', component: '/app/pages/login/page.js' },
+    { path: '/signup', component: '/app/pages/signup/page.js' }
+  ];
+  
+  // Track discovered routes to avoid duplicates
+  const discoveredPaths = new Set();
+  
+  console.log(\`[0x1] 🚀 Starting route discovery with \${routePatterns.length} patterns to check\`);
+  console.log(\`[0x1] 📋 Route patterns to check:\`, routePatterns.map(r => \`\${r.path} -> \${r.component}\`));
+  
+  for (const route of routePatterns) {
+    // Skip if we already found this path
+    if (discoveredPaths.has(route.path)) {
+      console.log(\`[0x1] ⏭️ Skipping duplicate path: \${route.path}\`);
+      continue;
+    }
+    
+    try {
+      console.log(\`[0x1] Checking route: \${route.path} -> \${route.component}\`);
+      const module = await loadComponent(route.component);
+      if (module && (module.default || module[Object.keys(module)[0]])) {
+        routes.push({
+          path: route.path,
+          component: module.default || module[Object.keys(module)[0]],
+          componentPath: route.component
+        });
+        discoveredPaths.add(route.path);
+        console.log(\`[0x1] ✅ Discovered route: \${route.path} -> \${route.component}\`);
+      } else {
+        console.log(\`[0x1] ❌ No component found at: \${route.component}\`);
+      }
+    } catch (error) {
+      console.log(\`[0x1] ❌ Failed to load: \${route.component} - \${error.message}\`);
+    }
+  }
+  
+  console.log(\`[0x1] 🏁 Route discovery loop completed. Checked \${routePatterns.length} patterns.\`);
+  
+  console.log(\`[0x1] 🎯 Route discovery complete. Found \${routes.length} routes:\`);
+  routes.forEach(r => console.log(\`  ✅ \${r.path} -> \${r.componentPath}\`));
+  
+  if (routes.length === 0) {
+    console.log(\`[0x1] ⚠️ No routes discovered! This might indicate a problem with component loading.\`);
+  }
+  
+  return routes;
 }
 
 // Initialize the app
@@ -1076,49 +1168,72 @@ async function initApp() {
       return;
     }
 
-    // Load app components with better error handling
-    const pageModule = await loadComponent('/app/page.js');
+    // Load layout component
     const layoutModule = await loadComponent('/app/layout.js');
+    console.log('[0x1] Layout component loaded:', !!layoutModule);
 
-    console.log('[0x1] Page module loaded:', !!pageModule);
-    console.log('[0x1] Layout module loaded:', !!layoutModule);
+    // Discover all available routes with error handling
+    console.log('[0x1] 🔍 Starting route discovery process...');
+    let routes = [];
+    try {
+      routes = await discoverRoutes();
+      console.log(\`[0x1] ✅ Discovered \${routes.length} routes:\`, routes.map(r => r.path));
+    } catch (error) {
+      console.error('[0x1] ❌ Route discovery failed:', error);
+      console.log('[0x1] 🔄 Falling back to manual route registration...');
+      // Fallback to manual route registration
+      routes = [{ path: '/', component: '/app/page.js' }];
+    }
 
-    if (pageModule?.default || pageModule?.HomePage) {
-      // Create router
+    if (routes.length > 0) {
+      // Create router with debug enabled
       const router = createRouter({
         rootElement: appContainer,
-        mode: 'history'
+        mode: 'history',
+        debug: true
       });
 
       console.log('[0x1] Router created:', router);
-      console.log('[0x1] Router methods:', Object.getOwnPropertyNames(router));
 
-      // Add routes
-      const pageComponent = pageModule.default || pageModule.HomePage;
+      // Register all discovered routes
       const layoutComponent = layoutModule?.default;
-
-      if (layoutComponent) {
-        router.addRoute('/', pageComponent, { layout: layoutComponent });
-      } else {
-        router.addRoute('/', pageComponent);
+      
+      for (const route of routes) {
+        if (layoutComponent) {
+          router.addRoute(route.path, route.component, { layout: layoutComponent, exact: true });
+        } else {
+          router.addRoute(route.path, route.component, { exact: true });
+        }
+        console.log(\`[0x1] ✅ Registered route: \${route.path} (exact: true)\`);
       }
+      
+      // Debug: Log all registered routes after registration
+      console.log(\`[0x1] Total routes registered: \${routes.length}\`);
+      console.log(\`[0x1] Router routes array length: \${router.getRoutes ? router.getRoutes().length : 'getRoutes not available'}\`);
 
       // Initialize router
       router.init();
       
-      // Handle initial navigation using the correct router API
+      // Debug: Show all registered routes
+      if (router.getRoutes) {
+        const registeredRoutes = router.getRoutes();
+        console.log('[0x1] All registered routes:', registeredRoutes.map(r => \`\${r.path} (exact: \${r.exact})\`));
+      } else {
+        console.log('[0x1] Router getRoutes method not available');
+      }
+      
+      // Handle initial navigation
       if (typeof router.navigate === 'function') {
-        // Use the navigate method which is the correct API
-        router.navigate(window.location.pathname, false); // false = don't push to history
+        router.navigate(window.location.pathname, false);
         console.log('[0x1] Router navigated to:', window.location.pathname);
       } else {
-        console.warn('[0x1] Router navigate method not found, available methods:', Object.getOwnPropertyNames(router));
-        console.warn('[0x1] Router object:', router);
+        console.warn('[0x1] Router navigate method not found');
       }
-      console.log('[0x1] App initialized successfully');
+      
+      console.log('[0x1] App initialized successfully with', routes.length, 'routes');
     } else {
       // Fallback content
-      appContainer.innerHTML = '<div class="p-8 text-center"><h1 class="text-2xl font-bold mb-4">0x1 App</h1><p>No page component found. Create app/page.tsx to get started.</p></div>';
+      appContainer.innerHTML = '<div class="p-8 text-center"><h1 class="text-2xl font-bold mb-4">0x1 App</h1><p>No page components found. Create app/page.tsx to get started.</p></div>';
     }
   } catch (error) {
     console.error('Failed to initialize app:', error);
@@ -1142,7 +1257,10 @@ if (document.readyState === 'loading') {
             status: 200,
             headers: {
               'Content-Type': 'application/javascript; charset=utf-8',
-              'Cache-Control': 'no-cache'
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+              'ETag': `"${Date.now()}"` // Force cache busting
             }
           });
         } catch (error) {
@@ -1160,7 +1278,8 @@ if (document.readyState === 'loading') {
 
       // Handle component requests (including app directory components and bare component names)
       if ((reqPath.endsWith('.js') && (reqPath.includes('/app/') || reqPath.includes('/components/'))) ||
-          (reqPath.startsWith('/components/') && !reqPath.includes('.'))) {
+          (reqPath.startsWith('/components/') && !reqPath.includes('.')) ||
+          (reqPath.startsWith('/app/') && reqPath.endsWith('.js'))) {
         try {
           // Handle bare component names (e.g., /components/Counter)
           const basePath = reqPath.endsWith('.js') ? reqPath.replace('.js', '') : reqPath;
@@ -1243,6 +1362,40 @@ export default function NotFoundComponent(props) {
             'Cache-Control': 'no-cache'
           }
         });
+      }
+      
+      // Handle app directory page routes (e.g., /about, /features, /contact)
+      // This prevents the "MacOS does not support sending non-regular files" error
+      // when trying to serve directories as files
+      if (!reqPath.includes('.') && reqPath !== '/' && !reqPath.startsWith('/node_modules') && !reqPath.startsWith('/0x1') && !reqPath.startsWith('/__0x1')) {
+        // Check if this is an app directory route
+        const possiblePagePaths = [
+          join(projectPath, 'app', reqPath.slice(1), 'page.tsx'),
+          join(projectPath, 'app', reqPath.slice(1), 'page.jsx'),
+          join(projectPath, 'app', reqPath.slice(1), 'page.ts'),
+          join(projectPath, 'app', reqPath.slice(1), 'page.js'),
+          join(projectPath, 'app', 'pages', reqPath.slice(1), 'page.tsx'),
+          join(projectPath, 'app', 'pages', reqPath.slice(1), 'page.jsx'),
+          join(projectPath, 'app', 'pages', reqPath.slice(1), 'page.ts'),
+          join(projectPath, 'app', 'pages', reqPath.slice(1), 'page.js')
+        ];
+        
+        const pageExists = possiblePagePaths.some(path => existsSync(path));
+        
+        if (pageExists) {
+          // This is a valid page route - serve the main app HTML
+          // The client-side router will handle the actual page rendering
+          logRequestStatus(200, reqPath, 'Serving app page route');
+          const html = generateIndexHtml(projectPath);
+          
+          return new Response(html, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-cache'
+            }
+          });
+        }
       }
       
       // Try to serve static files from project directories

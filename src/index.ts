@@ -57,14 +57,7 @@ export {
   useLocalStorage, useMemo, useRef, useState, type RefObject
 } from './core/hooks.js';
 
-// Export store
-export {
-  combineReducers, connect, createSelector,
-  createSelector2, createSlice, createStore, initializeStore,
-  logger,
-  thunk, type Action,
-  type Store
-} from './core/store.js';
+// Store exports are handled by the re-export from 0x1-store below
 
 // Export animations
 export {

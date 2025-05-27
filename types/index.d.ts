@@ -57,3 +57,52 @@ export type JSXAttributes<T = HTMLElement> = Record<string, any> & {
  * Fragment component for grouping elements without a wrapper
  */
 export declare const Fragment: unique symbol;
+
+// Store type definitions (re-exported from 0x1-store)
+export interface Action {
+  type: string;
+  payload?: any;
+  [key: string]: any;
+}
+
+export interface Store<T> {
+  getState: () => T;
+  dispatch: (action: Action) => any;
+  subscribe: (listener: (state: T) => void) => () => void;
+  select: <S>(selector: (state: T) => S, listener?: (selectedState: S) => void) => () => S;
+}
+
+export declare function createStore<T>(
+  reducer: (state: T, action: Action) => T,
+  initialState: T,
+  middlewares?: any[]
+): Store<T>;
+
+export declare function createSlice<T>({
+  name,
+  initialState,
+  reducers
+}: {
+  name: string;
+  initialState: T;
+  reducers: Record<string, (state: T, payload?: any) => T | void>;
+}): {
+  name: string;
+  reducer: (state: T, action: Action) => T;
+  actions: Record<string, (payload?: any) => Action>;
+};
+
+export declare function combineReducers<T extends Record<string, any>>(
+  reducers: { [K in keyof T]: (state: T[K], action: Action) => T[K] }
+): (state: T, action: Action) => T;
+
+export declare function createSelector<T, R1, Result>(
+  selector1: (state: T) => R1,
+  resultFn: (res1: R1) => Result
+): (state: T) => Result;
+
+export declare function createSelector2<T, R1, R2, Result>(
+  selector1: (state: T) => R1,
+  selector2: (state: T) => R2,
+  resultFn: (res1: R1, res2: R2) => Result
+): (state: T) => Result;

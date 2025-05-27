@@ -1,36 +1,40 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "preserve",
-    "strict": true,
-    "esModuleInterop": true,
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "ES6"],
+    "allowJs": true,
     "skipLibCheck": true,
+    "strict": false,
     "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "0x1",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "baseUrl": ".",
     "paths": {
-      "0x1/*": [
-        "../../dist/*"
-      ],
-      "0x1": ["../../dist/index.js"],
-      "0x1-store": ["../../dist/store.js"]
-    },
-    "typeRoots": [
-      "./node_modules/@types",
-      "./types"
-    ]
+      "0x1": ["../dist/index"],
+      "0x1/*": ["../dist/*"],
+      "components/*": ["./components/*"],
+      "app/*": ["./app/*"]
+    }
   },
   "include": [
+    "jsx.d.ts",
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "dist"
+    "node_modules"
   ]
 }

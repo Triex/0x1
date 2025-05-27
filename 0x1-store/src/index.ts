@@ -16,7 +16,10 @@ export * from './advanced.js';
 export type { Action, AdvancedStore } from './advanced.js';
 export type { SimpleStore } from './simple.js';
 
-// Convenience aliases
+// Convenience aliases for backward compatibility
 export { createAdvancedStore as createReduxStore } from './advanced.js';
-export { createSimpleStore as createStore } from './simple.js';
+export { createSimpleStore } from './simple.js';
+
+// Export the advanced store as the main createStore for compatibility with existing code
+export { createAdvancedStore as createStore } from './advanced.js';
 

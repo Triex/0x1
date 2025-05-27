@@ -88,7 +88,6 @@ async function buildFramework() {
       'hooks.ts',
       'component.ts',
       'navigation.ts',
-      'store.ts', // FIXME: should get this from `0x1-store`, like we do with `0x1-router` - ensure aligned functionality
       'error-boundary.ts'
     ];
 
@@ -202,15 +201,27 @@ async function buildFramework() {
     console.log("📦 Building standalone packages...");
 
     // Build 0x1-store package
-    console.log("⚠️ 0x1-store build pending implementation, using src/core/store.ts instead (src/store.ts is a re-export of 0x1-store already)");
+    console.log("Building 0x1-store...");
+    const storeBuildResult = await Bun.build({
+      entrypoints: ["./0x1-store/src/index.ts"],
+      outdir: "./0x1-store/dist",
+      target: "browser",
+      format: "esm",
+      minify: true,
+    });
     
-    // Copy store to main dist
-    // const storeSource = resolve("0x1-store/dist/index.js");
-    // const storeDest = resolve(distDir, "core/store.js");
-    // if (existsSync(storeSource)) {
-    //   await Bun.write(storeDest, await Bun.file(storeSource).text());
-    //   console.log("✅ Copied store to dist/core/store.js");
-    // }
+    if (!storeBuildResult.success) {
+      throw new Error("0x1-store build failed");
+    }
+    console.log("✅ Built 0x1-store");
+    
+    // Copy store to main dist for dev server access
+    const storeSource = resolve("0x1-store/dist/index.js");
+    const storeDest = resolve(distDir, "core/store.js");
+    if (existsSync(storeSource)) {
+      await Bun.write(storeDest, await Bun.file(storeSource).text());
+      console.log("✅ Copied store to dist/core/store.js");
+    }
 
     // Build 0x1-router package
     console.log("Building 0x1-router...");

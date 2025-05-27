@@ -6,7 +6,6 @@
 import { existsSync } from 'fs';
 import { extname, join, resolve } from 'path';
 import { logger } from '../../utils/logger';
-import { notFoundHandler } from './error-boundary';
 
 // MIME type mapping for common file extensions
 const MIME_TYPES: Record<string, string> = {
@@ -127,23 +126,37 @@ export async function serveStaticFile(
   const filePath = resolve(projectPath, basePath, relativePath);
   
   try {
-    // Check if the file exists
+    // Check if the file exists and is a regular file
     if (!existsSync(filePath)) {
       // Try with .html extension if the file doesn't exist
       const htmlPath = `${filePath}.html`;
       if (existsSync(htmlPath)) {
-        return serveFile(htmlPath, isDev);
+        // Check if it's a regular file before serving
+        const htmlStats = await Bun.file(htmlPath).stat();
+        if (htmlStats.isFile()) {
+          return serveFile(htmlPath, isDev);
+        }
       }
       
       // Try serving index.html from the directory if fallbackToIndex is true
       if (fallbackToIndex) {
         const indexPath = join(filePath, 'index.html');
         if (existsSync(indexPath)) {
-          return serveFile(indexPath, isDev);
+          const indexStats = await Bun.file(indexPath).stat();
+          if (indexStats.isFile()) {
+            return serveFile(indexPath, isDev);
+          }
         }
       }
       
       // File not found
+      return null;
+    }
+    
+    // Check if the path is a regular file (not a directory)
+    const stats = await Bun.file(filePath).stat();
+    if (!stats.isFile()) {
+      // This is a directory or special file - don't try to serve it
       return null;
     }
     
@@ -159,21 +172,34 @@ export async function serveStaticFile(
  * Serve a file with proper MIME type and caching
  */
 async function serveFile(filePath: string, isDev: boolean): Promise<Response> {
-  // Get the file extension
-  const ext = extname(filePath).toLowerCase();
-  
-  // Get the appropriate MIME type and cache control
-  const contentType = getMimeType(filePath);
-  const cacheControl = isDev ? 'no-cache' : getCacheControl(filePath);
-  
-  // Read the file using Bun's optimized file API
-  const file = Bun.file(filePath);
-  
-  // Return the response with appropriate headers
-  return new Response(file, {
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': cacheControl
+  try {
+    // Get file stats to ensure it's a regular file
+    const stats = await Bun.file(filePath).stat();
+    
+    // Check if it's a regular file (not a directory or special file)
+    if (!stats.isFile()) {
+      throw new Error(`Path is not a regular file: ${filePath}`);
     }
-  });
+    
+    // Get the file extension
+    const ext = extname(filePath).toLowerCase();
+    
+    // Get the appropriate MIME type and cache control
+    const contentType = getMimeType(filePath);
+    const cacheControl = isDev ? 'no-cache' : getCacheControl(filePath);
+    
+    // Read the file content as text for better compatibility
+    const fileContent = await Bun.file(filePath).text();
+    
+    // Return the response with appropriate headers
+    return new Response(fileContent, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': cacheControl
+      }
+    });
+  } catch (error) {
+    logger.error(`Error serving file ${filePath}: ${error}`);
+    throw error;
+  }
 }
