@@ -71,6 +71,11 @@ jobs:
             echo "version_changed=false" >> $GITHUB_OUTPUT
           fi
       
+      - name: No version change detected (skipping sync)
+        if: steps.check-version.outputs.version_changed != 'true'
+        run: echo "::notice::No version change detected in package.json. Skipping version sync."
+        # This step always succeeds, preventing the job from failing when no version change
+      
       - name: Setup Bun
         if: steps.check-version.outputs.version_changed == 'true'
         uses: oven-sh/setup-bun@v1
