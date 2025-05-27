@@ -1,5 +1,5 @@
 {
-  "name": "0x1-full-app",
+  "name": "0x1-website",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -13,19 +13,20 @@
     "test": "bun test"
   },
   "dependencies": {
-    "0x1": "^0.0.173"
+    "0x1": "^0.0.174"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {
-    "@tailwindcss/forms": "^1.0.0",
-    "@tailwindcss/typography": "^1.0.0",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
+    "@tailwindcss/postcss": "^4.1.7",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
-    "sharp": "^0.33.2",
     "tailwindcss": "^4.1.7",
-    "typescript": "^5.3.3",
+    "typescript": "^5.4.5",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "sharp": "^0.33.2",
     "workbox-cli": "^7.0.0"
   },
   "engines": {
