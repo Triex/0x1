@@ -3,12 +3,13 @@
  * Builds the application for production
  */
 
-import { existsSync } from 'fs';
-import { mkdir, readdir } from 'fs/promises'; // For directory operations
+import { existsSync } from 'node:fs';
+import { mkdir, readdir } from 'node:fs/promises'; // For directory operations
 // We'll use Bun.file() instead of readFile/writeFile for better performance
-import { dirname, join, relative, resolve } from 'path';
-import { logger } from '../utils/logger.js';
-import { transpileJSX } from './jsx-transpiler.js'; // Import the JSX transpiler module
+import { dirname, join, relative, resolve } from 'node:path';
+import { buildAppBundle, buildComponents } from '../utils/builder'; // Import component builder utilities
+import { logger } from '../utils/logger';
+import { transpileJSX } from './jsx-transpiler';
 
 // For dynamic imports
 // Prefixing with underscore to indicate this interface is used for type checking only
@@ -29,6 +30,13 @@ export interface BuildOptions {
  * Build the application for production
  */
 export async function build(options: BuildOptions = {}): Promise<void> {
+  // const projectPath = process.cwd();
+  // const outputPath = options.outDir || join(projectPath, 'dist');
+  // const minify = options.minify ?? false;
+  
+  // // Define supported file extensions
+  // const fileExtensions = ['.js', '.jsx', '.ts', '.tsx'];
+
   // Start timing the build process
   const startTime = performance.now();
   // Only show logs if not silent
@@ -376,7 +384,6 @@ async function processHtml(
   // - Minify HTML
   // - Add CSP headers
   // - etc.
-
   return content;
 }
 
@@ -390,38 +397,20 @@ async function bundleJavaScript(
   options: { minify: boolean, ignorePatterns?: string[] }
 ): Promise<void> {
   const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
-
   // File extensions to look for
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
 
-  // Main entry file - always required
-  const mainEntryFile = findMainEntryFile(projectPath);
-  if (mainEntryFile) {
-    await processJSBundle(mainEntryFile, projectPath, { minify });
+  // Create public directory for bundled JS
+  const jsOutputPath = join(outputPath, 'public', 'js');
+  await mkdir(jsOutputPath, { recursive: true });
 
-    // Ensure the temp index.js file is correctly moved to index.js
-    const tempIndexPath = join(outputPath, '.temp-index.js');
-    const finalIndexPath = join(outputPath, 'index.js');
-
-    // Check if temp file exists but final doesn't
-    if (existsSync(tempIndexPath)) {
-      try {
-        // Read the content from temp file
-        const content = await Bun.file(tempIndexPath).text();
-        // Write to the final destination
-        await Bun.write(finalIndexPath, content);
-        logger.debug('Successfully created index.js from .temp-index.js');
-      } catch (error) {
-        logger.error(`Failed to copy .temp-index.js to index.js: ${error}`);
-      }
-    }
-  } else {
-    logger.warn('No main entry file found (index.tsx/ts/jsx/js). Project may not work correctly.');
-  }
-
+  // Create .0x1 directory for temp files if it doesn't exist
+  const tempDir = join(projectPath, '.0x1', 'temp');
+  await mkdir(tempDir, { recursive: true });
+  
   // Helper function to find main entry file
   function findMainEntryFile(dir: string): string | null {
-    const entryFileNames = ['index.js', 'index.ts', 'index.tsx', 'index.jsx', 'app.js', 'app.ts', 'app.tsx', 'app.jsx'];
+    const entryFileNames = ['index.js', 'index.ts', 'index.tsx', 'index.jsx', 'app.js', 'app.ts', 'app.tsx', 'app.jsx', '_app.js', '_app.ts', '_app.tsx', '_app.jsx'];
 
     for (const fileName of entryFileNames) {
       const entryPath = join(dir, fileName);
@@ -429,77 +418,85 @@ async function bundleJavaScript(
         return entryPath;
       }
     }
-
     return null;
+  }
+  
+  // First build all components using our new builder utility
+  const componentsBuilt = await buildComponents(projectPath);
+  
+  if (!componentsBuilt) {
+    logger.warn('No components were found or built. Application may not function correctly.');
+  }
+  
+  // Build the app bundle
+  const bundleBuilt = await buildAppBundle(projectPath);
+  
+  if (!bundleBuilt) {
+    // If bundle build fails, try traditional entry point approach as fallback
+    logger.warn('Failed to build using modern app structure, falling back to traditional entry point detection');
+    
+    // Find entry points using traditional approach
+    let mainEntryFile = findMainEntryFile(join(projectPath, 'app'));
+
+    // If no entry point found in app/, try src/ directory
+    if (!mainEntryFile && existsSync(join(projectPath, 'src'))) {
+      mainEntryFile = findMainEntryFile(join(projectPath, 'src'));
+    }
+
+    // If no entry point found in src/, check project root
+    if (!mainEntryFile) {
+      mainEntryFile = findMainEntryFile(projectPath);
+    }
+
+    if (!mainEntryFile) {
+      throw new Error('No entry point found. Please create app/_app.tsx or src/index.js');
+    }
+
+    // Process bundle
+    await processJSBundle(mainEntryFile, projectPath, { minify });
+  } else {
+    logger.info('✅ App bundle built successfully using modern structure');
+    
+    // Copy the built bundle to the output directory
+    const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
+    if (existsSync(builtBundlePath)) {
+      const bundleContent = await Bun.file(builtBundlePath).text();
+      await Bun.write(join(jsOutputPath, 'app-bundle.js'), bundleContent);
+    }
   }
 
   // Modern app router structure component discovery
-  // Find all page, layout, special component files, and regular components
-  async function findAppComponents(dir: string): Promise<string[]> {
+  async function findAppComponents(appDir: string): Promise<string[]> {
     const components: string[] = [];
-    // Also include normal components from root-level components directory
-    const projectRoot = dir.includes('/app') ? dir.split('/app')[0] : dir;
-    const rootComponentsDir = join(projectRoot, 'components');
     
-    // Special handling for app/pages directory - ensuring we discover all components in this structure
-    if (dir.includes('/app') && !dir.includes('/app/pages') && existsSync(join(dir, 'pages'))) {
-      const pagesDir = join(dir, 'pages');
-      const pagesComponents = await findAppComponents(pagesDir);
-      components.push(...pagesComponents);
-    }
-
-    // Process the app directory for page components
-    if (existsSync(dir)) {
-      const entries = await readdir(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const path = join(dir, entry.name);
+    const searchInDirectory = async (dir: string): Promise<void> => {
+      const items = await readdir(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const path = join(dir, item.name);
 
         // Skip ignored directories
-        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
+        if (item.isDirectory() && !ignorePatterns.includes(item.name)) {
           // Recursively search subdirectories
-          const subComponents = await findAppComponents(path);
-          components.push(...subComponents);
-        } else if (entry.isFile()) {
+          await searchInDirectory(path);
+        } else if (item.isFile()) {
           // Check for special app router components
           for (const ext of fileExtensions) {
             // Support for all app router special files
-            if (entry.name === `page${ext}` ||
-                entry.name === `layout${ext}` ||
-                entry.name === `loading${ext}` ||
-                entry.name === `error${ext}` ||
-                entry.name === `not-found${ext}`) {
+            if (item.name === `page${ext}` ||
+                item.name === `layout${ext}` ||
+                item.name === `loading${ext}` ||
+                item.name === `error${ext}` ||
+                item.name === `not-found${ext}`) {
               components.push(path);
               break;
             }
           }
         }
       }
-    }
+    };
 
-    // Add components from the root components directory
-    if (existsSync(rootComponentsDir)) {
-      const componentEntries = await readdir(rootComponentsDir, { withFileTypes: true });
-
-      for (const entry of componentEntries) {
-        const path = join(rootComponentsDir, entry.name);
-
-        if (entry.isDirectory() && !ignorePatterns.includes(entry.name)) {
-          // Recursively search subdirectories of components
-          const subComponents = await findAppComponents(path);
-          components.push(...subComponents);
-        } else if (entry.isFile()) {
-          // Add component files
-          for (const ext of fileExtensions) {
-            if (entry.name.endsWith(ext)) {
-              components.push(path);
-              break;
-            }
-          }
-        }
-      }
-    }
-
+    await searchInDirectory(appDir);
     return components;
   }
 
@@ -661,17 +658,38 @@ async function processJSBundle(entryFile: string, projectPath: string, options: 
       const indexJsContent = `
 // 0x1 Framework - Browser Compatible Version
 
+// Import main hooks system first
+import * as hooks from './core/hooks.js';
+
 // Import JSX runtime components
-import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime';
+import { jsx, jsxs, Fragment, createElement } from './jsx-runtime.js';
 
 // Import router components with consistent naming
-import { Router, RouterLink, RouterNavLink, RouterRedirect, createRouter } from '/0x1/router';
+import { Router, RouterLink, RouterNavLink, RouterRedirect, createRouter } from './router.js';
 
 // Export version
 export const version = '0.1.0';
 
+// Export all hooks
+export const {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useClickOutside,
+  useFetch,
+  useForm,
+  useLocalStorage,
+  setComponentContext,
+  clearComponentContext,
+  unmountComponent,
+  isComponentMounted,
+  getComponentStats,
+  getAllComponentStats
+} = hooks;
+
 // Export all components and utilities
-// Use consistent naming with renamed exports to avoid collisions
 export {
   // JSX Runtime exports
   jsx,
@@ -689,6 +707,19 @@ export {
 
 // Default export for easy access to all components
 export default {
+  // Hooks
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useClickOutside,
+  useFetch,
+  useForm,
+  useLocalStorage,
+  setComponentContext,
+  clearComponentContext,
+  
   // JSX Runtime
   jsx,
   jsxs,
@@ -707,6 +738,27 @@ export default {
 };`;
 
       await Bun.write(join(framework0x1Dir, 'index.js'), indexJsContent);
+      
+      // Also ensure hooks are available at the framework level
+      const frameworkHooksDir = join(framework0x1Dir, 'core');
+      await mkdir(frameworkHooksDir, { recursive: true });
+      
+      // Copy the transpiled hooks from dist if available
+      const distHooksPath = join(__dirname, '..', '..', '..', 'dist', 'core', 'hooks.js');
+      const nodeModulesHooksPath = join(framework0x1Dir, 'core', 'hooks.js');
+      
+      if (existsSync(distHooksPath)) {
+        await Bun.write(nodeModulesHooksPath, await Bun.file(distHooksPath).text());
+        console.log('✅ Hooks system copied to project framework directory');
+        
+        // Also ensure it's available in the node_modules structure for dev server
+        const nodeModulesDevPath = join(framework0x1Dir, '..', '..', 'node_modules', '0x1', 'core');
+        await mkdir(nodeModulesDevPath, { recursive: true });
+        await Bun.write(join(nodeModulesDevPath, 'hooks.js'), await Bun.file(distHooksPath).text());
+        console.log('✅ Hooks system copied to node_modules dev path');
+      } else {
+        console.warn('⚠️ Transpiled hooks not found at:', distHooksPath);
+      }
     }
     // Create a temporary file path for modified content
     let actualEntryFile = entryFile;

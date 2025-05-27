@@ -1,47 +1,76 @@
 {
   "name": "0x1",
-  "version": "0.0.168",
+  "version": "0.0.169",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/types/index.d.ts",
   "typesVersions": {
     "*": {
-      "*": ["dist/*"],
-      "jsx-runtime": ["types/jsx-runtime.d.ts"],
-      "jsx-dev-runtime": ["types/jsx-runtime.d.ts"],
-      "jsx": ["types/jsx.d.ts"],
-      "jsx-import-source": ["types/jsx-import-source.d.ts"]
+      "*": [
+        "dist/types/*"
+      ],
+      "jsx-runtime": [
+        "dist/types/jsx-runtime.d.ts"
+      ],
+      "jsx-dev-runtime": [
+        "dist/types/jsx-runtime.d.ts"
+      ],
+      "jsx": [
+        "dist/types/jsx.d.ts"
+      ],
+      "jsx-import-source": [
+        "dist/types/jsx-import-source.d.ts"
+      ]
     }
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./link": "./src/link.ts",
-    "./router": "./0x1-router/src/index.ts",
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./link": {
+      "types": "./dist/types/link.d.ts",
+      "import": "./dist/link.js",
+      "default": "./dist/link.js"
+    },
+    "./router": {
+      "types": "./dist/types/router.d.ts",
+      "import": "./dist/core/router.js",
+      "default": "./dist/core/router.js"
+    },
     "./core/*": {
+      "types": "./dist/types/*.d.ts",
       "import": "./dist/core/*.js",
-      "types": "./dist/core/*.d.ts"
+      "default": "./dist/core/*.js"
     },
     "./jsx-runtime": {
+      "types": "./dist/types/jsx-runtime.d.ts",
       "import": "./dist/jsx-runtime.js",
-      "types": "./dist/jsx-runtime.d.ts"
+      "default": "./dist/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
+      "types": "./dist/types/jsx-runtime.d.ts",
       "import": "./dist/jsx-dev-runtime.js",
-      "types": "./types/jsx-runtime.d.ts"
-    },
-    "./jsx-runtime-bridge": {
-      "import": "./dist/jsx-runtime-bridge.js",
-      "types": "./src/jsx-runtime-bridge.ts"
+      "default": "./dist/jsx-dev-runtime.js"
     },
     "./jsx": {
-      "types": "./types/jsx.d.ts"
+      "types": "./dist/types/jsx.d.ts"
     },
-    "./store": "./0x1-store/src/index.ts"
+    "./store": {
+      "types": "./dist/types/store.d.ts",
+      "import": "./dist/core/store.js",
+      "default": "./dist/core/store.js"
+    }
   },
   "bin": {
     "0x1": "./bin/0x1"
   },
+  "workspaces": [
+    "0x1-router",
+    "0x1-store"
+  ],
   "preferUnplugged": true,
   "files": [
     "dist",
@@ -60,18 +89,21 @@
   ],
   "scripts": {
     "test": "bun test",
-    "dev": "bun run --watch src/cli/index.ts dev",
-    "build": "bun run build:framework && bun run fix-ts && bun run build:cli",
+    "dev": "bun run build:framework && bun run examples/basic/dev.ts",
+    "build": "bun run build:clean && bun run build:framework && bun run build:validate && bun run build:cli",
+    "build:clean": "rm -rf dist && mkdir -p dist",
     "build:framework": "bun run scripts/build-framework.ts",
+    "build:validate": "bun run scripts/validate-build.ts",
     "build:cli": "bun run scripts/build-cli-with-size.js",
-    "build:templates": "cp -r templates dist/",
+    "build:templates": "echo 'Templates copied during framework build'",
     "fix-ts": "bun run scripts/fix-transpiled-js.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "update-version": "bun run scripts/update-version.ts",
     "prepare": "bun run update-version && bun run build",
-    "publish-package": "bun run prepare && npm publish"
+    "publish-package": "bun run prepare && npm publish",
+    "build:hooks": "bun build src/core/hooks.ts --outdir dist/core --target browser --format esm"
   },
   "keywords": [
     "bun",

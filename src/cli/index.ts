@@ -1,126 +1,77 @@
 #!/usr/bin/env bun
 /**
- * 0x1 CLI
- * Main entry point for the CLI commands
+ * 0x1 CLI - Optimized Entry Point
+ * Uses lazy loading to minimize bundle size
  */
 
-import { logger } from './utils/logger.js';
-import { parseArgs } from './utils/parse-args.js';
+import { logger } from './utils/logger';
+import { parseArgs } from './utils/parse-args';
 
-// Import modules using dynamic imports to work around potential TypeScript issues
-const modules: Record<string, any> = {};
+// Version info
+const CLI_VERSION = process.env.npm_package_version || '0.0.169';
 
-// Load command modules
-async function loadModules() {
-  // Core modules that should load without issues
-  modules.help = await import('./commands/help.js');
-  modules.new = await import('./commands/new.js');
-  modules.generate = await import('./commands/generate.js');
-  modules.preview = await import('./commands/preview.js');
-  modules.deploy = await import('./commands/deploy.js');
-  modules.pwa = await import('./commands/pwa.js');
-  
-  // Modules that might have import issues
-  try {
-    modules.dev = await import('./commands/dev.js');
-  } catch (error) {
-    logger.debug(`Failed to import dev module: ${error}`);
+// Command definitions with lazy loading
+const COMMANDS = {
+  new: {
+    description: 'Create a new 0x1 project',
+    loader: () => import('./commands/new'),
+    method: 'createNewProject'
+  },
+  create: {
+    description: 'Create a new 0x1 project (alias for new)',
+    loader: () => import('./commands/new'),
+    method: 'createNewProject'
+  },
+  dev: {
+    description: 'Start development server',
+    loader: () => import('./commands/dev'),
+    method: 'runDevServer'
+  },
+  build: {
+    description: 'Build for production',
+    loader: () => import('./commands/build'),
+    method: 'buildProject'
+  },
+  preview: {
+    description: 'Preview production build',
+    loader: () => import('./commands/preview'),
+    method: 'previewBuild'
+  },
+  generate: {
+    description: 'Generate components',
+    loader: () => import('./commands/generate'),
+    method: 'generateComponent'
+  },
+  gen: {
+    description: 'Generate components (alias)',
+    loader: () => import('./commands/generate'),
+    method: 'generateComponent'
+  },
+  g: {
+    description: 'Generate components (short alias)',
+    loader: () => import('./commands/generate'),
+    method: 'generateComponent'
+  },
+  deploy: {
+    description: 'Deploy to production',
+    loader: () => import('./commands/deploy'),
+    method: 'deployProject'
+  },
+  pwa: {
+    description: 'Add PWA features',
+    loader: () => import('./commands/pwa'),
+    method: 'addPWA'
+  },
+  help: {
+    description: 'Show help information',
+    loader: () => import('./commands/help'),
+    method: 'showHelp'
   }
-  
-  try {
-    modules.build = await import('./commands/build.js');
-  } catch (error) {
-    logger.debug(`Failed to import build module: ${error}`);
-  }
-}
+} as const;
 
-// Define command option interfaces
-interface NewProjectOptions {
-  template?: string;
-  tailwind?: boolean;
-  typescript?: boolean;
-  javascript?: boolean; // Add explicit JavaScript flag
-  stateManagement?: boolean;
-  minimal?: boolean;
-  force?: boolean;
-  tdlLicense?: boolean;
-  pwa?: boolean;
-  'no-pwa'?: boolean; // Add explicit no-pwa flag
-  themeColor?: string;
-  secondaryColor?: string;
-  textColor?: string;
-  theme?: string;
-  statusBarStyle?: 'default' | 'black' | 'black-translucent';
-  complexity?: 'minimal' | 'standard' | 'full';
-  overwrite?: boolean;
-  [key: string]: any;
-}
+type CommandName = keyof typeof COMMANDS;
 
-interface DevServerOptions {
-  port?: number;
-  host?: string;
-  https?: boolean;
-  open?: boolean;
-  config?: string;
-  [key: string]: any;
-}
-
-interface BuildOptions {
-  outDir?: string;
-  minify?: boolean;
-  config?: string;
-  [key: string]: any;
-}
-
-interface PreviewOptions {
-  port?: number;
-  host?: string;
-  https?: boolean;
-  open?: boolean;
-  dir?: string;
-  [key: string]: any;
-}
-
-interface GenerateOptions {
-  path?: string;
-  force?: boolean;
-  [key: string]: any;
-}
-
-interface DeployOptions {
-  provider?: string;
-  dir?: string;
-  [key: string]: any;
-}
-
-// Define Args interface with indexer for additional properties
-interface _Args {
-  _: string[];
-  [key: string]: any;
-}
-
-// Commented as `update-version` does this
-// // Read package version from package.json at startup
-// let packageVersion = '0.0.56'; // Default fallback version
-// const readPackageVersion = async () => {
-//   try {
-//     // Resolve the package.json path relative to the current module
-//     const packageJsonPath = new URL('../package.json', import.meta.url).pathname;
-//     if (existsSync(packageJsonPath)) {
-//       const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
-//       if (packageJson.version) {
-//         packageVersion = packageJson.version;
-//       }
-//     }
-//   } catch (error) {
-//     // Silent fail, we'll use the default version
-//   }
-// };
-
-// // Try to read the version at startup
-// readPackageVersion().catch(() => {});
-
-// CLI banner
+// CLI banner (lightweight)
 const showBanner = () => {
   logger.banner([
     ' ██████╗  ██╗  ██╗ ███╗',
@@ -130,66 +81,48 @@ const showBanner = () => {
     '╚██████╔╝ ██╔╝ ██╗  ██║',
     ' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework'
   ]);
-  // Import from package.json at build time
-  const packageVersion = process.env.npm_package_version || '0.0.168';
-  logger.info(`Running 0x1 CLI v${packageVersion} - The ultra-minimal TypeScript framework`);
+  logger.info(`Running 0x1 CLI v${CLI_VERSION} - The ultra-minimal TypeScript framework`);
   logger.spacer();
 };
 
 /**
- * Main CLI function
+ * Execute a command with lazy loading
  */
-async function main() {
-  // Load all command modules first
-  await loadModules();
+async function executeCommand(commandName: CommandName, args: any): Promise<void> {
+  const commandDef = COMMANDS[commandName];
   
-  const args = parseArgs(process.argv.slice(2));
-  const command = args._[0] || 'help';
-
-  // Show banner for all commands except dev server
-  if (!['dev', 'preview', 'build'].includes(command)) {
-    showBanner();
+  if (!commandDef) {
+    throw new Error(`Unknown command: ${commandName}`);
   }
 
   try {
-    switch (command) {
+    // Dynamically load the command module
+    const module = await commandDef.loader();
+    const method = (module as any)[commandDef.method];
+    
+    if (typeof method !== 'function') {
+      throw new Error(`Command ${commandName} does not export method ${commandDef.method}`);
+    }
+
+    // Execute the command with appropriate arguments
+    switch (commandName) {
       case 'new':
       case 'create':
-        await modules.new.createNewProject(args._[1], args as unknown as NewProjectOptions);
-        break;
-      
-      case 'dev':
-        if (!modules.dev) {
-          logger.error('Development server command is not available');
-          process.exit(1);
-        }
-        await modules.dev.runDevServer(args as unknown as DevServerOptions);
-        break;
-      
-      case 'build':
-        if (!modules.build) {
-          logger.error('Build command is not available');
-          process.exit(1);
-        }
-        await modules.build.buildProject(args as unknown as BuildOptions);
-        break;
-      
-      case 'preview':
-        await modules.preview.previewBuild(args as unknown as PreviewOptions);
+        await method(args._[1], args);
         break;
       
       case 'generate':
       case 'gen':
       case 'g':
-        await modules.generate.generateComponent(args._[1], args._[2], args as unknown as GenerateOptions);
+        await method(args._[1] || 'component', args._[2] || 'NewComponent', args);
         break;
       
       case 'deploy':
-        await modules.deploy.deployProject(args._[1], args as unknown as DeployOptions);
+        await method(args);
         break;
       
       case 'pwa':
-        await modules.pwa.addPWA({
+        await method({
           name: args.name,
           shortName: args.shortName,
           themeColor: args.themeColor,
@@ -202,15 +135,75 @@ async function main() {
         break;
       
       case 'help':
+        method(args._[1]);
+        break;
+      
       default:
-        modules.help.showHelp(args._[1]);
+        // For dev, build, preview - pass args directly
+        await method(args);
         break;
     }
   } catch (error) {
-    logger.error(`${error}`);
+    if (error instanceof Error && error.message.includes('Cannot resolve module')) {
+      throw new Error(`Command ${commandName} is not available in this build`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Main CLI function with optimized loading
+ */
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const command = (args._[0] || 'help') as CommandName;
+
+  // Show banner for all commands except dev server (to avoid clutter during development)
+  if (!['dev', 'preview', 'build'].includes(command)) {
+    showBanner();
+  }
+
+  // Validate command
+  if (!(command in COMMANDS)) {
+    logger.error(`Unknown command: ${command}`);
+    logger.info('Available commands:');
+    Object.entries(COMMANDS).forEach(([name, def]) => {
+      logger.info(`  ${name.padEnd(12)} ${def.description}`);
+    });
+    process.exit(1);
+  }
+
+  try {
+    await executeCommand(command, args);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(errorMessage);
+    
+    // Show debug info in development
+    if (process.env.DEBUG) {
+      console.error(error);
+    }
+    
     process.exit(1);
   }
 }
+
+// Error handling
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:' + error.message);
+  if (process.env.DEBUG) {
+    console.error(error);
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection:' + String(reason));
+  if (process.env.DEBUG) {
+    console.error(reason);
+  }
+  process.exit(1);
+});
 
 // Run CLI
 main().catch(err => {

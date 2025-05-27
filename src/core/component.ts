@@ -4,7 +4,7 @@
  * Fully compatible with modern app router component structure
  */
 
-import type { RouteParams } from "./router";
+import type { RouteParams } from "0x1-router";
 
 // Define possible return types for components
 export type ComponentReturn = HTMLElement | DocumentFragment | string | Node | null;

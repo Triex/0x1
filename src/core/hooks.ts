@@ -49,13 +49,27 @@ interface RefObject<T> {
 // Component registry - maps component ID to its hook data
 const componentRegistry = new Map<string, ComponentData>();
 
-// Update queue for batching state changes
+// Update queue for batching state changes (inspired by React's scheduler)
 const updateQueue = new Set<() => void>();
 let isProcessingUpdates = false;
 
-// Current component context
+// Debouncing mechanism for efficient updates (similar to React 19's concurrent features)
+const pendingUpdates = new Map<string, number>();
+const UPDATE_DEBOUNCE_MS = 16; // ~60fps, similar to React's frame scheduling
+
+// Component context management with stack for nested components
+interface ComponentContext {
+  id: string;
+  hookIndex: number;
+}
+
+// Global context management with stack for nested components
+const componentContextStack: ComponentContext[] = [];
 let currentComponentId: string | null = null;
 let currentHookIndex = 0;
+
+// Track if we're in a component rendering context
+let isRenderingComponent = false;
 
 // Component update callbacks
 const componentUpdateCallbacks = new Map<string, () => void>();
@@ -64,12 +78,33 @@ const componentUpdateCallbacks = new Map<string, () => void>();
 // Core Hook System Functions
 // ============================================================================
 
+// Browser initialization happens at the end of the file
+
 /**
  * Set the current component context for hooks to operate within
+ * This is the primary entry point for hook context management
  */
 export function setComponentContext(componentId: string, updateCallback?: () => void): void {
+  // Validate componentId
+  if (!componentId || componentId === 'undefined' || componentId === 'null') {
+    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+      console.debug(`[0x1 Hooks] Skipping context for invalid componentId: ${componentId}`);
+    }
+    return;
+  }
+  
+  // Save previous context to stack if exists
+  if (currentComponentId) {
+    componentContextStack.push({
+      id: currentComponentId,
+      hookIndex: currentHookIndex
+    });
+  }
+  
+  // Set new context
   currentComponentId = componentId;
   currentHookIndex = 0;
+  isRenderingComponent = true;
   
   // Initialize component data if it doesn't exist
   if (!componentRegistry.has(componentId)) {
@@ -92,14 +127,39 @@ export function setComponentContext(componentId: string, updateCallback?: () => 
   const componentData = componentRegistry.get(componentId)!;
   componentData.isMounted = true;
   componentData.hookIndex = 0;
+  
+  // Debug info
+  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+    console.log(`[0x1 Hooks] Entering component context: ${componentId}`);
+  }
 }
 
 /**
- * Clear the current component context
+ * Clear the current component context and restore previous context if available
  */
 export function clearComponentContext(): void {
-  currentComponentId = null;
-  currentHookIndex = 0;
+  // Debug info
+  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+    console.log(`[0x1 Hooks] Exiting component context: ${currentComponentId}`);
+  }
+  
+  // Pop previous context from stack if available
+  const previousContext = componentContextStack.pop();
+  if (previousContext) {
+    currentComponentId = previousContext.id;
+    currentHookIndex = previousContext.hookIndex;
+    isRenderingComponent = componentContextStack.length > 0;
+    
+    // Debug info for restored context
+    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+      console.log(`[0x1 Hooks] Restored component context: ${currentComponentId}`);
+    }
+  } else {
+    // No previous context, clear everything
+    currentComponentId = null;
+    currentHookIndex = 0;
+    isRenderingComponent = false;
+  }
 }
 
 /**
@@ -122,9 +182,19 @@ function getCurrentComponentData(): ComponentData {
  * Queue a component update
  */
 function queueUpdate(componentId: string): void {
+  // Validate componentId
+  if (!componentId || componentId === 'undefined' || componentId === 'null') {
+    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+      console.debug(`[0x1 Hooks] Skipping update for invalid componentId: ${componentId}`);
+    }
+    return;
+  }
+  
   const updateCallback = componentUpdateCallbacks.get(componentId);
   if (!updateCallback) {
-    console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
+    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+      console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
+    }
     return;
   }
   
@@ -139,13 +209,13 @@ function queueUpdate(componentId: string): void {
       isProcessingUpdates = false;
       
       // Execute all updates
-      updates.forEach(update => {
-        try {
-          update();
-        } catch (error) {
-          console.error('[0x1 Hooks] Error during component update:', error);
-        }
-      });
+              updates.forEach(update => {
+          try {
+            update();
+          } catch (error) {
+            handleError(error, 'component update');
+          }
+        });
     });
   }
 }
@@ -166,6 +236,80 @@ function depsChanged(oldDeps: any[] | undefined, newDeps: any[] | undefined): bo
 }
 
 // ============================================================================
+// Browser Bridge - For Router Integration
+// ============================================================================
+
+/**
+ * Global browser-compatible hook context entry function
+ * This function is exposed to the browser environment for the router to use
+ */
+export function enterComponentContext(componentId: string, updateCallback?: () => void): void {
+  setComponentContext(componentId, updateCallback);
+}
+
+/**
+ * Global browser-compatible hook context exit function
+ * This function is exposed to the browser environment for the router to use
+ */
+export function exitComponentContext(): void {
+  clearComponentContext();
+}
+
+/**
+ * Trigger component update - used by router to force re-render
+ */
+export function triggerComponentUpdate(componentId: string): void {
+  // Validate componentId
+  if (!componentId || componentId === 'undefined' || componentId === 'null') {
+    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+      console.debug(`[0x1 Hooks] Skipping trigger for invalid componentId: ${componentId}`);
+    }
+    return;
+  }
+  
+  queueUpdate(componentId);
+}
+
+/**
+ * Initialize browser compatibility
+ * This function attaches the hook context functions to the window object
+ */
+export function initializeBrowserCompat(): void {
+  if (typeof window !== 'undefined') {
+    // Set up window globals for hook context management
+    (window as any).__0x1_enterComponentContext = enterComponentContext;
+    (window as any).__0x1_exitComponentContext = exitComponentContext;
+    (window as any).__0x1_triggerUpdate = triggerComponentUpdate;
+    
+    // Add debug flag for verbose logging
+    (window as any).__0x1_debug = (window as any).__0x1_debug || false;
+    
+    // Compatibility for React hooks
+    if (!(window as any).React) {
+      (window as any).React = {};
+    }
+    
+    // Attach hook functions to React for compatibility
+    (window as any).React.useState = useState;
+    (window as any).React.useEffect = useEffect;
+    (window as any).React.useRef = useRef;
+    (window as any).React.useMemo = useMemo;
+    (window as any).React.useCallback = useCallback;
+    
+    // Add global hook tracking for hook-aware tools
+    (window as any).__0x1_hooks = {
+      isInitialized: true,
+      componentRegistry,
+      updateQueue,
+      componentContextStack,
+      currentComponentId,
+      currentHookIndex,
+      isRenderingComponent
+    };
+  }
+}
+
+// ============================================================================
 // Hook Implementations
 // ============================================================================
 
@@ -175,6 +319,9 @@ function depsChanged(oldDeps: any[] | undefined, newDeps: any[] | undefined): bo
 export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((prevValue: T) => T)) => void] {
   const componentData = getCurrentComponentData();
   const hookIndex = currentHookIndex++;
+  
+  // Capture the component ID when the state is created
+  const capturedComponentId = currentComponentId;
   
   // Initialize state if needed
   if (componentData.states.length <= hookIndex) {
@@ -195,11 +342,108 @@ export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((p
     // Only update if value actually changed
     if (!Object.is(currentValue, nextValue)) {
       componentData.states[hookIndex] = nextValue;
-      queueUpdate(currentComponentId!);
+      
+      // Minimal, efficient update approach inspired by React 19/Next.js 15
+      // Instead of full re-renders, use targeted DOM updates
+      if (typeof window !== 'undefined' && capturedComponentId) {
+        // Batch updates to avoid excessive re-renders
+        if (!(window as any).__0x1_updateScheduled) {
+          (window as any).__0x1_updateScheduled = true;
+          
+          // Use scheduler-like approach (similar to React's concurrent features)
+          queueMicrotask(() => {
+            (window as any).__0x1_updateScheduled = false;
+            
+            // Find and update only the affected DOM elements
+            updateAffectedElements(capturedComponentId);
+          });
+        }
+      }
     }
   };
   
   return [state, setState];
+}
+
+/**
+ * Efficient DOM update function inspired by modern frameworks
+ * Uses debouncing and targeted updates like React 19/Next.js 15
+ */
+function updateAffectedElements(componentId: string | null): void {
+  if (!componentId || typeof window === 'undefined') return;
+  
+  // Debounce updates to prevent excessive re-renders (React-like scheduling)
+  const existingTimeout = pendingUpdates.get(componentId);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+  }
+  
+  const timeoutId = setTimeout(() => {
+    pendingUpdates.delete(componentId);
+    performActualUpdate(componentId);
+  }, UPDATE_DEBOUNCE_MS);
+  
+  pendingUpdates.set(componentId, timeoutId as any);
+}
+
+/**
+ * Performs the actual DOM update after debouncing
+ */
+function performActualUpdate(componentId: string): void {
+  if (!componentId || typeof window === 'undefined') return;
+  
+  try {
+    // Use the update callback if available (most efficient)
+    const updateCallback = componentUpdateCallbacks.get(componentId);
+    
+    if (updateCallback) {
+      updateCallback();
+      return;
+    }
+    
+    // Fallback: find and update specific elements
+    const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+    
+    if (elements.length === 0) {
+      // Check for partial matches (in case of hash differences)
+      const allElements = document.querySelectorAll(`[data-component-id*="${componentId.split('_')[0]}"]`);
+      
+      if (allElements.length > 0) {
+        // Try to update the first matching element
+        const callback = componentUpdateCallbacks.get(componentId);
+        if (callback) {
+          callback();
+          return;
+        }
+      }
+      
+      // Last resort: minimal router update only if no specific elements found
+      if ((window as any).__0x1_router && typeof (window as any).__0x1_router.renderCurrentRoute === 'function') {
+        (window as any).__0x1_router.renderCurrentRoute();
+      }
+      return;
+    }
+    
+    // Re-render only the specific component elements
+    elements.forEach(element => {
+      if (element && element.parentNode) {
+        const componentData = componentRegistry.get(componentId);
+        if (componentData && componentData.isMounted) {
+          // Trigger component-specific update
+          const callback = componentUpdateCallbacks.get(componentId);
+          if (callback) {
+            callback();
+          }
+        }
+      }
+    });
+  } catch (error) {
+    handleError(error, 'targeted update');
+    // Fallback to router update only on error
+    if ((window as any).__0x1_router && typeof (window as any).__0x1_router.renderCurrentRoute === 'function') {
+      (window as any).__0x1_router.renderCurrentRoute();
+    }
+  }
 }
 
 /**
@@ -238,7 +482,7 @@ export function useEffect(effect: () => void | (() => void), deps?: any[]): void
         const cleanup = effect();
         effectData.cleanup = cleanup;
       } catch (error) {
-        console.error('[0x1 useEffect] Error in effect:', error);
+        handleError(error, 'useEffect');
       }
     });
   }
@@ -314,7 +558,7 @@ export function unmountComponent(componentId: string): void {
       try {
         effectData.cleanup();
       } catch (error) {
-        console.error('[0x1 Hooks] Error cleaning up effect:', error);
+        handleError(error, 'effect cleanup');
       }
     }
   });
@@ -591,11 +835,59 @@ export function useLocalStorage<T>(
 }
 
 // ============================================================================
+// Debug and Production Error Handling
+// ============================================================================
+
+/**
+ * Production-safe error handler
+ */
+function handleError(error: any, context: string): void {
+  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
+    console.error(`[0x1 Hooks] ${context}:`, error);
+  } else {
+    // In production, log minimal error info
+    console.error(`[0x1 Hooks] Error in ${context}`);
+  }
+}
+
+/**
+ * Enable debug mode for verbose logging
+ */
+export function enableDebugMode(): void {
+  if (typeof window !== 'undefined') {
+    (window as any).__0x1_debug = true;
+    console.log('[0x1 Hooks] Debug mode enabled - verbose logging activated');
+  }
+}
+
+/**
+ * Disable debug mode
+ */
+export function disableDebugMode(): void {
+  if (typeof window !== 'undefined') {
+    (window as any).__0x1_debug = false;
+    console.log('[0x1 Hooks] Debug mode disabled');
+  }
+}
+
+/**
+ * Check if debug mode is enabled
+ */
+export function isDebugMode(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__0x1_debug;
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
 export {
-  clearComponentContext as clearContext, getAllComponentStats as getAllStats, getComponentStats as getStats, isComponentMounted as isMounted, setComponentContext as setContext, unmountComponent as unmount
+  clearComponentContext as clearContext,
+  getAllComponentStats as getAllStats,
+  getComponentStats as getStats,
+  isComponentMounted as isMounted,
+  setComponentContext as setContext,
+  unmountComponent as unmount
 };
 
 // Default export for convenience
@@ -614,8 +906,32 @@ export default {
   unmountComponent,
   isComponentMounted,
   getComponentStats,
-  getAllComponentStats
+  getAllComponentStats,
+  enableDebugMode,
+  disableDebugMode,
+  isDebugMode
 };
 
 // Export the RefObject type
 export type { RefObject };
+
+// ============================================================================
+// Auto-Initialize Browser Compatibility
+// ============================================================================
+
+// Initialize browser compatibility automatically when module loads
+if (typeof window !== 'undefined') {
+  // Use setTimeout to ensure this runs after all module code is parsed
+  // This helps prevent circular references and ensures hooks are available
+  setTimeout(() => {
+    initializeBrowserCompat();
+    
+    // Log initialization if debug mode is enabled
+    if ((window as any).__0x1_debug) {
+      console.log('[0x1 Hooks] Browser compatibility layer initialized');
+    }
+    
+    // Hook system initialization complete
+    // Note: We don't trigger any updates during initialization to avoid spurious warnings
+  }, 0);
+}

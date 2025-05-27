@@ -145,16 +145,14 @@ async function updateCliVersions(version: string): Promise<void> {
     // Use Bun's native file API for better performance
     let indexContent = await Bun.file(cliIndexPath).text();
     
-    // Replace version in banner message and in the fallback value
-    // First, check if we're using dynamic version
-    if (indexContent.includes('process.env.npm_package_version || ')) {
-      // Replace the fallback version in the dynamic version code
-      indexContent = indexContent.replace(
-        /const packageVersion = process\.env\.npm_package_version \|\| '[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?';/g,
-        `const packageVersion = process.env.npm_package_version || '${version}';`
-      );
-    } else {
-      // Handle legacy hardcoded version format
+    // Replace version in CLI_VERSION constant
+    indexContent = indexContent.replace(
+      /const CLI_VERSION = process\.env\.npm_package_version \|\| '[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?';/g,
+      `const CLI_VERSION = process.env.npm_package_version || '${version}';`
+    );
+    
+    // Replace version in banner message if not using the CLI_VERSION variable
+    if (!indexContent.includes('logger.info(`Running 0x1 CLI v${CLI_VERSION}')) {
       indexContent = indexContent.replace(
         /logger\.info\(`Running 0x1 CLI v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)? - The ultra-minimal TypeScript framework`\);/g,
         `logger.info(\`Running 0x1 CLI v${version} - The ultra-minimal TypeScript framework\`);`

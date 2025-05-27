@@ -1,0 +1,394 @@
+/**
+ * 0x1 Framework - Development Server
+ * 
+ * Consolidated server implementation with proper MIME type handling,
+ * live reloading, and component transpilation for development.
+ */
+
+import { serve, type Server, type ServerWebSocket } from 'bun';
+import { existsSync, mkdirSync, readFileSync, watch } from 'fs';
+import { dirname, extname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { logger } from '../utils/logger';
+
+// Import handlers from the new structure
+import { handleComponentRequest } from './handlers/component-handler';
+import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from './handlers/css-handler';
+import { createErrorResponse, errorBoundary, notFoundHandler } from './middleware/error-boundary';
+import { getMimeType, serveStaticFile } from './middleware/static-files';
+
+// Path resolution helpers
+const currentFilePath = fileURLToPath(import.meta.url);
+
+// Calculate the absolute path to the framework root
+// src/cli/server/ -> go up 3 levels to reach framework root
+const frameworkPath = process.cwd().includes('00-Dev/0x1') 
+  ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+  : resolve(dirname(currentFilePath), '../../../');
+
+const frameworkDistPath = resolve(frameworkPath, "dist");
+const frameworkCorePath = join(frameworkDistPath, "core");
+
+/**
+ * Interface for development server options
+ */
+interface DevServerOptions {
+  port: number;
+  host: string;
+  projectPath: string;
+  debug?: boolean;
+  ignorePatterns?: string[];
+}
+
+/**
+ * Helper function to locate a file across multiple possible locations
+ * Returns the path if found, or null if not found
+ */
+function locateFile(filename: string): string | null {
+  // Define standard locations to check in priority order with absolute paths
+  const possibleLocations = [
+    join(dirname(currentFilePath), filename),                  // Current directory
+    join(frameworkPath, 'src', 'cli', 'server', filename),     // Server directory
+    join(frameworkPath, 'src', 'cli', 'commands', 'utils', filename), // Source tree utils
+    join(frameworkPath, 'dist', filename),                     // Dist root
+    join(frameworkPath, 'dist', 'browser', filename)           // Browser dist
+  ];
+  
+  // Try each location
+  for (const path of possibleLocations) {
+    if (existsSync(path)) {
+      logger.debug(`Found file at: ${path}`);
+      return path;
+    }
+  }
+  
+  // Not found anywhere
+  logger.debug(`File not found: ${filename}`);
+  return null;
+}
+
+/**
+ * Detect favicon in multiple locations and formats
+ * Searches in app/ and public/ directories and supports .ico, .svg, .png
+ */
+function detectFavicon(projectPath: string): { path: string; format: string; location: string } | null {
+  // Define formats and locations to check
+  const formats = [".ico", ".svg", ".png"];
+  const locations = ["public", "app"];
+  
+  // Track all found favicons
+  const foundFavicons: Array<{ path: string; format: string; location: string }> = [];
+  
+  // Check all combinations
+  for (const location of locations) {
+    for (const format of formats) {
+      const faviconName = format === ".ico" ? "favicon.ico" : `favicon${format}`;
+      const faviconPath = join(projectPath, location, faviconName);
+      
+      if (existsSync(faviconPath)) {
+        foundFavicons.push({ 
+          path: faviconPath, 
+          format: format.substring(1),  // Remove the dot
+          location 
+        });
+      }
+    }
+  }
+  
+  // Also check for src/public which is used by the framework itself
+  const frameworkFaviconPath = join(frameworkPath, "src", "public", "favicon.ico");
+  if (existsSync(frameworkFaviconPath)) {
+    foundFavicons.push({ 
+      path: frameworkFaviconPath, 
+      format: "ico",
+      location: "framework" 
+    });
+  }
+  
+  if (foundFavicons.length === 0) {
+    return null;
+  }
+  
+  // If multiple favicons found, log a warning
+  if (foundFavicons.length > 1) {
+    logger.warn(`Multiple favicons detected: ${foundFavicons.map(f => `${f.location}/${f.format}`).join(', ')}. Using ${foundFavicons[0].location}/favicon.${foundFavicons[0].format}`);
+  } else {
+    logger.info(`Using favicon from ${foundFavicons[0].location}/favicon.${foundFavicons[0].format}`);
+  }
+  
+  // Return the first one found (priority is defined by the order in locations and formats arrays)
+  return foundFavicons[0];
+}
+
+/**
+ * Broadcast reload message to connected WebSocket clients
+ */
+function broadcastReload(
+  clients: Set<ServerWebSocket<unknown>>, 
+  type: string = 'reload', 
+  filename?: string
+): void {
+  const message = JSON.stringify({ type, filename });
+  
+  for (const client of clients) {
+    try {
+      client.send(message);
+    } catch (error) {
+      // Remove disconnected clients
+      clients.delete(client);
+    }
+  }
+}
+
+/**
+ * Create the development server
+ */
+export async function createDevServer(options: DevServerOptions): Promise<{
+  server: Server;
+  watcher: { close: () => void };
+}> {
+  const {
+    port,
+    host,
+    projectPath,
+    ignorePatterns = ["node_modules", ".git", "dist"],
+      }
+    }
+  };
+
+  // Set up file watching with proper event handling
+  watcher.on('change', (eventType, filename) => {
+    if (!filename) return;
+    
+    // Convert filename to string if it's a Buffer - handle this conversion first
+    const filenameStr: string = filename instanceof Buffer ? filename.toString() : filename as string;
+    
+    // Skip files that match ignore patterns
+    const shouldIgnore = ignorePatterns.some((pattern: string) => 
+      filenameStr.includes(pattern)
+    );
+
+    if (shouldIgnore) return;
+
+    if (debug) {
+      logger.debug(`File changed: ${filenameStr}`);
+    }
+
+    // For CSS files, broadcast CSS update for hot-reloading
+    if (filenameStr.endsWith(".css")) {
+      broadcastReload(connectedClients, 'css-update', filenameStr);
+    } else {
+      // For other files, broadcast full reload
+      broadcastReload(connectedClients);
+    }
+  });
+
+  watcher.on('error', (error) => {
+    logger.error(`Watcher error: ${error}`);
+  });
+
+  // Enhanced HTML wrapper for app router
+  function wrapWithHTML(content: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0x1 App</title>
+    <link rel="stylesheet" href="/styles/tailwind.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/dist/browser/live-reload.js"></script>
+</head>
+<body>
+    <div id="root">${content}</div>
+    <script type="module">
+      // Import and mount the app
+      import { renderApp } from '/dist/app-bundle.js';
+      renderApp(document.getElementById('root'));
+    </script>
+    <script>
+      // WebSocket for live reload
+      const ws = new WebSocket('ws://localhost:${port}/ws');
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'reload') {
+          window.location.reload();
+        } else if (data.type === 'css-update') {
+          // Hot reload CSS
+          const links = document.querySelectorAll('link[rel="stylesheet"]');
+          links.forEach(link => {
+            const href = link.href;
+            link.href = href.includes('?') ? href + '&t=' + Date.now() : href + '?t=' + Date.now();
+          });
+        }
+      };
+    </script>
+</body>
+</html>`;
+  }
+
+  // MIME type mapping for proper content delivery
+  const mimeTypes: Record<string, string> = {
+    '.html': 'text/html',
+    '.js': 'application/javascript',
+    '.jsx': 'application/javascript',
+    '.ts': 'application/javascript',
+    '.tsx': 'application/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.eot': 'application/vnd.ms-fontobject',
+  };
+
+  // Helper to get MIME type based on file extension
+  function getMimeType(filePath: string): string {
+    const ext = extname(filePath).toLowerCase();
+    return mimeTypes[ext] || 'text/plain';
+  }
+
+  // Create Bun server
+  const server = Bun.serve({
+    port,
+    hostname: host,
+    fetch(req, server) {
+      const url = new URL(req.url);
+      
+      // Handle EventSource / SSE endpoint for live reload
+      if (url.pathname === '/__0x1_sse' || url.pathname.includes('events')) {
+        // Set up SSE response
+        const headers = new Headers({
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*'
+        });
+        
+        // Create a readable stream for SSE
+        const stream = new ReadableStream({
+          start(controller) {
+            // Send initial ping to establish connection
+            controller.enqueue('event: ping\ndata: {}\n\n');
+            
+            // Add this client to our connected clients
+            const sseClient = {
+              controller,
+              send: (data: string) => {
+                controller.enqueue(`data: ${data}\n\n`);
+              }
+            };
+            
+            // Store client reference for broadcasting
+            const clientId = Date.now().toString();
+            if (debug) logger.debug(`SSE client connected: ${clientId}`);
+          }
+        });
+        
+        return new Response(stream, { headers });
+      }
+      
+      // Handle WebSocket upgrade for live reload
+      if (url.pathname === '/ws' || url.pathname === '/__0x1_ws_live_reload') {
+        const success = server.upgrade(req);
+        return success 
+          ? undefined 
+          : new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      // Handle static files from public directory
+      if (url.pathname.startsWith('/public/')) {
+        const filePath = resolve(publicDir, url.pathname.slice(8));
+        if (existsSync(filePath)) {
+          const file = Bun.file(filePath);
+          return new Response(file, {
+            headers: { 'Content-Type': getMimeType(filePath) }
+          });
+        }
+      }
+
+      // Handle dist files (built components)
+      if (url.pathname.startsWith('/dist/')) {
+        const filePath = resolve(distDir, url.pathname.slice(6));
+        if (existsSync(filePath)) {
+          const file = Bun.file(filePath);
+          return new Response(file, {
+            headers: { 'Content-Type': getMimeType(filePath) }
+          });
+        }
+      }
+
+      // Handle CSS files from styles directory
+      if (url.pathname.startsWith('/styles/')) {
+        const filePath = resolve(publicDir, url.pathname.slice(1));
+        if (existsSync(filePath)) {
+          const file = Bun.file(filePath);
+          return new Response(file, {
+            headers: { 'Content-Type': 'text/css' }
+          });
+        }
+      }
+
+      // Handle root and all other routes with app content
+      try {
+        // Try to load the app's main content
+        const appBundlePath = resolve(distDir, 'app-bundle.js');
+        if (existsSync(appBundlePath)) {
+          const content = '<div>Loading 0x1 App...</div>';
+          return new Response(wrapWithHTML(content), {
+            headers: { 'Content-Type': 'text/html' }
+          });
+        } else {
+          // Fallback content
+          const content = `
+            <div style="padding: 2rem; font-family: system-ui;">
+              <h1>🚀 0x1 Development Server</h1>
+              <p>Your app is being built...</p>
+              <p><small>Waiting for app bundle at: ${appBundlePath}</small></p>
+            </div>
+          `;
+          return new Response(wrapWithHTML(content), {
+            headers: { 'Content-Type': 'text/html' }
+          });
+        }
+      } catch (error) {
+        const content = `
+          <div style="padding: 2rem; font-family: system-ui; color: red;">
+            <h1>❌ Server Error</h1>
+            <p>Failed to serve content: ${error}</p>
+          </div>
+        `;
+        return new Response(wrapWithHTML(content), {
+          headers: { 'Content-Type': 'text/html' }
+        });
+      }
+    },
+    
+    websocket: {
+      message(ws, message) {
+        // Handle WebSocket messages if needed
+      },
+      open(ws) {
+        connectedClients.add(ws);
+        if (debug) {
+          logger.debug('WebSocket client connected');
+        }
+      },
+      close(ws) {
+        connectedClients.delete(ws);
+        if (debug) {
+          logger.debug('WebSocket client disconnected');
+        }
+      },
+    },
+  });
+
+  return { server, watcher: watcherWithClose };
+} 

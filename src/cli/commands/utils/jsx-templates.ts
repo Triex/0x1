@@ -3,7 +3,7 @@
  * This module provides JSX runtime implementations for the 0x1 framework
  */
 
-import { logger } from "../../utils/logger.js";
+import { logger } from "../../utils/logger";
 
 /**
  * Generates the JSX runtime compatibility layer for browser use
@@ -1057,14 +1057,14 @@ export function generateRouterModule(): string {
     }
     
     // Handle navigation to a specific path
-    handleNavigation(path) {
+    navigate(path, pushState = true) {
       // Normalize the path
       path = path || '/';
       if (!path.startsWith('/')) {
         path = '/' + path;
       }
       
-      console.log("[0x1] Router handling navigation to: " + path);
+      console.log("[0x1] Router navigating to: " + path);
       
       // Find a matching route or use fallback
       const match = this.findMatchingRoute(path);
@@ -1072,7 +1072,7 @@ export function generateRouterModule(): string {
         console.warn("[0x1] No route found for path: " + path);
         // Try default route if available
         if (this.defaultRoute && this.defaultRoute !== path) {
-          return this.handleNavigation(this.defaultRoute);
+          return this.navigate(this.defaultRoute, false);
         }
         return this.renderErrorMessage("No route found for: " + path);
       }
@@ -1115,8 +1115,8 @@ export function generateRouterModule(): string {
         // Render the processed result
         this.renderResult(processedResult);
         
-        // Update the browser history if this was not triggered by a popstate event
-        if (!this._handlingPopState && path !== window.location.pathname) {
+        // Update the browser history if pushState is true and not triggered by a popstate event
+        if (pushState && !this._handlingPopState && path !== window.location.pathname) {
           window.history.pushState(null, '', path);
         }
         
@@ -1126,6 +1126,38 @@ export function generateRouterModule(): string {
         this.renderErrorMessage("Error navigating to " + path + ": " + (error.message || String(error)));
         return false;
       }
+    }
+    
+    // Initialize the router
+    init() {
+      console.log("[0x1] Router initializing...");
+      
+      // Set up event listeners
+      if (this.mode === "hash") {
+        window.addEventListener("hashchange", () => this.handleRouteChange());
+      } else {
+        window.addEventListener("popstate", () => {
+          this._handlingPopState = true;
+          this.handleRouteChange();
+          this._handlingPopState = false;
+        });
+        
+        // Intercept link clicks for history mode
+        document.addEventListener("click", (e) => {
+          // Only handle links with href attribute that should be handled by the router
+          if (e.target && e.target.tagName === "A" && e.target.href && !e.target.hasAttribute("target") && 
+              !e.target.hasAttribute("download") && e.target.hostname === window.location.hostname) {
+            e.preventDefault();
+            const href = e.target.getAttribute("href");
+            this.navigate(href);
+          }
+        });
+      }
+      
+      // Initial route handling
+      this.handleRouteChange();
+      
+      return this; // Return this for chaining
     }
     
     // Initialize routes from app directory components

@@ -6,7 +6,7 @@
  */
 
 import { Server, ServerWebSocket } from "bun";
-import { logger } from "../../../utils/logger.js";
+import { logger } from "../../../utils/logger";
 
 // Type definition for our WebSocket connection data
 export interface LiveReloadSocketData {

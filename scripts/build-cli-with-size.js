@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { spawn } from "bun";
 import fs from "node:fs";
 import { resolve } from "path";
 
@@ -18,64 +17,96 @@ function formatSize(bytes) {
   return `${size.toFixed(2)} ${units[unitIndex]}`;
 }
 
-// Run the build process
-console.log("⚙️  Building CLI...");
-const buildResult = await spawn([
-  "bun", "build", "./src/cli/index.ts", "--outdir=dist/cli", "--target=bun", "--minify"
-]);
-const output = await new Response(buildResult.stdout).text();
-console.log(output);
+// Ensure dist/cli directory exists
+const cliDistDir = resolve(process.cwd(), "dist/cli");
+if (!fs.existsSync(cliDistDir)) {
+  fs.mkdirSync(cliDistDir, { recursive: true });
+}
 
-// Get file size information - handle case when file doesn't exist yet
-const mainBundlePath = resolve(process.cwd(), "dist/cli/index.js");
-let stats;
+// Use Bun.build with external dependencies for better optimization
+console.log("⚙️  Building optimized CLI...");
+
 try {
-  stats = fs.statSync(mainBundlePath);  
-} catch (error) {
-  console.warn(`Warning: Bundle file not found at ${mainBundlePath}`);
-  console.warn('Creating output directory structure...');
-  // Create directory structure if it doesn't exist
-  try {
-    fs.mkdirSync(resolve(process.cwd(), "dist/cli"), { recursive: true });
-    // Create a minimal placeholder file so the build can proceed
-    fs.writeFileSync(mainBundlePath, '// Placeholder file');
-    stats = { size: 0 };
-  } catch (mkdirError) {
-    console.error(`Failed to create directories: ${mkdirError}`);
+  const result = await globalThis.Bun.build({
+    entrypoints: ["./src/cli/index.ts"],
+    outdir: "dist/cli",
+    target: "bun",
+    format: "esm",
+    minify: true,
+    splitting: false,
+    external: [
+      // Mark heavy dev server dependencies as external
+      "./commands/dev",
+      "./server/dev-server", 
+      "./server/handlers/*",
+      "./commands/utils/server/*",
+      
+      // External heavy dependencies
+      "tailwindcss",
+      "@tailwindcss/postcss",
+      "postcss", 
+      "autoprefixer",
+      "esbuild",
+      "typescript",
+      "lightningcss",
+      "sass"
+    ],
+    define: {
+      "process.env.NODE_ENV": '"production"',
+      "process.env.CLI_BUILD": '"true"'
+    }
+  });
+
+  if (!result.success) {
+    console.error("❌ CLI build failed:", result.logs);
     process.exit(1);
   }
-}
-const uncompressedSize = stats.size;
 
-// Generate gzipped version to show compressed size
-let compressedSize, ratioInverse, ratioString;
+  console.log("✅ CLI built to dist/cli/index.js (launcher will find it)");
 
-try {
-  // Use Bun's native capabilities for better cross-platform support
-  const gzipResult = await spawn(["sh", "-c", `gzip -c ${mainBundlePath} | wc -c`]);
-  const gzipOutput = await new Response(gzipResult.stdout).text();
-  compressedSize = parseInt(gzipOutput.trim(), 10) || 0;
+  // Get file size information
+  const mainBundlePath = resolve(process.cwd(), "dist/cli/index.js");
   
-  // Handle potential errors or empty results
-  if (isNaN(compressedSize) || compressedSize <= 0) {
-    compressedSize = Math.round(uncompressedSize * 0.3); // Estimate compression at 30%
-    console.warn('Warning: Could not determine compressed size, using estimate');
+  if (!fs.existsSync(mainBundlePath)) {
+    console.error("❌ CLI bundle file not found at", mainBundlePath);
+    process.exit(1);
   }
-  
-  ratioInverse = compressedSize > 0 ? (uncompressedSize / compressedSize) : 1;
-  ratioString = `${ratioInverse.toFixed(1)}`;
+
+  const stats = fs.statSync(mainBundlePath);
+  const uncompressedSize = stats.size;
+
+  // Generate gzipped version to show compressed size
+  let compressedSize, ratioInverse, ratioString;
+
+  try {
+    const gzipResult = await globalThis.Bun.spawn(["sh", "-c", `gzip -c "${mainBundlePath}" | wc -c`]);
+    const gzipOutput = await new Response(gzipResult.stdout).text();
+    compressedSize = parseInt(gzipOutput.trim(), 10) || 0;
+    
+    if (isNaN(compressedSize) || compressedSize <= 0) {
+      compressedSize = Math.round(uncompressedSize * 0.3);
+      console.warn('Warning: Could not determine compressed size, using estimate');
+    }
+    
+    ratioInverse = compressedSize > 0 ? (uncompressedSize / compressedSize) : 1;
+    ratioString = `${ratioInverse.toFixed(1)}`;
+  } catch (error) {
+    console.warn(`Warning: Error calculating compressed size: ${error.message}`);
+    compressedSize = Math.round(uncompressedSize * 0.3);
+    ratioInverse = 3.3;
+    ratioString = '3.3';
+  }
+
+  // Display results
+  console.log("\n📦 Optimized bundle information:");
+  console.log(`  • Main bundle: ${formatSize(uncompressedSize)} (${uncompressedSize.toLocaleString()} bytes)`);
+  console.log(`  • Compressed: ${formatSize(compressedSize)} (${compressedSize.toLocaleString()} bytes)`);
+  console.log(`  • Ratio: ${(compressedSize / uncompressedSize * 100).toFixed(1)}% (${ratioString}x reduction)`);
+  console.log(`  • External deps: ${result.external?.length || 0} packages excluded`);
+
+  console.log("\n🎉 Optimized CLI build completed successfully!\n");
+
 } catch (error) {
-  console.warn(`Warning: Error calculating compressed size: ${error.message}`);
-  // Provide reasonable fallback values
-  compressedSize = Math.round(uncompressedSize * 0.3); // Estimate compression at 30%
-  ratioInverse = 3.3; // Common compression ratio
-  ratioString = '3.3';
+  console.error("❌ CLI build error:", error);
+  process.exit(1);
 }
-
-// Display nice output
-console.log("\n📦 Bundle information:");
-console.log(`  • Main bundle: ${formatSize(uncompressedSize)} (${uncompressedSize.toLocaleString()} bytes)`);
-console.log(`  • Compressed: ${formatSize(compressedSize)} (${compressedSize.toLocaleString()} bytes)`);
-console.log(`  • Ratio: ${(compressedSize / uncompressedSize * 100).toFixed(1)}% (${ratioString}x reduction)`);
-
-console.log("\n🎉 Build completed successfully!\n");

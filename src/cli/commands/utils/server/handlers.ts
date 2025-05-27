@@ -7,9 +7,9 @@ import { type ServerWebSocket } from "bun";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger } from "../../utils/logger.js";
-import { transformBareImports } from "./dev-server-utils.js";
-import { discoverComponents, handleScriptRequest, transpileFile } from "./transpilation-utils.js";
+import { logger } from "../../../utils/logger";
+import { discoverComponents, handleScriptRequest, transpileFile } from "../transpilation-utils";
+import { transformBareImports } from "./dev-server";
 
 // Path resolution helpers
 const currentFilePath = import.meta.url;

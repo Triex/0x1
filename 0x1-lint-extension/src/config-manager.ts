@@ -8,12 +8,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 export class ConfigManager {
-  private readonly context: vscode.ExtensionContext;
-  private readonly extensionPath: string;
-  
-  constructor(context: vscode.ExtensionContext) {
-    this.context = context;
-    this.extensionPath = context.extensionPath;
+  // Simplified constructor - we don't need to store these values since they're not used
+  constructor(_context: vscode.ExtensionContext) {
+    // No need to store context or extensionPath as they're not used in any methods
   }
   
   /**
@@ -39,7 +36,7 @@ export class ConfigManager {
     const frameworkPath = this.findFrameworkPath(projectPath);
     
     // Default TypeScript configuration for 0x1 projects
-    let tsconfig = {
+    const tsconfig = {
       compilerOptions: {
         target: "ESNext",
         module: "ESNext",

@@ -4,27 +4,28 @@
 import { ThemeToggle } from './ThemeToggle';
 
 export function Header() {
-  // Toggle the theme between light and dark mode
-  function toggleTheme() {
-    const isDark = document.documentElement.classList.contains('dark');
-    const newTheme = isDark ? 'light' : 'dark';
-
-    // Toggle dark class on root element
-    document.documentElement.classList.toggle('dark');
-
-    // Save preference to local storage
-    localStorage.setItem('0x1-dark-mode', newTheme);
-  }
-
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
         {/* 0x1 Logo */}
-        <div className="flex items-center">
-          <div className="flex items-center mr-2 h-8 w-8 min-w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded text-white font-bold justify-center">
-            0x1
-          </div>
-          <span className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">Framework</span>
+        <div className="flex items-center space-x-2">
+          <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="11" fill="url(#gradient)" />
+            <path 
+              d="M13.2 3H9.5l-3.1 9.4h4.2L8.2 21l9.1-11.3h-5.5L13.2 3z" 
+              fill="#fef08a" 
+              stroke="#fef08a" 
+              strokeWidth="0.3" 
+              strokeLinejoin="round"
+            />
+            <defs>
+              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#7c3aed" />
+                <stop offset="100%" stopColor="#a78bf6" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span className="font-bold text-xl gradient-text">0x1</span>
         </div>
 
         {/* Right Side Menu */}

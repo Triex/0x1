@@ -317,7 +317,7 @@
         justify-content: space-between;
         align-items: center;
         width: 100%;
-        padding: 16px 20px;
+        padding: 8px 20px;
         background-color: #222236;
         border-top-left-radius: 12px;
         border-top-right-radius: 12px;

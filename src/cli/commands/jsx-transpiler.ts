@@ -73,7 +73,7 @@ ${processedSource}`;
   // For special component types, ensure they have the right imports
   if (isSpecialComponent) {
     // Add important imports based on component type
-    let specialImports = [];
+    const specialImports = [];
     
     if (isLayout) {
       if (!processedSource.includes('import { Link } from "0x1"')) {

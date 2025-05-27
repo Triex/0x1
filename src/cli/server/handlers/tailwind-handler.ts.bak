@@ -5,26 +5,241 @@
  * following Next.js 15's approach where Tailwind "just works".
  */
 
+import type { Subprocess } from "bun";
 import { existsSync, readFileSync, unlinkSync, watch, writeFileSync } from "fs";
 import { mkdir, stat } from "fs/promises";
-import { extname, join, sep } from "path";
-import { logger } from "../../utils/logger.js";
+import { dirname, extname, join } from "path";
+import { logger } from "../../utils/logger";
 
 // Cache for processed CSS to avoid redundant processing
 const cssCache: Record<string, { content: string; timestamp: number; contentType: string }> = {};
 
 // Store in-memory cache of processed CSS
 let processedTailwindCss: string | null = null;
+// @ts-ignore - this is actually reassigned
 let lastProcessedTime = 0;
 
 // Debounce control variables for Tailwind processing
+// @ts-ignore - these are actually reassigned
 let processingTailwind = false;
+// @ts-ignore - these are actually reassigned
 let processingQueued = false;
 let lastLogTime = 0; // Last time we logged a Tailwind processing message
 const LOG_THROTTLE_MS = 5000; // Only log every 5 seconds to reduce log spam
 
-// Keep track of temp files to ensure cleanup
+// Track temporary files for cleanup
 const tempFiles: string[] = [];
+
+/**
+ * Find Tailwind CSS input file
+ */
+export async function findTailwindCssInput(
+  projectPath: string
+): Promise<string | null> {
+  const possiblePaths = [
+    "src/styles/globals.css",
+    "src/styles/main.css",
+    "src/styles/index.css",
+    "src/index.css",
+    "styles/globals.css",
+    "styles/main.css",
+    "styles/index.css",
+    "public/styles.css",
+    "app/globals.css",
+  ];
+
+  for (const path of possiblePaths) {
+    const fullPath = join(projectPath, path);
+    if (existsSync(fullPath)) {
+      return fullPath;
+    }
+  }
+
+  // If no existing file is found, create one in the standard location
+  const defaultPath = join(projectPath, "src/styles/globals.css");
+  try {
+    // Create directory if it doesn't exist
+    await mkdir(dirname(defaultPath), { recursive: true });
+    
+    // Create a basic Tailwind CSS file
+    const basicTailwindCss = `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`;
+    writeFileSync(defaultPath, basicTailwindCss, "utf8");
+    
+    logger.info(`Created default Tailwind CSS file at ${defaultPath}`);
+    return defaultPath;
+  } catch (error) {
+    logger.error(`Failed to create default Tailwind CSS file: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Find Tailwind CSS executable in various locations
+ */
+export function findTailwindExecutable(projectPath: string): string | null {
+  const possiblePaths = [
+    // Local node_modules
+    join(projectPath, 'node_modules/.bin/tailwindcss'),
+    join(projectPath, 'node_modules/tailwindcss/lib/cli.js'),
+    
+    // Global installations
+    '/usr/local/bin/tailwindcss',
+    
+    // For Bun users
+    join(process.env.HOME || '', '.bun/bin/tailwindcss'),
+  ];
+
+  // Check for direct executables
+  for (const path of possiblePaths) {
+    if (existsSync(path)) {
+      logger.debug(`Found Tailwind CSS executable at: ${path}`);
+      return path;
+    }
+  }
+
+  // Check if we can use package runners
+  const packageRunners = ['bunx', 'npx', 'pnpx', 'yarn'];
+  for (const runner of packageRunners) {
+    try {
+      // Test if the runner can find tailwindcss
+      const testProcess = Bun.spawnSync([runner, 'tailwindcss', '--help'], {
+        stdout: 'pipe',
+        stderr: 'pipe'
+      });
+      
+      if (testProcess.exitCode === 0) {
+        logger.debug(`Found Tailwind CSS via ${runner}`);
+        return `${runner} tailwindcss`;
+      }
+    } catch (error) {
+      // Continue to next runner
+      continue;
+    }
+  }
+
+  logger.debug('No Tailwind CSS executable found');
+  return null;
+}
+
+/**
+ * Start Tailwind CSS process for development
+ */
+export async function startTailwindProcess(
+  projectPath: string,
+  inputFile: string
+): Promise<Subprocess | null> {
+  try {
+    // Generate a temporary config file if one doesn't exist
+    const configPath = join(projectPath, "tailwind.config.js");
+    if (!existsSync(configPath)) {
+      const basicConfig = `
+module.exports = {
+  content: [
+    "./app/**/*.{js,jsx,ts,tsx}",
+    "./src/**/*.{js,jsx,ts,tsx}",
+    "./components/**/*.{js,jsx,ts,tsx}"
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+`;
+      writeFileSync(configPath, basicConfig, "utf8");
+      logger.info(`Created default Tailwind config at ${configPath}`);
+    }
+
+    // Set up the output file path
+    const outputPath = join(projectPath, "public/styles.css");
+    
+    // Create the public directory if it doesn't exist
+    if (!existsSync(dirname(outputPath))) {
+      await mkdir(dirname(outputPath), { recursive: true });
+    }
+
+    // Check if tailwindcss binary is available
+    const hasTailwindBinary = await Bun.$`which tailwindcss`.text().then(() => true).catch(() => false);
+    
+    if (!hasTailwindBinary) {
+      logger.warn(`Tailwind CSS binary not found. Consider installing it globally with: bun add -g tailwindcss`);
+      return null;
+    }
+
+    // Start the Tailwind CSS watcher process
+    const tailwindProcess = Bun.spawn([
+      "tailwindcss",
+      "-i",
+      inputFile,
+      "-o",
+      outputPath,
+      "--watch",
+    ], {
+      cwd: projectPath,
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+
+    // Log output from the Tailwind process
+    const { stdout, stderr } = tailwindProcess;
+    if (stdout) {
+      const stdoutReader = stdout.getReader();
+      (async () => {
+        let reading = true;
+        while (reading) {
+          const { done, value } = await stdoutReader.read();
+          if (done) {
+            reading = false;
+            break;
+          }
+          const text = new TextDecoder().decode(value);
+          if (text.includes("Done")) {
+            logger.info("✓ Tailwind CSS compiled successfully");
+          } else if (!text.trim().startsWith("warn")) {
+            logger.debug(`[Tailwind] ${text.trim()}`);
+          }
+        }
+      })();
+    }
+
+    if (stderr) {
+      const stderrReader = stderr.getReader();
+      (async () => {
+        let reading = true;
+        while (reading) {
+          const { done, value } = await stderrReader.read();
+          if (done) {
+            reading = false;
+            break;
+          }
+          const text = new TextDecoder().decode(value);
+          logger.error(`[Tailwind] ${text.trim()}`);
+        }
+      })();
+    }
+
+    logger.info(`Started Tailwind CSS watcher (PID: ${tailwindProcess.pid})`);
+    return tailwindProcess;
+  } catch (error) {
+    logger.error(`Failed to start Tailwind CSS process: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Process a CSS file
+ */
+export async function processFile(filePath: string, projectPath: string): Promise<string> {
+  try {
+    // Read the file
+    const content = await Bun.file(filePath).text();
+    
+    // Simple processing for now
+    return content;
+  } catch (error) {
+    logger.error(`Failed to process CSS file ${filePath}: ${error}`);
+    return '/* Error processing CSS file */';
+  }
+}
 
 /**
  * Serve processed Tailwind CSS
@@ -32,7 +247,7 @@ const tempFiles: string[] = [];
 export function getProcessedTailwindCss(): { content: string; contentType: string } {
   return {
     content: processedTailwindCss || '/* Tailwind CSS processing pending */',
-    contentType: 'text/css'
+    contentType: 'text/css; charset=utf-8'
   };
 }
 
@@ -245,6 +460,23 @@ ${content}`);
 }
 
 /**
+ * Clean up temporary files created during processing
+ */
+function cleanupTempFiles(): void {
+  for (const tempFile of tempFiles) {
+    try {
+      if (existsSync(tempFile)) {
+        unlinkSync(tempFile);
+        logger.debug(`Cleaned up temp file: ${tempFile}`);
+      }
+    } catch (error) {
+      logger.debug(`Failed to clean up temp file ${tempFile}: ${error}`);
+    }
+  }
+  tempFiles.length = 0; // Clear the array
+}
+
+/**
  * Start a file watcher for Tailwind CSS that only rebuilds when relevant files change
  * Uses Node.js fs.watch API that Bun supports
  */
@@ -411,339 +643,97 @@ export function startTailwindWatcher(projectPath: string): { close: () => void }
       }
     }
   };
-  
-  // Create a cleanup function that ensures all temp files are deleted
-  function cleanupTempFiles() {
-    // Clean up any temporary files that might still exist
-    if (tempFiles.length > 0) {
-      logger.info(`Cleaning up ${tempFiles.length} temporary Tailwind processor files...`);
-      
-      for (const tempFile of tempFiles) {
-        try {
-          if (existsSync(tempFile)) {
-            unlinkSync(tempFile);
-            logger.debug(`Cleaned up temporary file: ${tempFile}`);
-          }
-        } catch (error) {
-          logger.debug(`Failed to clean up temporary file ${tempFile}: ${error}`);
-        }
-      }
-      
-      // Clear the array
-      tempFiles.length = 0;
-    }
-    
-    // Also clean up src/app.css in the framework root directory if it exists
-    // This prevents accidental generation during development or builds
-    const frameworkRootMarkers = [
-      'src/cli/commands',
-      'scripts/build-framework.ts'
-    ];
-    
-    // Check if this looks like the framework root
-    if (frameworkRootMarkers.every(marker => existsSync(join(process.cwd(), marker)))) {
-      const srcAppCssPath = join(process.cwd(), 'src', 'app.css');
-      if (existsSync(srcAppCssPath)) {
-        try {
-          unlinkSync(srcAppCssPath);
-          logger.info(`Removed unnecessary src/app.css from framework root`);
-        } catch (error) {
-          logger.debug(`Failed to clean up src/app.css: ${error}`);
-        }
-      }
-    }
-    
-    // Also check for any remaining processor files in the .0x1 directory
-    const tempDir = join(projectPath, '.0x1');
-    if (existsSync(tempDir)) {
-      try {
-        // Use Bun.spawnSync to list files in the directory (more reliable than Bun.file)
-        const { stdout } = Bun.spawnSync(['ls', '-la', tempDir], {
-          cwd: projectPath,
-          stderr: 'pipe',
-          stdout: 'pipe'
-        });
-        
-        const output = new TextDecoder().decode(stdout);
-        const lines = output.split('\n');
-        
-        // Process each line to find tailwind processor files
-        for (const line of lines) {
-          const match = line.match(/\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\.tailwind-processor-.*\.mjs)/);
-          if (match && match[1]) {
-            const fileName = match[1];
-            try {
-              const filePath = join(tempDir, fileName);
-              if (existsSync(filePath)) {
-                unlinkSync(filePath);
-                logger.debug(`Cleaned up leftover processor file: ${fileName}`);
-              }
-            } catch (e) {
-              // Ignore errors during cleanup
-            }
-          }
-        }
-      } catch (error) {
-        // Ignore errors reading directory
-      }
-    }
-  }
-  
-  // Return a simple cleanup function that just handles temp files
-  return {
-    close() {
-      try {
-        // Clean up all temporary files
-        cleanupTempFiles();
-        logger.info("Stopping Tailwind CSS watcher");
-      } catch (error) {
-        logger.error(`Error shutting down Tailwind watcher: ${error}`);
-      }
-    }
-  };
 }
-
-/**
- * Get processed Tailwind CSS content
- * This is used by the server to serve the CSS without writing to disk
- */
-// This function is replaced with the detailed version below
-// export function getProcessedTailwindCss(): string {
-//   return processedTailwindCss || '/* Tailwind CSS processing pending */'; 
-// }
 
 /**
  * Process Tailwind CSS in memory without generating unnecessary files
  * With improved debouncing to prevent excessive processing and log spam
  */
 export async function processTailwindCss(projectPath: string): Promise<boolean> {
-  // Implement debouncing for frequent calls
-  if (processingTailwind) {
-    // If already processing, queue up and return immediately
-    processingQueued = true;
-    return true;
-  }
-  
-  // Implement log throttling to reduce console spam
-  const shouldLog = Date.now() - lastLogTime > LOG_THROTTLE_MS;
-  if (shouldLog) {
-    logger.info("Processing Tailwind CSS...");
-    lastLogTime = Date.now();
-  }
-  
-  // Set processing flag
-  processingTailwind = true;
-  
   try {
-    // Define paths for input and output CSS files
-    // Check for Next.js style app directory first
-    const appGlobalsCssPath = join(projectPath, "app", "globals.css");
-    const srcAppCssPath = join(projectPath, "src", "app.css");
+    // Find Tailwind executable
+    const tailwindExecutable = findTailwindExecutable(projectPath);
     
-    // Determine which input CSS file to use
-    let inputCssPath: string;
-    
-    if (existsSync(appGlobalsCssPath)) {
-      inputCssPath = appGlobalsCssPath;
-    } else if (existsSync(srcAppCssPath)) {
-      inputCssPath = srcAppCssPath;
-    } else {
-      logger.error(`No Tailwind CSS file found in app/globals.css or src/app.css`);
-      // Create one in the app directory if it exists
-      if (existsSync(join(projectPath, "app"))) {
-        await ensureGlobalCss(projectPath);
-        inputCssPath = appGlobalsCssPath;
-      } else {
-        await ensureGlobalCss(projectPath);
-        inputCssPath = srcAppCssPath;
-      }
+    if (!tailwindExecutable) {
+      logger.warn('💠 Tailwind CSS not found locally, trying to install...');
       
-      // Check again after creation
-      if (!existsSync(inputCssPath)) {
-        logger.error(`Failed to create Tailwind CSS file at ${inputCssPath}`);
-        processingTailwind = false;
-        return false;
-      }
-    }
-    
-    // Read the input CSS file
-    const cssContent = readFileSync(inputCssPath, 'utf-8');
-    
-    // Ensure necessary dependencies are installed
-    const dependencies = [
-      { name: 'tailwindcss', path: join(projectPath, 'node_modules', 'tailwindcss') },
-      { name: '@tailwindcss/postcss', path: join(projectPath, 'node_modules', '@tailwindcss', 'postcss') },
-      { name: 'postcss', path: join(projectPath, 'node_modules', 'postcss') }
-    ];
-    
-    // If we're in the main 0x1 repo, use the parent's node_modules
-    if (projectPath.includes('/testapp')) {
-      const parentDir = join(projectPath, '..');
-      dependencies.forEach(dep => {
-        if (!existsSync(dep.path)) {
-          dep.path = join(parentDir, 'node_modules', dep.name.replace('/', sep));
+      // Try to install Tailwind CSS
+      try {
+        logger.info('💠 Installing Tailwind CSS with Bun...');
+        const installProcess = Bun.spawnSync(['bun', 'add', '-d', 'tailwindcss'], {
+          cwd: projectPath,
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        
+        if (installProcess.exitCode === 0) {
+          logger.success('✅ Tailwind CSS installed successfully');
+          // Retry finding the executable
+          const newExecutable = findTailwindExecutable(projectPath);
+          if (newExecutable) {
+            return processTailwindCssWithExecutable(projectPath, newExecutable);
+          }
+        } else {
+          logger.error('❌ Failed to install Tailwind CSS');
+          return false;
         }
-      });
-    }
-    
-    const missingDeps = dependencies.filter(dep => !existsSync(dep.path));
-    
-    if (missingDeps.length > 0) {
-      logger.warn(`Missing dependencies: ${missingDeps.map(d => d.name).join(', ')}`);
-      logger.info('Installing required dependencies with bun...');
-      
-      // Install missing dependencies with bun
-      const installProcess = Bun.spawn(['bun', 'install', ...missingDeps.map(d => d.name)], {
-        cwd: projectPath,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-      
-      const exitCode = await installProcess.exited;
-      
-      if (exitCode !== 0) {
-        const stderr = await new Response(installProcess.stderr).text();
-        logger.error(`Error installing dependencies: ${stderr}`);
-        processingTailwind = false;
+      } catch (installError) {
+        logger.error(`Failed to install Tailwind CSS: ${installError}`);
         return false;
       }
       
-      logger.success('Dependencies installed successfully!');
+      return false;
     }
-    
-    // Create a temporary processor script in memory and only write to disk when executing
-    // Modern ESM script to process Tailwind CSS using v4 API directly
-    const processorScript = `
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import postcss from 'postcss';
-import tailwindcssPostcss from '@tailwindcss/postcss';
 
-// Define paths
-const inputPath = '${inputCssPath.replace(/\\/g, '\\')}';
+    return processTailwindCssWithExecutable(projectPath, tailwindExecutable);
 
-// Read input CSS
-const css = readFileSync(inputPath, 'utf8');
-
-// Process with PostCSS and Tailwind
-async function processCss() {
-  try {
-    const result = await postcss([
-      tailwindcssPostcss({
-        content: [
-          join('${projectPath.replace(/\\/g, '\\')}', '**', '*.{js,jsx,ts,tsx}'),
-          join('${projectPath.replace(/\\/g, '\\')}', 'app', '**', '*.{js,jsx,ts,tsx}'),
-          join('${projectPath.replace(/\\/g, '\\')}', 'components', '**', '*.{js,jsx,ts,tsx}'),
-          join('${projectPath.replace(/\\/g, '\\')}', 'src', '**', '*.{js,jsx,ts,tsx}'),
-          join('${projectPath.replace(/\\/g, '\\')}', 'index.html')
-        ],
-        darkMode: 'class',
-      })
-    ]).process(css, {
-      from: inputPath
-    });
-
-    // Output the CSS to stdout for the parent process to capture
-    console.log(result.css);
-    // Signal successful completion
-    process.exit(0);
   } catch (error) {
-    console.error('Error processing Tailwind CSS:', error);
-    process.exit(1);
+    logger.error(`Failed to process Tailwind CSS: ${error}`);
+    return false;
   }
 }
 
-processCss();
-`;
-    
-    // Use temp file with unique name for the processor script
-    const tempDir = join(projectPath, '.0x1');
-    const tempFilePath = join(tempDir, `.tailwind-processor-${Date.now()}.mjs`);
-    
-    // Add to list of temp files to ensure cleanup
-    tempFiles.push(tempFilePath);
-    
-    // Ensure temp directory exists
-    if (!existsSync(tempDir)) {
-      await mkdir(tempDir, { recursive: true });
+/**
+ * Process Tailwind CSS with a known executable
+ */
+async function processTailwindCssWithExecutable(projectPath: string, executable: string): Promise<boolean> {
+  try {
+    const inputCss = join(projectPath, 'src/input.css');
+    const outputCss = join(projectPath, '.0x1/public/styles.css');
+
+    // Ensure input.css exists
+    if (!existsSync(inputCss)) {
+      const defaultCss = `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`;
+      await Bun.write(inputCss, defaultCss);
+      logger.info('💠 Created default input.css');
     }
+
+    // Build the command
+    const isPackageRunner = executable.includes(' ');
+    const command = isPackageRunner ? executable.split(' ') : [executable];
+    const args = [
+      '--input', inputCss,
+      '--output', outputCss,
+      '--minify'
+    ];
+
+    const finalCommand = [...command, ...args];
     
-    try {
-      // Write the temporary processor script
-      writeFileSync(tempFilePath, processorScript, 'utf-8');
-      
-      // Execute the processor script with bun
-      if (shouldLog) {
-        logger.info('Processing CSS with Tailwind...');
-      }
-      
-      const processResult = Bun.spawn(['bun', 'run', tempFilePath], {
-        cwd: projectPath,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-      
-      const exitCode = await processResult.exited;
-      
-      // Clean up temp file if it exists
-      if (tempFilePath && existsSync(tempFilePath)) {
-        try {
-          unlinkSync(tempFilePath);
-          // Remove from temp files list
-          const index = tempFiles.indexOf(tempFilePath);
-          if (index > -1) {
-            tempFiles.splice(index, 1);
-          }
-        } catch (error) {
-          // Only log clean-up errors if they're not due to file not existing
-          if ((error as any).code !== 'ENOENT') {
-            logger.warn(`Failed to clean up temporary file: ${tempFilePath}`);
-          }
-        }
-      }
-      
-      const cssError = await new Response(processResult.stderr).text();
-      if (cssError) {
-        logger.error(`Error processing Tailwind CSS: ${cssError}`);
-        processingTailwind = false;
-        return false;
-      }
-      
-      // Store the processed CSS in memory
-      const cssOutput = await new Response(processResult.stdout).text();
-      if (cssOutput) {
-        // Only log success message if we're not throttling logs
-        const shouldLogSuccess = Date.now() - lastLogTime > LOG_THROTTLE_MS;
-        if (shouldLogSuccess) {
-          logger.success("Tailwind CSS processing complete!");
-          lastLogTime = Date.now();
-        }
-      }
-      processedTailwindCss = cssOutput;
-      lastProcessedTime = Date.now();
-    } catch (error) {
-      logger.error(`Error executing Tailwind processor: ${error}`);
-      processingTailwind = false;
+    const process = Bun.spawnSync(finalCommand, {
+      cwd: projectPath,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    if (process.exitCode === 0) {
+      logger.success('✅ Tailwind CSS processed successfully');
+      return true;
+    } else {
+      const stderr = new TextDecoder().decode(process.stderr);
+      logger.error(`Tailwind CSS process failed: ${stderr}`);
       return false;
     }
-    
-    // Success notification, but throttle logging
-    if (shouldLog) {
-      logger.success('Tailwind CSS processing complete!');
-    }
-    
-    // Finish processing and check if another process is queued
-    processingTailwind = false;
-    
-    // If another process was queued during this one, process it immediately
-    if (processingQueued) {
-      processingQueued = false;
-      // Use setTimeout to avoid stack overflow from recursion
-      setTimeout(() => processTailwindCss(projectPath), 0);
-    }
-    
-    return true;
+
   } catch (error) {
     logger.error(`Error processing Tailwind CSS: ${error}`);
-    processingTailwind = false;
     return false;
   }
 }

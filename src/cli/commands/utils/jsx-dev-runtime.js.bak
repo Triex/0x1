@@ -1,0 +1,526 @@
+var __defProp = Object.defineProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: (newValue) => all[name] = () => newValue
+    });
+};
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+
+// src/core/hooks.ts
+var exports_hooks = {};
+__export(exports_hooks, {
+  useState: () => useState,
+  useRef: () => useRef,
+  useMemo: () => useMemo,
+  useLocalStorage: () => useLocalStorage,
+  useForm: () => useForm,
+  useFetch: () => useFetch,
+  useEffect: () => useEffect,
+  useClickOutside: () => useClickOutside,
+  useCallback: () => useCallback,
+  unmountComponent: () => unmountComponent,
+  unmount: () => unmountComponent,
+  setCurrentComponent: () => setCurrentComponent,
+  setContext: () => setComponentContext,
+  setComponentContext: () => setComponentContext,
+  resetHookContext: () => resetHookContext,
+  isMounted: () => isComponentMounted,
+  isComponentMounted: () => isComponentMounted,
+  getStats: () => getComponentStats,
+  getComponentStats: () => getComponentStats,
+  getAllStats: () => getAllComponentStats,
+  getAllComponentStats: () => getAllComponentStats,
+  default: () => hooks_default,
+  clearContext: () => clearComponentContext,
+  clearComponentContext: () => clearComponentContext
+});
+function setComponentContext(componentId, updateCallback) {
+  currentComponentId = componentId;
+  currentHookIndex = 0;
+  if (!componentRegistry.has(componentId)) {
+    componentRegistry.set(componentId, {
+      states: [],
+      effects: [],
+      memos: [],
+      callbacks: [],
+      refs: [],
+      hookIndex: 0,
+      isMounted: false
+    });
+  }
+  if (updateCallback) {
+    componentUpdateCallbacks.set(componentId, updateCallback);
+  }
+  const componentData = componentRegistry.get(componentId);
+  componentData.isMounted = true;
+  componentData.hookIndex = 0;
+}
+function clearComponentContext() {
+  currentComponentId = null;
+  currentHookIndex = 0;
+}
+function getCurrentComponentData() {
+  if (!currentComponentId) {
+    throw new Error("[0x1 Hooks] Hook called outside of component context");
+  }
+  const componentData = componentRegistry.get(currentComponentId);
+  if (!componentData) {
+    throw new Error("[0x1 Hooks] Component data not found");
+  }
+  return componentData;
+}
+function queueUpdate(componentId) {
+  const updateCallback = componentUpdateCallbacks.get(componentId);
+  if (!updateCallback) {
+    console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
+    return;
+  }
+  updateQueue.add(updateCallback);
+  if (!isProcessingUpdates) {
+    isProcessingUpdates = true;
+    queueMicrotask(() => {
+      const updates = Array.from(updateQueue);
+      updateQueue.clear();
+      isProcessingUpdates = false;
+      updates.forEach((update) => {
+        try {
+          update();
+        } catch (error) {
+          console.error("[0x1 Hooks] Error during component update:", error);
+        }
+      });
+    });
+  }
+}
+function depsChanged(oldDeps, newDeps) {
+  if (oldDeps === undefined || newDeps === undefined) {
+    return oldDeps !== newDeps;
+  }
+  if (oldDeps.length !== newDeps.length) {
+    return true;
+  }
+  return oldDeps.some((dep, index) => !Object.is(dep, newDeps[index]));
+}
+function useState(initialValue) {
+  const componentData = getCurrentComponentData();
+  const hookIndex = currentHookIndex++;
+  if (componentData.states.length <= hookIndex) {
+    const value = typeof initialValue === "function" ? initialValue() : initialValue;
+    componentData.states[hookIndex] = value;
+  }
+  const state = componentData.states[hookIndex];
+  const setState = (newValue) => {
+    const currentValue = componentData.states[hookIndex];
+    const nextValue = typeof newValue === "function" ? newValue(currentValue) : newValue;
+    if (!Object.is(currentValue, nextValue)) {
+      componentData.states[hookIndex] = nextValue;
+      queueUpdate(currentComponentId);
+    }
+  };
+  return [state, setState];
+}
+function useEffect(effect, deps) {
+  const componentData = getCurrentComponentData();
+  const hookIndex = currentHookIndex++;
+  if (componentData.effects.length <= hookIndex) {
+    componentData.effects[hookIndex] = {
+      effect,
+      cleanup: undefined,
+      deps: undefined
+    };
+  }
+  const effectData = componentData.effects[hookIndex];
+  const hasChanged = depsChanged(effectData.deps, deps);
+  if (hasChanged) {
+    effectData.deps = deps ? [...deps] : undefined;
+    effectData.effect = effect;
+    queueMicrotask(() => {
+      try {
+        if (effectData.cleanup && typeof effectData.cleanup === "function") {
+          effectData.cleanup();
+        }
+        const cleanup = effect();
+        effectData.cleanup = cleanup;
+      } catch (error) {
+        console.error("[0x1 useEffect] Error in effect:", error);
+      }
+    });
+  }
+}
+function useMemo(factory, deps) {
+  const componentData = getCurrentComponentData();
+  const hookIndex = currentHookIndex++;
+  if (componentData.memos.length <= hookIndex) {
+    componentData.memos[hookIndex] = {
+      value: factory(),
+      deps: [...deps]
+    };
+  }
+  const memoData = componentData.memos[hookIndex];
+  if (depsChanged(memoData.deps, deps)) {
+    memoData.value = factory();
+    memoData.deps = [...deps];
+  }
+  return memoData.value;
+}
+function useCallback(callback, deps) {
+  return useMemo(() => callback, deps);
+}
+function useRef(initialValue = null) {
+  const componentData = getCurrentComponentData();
+  const hookIndex = currentHookIndex++;
+  if (componentData.refs.length <= hookIndex) {
+    componentData.refs[hookIndex] = {
+      current: initialValue
+    };
+  }
+  return componentData.refs[hookIndex];
+}
+function unmountComponent(componentId) {
+  const componentData = componentRegistry.get(componentId);
+  if (!componentData)
+    return;
+  componentData.isMounted = false;
+  componentData.effects.forEach((effectData) => {
+    if (effectData.cleanup && typeof effectData.cleanup === "function") {
+      try {
+        effectData.cleanup();
+      } catch (error) {
+        console.error("[0x1 Hooks] Error cleaning up effect:", error);
+      }
+    }
+  });
+  componentRegistry.delete(componentId);
+  componentUpdateCallbacks.delete(componentId);
+}
+function isComponentMounted(componentId) {
+  const componentData = componentRegistry.get(componentId);
+  return componentData?.isMounted ?? false;
+}
+function getComponentStats(componentId) {
+  const componentData = componentRegistry.get(componentId);
+  if (!componentData)
+    return null;
+  return {
+    id: componentId,
+    states: componentData.states.length,
+    effects: componentData.effects.length,
+    memos: componentData.memos.length,
+    callbacks: componentData.callbacks.length,
+    refs: componentData.refs.length,
+    isMounted: componentData.isMounted
+  };
+}
+function getAllComponentStats() {
+  return Array.from(componentRegistry.keys()).map(getComponentStats).filter(Boolean);
+}
+function setCurrentComponent(component) {
+  console.warn("[0x1 Hooks] setCurrentComponent is deprecated, use setComponentContext instead");
+  if (component && component.id) {
+    setComponentContext(component.id, component.update);
+  }
+}
+function resetHookContext() {
+  console.warn("[0x1 Hooks] resetHookContext is deprecated, use clearComponentContext instead");
+  clearComponentContext();
+}
+function useClickOutside(callback) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        callback();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [callback]);
+  return ref;
+}
+function useFetch(url, options) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!url)
+      return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(url, options).then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    }).then((data2) => {
+      if (!cancelled) {
+        setData(data2);
+        setLoading(false);
+      }
+    }).catch((error2) => {
+      if (!cancelled) {
+        setError(error2);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url, JSON.stringify(options)]);
+  return { data, loading, error };
+}
+function useForm(initialValues, validationRules) {
+  const [values, setValues] = useState(initialValues);
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const setValue = useCallback((name, value) => {
+    setValues((prev) => ({ ...prev, [name]: value }));
+    if (touched[name] && validationRules?.[name]) {
+      const error = validationRules[name](value);
+      setErrors((prev) => ({ ...prev, [name]: error || undefined }));
+    }
+  }, [touched, validationRules]);
+  const setFieldTouched = useCallback((name, isTouched = true) => {
+    setTouched((prev) => ({ ...prev, [name]: isTouched }));
+  }, []);
+  const validateField = useCallback((name) => {
+    if (!validationRules?.[name])
+      return null;
+    const error = validationRules[name](values[name]);
+    setErrors((prev) => ({ ...prev, [name]: error || undefined }));
+    return error;
+  }, [values, validationRules]);
+  const validateAll = useCallback(() => {
+    if (!validationRules)
+      return true;
+    const newErrors = {};
+    let isValid = true;
+    Object.keys(validationRules).forEach((key) => {
+      const error = validationRules[key](values[key]);
+      if (error) {
+        newErrors[key] = error;
+        isValid = false;
+      }
+    });
+    setErrors(newErrors);
+    return isValid;
+  }, [values, validationRules]);
+  const reset = useCallback(() => {
+    setValues(initialValues);
+    setErrors({});
+    setTouched({});
+  }, [initialValues]);
+  const handleSubmit = useCallback((onSubmit) => {
+    return (event) => {
+      if (event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (validateAll()) {
+        onSubmit(values);
+      }
+    };
+  }, [values, validateAll]);
+  return {
+    values,
+    errors,
+    touched,
+    setValue,
+    setFieldTouched,
+    validateField,
+    validateAll,
+    reset,
+    handleSubmit,
+    isValid: Object.keys(errors).filter((key) => errors[key]).length === 0
+  };
+}
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      if (typeof window === "undefined") {
+        return initialValue;
+      }
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.warn(`[0x1 useLocalStorage] Error reading localStorage key "${key}":`, error);
+      return initialValue;
+    }
+  });
+  const setValue = useCallback((value) => {
+    try {
+      const valueToStore = typeof value === "function" ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      }
+    } catch (error) {
+      console.warn(`[0x1 useLocalStorage] Error setting localStorage key "${key}":`, error);
+    }
+  }, [key, storedValue]);
+  useEffect(() => {
+    if (typeof window === "undefined")
+      return;
+    const handleStorageChange = (event) => {
+      if (event.key === key && event.newValue !== null) {
+        try {
+          setStoredValue(JSON.parse(event.newValue));
+        } catch (error) {
+          console.warn(`[0x1 useLocalStorage] Error parsing storage event for key "${key}":`, error);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [key]);
+  return [storedValue, setValue];
+}
+var componentRegistry, updateQueue, isProcessingUpdates = false, currentComponentId = null, currentHookIndex = 0, componentUpdateCallbacks, hooks_default;
+var init_hooks = __esm(() => {
+  componentRegistry = new Map;
+  updateQueue = new Set;
+  componentUpdateCallbacks = new Map;
+  hooks_default = {
+    useState,
+    useEffect,
+    useMemo,
+    useCallback,
+    useRef,
+    useClickOutside,
+    useFetch,
+    useForm,
+    useLocalStorage,
+    setComponentContext,
+    clearComponentContext,
+    unmountComponent,
+    isComponentMounted,
+    getComponentStats,
+    getAllComponentStats
+  };
+});
+
+// src/jsx-runtime.ts
+var Fragment = Symbol.for("0x1.fragment");
+var setComponentContext2 = null;
+var clearComponentContext2 = null;
+var hooksLoaded = false;
+async function loadHooksIfNeeded() {
+  if (!hooksLoaded) {
+    try {
+      const hooks = await Promise.resolve().then(() => (init_hooks(), exports_hooks));
+      setComponentContext2 = hooks.setComponentContext;
+      clearComponentContext2 = hooks.clearComponentContext;
+      hooksLoaded = true;
+    } catch (e) {
+      console.warn("[0x1 JSX] Hooks not available, components will run without hooks context");
+    }
+  }
+}
+function callComponentWithContext(type, props) {
+  if (!hooksLoaded || !setComponentContext2 || !clearComponentContext2) {
+    return type(props);
+  }
+  const componentId = `${type.name || "Anonymous"}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  setComponentContext2(componentId, () => {
+    console.debug(`[0x1 Hooks] Component ${componentId} requested update`);
+  });
+  try {
+    return type(props);
+  } finally {
+    clearComponentContext2();
+  }
+}
+function jsx(type, props, key) {
+  const { children, ...otherProps } = props || {};
+  if (typeof type === "function") {
+    if (!hooksLoaded) {
+      loadHooksIfNeeded().catch(() => {});
+    }
+    return callComponentWithContext(type, { children, ...otherProps });
+  }
+  return {
+    type,
+    props: otherProps,
+    children: Array.isArray(children) ? children : children !== undefined ? [children] : [],
+    key: key || null
+  };
+}
+function jsxs(type, props, key) {
+  return jsx(type, props, key);
+}
+function createElement(type, props, ...children) {
+  if (type === Fragment) {
+    return {
+      type: Fragment,
+      props: {},
+      children: children.flat(),
+      key: null
+    };
+  }
+  const childArray = children.flat().filter((child) => child != null);
+  if (typeof type === "function") {
+    if (!hooksLoaded) {
+      loadHooksIfNeeded().catch(() => {});
+    }
+    return callComponentWithContext(type, { ...props, children: childArray });
+  }
+  return jsx(type, { ...props, children: childArray });
+}
+loadHooksIfNeeded();
+
+// src/jsx-dev-runtime.ts
+var REACT_ELEMENT = Symbol.for("react.element");
+var REACT_FRAGMENT = Symbol.for("react.fragment");
+var REACT_SERVER_COMPONENT = Symbol.for("react.server.component");
+var componentStack = [];
+function jsxDEV(type, props, key, isStaticChildren = false, source, self) {
+  const propsWithSource = props || {};
+  if (source && typeof propsWithSource === "object") {
+    propsWithSource.__source = source;
+  }
+  if (self !== undefined && typeof propsWithSource === "object") {
+    propsWithSource.__self = self;
+  }
+  return jsx(type, propsWithSource, key);
+}
+function createErrorBoundary(fallback) {
+  return function ErrorBoundary(props) {
+    try {
+      if (!props.children) {
+        return {
+          type: "div",
+          props: {},
+          children: [],
+          key: null
+        };
+      }
+      return {
+        type: "div",
+        props: {
+          className: "0x1-boundary",
+          children: props.children
+        },
+        children: [],
+        key: null
+      };
+    } catch (error) {
+      return fallback(error instanceof Error ? error : new Error(String(error)), { componentStack: componentStack.join(" > ") });
+    }
+  };
+}
+export {
+  jsxs,
+  jsxDEV,
+  jsx,
+  createErrorBoundary,
+  createElement,
+  REACT_SERVER_COMPONENT,
+  REACT_FRAGMENT,
+  REACT_ELEMENT,
+  Fragment
+};

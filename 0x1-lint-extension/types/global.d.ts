@@ -3,20 +3,29 @@
  * This provides VSCode with the necessary information to understand JSX syntax
  */
 
-// Reference the framework's type definitions
-/// <reference path="../../types/0x1.d.ts" />
-
-// Define global JSX namespace for TypeScript tooling
+// Define global JSX namespace for TypeScript tooling without importing conflicting types
 declare global {
+  // Separate 0x1 elements from the global JSX namespace to avoid conflicts
+  namespace ZeroX1JSX {
+    // Framework-specific element interfaces
+    interface Element {
+      [key: string]: any;
+    }
+  }
+  
+  // Standard JSX namespace for TypeScript tooling
   namespace JSX {
-    interface Element {}
+    // Using 'any' type to avoid conflicts with other type declarations
+    interface Element {
+      [key: string]: any;
+    }
     
     interface ElementAttributesProperty {
-      props: {};
+      props: any;
     }
     
     interface ElementChildrenAttribute {
-      children: {};
+      children: any;
     }
     
     interface IntrinsicElements {
@@ -24,3 +33,6 @@ declare global {
     }
   }
 }
+
+// Ensure this is treated as a module
+export {};

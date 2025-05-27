@@ -4,8 +4,8 @@
  */
 
 import { existsSync, readdirSync, statSync } from "fs";
-import { dirname, basename, join, resolve } from 'path';
-import { logger } from "../../utils/logger.js";
+import { basename, dirname, join, resolve } from 'path';
+import { logger } from "../../utils/logger";
 
 /**
  * Minify code string
@@ -25,7 +25,7 @@ export function minifyCode(code: string): string {
  */
 export function transformBareImports(content: string): string {
   // Replace bare imports with proper paths
-  return content.replace(/from\s+['"]([^.\/][^'"]*)['"];?/g, (match, p1) => {
+  return content.replace(/from\s+['"]([^./][^'"]*)['"];?/g, (match, p1) => {
     // This is a simplistic approach, should be expanded for production
     return `from "/${p1}.js";`;
   });
@@ -82,7 +82,7 @@ ${processedSource}`;
   // For special component types, ensure they have the right imports
   if (isSpecialComponent) {
     // Add important imports based on component type
-    let specialImports = [];
+    const specialImports = [];
     
     if (isLayout) {
       if (!processedSource.includes('import { Link } from "0x1"')) {
@@ -382,7 +382,7 @@ export async function discoverComponents(
     // Standard Next.js app directory component files
     const componentTypes = ['page', 'layout', 'loading', 'error', 'not-found'];
     
-    /**
+        /**
      * Recursive function to scan directories for components
      */
     async function scanDirectory(dir: string, relativePath: string = '') {

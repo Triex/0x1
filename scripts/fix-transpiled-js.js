@@ -10,6 +10,8 @@
 
 import { join, resolve } from 'path';
 import fs from 'fs';
+// Import Bun explicitly to fix no-undef errors
+import { write, file } from 'bun';
 
 // Recursively find all JavaScript files in a directory
 async function findJsFiles(directory) {
@@ -39,13 +41,13 @@ async function findJsFiles(directory) {
 async function fixTypeScriptArtifacts(filePath) {
   try {
     // Read the file content
-    let content = await Bun.file(filePath).text();
+    let content = await file(filePath).text();
     const originalSize = content.length;
     
     // Array of fixes to apply
     const fixes = [
       // Remove type annotations (Property: Type)
-      { pattern: /(\w+)\s*:\s*([\w\[\]<>|&'"{}]+);/g, replacement: "$1;" },
+      { pattern: /(\w+)\s*:\s*([\w[]<>|&'"{}]+);/g, replacement: "$1;" },
       
       // Remove interface definitions
       { pattern: /interface\s+\w+\s*\{[^}]*\}/g, replacement: "" },
@@ -54,31 +56,31 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /type\s+\w+\s*=\s*[^;]+;/g, replacement: "" },
       
       // Remove generics
-      { pattern: /<[\w\s,[\]<>|&'"{}]+>/g, replacement: "" },
+      { pattern: /<[\w\s,[]<>|&'"{}]+>/g, replacement: "" },
       
       // Fix function parameters with type annotations
-      { pattern: /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*[\w\[\]<>|&'"{}]+/g, replacement: "function $1($2)" },
+      { pattern: /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*[\w[]<>|&'"{}]+/g, replacement: "function $1($2)" },
       
       // Fix arrow functions with type annotations
-      { pattern: /(\([^)]*\))\s*:\s*[\w\[\]<>|&'"{}]+\s*=>/g, replacement: "$1 =>" },
+      { pattern: /(\([^)]*)\)\s*:\s*[\w[]<>|&'"{}]+\s*=>/g, replacement: "$1) =>" },
       
       // Remove parameter type annotations
-      { pattern: /(\w+)\s*:\s*([\w\[\]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
+      { pattern: /(\w+)\s*:\s*([\w[]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
       
       // Remove return type annotations from methods
-      { pattern: /(\w+\s*\([^)]*\))\s*:\s*([\w\[\]<>|&'"{}]+)\s*\{/g, replacement: "$1 {" },
+      { pattern: /(\w+\s*\([^)]*)\)\s*:\s*([\w[]<>|&'"{}]+)\s*\{/g, replacement: "$1) {" },
       
       // Remove 'as' type assertions
-      { pattern: /\s+as\s+[\w\[\]<>|&'"{}]+/g, replacement: "" },
+      { pattern: /\s+as\s+[\w[]<>|&'"{}]+/g, replacement: "" },
       
       // Remove namespaces
       { pattern: /namespace\s+\w+\s*\{/g, replacement: "{" },
       
       // Remove extends with generics
-      { pattern: /extends\s+\w+<[\w\s,[\]<>|&'"{}]+>/g, replacement: "extends Object" },
+      { pattern: /extends\s+\w+<[\w\s,[]<>|&'"{}]+>/g, replacement: "extends Object" },
       
       // Remove standalone type annotations (variable: Type)
-      { pattern: /:\s*([\w\[\]<>|&'"{}]+)(?=\s*[=,);])/g, replacement: "" },
+      { pattern: /:\s*([\w[]<>|&'"{}]+)(?=\s*[=,);])/g, replacement: "" },
       
       // Clean up any resulting double semicolons
       { pattern: /;;/g, replacement: ";" },
@@ -96,7 +98,7 @@ async function fixTypeScriptArtifacts(filePath) {
     }
     
     // Write the fixed content back to the file
-    await Bun.write(filePath, content);
+    await write(filePath, content);
     
     const newSize = content.length;
     const diff = originalSize - newSize;

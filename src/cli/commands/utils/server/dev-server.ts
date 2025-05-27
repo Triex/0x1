@@ -5,8 +5,8 @@
 
 import { existsSync } from "fs";
 import os from "os";
-import { join, resolve } from "path";
-import { logger } from "../../utils/logger.js";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 
 /**
  * Transform code content to handle 0x1 bare imports
@@ -92,8 +92,6 @@ export function getPossibleFrameworkRoots(): string[] {
   
   // Support both file:// URLs and regular paths
   if (currentFilePath.startsWith('file://')) {
-    const { fileURLToPath } = require('url');
-    const { dirname } = require('path');
     frameworkPath = resolve(dirname(fileURLToPath(currentFilePath)), '../../..');
   } else {
     frameworkPath = resolve(__dirname, '../../..');
@@ -126,76 +124,69 @@ export async function isPortAvailable(port: number): Promise<boolean> {
 }
 
 /**
- * Find Tailwind CSS input file
+ * Find Tailwind CSS input file in the project (v4 compatible)
  */
-export async function findTailwindCssInput(
-  projectPath: string
-): Promise<string | null> {
-  // Modern Next.js app directory structure locations (prioritized)
-  const nextJsAppDirLocations = [
-    join(projectPath, "app", "globals.css"),    // Next.js standard
-    join(projectPath, "app", "global.css"),     // Alternative naming
-    join(projectPath, "src", "app", "globals.css"), // src/app structure
-    join(projectPath, "app", "tailwind.css"),   // Alternative naming
+export async function findTailwindCssInput(projectPath: string): Promise<string | null> {
+  // Extended list prioritizing v4 conventions
+  const possibleInputs = [
+    // v4 convention (prioritized)
+    join(projectPath, 'input.css'),
+    join(projectPath, 'src', 'input.css'),
+    
+    // App directory (Next.js-like projects)
+    join(projectPath, 'app', 'globals.css'),
+    join(projectPath, 'app', 'global.css'),
+    join(projectPath, 'app', 'styles.css'),
+    
+    // Traditional locations
+    join(projectPath, 'src', 'styles', 'globals.css'),
+    join(projectPath, 'src', 'styles', 'main.css'),
+    join(projectPath, 'styles', 'globals.css'),
+    join(projectPath, 'globals.css'),
+    join(projectPath, 'src', 'app.css')
   ];
-  
-  // Check Next.js app directory locations first (preferred modern structure)
-  for (const location of nextJsAppDirLocations) {
-    if (existsSync(location)) {
-      logger.info(`💠 Found Tailwind CSS input in app directory at ${location}`);
-      return location;
-    }
-  }
 
-  // If no app directory CSS file found, check for tailwind.config.js/mjs for hints
-  const tailwindConfigPaths = [
-    join(projectPath, "tailwind.config.js"),
-    join(projectPath, "tailwind.config.mjs"),
-    join(projectPath, "tailwind.config.ts")
-  ].filter(existsSync);
-  
-  if (tailwindConfigPaths.length > 0) {
-    try {
-      // Read tailwind config to look for stylesheet hints
-      const configContent = await Bun.file(tailwindConfigPaths[0]).text();
-      // Look for content or stylesheet references
-      const cssPathMatches = configContent.match(/['"](.+?\.css)['"]/);
-      if (cssPathMatches && cssPathMatches[1]) {
-        const cssPath = cssPathMatches[1];
-        // Convert relative path to absolute
-        const absoluteCssPath = cssPath.startsWith('./') || cssPath.startsWith('../') 
-          ? join(projectPath, cssPath)
-          : join(projectPath, cssPath.startsWith('/') ? cssPath.slice(1) : cssPath);
-          
-        if (existsSync(absoluteCssPath)) {
-          logger.info(`💠 Found Tailwind CSS input from config at ${absoluteCssPath}`);
-          return absoluteCssPath;
+  for (const input of possibleInputs) {
+    if (existsSync(input)) {
+      // For v4, prefer files with @import "tailwindcss"
+      try {
+        const content = await Bun.file(input).text();
+        if (content.includes('@import "tailwindcss"')) {
+          console.log(`Found Tailwind v4 input file: ${input}`);
+          return input;
         }
+      } catch {
+        // If we can't read, still consider it valid
+        console.log(`Found Tailwind CSS input file: ${input}`);
+        return input;
       }
-    } catch (error) {
-      // Silently continue if we can't parse the config
     }
   }
 
-  // Fall back to common locations if app directory structures don't exist
-  const legacyLocations = [
-    // Legacy/alternative locations
-    join(projectPath, "styles", "main.css"),
-    join(projectPath, "src", "styles", "main.css"),
-    join(projectPath, "styles", "globals.css"),
-    join(projectPath, "styles", "global.css"),
-    join(projectPath, "src", "styles", "globals.css"),
-    join(projectPath, "css", "main.css"),
-    join(projectPath, "assets", "css", "main.css"),
-  ];
+  // Create default v4 input file
+  const defaultPath = join(projectPath, 'input.css');
+  
+  try {
+    const defaultContent = `@import "tailwindcss";
 
-  // Check legacy locations as a last resort
-  for (const location of legacyLocations) {
-    if (existsSync(location)) {
-      logger.info(`💠 Found Tailwind CSS input at legacy location ${location}`);
-      return location;
-    }
+@theme {
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --color-primary-500: oklch(0.6 0.15 240);
+  --spacing: 0.25rem;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
   }
-
+}`;
+    
+    Bun.write(defaultPath, defaultContent);
+    console.log(`Created default Tailwind v4 input file: ${defaultPath}`);
+    return defaultPath;
+  } catch (error) {
+    console.error(`Failed to create default Tailwind v4 input file: ${error}`);
+  }
+  
   return null;
 }

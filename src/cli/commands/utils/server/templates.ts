@@ -312,19 +312,182 @@ export const APP_SCRIPT = `
       console.log('[0x1 DEBUG] Auto-discovery enabled, loading components from app directory');
     }
     
-    // Setup global hook tracking for React hook compatibility
+    // Initialize the framework's hook system directly in the browser
+    // This ensures we use a consolidated hook system
+    
+    // Setup enhanced global hook tracking - integrate with framework
     window.__0x1_hooks = window.__0x1_hooks || {
-      states: new Map(),
-      stateIndex: 0,
-      currentComponent: null,
-      effects: new Map(),
-      effectIndex: 0,
-      cleanupFunctions: new Map()
+      // Core hook state tracking - use framework structure
+      componentRegistry: new Map(),
+      updateQueue: new Set(),
+      componentContextStack: [],
+      currentComponentId: null,
+      currentHookIndex: 0,
+      isRenderingComponent: false,
+      componentUpdateCallbacks: new Map(),
+      
+      // Initialization flag
+      isInitialized: true
     };
     
-    window.__0x1_triggerUpdate = () => {
-      // This will be replaced with the actual update function when components are mounted
-      console.log('[0x1] State update requested - no active components to update');
+    // Create a useState implementation that integrates with the framework hook system
+    window.__0x1_useState = function(initialValue) {
+      const hooks = window.__0x1_hooks;
+      if (!hooks.currentComponentId) {
+        throw new Error('[0x1 Hooks] Hook called outside of component context');
+      }
+      
+      // Get current component data
+      if (!hooks.componentRegistry.has(hooks.currentComponentId)) {
+        hooks.componentRegistry.set(hooks.currentComponentId, {
+          states: [],
+          effects: [],
+          memos: [],
+          callbacks: [],
+          refs: [],
+          hookIndex: 0,
+          isMounted: false
+        });
+      }
+      const componentData = hooks.componentRegistry.get(hooks.currentComponentId);
+      const hookIndex = hooks.currentHookIndex++;
+      
+      // Initialize state if needed
+      if (componentData.states.length <= hookIndex) {
+        const value = typeof initialValue === 'function' ? initialValue() : initialValue;
+        componentData.states[hookIndex] = value;
+      }
+      
+      const state = componentData.states[hookIndex];
+      
+      const setState = (newValue) => {
+        const currentValue = componentData.states[hookIndex];
+        const nextValue = typeof newValue === 'function' ? newValue(currentValue) : newValue;
+        
+        // Only update if value actually changed
+        if (!Object.is(currentValue, nextValue)) {
+          componentData.states[hookIndex] = nextValue;
+          
+          // Trigger component update using framework approach
+          const updateCallback = hooks.componentUpdateCallbacks.get(hooks.currentComponentId);
+          if (updateCallback) {
+            updateCallback();
+          } else {
+            console.warn('[0x1 Hooks] No update callback found for component:', hooks.currentComponentId);
+          }
+        }
+      };
+      
+      return [state, setState];
+    };
+    
+    // Framework-compatible hook context management with better error handling
+    window.__0x1_enterComponentContext = function(componentId, updateCallback) {
+      const hooks = window.__0x1_hooks;
+      
+      // Validate componentId
+      if (!componentId) {
+        console.warn('[0x1 Hooks] Attempting to enter context with invalid componentId:', componentId);
+        return;
+      }
+      
+      // Save previous context to stack if exists
+      if (hooks.currentComponentId) {
+        hooks.componentContextStack.push({
+          id: hooks.currentComponentId,
+          hookIndex: hooks.currentHookIndex
+        });
+      }
+      
+      // Set new context
+      hooks.currentComponentId = componentId;
+      hooks.currentHookIndex = 0;
+      hooks.isRenderingComponent = true;
+      
+      // Initialize component data if it doesn't exist
+      if (!hooks.componentRegistry.has(componentId)) {
+        hooks.componentRegistry.set(componentId, {
+          states: [],
+          effects: [],
+          memos: [],
+          callbacks: [],
+          refs: [],
+          hookIndex: 0,
+          isMounted: false
+        });
+      }
+      
+      // Store update callback for this component
+      if (updateCallback && typeof updateCallback === 'function') {
+        hooks.componentUpdateCallbacks.set(componentId, updateCallback);
+      } else if (componentId !== 'global' && componentId !== 'null' && componentId !== 'undefined') {
+        // Only warn for real component IDs, not system calls
+        console.warn('[0x1 Hooks] No update callback provided for component:', componentId);
+      }
+      
+      const componentData = hooks.componentRegistry.get(componentId);
+      componentData.isMounted = true;
+      componentData.hookIndex = 0;
+    };
+    
+    window.__0x1_exitComponentContext = function() {
+      const hooks = window.__0x1_hooks;
+      
+      // Pop previous context from stack if available
+      const previousContext = hooks.componentContextStack.pop();
+      if (previousContext) {
+        hooks.currentComponentId = previousContext.id;
+        hooks.currentHookIndex = previousContext.hookIndex;
+        hooks.isRenderingComponent = hooks.componentContextStack.length > 0;
+      } else {
+        // No previous context, clear everything
+        hooks.currentComponentId = null;
+        hooks.currentHookIndex = 0;
+        hooks.isRenderingComponent = false;
+      }
+    };
+    
+    // Make sure React hooks are properly bound to our hook system
+    window.React = window.React || {};
+    window.React.useState = window.__0x1_useState;
+    
+    // Simplified update system that matches the framework
+    window.__0x1_triggerUpdate = (componentId) => {
+      // Global update - refresh the page
+      if (componentId === 'global') {
+        if (window.location && window.location.reload) {
+          window.location.reload();
+          return true;
+        }
+        return false;
+      }
+      
+      // Get update callback from hook system
+      const hooks = window.__0x1_hooks;
+      if (componentId && hooks.componentUpdateCallbacks.has(componentId)) {
+        try {
+          const updateFn = hooks.componentUpdateCallbacks.get(componentId);
+          updateFn();
+          return true;
+        } catch (error) {
+          console.error('[0x1] Error updating component ' + componentId + ':', error);
+          return false;
+        }
+      }
+      
+      // Fall back to router update if available
+      if (window.__0x1_router && typeof window.__0x1_router.renderCurrentRoute === 'function') {
+        try {
+          window.__0x1_router.renderCurrentRoute();
+          return true;
+        } catch (e) {
+          console.error('[0x1] Error updating via router:', e);
+        }
+      }
+      
+      // Log the issue but don't crash
+      console.warn('[0x1] State update requested for component ' + componentId + ' but no update callback found');
+      return false;
     };
     
     // Function to load a component with proper error handling
@@ -389,17 +552,64 @@ export const APP_SCRIPT = `
       };
     } catch (e) {
       console.error('[0x1] Error importing router:', e);
-      // Provide emergency fallback
-      Router = class EmergencyRouter { 
-        constructor(options) {
-          console.log('[0x1] Using emergency router');
-          this.options = options;
-        }
-      };
-      createRouter = (options) => new Router(options);
+      // Don't use emergency fallback - show the actual error
+      throw new Error('Failed to load router module: ' + e.message);
     }
     
     console.log("[0x1 DEBUG] Router module loaded successfully");
+
+    // Fixed implementation to patch the router's path-to-regexp handling
+    // This prevents the "Invalid path provided to pathToRegExp: undefined" error
+    function patchRouter(router) {
+      if (!router) return router;
+      
+      // Add missing methods if not present
+      if (!router.pathToRegExp && typeof router.addRoute === 'function') {
+        router.pathToRegExp = function(path) {
+          if (path === undefined || path === null) {
+            console.warn('[0x1 Router] Path is undefined, using "/" as fallback');
+            path = '/'; // Default to root route
+          }
+          // Simple regexp conversion for string paths
+          let pattern = path;
+          
+          // Replace :param patterns with capture groups
+          const paramRegex = new RegExp('/:([a-zA-Z0-9_]+)', 'g');
+          pattern = pattern.replace(paramRegex, '/([^/]+)');
+          
+          // Replace * with wildcard
+          pattern = pattern.replace(/\\*/g, '.*');
+
+          return new RegExp('^' + pattern + '$');
+        };
+
+        // Patch the original addRoute method to handle undefined paths
+        const originalAddRoute = router.addRoute;
+        router.addRoute = function(path, component, options = {}) {
+          if (path === undefined || path === null) {
+            console.warn('[0x1 Router] Path is undefined, using "/" as fallback');
+            path = '/'; // Default to root route
+          }
+          
+          // Call original method with validated path
+          return originalAddRoute.call(this, path, component, options);
+        };
+      }
+      
+      // Ensure navigate method can handle any path
+      if (typeof router.navigate === 'function') {
+        const originalNavigate = router.navigate;
+        router.navigate = function(path, pushState = true) {
+          if (path === undefined || path === null) {
+            console.warn('[0x1 Router] Navigate path is undefined, using "/" as fallback');
+            path = '/'; // Default to root route
+          }
+          return originalNavigate.call(this, path, pushState);
+        };
+      }
+      
+      return router;
+    }
 
     // // Helper function to load a component module with error handling
     // async function loadComponent(path) {
@@ -595,37 +805,8 @@ export const APP_SCRIPT = `
         console.log('[0x1] createRouter function available:', typeof createRouter);
         
         if (typeof Router !== 'function') {
-          console.error('[0x1] Router is not a constructor - trying to fix');
-          
-          // Try to get Router from global scope
-          if (typeof window.Router === 'function') {
-            Router = window.Router;
-            console.log('[0x1] Using Router from global scope');
-          } else {
-            // Emergency fallback - define a minimal Router class
-            Router = class Router {
-              routes = [];
-              constructor(options = {}) {
-                console.log('[0x1] Using emergency Router implementation');
-                this.options = options;
-                this.rootElement = options.rootElement || document.getElementById('app');
-                this.routes = [];
-              }
-              
-              addRoute(path, component, options = {}) {
-                this.routes.push({ path, component, options });
-                return this;
-              }
-              
-              handleNavigation() { return this; }
-              navigate() { return this; }
-            };
-            
-            // Define createRouter if not available
-            if (typeof createRouter !== 'function') {
-              createRouter = (options) => new Router(options);
-            }
-          }
+          console.error('[0x1] Router is not a constructor');
+          throw new Error('Router module failed to load properly - Router is not a function');
         }
         
         // Try to load root components - but provide fallbacks if they don't exist
@@ -639,6 +820,11 @@ export const APP_SCRIPT = `
           // Check if any of the actual component modules were loaded
           if (pageModule?.default && typeof pageModule.default === 'function') {
             componentsExist = true;
+            console.log('[0x1] Page component loaded successfully:', typeof pageModule.default);
+          }
+          
+          if (layoutModule?.default && typeof layoutModule.default === 'function') {
+            console.log('[0x1] Layout component loaded successfully:', typeof layoutModule.default);
           }
         } catch (e) {
           console.warn('[0x1] Could not load app components:', e);
@@ -650,24 +836,84 @@ export const APP_SCRIPT = `
           return;
         }
         
-        // Create router instance
+        // Create router instance with enhanced options
         const router = createRouter({
           rootElement: appContainer,
-          mode: 'history'
+          mode: 'history',
+          debug: debugMode
         });
+        
+        // Apply patches to router to fix path handling
+        const patchedRouter = patchRouter(router);
         
         // Add home route - use fallback if needed
         if (componentsExist) {
           console.log('[0x1] Using app components for rendering');
-          router.addRoute('/', pageModule?.default, { layout: layoutModule?.default });
+          
+          // First check if we have a working component
+          const PageComponent = pageModule?.default;
+          const LayoutComponent = layoutModule?.default;
+          
+          // Add the route with proper error handling
+          try {
+            patchedRouter.addRoute('/', PageComponent, { 
+              layout: LayoutComponent,
+              name: 'home'
+            });
+            console.log('[0x1] Home route added successfully');
+          } catch (routeError) {
+            console.error('[0x1] Error adding home route:', routeError);
+            // Add a fallback route
+            patchedRouter.addRoute('/', () => ({
+              type: 'div',
+              props: {
+                className: 'p-4',
+                children: 'Page component failed to load properly'
+              }
+            }));
+          }
         } else {
           console.log('[0x1] Using placeholder component');
           // Just add a minimal placeholder component since real routing isn't needed
-          router.addRoute('/', () => ({ type: 'div' }));
+          patchedRouter.addRoute('/', () => ({ 
+            type: 'div',
+            props: {
+              className: 'p-4 m-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800',
+              children: [
+                {
+                  type: 'h2',
+                  props: {
+                    className: 'text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-2',
+                    children: 'Missing Components'
+                  }
+                },
+                {
+                  type: 'p',
+                  props: {
+                    className: 'text-yellow-700 dark:text-yellow-300',
+                    children: 'Create app/page.tsx and app/layout.tsx to get started.'
+                  }
+                }
+              ]
+            }
+          }));
         }
         
-        // Handle navigation
-        router.handleNavigation(window.location.pathname);
+        // Initialize the router first
+        if (typeof patchedRouter.init === 'function') {
+          patchedRouter.init();
+          console.log('[0x1] Router initialized successfully');
+        } else {
+          console.warn('[0x1] Router init method not available');
+        }
+        
+        // Handle initial navigation
+        if (typeof patchedRouter.navigate === 'function') {
+          patchedRouter.navigate(window.location.pathname || '/', false);
+          console.log('[0x1] Router navigated to:', window.location.pathname || '/');
+        } else {
+          console.warn('[0x1] Router navigate method not available');
+        }
         
         // Initialize click handling for navigation
         document.addEventListener("click", (event) => {
@@ -675,12 +921,12 @@ export const APP_SCRIPT = `
           let anchor = event.target.closest("a");
           if (anchor && anchor.href && anchor.href.startsWith(window.location.origin)) {
             // Get the path without the origin
-            const path = anchor.href.slice(window.location.origin.length);
+            const path = anchor.href.slice(window.location.origin.length) || '/';
             
             // Only handle internal links
             if (path && !path.startsWith("http")) {
               event.preventDefault();
-              router.navigate(path);
+              patchedRouter.navigate(path);
             }
           }
         });
@@ -690,12 +936,16 @@ export const APP_SCRIPT = `
         console.error("[0x1 ERROR] App initialization failed:", error);
         const errorMsg = error.message || 'Unknown error';
         const errorStack = error.stack || '';
-        document.getElementById("app").innerHTML = 
-          '<div class="error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md">' +
-          '<h1 class="text-xl font-bold text-red-700 mb-2">Initialization Error</h1>' +
-          '<p class="mb-2">' + errorMsg + '</p>' +
-          '<pre class="p-3 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-200">' + errorStack + '</pre>' +
-          '</div>';
+        
+        // Create a useful error display
+        if (document.getElementById("app")) {
+          document.getElementById("app").innerHTML = 
+            '<div class="error-container p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg mt-4 mx-auto max-w-3xl shadow-md">' +
+            '<h1 class="text-xl font-bold text-red-700 mb-2">Initialization Error</h1>' +
+            '<p class="mb-2">' + errorMsg + '</p>' +
+            '<pre class="p-4 bg-gray-100 dark:bg-gray-800 rounded text-sm overflow-auto border border-gray-400">' + errorStack + '</pre>' +
+            '</div>';
+        }
       }
     }
     
@@ -906,3 +1156,60 @@ export function generateLandingPage(): string {
     `
   });
 }
+
+export const JSX_RUNTIME_SCRIPT = `
+// 0x1 Framework JSX Runtime
+(function() {
+  'use strict';
+  
+  function jsx(type, props, key) {
+    if (typeof type === 'string') {
+      const element = document.createElement(type);
+      
+      if (props) {
+        Object.keys(props).forEach(prop => {
+          if (prop === 'children') {
+            const children = Array.isArray(props.children) ? props.children : [props.children];
+            children.forEach(child => {
+              if (child != null) {
+                if (typeof child === 'string' || typeof child === 'number') {
+                  element.appendChild(document.createTextNode(String(child)));
+                } else if (child instanceof Node) {
+                  element.appendChild(child);
+                }
+              }
+            });
+          } else if (prop.startsWith('on') && typeof props[prop] === 'function') {
+            const eventName = prop.slice(2).toLowerCase();
+            element.addEventListener(eventName, props[prop]);
+          } else if (prop === 'className') {
+            element.className = props[prop];
+          } else if (prop === 'style' && typeof props[prop] === 'object') {
+            Object.assign(element.style, props[prop]);
+          } else if (prop !== 'key') {
+            element.setAttribute(prop, props[prop]);
+          }
+        });
+      }
+      
+      return element;
+    }
+    
+    if (typeof type === 'function') {
+      return type(props || {});
+    }
+    
+    return null;
+  }
+  
+  // Export to global scope
+  window.jsx = jsx;
+  window.jsxs = jsx;
+  window.Fragment = 'fragment';
+  
+  // Export for module systems
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { jsx, jsxs: jsx, Fragment: 'fragment' };
+  }
+})();
+`;
