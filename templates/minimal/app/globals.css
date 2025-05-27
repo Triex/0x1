@@ -1,6 +1,6 @@
 /**
- * 0x1 Framework - Stunning Professional Dark Theme
- * Tailwind CSS v4 with enhanced black-purple aesthetics
+ * 0x1 Framework - Stunning Professional Light & Dark Theme
+ * Tailwind CSS v4 with enhanced aesthetics for both modes
  */
 
 /* Import Tailwind CSS - this is the only directive needed in v4 */
@@ -9,33 +9,33 @@
 /* Theme configuration */
 :root {
   color-scheme: light;
-  /* Light theme variables - elegant light mode */
-  --background: #f8f9ff;
-  --foreground: #13133a;
+  /* Light theme variables - elegant light mode with subtle purple accents */
+  --background: #fefefe;
+  --foreground: #1a1a2e;
   --card: #ffffff;
-  --card-foreground: #13133a;
+  --card-foreground: #1a1a2e;
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
-  --secondary: #f0f1fc;
-  --secondary-foreground: #2e2e54;
-  --muted: #f2f3ff;
-  --muted-foreground: #5d5d99;
-  --accent: #8a42ff;
+  --secondary: #f8fafc;
+  --secondary-foreground: #334155;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #8b5cf6;
   --accent-foreground: #ffffff;
-  --border: #e4e5ff;
+  --border: #e2e8f0;
   --input: #ffffff;
   --ring: #7c3aed;
 
-  /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #7c3aed 0%, #9761ff 100%);
-  --gradient-secondary: linear-gradient(135deg, #7928ca 0%, #5627b0 100%);
-  --gradient-accent: linear-gradient(135deg, #9761ff 0%, #ba4fff 100%);
+  /* Gradients for light mode */
+  --gradient-primary: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+  --gradient-secondary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 4px rgba(124, 58, 237, 0.05);
-  --shadow-md: 0 4px 8px rgba(124, 58, 237, 0.1);
-  --shadow-lg: 0 8px 20px rgba(124, 58, 237, 0.15);
-  --shadow-xl: 0 12px 28px rgba(124, 58, 237, 0.2);
+  /* Shadows for light mode */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
 }
 
 .dark {
@@ -83,8 +83,8 @@
     transition: background-color 0.3s ease, color 0.3s ease;
     min-height: 100vh;
     background-image:
-      radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.08) 0%, transparent 25%),
-      radial-gradient(circle at 0% 100%, rgba(167, 139, 250, 0.08) 0%, transparent 25%);
+      radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.03) 0%, transparent 25%),
+      radial-gradient(circle at 0% 100%, rgba(167, 139, 250, 0.03) 0%, transparent 25%);
   }
 
   .dark body {
@@ -159,6 +159,7 @@
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
+    border: 1px solid transparent;
   }
 
   .btn:focus-visible {
@@ -206,10 +207,10 @@
 
   .btn-primary:active {
     transform: translateY(0);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
   }
 
-  /* Secondary button - subtle with border */
+  /* Secondary button - improved light mode styling */
   .btn-secondary {
     background-color: var(--secondary);
     color: var(--secondary-foreground);
@@ -219,28 +220,31 @@
 
   .btn-secondary:hover {
     background-color: var(--muted);
-    transform: translateY(-2px);
+    border-color: var(--primary);
+    transform: translateY(-1px);
     box-shadow: var(--shadow-md);
   }
 
   .btn-secondary:active {
     transform: translateY(0);
+    box-shadow: var(--shadow-sm);
   }
 
-  /* Ghost button - minimal styling */
+  /* Ghost button - subtle styling for both modes */
   .btn-ghost {
     background-color: transparent;
-    color: var(--primary);
-    border: none;
+    color: var(--foreground);
+    border: 1px solid transparent;
   }
 
   .btn-ghost:hover {
-    background-color: rgba(124, 58, 237, 0.1);
-    color: var(--accent);
+    background-color: var(--secondary);
+    border-color: var(--border);
   }
 
   .dark .btn-ghost:hover {
-    background-color: rgba(139, 92, 246, 0.15);
+    background-color: var(--secondary);
+    border-color: var(--border);
   }
 
   /* Button sizes */
@@ -250,113 +254,111 @@
   }
 
   .btn-lg {
-    padding: 0.875rem 1.75rem;
+    padding: 1rem 2rem;
     font-size: 1rem;
   }
 
-  /* Card component with glass morphism effect */
+  /* Card styles - enhanced for light mode */
   .card {
     background-color: var(--card);
+    color: var(--card-foreground);
     border: 1px solid var(--border);
-    border-radius: 1rem;
-    box-shadow: var(--shadow-md);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
     overflow: hidden;
-    backdrop-filter: blur(10px);
   }
 
+  /* Glass panel effect - improved for light mode */
   .card-glass {
-    background-color: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: var(--shadow-lg);
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .dark .card-glass {
-    background-color: rgba(18, 18, 48, 0.5);
-    border: 1px solid rgba(46, 46, 106, 0.5);
+    background: rgba(18, 18, 48, 0.8);
+    border: 1px solid rgba(46, 46, 106, 0.3);
   }
 
   .card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
+    border-color: var(--primary);
   }
 
-  /* Section styling */
+  /* Section spacing */
   .section {
     padding: 4rem 0;
   }
 
+  /* Animated background for containers */
   @keyframes subtle-shift {
-    0% {
-      transform: translate(0%, 0%);
+    0%, 100% {
+      background-position: 0% 50%;
     }
-
-    25% {
-      transform: translate(1%, 0.5%);
-    }
-
     50% {
-      transform: translate(0.5%, 1.5%);
-    }
-
-    75% {
-      transform: translate(1.5%, 0.75%);
-    }
-
-    100% {
-      transform: translate(1%, 1%);
+      background-position: 100% 50%;
     }
   }
 
-  /* Container with impressive background effects */
   .container-gradient {
+    background: linear-gradient(
+      135deg,
+      rgba(248, 250, 252, 0.8) 0%,
+      rgba(241, 245, 249, 0.9) 25%,
+      rgba(248, 250, 252, 0.8) 50%,
+      rgba(241, 245, 249, 0.9) 75%,
+      rgba(248, 250, 252, 0.8) 100%
+    );
+    background-size: 400% 400%;
+    animation: subtle-shift 20s ease-in-out infinite;
     position: relative;
-    overflow: hidden;
-    z-index: 1;
-    min-height: 100%;
-  }
-
-  /* Light mode styles */
-  .container-gradient {
-    background: linear-gradient(135deg, rgba(160, 160, 195, 0.98), rgba(150, 150, 185, 0.98));
   }
 
   .container-gradient::before {
     content: '';
     position: absolute;
-    width: 400%;
-    height: 400%;
-    top: -150%;
-    left: -150%;
-    background:
-      radial-gradient(ellipse at 30% 20%, rgba(124, 58, 237, 0.1) 0%, transparent 80%),
-      radial-gradient(ellipse at 70% 80%, rgba(138, 66, 255, 0.09) 0%, transparent 80%),
-      radial-gradient(ellipse at 10% 90%, rgba(186, 104, 255, 0.08) 0%, transparent 80%),
-      radial-gradient(ellipse at 90% 30%, rgba(145, 80, 245, 0.07) 0%, transparent 75%);
-    z-index: -1;
-    animation: subtle-shift 90s infinite alternate ease-in-out;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+      circle at 30% 20%,
+      rgba(124, 58, 237, 0.05) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 70% 80%,
+      rgba(139, 92, 246, 0.05) 0%,
+      transparent 50%
+    );
+    pointer-events: none;
   }
 
-  /* Dark mode styles */
   .dark .container-gradient {
-    background: linear-gradient(135deg, rgba(10, 10, 28, 0.98), rgba(15, 15, 38, 0.95));
+    background: linear-gradient(
+      135deg,
+      rgba(8, 8, 26, 0.8) 0%,
+      rgba(18, 18, 48, 0.9) 25%,
+      rgba(8, 8, 26, 0.8) 50%,
+      rgba(18, 18, 48, 0.9) 75%,
+      rgba(8, 8, 26, 0.8) 100%
+    );
   }
 
   .dark .container-gradient::before {
-    content: '';
-    position: absolute;
-    width: 400%;
-    height: 400%;
-    top: -150%;
-    left: -150%;
-    background:
-      radial-gradient(ellipse at 30% 20%, rgba(124, 58, 237, 0.18) 0%, transparent 80%),
-      radial-gradient(ellipse at 70% 80%, rgba(151, 97, 255, 0.15) 0%, transparent 80%),
-      radial-gradient(ellipse at 10% 90%, rgba(186, 104, 255, 0.12) 0%, transparent 80%),
-      radial-gradient(ellipse at 90% 30%, rgba(145, 80, 245, 0.14) 0%, transparent 75%);
-    z-index: -1;
-    animation: subtle-shift 90s infinite alternate ease-in-out;
+    background: radial-gradient(
+      circle at 30% 20%,
+      rgba(139, 92, 246, 0.15) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 70% 80%,
+      rgba(167, 139, 250, 0.15) 0%,
+      transparent 50%
+    );
   }
 
   /* Gradient text effects */
@@ -365,15 +367,19 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    color: transparent;
+    font-weight: 700;
   }
 
   .gradient-text-accent {
-    background: var(--gradient-accent);
+    background: linear-gradient(
+      135deg,
+      var(--primary) 0%,
+      var(--accent) 50%,
+      var(--primary) 100%
+    );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    color: transparent;
   }
 
   /* Custom scrollbar */
@@ -387,24 +393,24 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--accent);
+    background: var(--primary);
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--primary);
+    background: var(--accent);
   }
 
-  /* Badge component */
+  /* Badge styles */
   .badge {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
     padding: 0.25rem 0.75rem;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     border-radius: 9999px;
-    line-height: 1;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
   }
 
   .badge-primary {
@@ -415,6 +421,7 @@
   .badge-secondary {
     background-color: var(--secondary);
     color: var(--secondary-foreground);
+    border-color: var(--border);
   }
 
   .badge-accent {
@@ -424,52 +431,54 @@
 
   .badge-outline {
     background-color: transparent;
-    border: 1px solid var(--border);
-    color: var(--foreground);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
-  /* Input styles */
+  /* Input styles - enhanced for light mode */
   .input {
-    padding: 0.75rem 1rem;
+    display: flex;
+    width: 100%;
     border-radius: 0.5rem;
     border: 1px solid var(--border);
     background-color: var(--input);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
     color: var(--foreground);
-    width: 100%;
-    transition: all 0.2s ease-in-out;
   }
 
   .input:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
   }
 
   .dark .input:focus {
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
   }
 
-  /* Glass panel effect */
+  /* Glass panel - enhanced for both modes */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 1rem;
     box-shadow: var(--shadow-lg);
   }
 
   .dark .glass-panel {
-    background: rgba(18, 18, 48, 0.3);
-    border: 1px solid rgba(46, 46, 106, 0.3);
+    background: rgba(18, 18, 48, 0.9);
+    border: 1px solid rgba(46, 46, 106, 0.4);
   }
 
-  /* Animation utilities */
+  /* Animation classes */
   .animate-fade-in {
-    animation: fadeIn 0.5s ease-in-out;
+    animation: fadeIn 0.6s ease-out;
   }
 
   .animate-slide-up {
-    animation: slideUp 0.5s ease-in-out;
+    animation: slideUp 0.6s ease-out;
   }
 
   .animate-pulse {
@@ -480,32 +489,29 @@
   @keyframes fadeIn {
     from {
       opacity: 0;
+      transform: translateY(10px);
     }
-
     to {
       opacity: 1;
+      transform: translateY(0);
     }
   }
 
   @keyframes slideUp {
     from {
-      transform: translateY(20px);
       opacity: 0;
+      transform: translateY(20px);
     }
-
     to {
-      transform: translateY(0);
       opacity: 1;
+      transform: translateY(0);
     }
   }
 
   @keyframes pulse {
-
-    0%,
-    100% {
+    0%, 100% {
       opacity: 1;
     }
-
     50% {
       opacity: 0.5;
     }
