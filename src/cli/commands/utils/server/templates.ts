@@ -1108,7 +1108,8 @@ export function composeHtmlTemplate(options: {
   }
   
   if (includeAppScript) {
-    template += APP_SCRIPT;
+    // Use external app.js instead of inline script for better caching and debugging
+    template += `<script src="/app.js?t=${Date.now()}" type="module"></script>`;
   }
   
   template += BODY_END;
