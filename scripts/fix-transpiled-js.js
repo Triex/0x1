@@ -56,7 +56,7 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /type\s+\w+\s*=\s*[^;]+;/g, replacement: "" },
       
       // Remove generics
-      { pattern: /<[\w\s,[\]<>|&'"{}]+>/g, replacement: "" },
+      { pattern: /<[\w\s,[]<>|&'"{}]+>/g, replacement: "" },
       
       // Fix function parameters with type annotations
       { pattern: /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*[\w[]<>|&'"{}]+/g, replacement: "function $1($2)" },
@@ -77,7 +77,7 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /namespace\s+\w+\s*\{/g, replacement: "{" },
       
       // Remove extends with generics
-      { pattern: /extends\s+\w+<[\w\s,[\]<>|&'"{}]+>/g, replacement: "extends Object" },
+      { pattern: /extends\s+\w+<[\w\s,[]<>|&'"{}]+>/g, replacement: "extends Object" },
       
       // Remove standalone type annotations (variable: Type)
       { pattern: /:\s*([\w[]<>|&'"{}]+)(?=\s*[=,);])/g, replacement: "" },

@@ -844,7 +844,7 @@ async function copyTemplate(
         }
         
         // Write the updated package.json
-        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
         logger.success('Updated package.json with project-specific settings');
       } catch (err) {
         logger.error(`Error updating package.json: ${err instanceof Error ? err.message : String(err)}`);
@@ -1399,7 +1399,7 @@ ready(() => {
  * @internal This function is not currently used in the main flow
  */
 async function _createConfigFiles(
-  projectPath: string,
+  projectPath: string, 
   options: {
     name: string;
     template: 'standard' | 'minimal' | 'full' | 'next';
@@ -1419,11 +1419,11 @@ async function _createConfigFiles(
   
   // Create TypeScript configuration
   const ext = 'ts';
-  
-  let configFiles = [
+  // List of config files to create
+  const configFiles = [
     'tsconfig.json', // Always include TypeScript config
-    useTailwind && 'tailwind.config.js',
-    useTailwind && 'postcss.config.js',
+    useTailwind ? 'tailwind.config.js' : null,
+    useTailwind ? 'postcss.config.js' : null,
     '.gitignore'
   ].filter(Boolean);
 
@@ -1536,7 +1536,7 @@ export default {
   
   // Create TypeScript files (always)
   // Set include pattern based on project structure
-  let includePattern = ["app/**/*.{ts,tsx}", "**/*.ts", "**/*.tsx"];
+  const includePattern = ["app/**/*.{ts,tsx}", "**/*.ts", "**/*.tsx"];
   
   // Create tsconfig.json
   await Bun.write(
