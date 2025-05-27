@@ -844,7 +844,7 @@ async function copyTemplate(
         }
         
         // Write the updated package.json
-        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
         logger.success('Updated package.json with project-specific settings');
       } catch (err) {
         logger.error(`Error updating package.json: ${err instanceof Error ? err.message : String(err)}`);

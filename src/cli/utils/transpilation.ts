@@ -85,7 +85,7 @@ export function minifyCode(code: string): string {
  */
 export function transformBareImports(content: string): string {
   // Replace bare imports with proper paths
-  return content.replace(/from\s+['"]([^.\/][^'"]*)['"];?/g, (match, p1) => {
+  return content.replace(/from\s+['"]([^./][^'"]*)['"];?/g, (match, p1) => {
     // This is a simplistic approach, should be expanded for production
     return `from "/${p1}.js";`;
   });
@@ -106,11 +106,11 @@ export function transformTypeScript(content: string): string {
     // Remove type annotations in function parameters and return types
     .replace(/:\s*[A-Za-z<>\[\]|&,\s]+(?=[,)])/g, '')
     // Remove return type annotations
-    .replace(/\)\s*:\s*[A-Za-z<>\[\]|&,\s]+\s*(?={)/g, ')')
+    .replace(/\)\s*:\s*[A-Za-z<>[\]|&,\s]+\s*(?={)/g, ')')
     // Remove generic type parameters
     .replace(/<[^>]+>/g, '')
     // Remove type assertions
-    .replace(/as\s+[A-Za-z<>\[\]|&,\s]+/g, '')
+    .replace(/as\s+[A-Za-z<>[\]|&,\s]+/g, '')
     // Remove optional chaining operator (?.),  nullish coalescing operator (??), and optional parameters (?)
     .replace(/\?\./g, '.')
     .replace(/\?\?/g, '||')

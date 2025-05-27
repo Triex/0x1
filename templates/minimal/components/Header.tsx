@@ -4,18 +4,6 @@
 import { ThemeToggle } from './ThemeToggle';
 
 export function Header() {
-  // Toggle the theme between light and dark mode
-  function toggleTheme() {
-    const isDark = document.documentElement.classList.contains('dark');
-    const newTheme = isDark ? 'light' : 'dark';
-
-    // Toggle dark class on root element
-    document.documentElement.classList.toggle('dark');
-
-    // Save preference to local storage
-    localStorage.setItem('0x1-dark-mode', newTheme);
-  }
-
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">

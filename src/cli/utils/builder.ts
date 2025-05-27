@@ -109,7 +109,7 @@ export async function buildComponents(projectPath: string): Promise<boolean> {
         }
         
         // Create minimal metadata for the component map
-        const relativePath = file.replace(projectPath, '').replace(/^[\/\\]+/, '');
+        const relativePath = file.replace(projectPath, '').replace(/^[/\\]+/, '');
         const id = basename(file).replace(/\.[jt]sx?$/, '');
         
         processedFiles.push({ file, relativePath, id });
