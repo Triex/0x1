@@ -821,6 +821,8 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 
 Actual project intent is to allow development in Next/React styles-flows-APIs that everyone is used to, but allow devs to instantly spin up what usually takes hours of work, with the added benefit of Bun's speed and zero dependencies (magnitudes' faster than Next/React bolt in replacement).
 
+Another key point is that AI's understand Next/React, and can generate code for it. So this makes 0x1 a super speed way for vibe-coders to build websites, and apps as AI advances. (Currently quite stable for basics). Pending solid website & documentation.
+
 Ultimately; adding crypto features to give the framework a real use case, and ability to grow rapidly. (Hence 0x1)
 
 - [ ] `Crypto` template option with various crypto features as options, inc;
