@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.169",
+  "version": "0.0.170",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -67,10 +67,6 @@
   "bin": {
     "0x1": "./bin/0x1"
   },
-  "workspaces": [
-    "0x1-router",
-    "0x1-store"
-  ],
   "preferUnplugged": true,
   "files": [
     "dist",
@@ -139,9 +135,7 @@
     "prompts": "^2.4.2",
     "sharp": "^0.33.2",
     "tailwindcss": "^4.1.7",
-    "zod": "^3.22.4",
-    "0x1-router": "workspace:*",
-    "0x1-store": "workspace:*"
+    "zod": "^3.22.4"
   },
   "comments": {
     "removedDependencies": {
