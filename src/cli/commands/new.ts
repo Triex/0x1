@@ -4,7 +4,7 @@
  */
 
 import chalk from 'chalk';
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs';
+import { existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import prompts from 'prompts';
@@ -477,7 +477,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
       { title: "Standard", value: "standard", description: "Common libraries and project structure" },
       { title: "Full", value: "full", description: "Complete setup with all recommended features" },
     ],
-    initial: 1 // Default to Standard
+    initial: 0 // Default to Minimal
   });
 
   // Ask about state management using select instead of confirm for consistency
@@ -489,7 +489,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
       { title: "Yes", value: true, description: "Include 0x1 state management" },
       { title: "No", value: false, description: "Skip state management" }
     ],
-    initial: 1
+    initial: 0
   });
 
   // Ask about Tailwind CSS
@@ -799,9 +799,8 @@ async function copyTemplate(
         packageJson.name = projectName.toLowerCase().replace(/\s+/g, '-');
         
         // Determine if we should use local framework path (for development)
-        const useLocalFramework = process.env.OX1_DEV === 'true' || 
-                                 existsSync(join(process.cwd(), 'package.json')) &&
-                                 JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')).name === '0x1';
+        // Only use local framework path if explicitly set by environment variable
+        const useLocalFramework = process.env.OX1_DEV === 'true';
         
         // Update 0x1 dependency if needed (for local development)
         if (useLocalFramework) {
@@ -1115,7 +1114,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.171' // Use current version with caret for compatibility
+      "0x1": '^0.0.172' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'
