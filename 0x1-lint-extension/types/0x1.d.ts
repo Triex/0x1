@@ -1,45 +1,39 @@
 /**
- * Type definitions for 0x1 Framework
+ * Type definitions for 0x1 Framework in the Lint Extension
+ * This is a simplified version to avoid conflicts with the main declaration
  */
 
-declare module '0x1' {
-  // JSX Factory and Fragment
-  export function createElement(type: any, props?: any, ...children: any[]): any;
-  export const Fragment: unique symbol;
-  export function renderToString(element: any): string;
+// Reference DOM lib to allow HTMLElement and Text types
+/// <reference lib="dom" />
+
+// Use a namespace approach to avoid global conflicts
+declare namespace ZeroX1Core {
+  // Framework component types
+  export interface Component {
+    render(): HTMLElement;
+  }
   
-  // Core component types
   export type ComponentProps = Record<string, any>;
-  export type Component = {
-    render: () => HTMLElement;
-  };
+}
+
+// Export the namespace for use in TypeScript
+declare module '0x1' {
+  // Re-export core types
+  export import Component = ZeroX1Core.Component;
+  export import ComponentProps = ZeroX1Core.ComponentProps;
   
-  // Component helpers
+  // Core JSX functions
+  export function createElement(type: any, props?: any, ...children: any[]): any;
   export function createComponentElement(tag: string, attrs?: any, ...children: any[]): HTMLElement;
   export function fromHTML(html: string): HTMLElement;
-  export function mount(component: Component, container: HTMLElement): void;
+  export function mount(component: ZeroX1Core.Component, container: HTMLElement): void;
+  export function renderToString(element: any): string;
   export function template(strings: TemplateStringsArray, ...values: any[]): string;
   export function textElement(text: string): Text;
   export function updateComponent(oldEl: HTMLElement, newEl: HTMLElement): void;
-}
-
-// Define global JSX namespace
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      [elementName: string]: any;
-    }
-    
-    interface Element {}
-    
-    interface ElementAttributesProperty {
-      props: {};
-    }
-    
-    interface ElementChildrenAttribute {
-      children: {};
-    }
-  }
+  
+  // Fragment is defined but with a different approach to avoid conflicts
+  export const Fragment: symbol;
 }
 
 // Ensure this is treated as a module

@@ -1,17 +1,27 @@
 {
   "name": "0x1",
-  "version": "0.0.168",
+  "version": "0.0.169",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/types/index.d.ts",
   "typesVersions": {
     "*": {
-      "*": ["dist/types/*"],
-      "jsx-runtime": ["dist/types/jsx-runtime.d.ts"],
-      "jsx-dev-runtime": ["dist/types/jsx-runtime.d.ts"],
-      "jsx": ["dist/types/jsx.d.ts"],
-      "jsx-import-source": ["dist/types/jsx-import-source.d.ts"]
+      "*": [
+        "dist/types/*"
+      ],
+      "jsx-runtime": [
+        "dist/types/jsx-runtime.d.ts"
+      ],
+      "jsx-dev-runtime": [
+        "dist/types/jsx-runtime.d.ts"
+      ],
+      "jsx": [
+        "dist/types/jsx.d.ts"
+      ],
+      "jsx-import-source": [
+        "dist/types/jsx-import-source.d.ts"
+      ]
     }
   },
   "exports": {
@@ -21,7 +31,7 @@
       "default": "./dist/index.js"
     },
     "./link": {
-      "types": "./dist/types/link.d.ts", 
+      "types": "./dist/types/link.d.ts",
       "import": "./dist/link.js",
       "default": "./dist/link.js"
     },
@@ -41,7 +51,7 @@
       "default": "./dist/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
-      "types": "./dist/types/jsx-runtime.d.ts", 
+      "types": "./dist/types/jsx-runtime.d.ts",
       "import": "./dist/jsx-dev-runtime.js",
       "default": "./dist/jsx-dev-runtime.js"
     },
@@ -50,7 +60,7 @@
     },
     "./store": {
       "types": "./dist/types/store.d.ts",
-      "import": "./dist/core/store.js", 
+      "import": "./dist/core/store.js",
       "default": "./dist/core/store.js"
     }
   },

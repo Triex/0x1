@@ -10,6 +10,8 @@
 
 import { join, resolve } from 'path';
 import fs from 'fs';
+// Import Bun explicitly to fix no-undef errors
+import { write, file } from 'bun';
 
 // Recursively find all JavaScript files in a directory
 async function findJsFiles(directory) {
@@ -39,7 +41,7 @@ async function findJsFiles(directory) {
 async function fixTypeScriptArtifacts(filePath) {
   try {
     // Read the file content
-    let content = await Bun.file(filePath).text();
+    let content = await file(filePath).text();
     const originalSize = content.length;
     
     // Array of fixes to apply
@@ -63,7 +65,7 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /(\([^)]*\))\s*:\s*[\w\[\]<>|&'"{}]+\s*=>/g, replacement: "$1 =>" },
       
       // Remove parameter type annotations
-      { pattern: /(\w+)\s*:\s*([\w\[\]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
+      { pattern: /(\w+)\s*:\s*([\w[\]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
       
       // Remove return type annotations from methods
       { pattern: /(\w+\s*\([^)]*\))\s*:\s*([\w\[\]<>|&'"{}]+)\s*\{/g, replacement: "$1 {" },
@@ -96,7 +98,7 @@ async function fixTypeScriptArtifacts(filePath) {
     }
     
     // Write the fixed content back to the file
-    await Bun.write(filePath, content);
+    await write(filePath, content);
     
     const newSize = content.length;
     const diff = originalSize - newSize;
