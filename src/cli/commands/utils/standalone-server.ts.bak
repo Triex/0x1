@@ -7,14 +7,14 @@ import { serve, type Server } from "bun";
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'path';
 import { fileURLToPath } from "url";
-import { logger } from "../../utils/logger.js";
-import { handleComponentRequest } from './component-handler.js';
-import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from './css-handler.js';
-import { createJsxRuntimeEndpoint, createRouterEndpoint, generateJsxRuntime, generateReactShim, injectJsxRuntime } from './jsx-templates.js';
-import { createLiveReloadSystem } from './live-reload/index.js';
-import { LiveReloadSocket } from "./live-reload/ws-handler.js";
-import { composeHtmlTemplate, generateLandingPage, generateLiveReloadScript } from './server-templates.js';
-import * as tailwindHandler from './tailwind-handler.js';
+import { handleComponentRequest } from '../../server/handlers/component-handler';
+import { generateCssModuleScript, isCssModuleJsRequest, processCssFile } from '../../server/handlers/css-handler';
+import * as tailwindHandler from '../../server/handlers/tailwind-handler';
+import { logger } from "../../utils/logger";
+import { createJsxRuntimeEndpoint, createRouterEndpoint, generateJsxRuntime, generateReactShim, injectJsxRuntime } from './jsx-templates';
+import { createLiveReloadSystem } from './live-reload/index';
+import { LiveReloadSocket } from "./live-reload/ws-handler";
+import { composeHtmlTemplate, generateLandingPage, generateLiveReloadScript } from './server/templates';
 
 // Path resolution helpers
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -616,7 +616,7 @@ export function createStandaloneServer({
       if (reqPath === "/processed-tailwind.css") {
         try {
           // Ensure Tailwind module is available
-          const tailwindHandler = await import("./tailwind-handler.js");
+          const tailwindHandler = await import("../../server/handlers/tailwind-handler.js");
           const success = await tailwindHandler.processTailwindCss(projectPath);
           
           // Get the processed CSS directly from the tailwind handler

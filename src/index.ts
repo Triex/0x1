@@ -43,16 +43,18 @@ export {
 } from './core/navigation.js';
 
 // Export the new router implementation
-export { Router, type RouteParams } from './core/router.js';
+export { Router, type RouteParams } from '0x1-router';
 
 // Export the error boundary for catching and displaying runtime errors
 export {
   createDefaultErrorUI, createErrorBoundary, ErrorBoundary, withErrorBoundary
 } from './core/error-boundary.js';
 
-// Export hooks
+// Export hooks system - ensure this is the single source of truth
 export {
-  useCallback, useClickOutside, useEffect, useFetch, useForm, useLocalStorage, useMemo, useRef, useState
+  clearComponentContext, getAllComponentStats, getComponentStats, isComponentMounted, setComponentContext, unmountComponent, useCallback, useClickOutside, useEffect, useFetch,
+  useForm,
+  useLocalStorage, useMemo, useRef, useState, type RefObject
 } from './core/hooks.js';
 
 // Export store

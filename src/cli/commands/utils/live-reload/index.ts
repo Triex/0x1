@@ -5,8 +5,8 @@
  * live reloading functionality for the 0x1 framework.
  */
 
-import { logger } from "../../../utils/logger.js";
 import { Server } from "bun";
+import { logger } from "../../../utils/logger";
 import { createSSEHandler } from "./sse-handler";
 import { createWebSocketHandler } from "./ws-handler";
 

@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "lib": ["ES2020", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "moduleDetection": "force",
-    "noEmit": true,
+    "outDir": "./dist",
+    "declaration": true,
+    "noEmit": false,
     "composite": false,
     "strict": true,
     "downlevelIteration": true,
@@ -28,7 +28,9 @@
       "0x1/store": ["./src/store.ts", "./0x1-store/src/index.ts"],
       "0x1-router": ["./0x1-router/src/index.ts"],
       "0x1-store": ["./0x1-store/src/index.ts"]
-    }
+    },
+    "types": ["bun-types"],
+    "allowImportingTsExtensions": false
   },
   "include": [
     "src/**/*",
@@ -40,6 +42,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "build"
+    "build",
+    "**/*.js"
   ]
 }

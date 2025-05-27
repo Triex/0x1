@@ -3,7 +3,7 @@
  * Provides special handling for app router components when transpilation fails
  */
 
-import { logger } from "../utils/logger.js";
+import { logger } from "../utils/logger";
 import { existsSync } from "fs";
 import Bun from "bun";
 

@@ -4,8 +4,8 @@
  */
 
 import { existsSync, readdirSync, statSync } from "fs";
-import { dirname, basename, join, resolve } from 'path';
-import { logger } from "../../utils/logger.js";
+import { basename, dirname, join, resolve } from 'path';
+import { logger } from "../../utils/logger";
 
 /**
  * Minify code string

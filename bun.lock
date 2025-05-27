@@ -4,6 +4,8 @@
     "": {
       "name": "0x1",
       "dependencies": {
+        "0x1-router": "workspace:*",
+        "0x1-store": "workspace:*",
         "@tailwindcss/postcss": "^4.1.7",
         "lightningcss": "^1.24.0",
         "postcss": "^8.5.3",
@@ -21,8 +23,26 @@
         "typescript": "^5.4.5",
       },
     },
+    "0x1-router": {
+      "name": "0x1-router",
+      "version": "0.0.1",
+      "devDependencies": {
+        "typescript": "^5.4.5",
+      },
+    },
+    "0x1-store": {
+      "name": "0x1-store",
+      "version": "0.0.3",
+      "devDependencies": {
+        "typescript": "^5.4.5",
+      },
+    },
   },
   "packages": {
+    "0x1-router": ["0x1-router@workspace:0x1-router"],
+
+    "0x1-store": ["0x1-store@workspace:0x1-store"],
+
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@ampproject/remapping": ["@ampproject/remapping@2.3.0", "", { "dependencies": { "@jridgewell/gen-mapping": "^0.3.5", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="],

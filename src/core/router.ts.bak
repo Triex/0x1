@@ -4,7 +4,7 @@
  * Supports app directory pattern with file-based routing
  */
 
-import type { Component } from './component.js';
+import type { Component } from './component';
 // Import navigation Link component as NavigationLink to avoid naming conflicts
 // import { Link as NavigationLink } from './navigation.js';
 

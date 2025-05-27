@@ -16,10 +16,10 @@ interface ExtendedPromptChoice {
   value: any;
   description?: string;
 }
-import type { PWAConfig } from '../../core/pwa.js';
-import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration } from '../../core/pwa.js';
-import { generateAllIcons } from '../../utils/icon-generator.js';
-import { logger } from '../utils/logger.js';
+import type { PWAConfig } from '../../core/pwa';
+import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration } from '../../core/pwa';
+import { generateAllIcons } from '../../utils/icon-generator';
+import { logger } from '../utils/logger';
 
 interface PWACommandOptions {
   name?: string;

@@ -4,7 +4,7 @@
  * This module provides a clean implementation of SSE-based live reloading
  * as a fallback for browsers that don't support WebSockets.
  */
-import { logger } from "../../../utils/logger.js";
+import { logger } from "../../../utils/logger";
 
 // Type definition for an SSE client
 export interface SSEClient {

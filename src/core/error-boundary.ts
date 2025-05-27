@@ -11,7 +11,7 @@
  * - Helpful suggestions
  */
 
-import type { Component, ComponentProps, ComponentReturn } from './component.js';
+import type { Component, ComponentProps } from './component.js';
 
 interface ErrorBoundaryProps extends ComponentProps {
   children: any;
