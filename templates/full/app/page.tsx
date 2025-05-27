@@ -1,24 +1,50 @@
 /**
- * Home page component
- * Similar to Next.js 15's app/page.tsx
+ * 0x1 Full App - Home Page
+ * Comprehensive showcase with advanced features and beautiful design
  */
-import { counterStore } from '../store/counter';
+
+import { Button } from "../components/Button";
 
 // This is a server component in Next.js world
 export default function HomePage() {
-  // Initial state from the store (would be server-side in Next.js)
-  const { count } = counterStore.getState();
-
   return (
-    <div className="py-12">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-12 text-center">
-          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-            Welcome to 0x1
-          </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300">
-            The ultra-minimal TypeScript framework powered by Bun
-          </p>
+    <div className="container mx-auto px-4 py-12">
+      {/* Hero Section */}
+      <div className="text-center mb-20 animate-fade-in">
+        <div className="mb-8">
+          <span className="badge badge-primary mb-4">v1.0.0 - Production Ready</span>
+        </div>
+        <h1 className="text-6xl font-bold mb-6 gradient-text">
+          Welcome to 0x1 Full
+        </h1>
+        <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+          The ultimate TypeScript framework powered by Bun. Complete with state management, 
+          component library, PWA support, and production-ready architecture.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+          <Button variant="primary" size="lg">
+            Get Started
+          </Button>
+          <Button variant="secondary" size="lg">
+            View Documentation
+          </Button>
+          <Button variant="ghost" size="lg">
+            GitHub →
+          </Button>
+        </div>
+        <div className="flex items-center justify-center space-x-8 text-sm text-muted-foreground">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span>TypeScript</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <span>Bun Runtime</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <span>PWA Ready</span>
+          </div>
         </div>
         
         {/* Feature demo cards */}
@@ -38,7 +64,7 @@ export default function HomePage() {
                 -
               </button>
               <div className="px-4 py-2 bg-white dark:bg-gray-800 border-t border-b border-gray-200 dark:border-gray-700">
-                <span id="counter-value" className="text-xl font-bold">{count}</span>
+                <span id="counter-value" className="text-xl font-bold">0</span>
               </div>
               <button 
                 id="increment-btn"

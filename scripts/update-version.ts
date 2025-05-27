@@ -101,7 +101,7 @@ async function updatePackageJsonDependencies(packageJsonPath: string, version: s
 async function updateCliVersions(version: string): Promise<void> {
   const cliNewCommandPath = join(ROOT_DIR, 'src/cli/commands/new.ts');
   const cliIndexPath = join(ROOT_DIR, 'src/cli/index.ts');
-  const jsxTranspilerPath = join(ROOT_DIR, 'src/cli/commands/jsx-transpiler.ts');
+  // const jsxTranspilerPath = join(ROOT_DIR, 'src/cli/commands/jsx-transpiler.ts');
   
   // Update new.ts file
   if (existsSync(cliNewCommandPath)) {
@@ -164,26 +164,30 @@ async function updateCliVersions(version: string): Promise<void> {
     await Bun.write(cliIndexPath, indexContent);
   }
   
-  // Update JSX transpiler version reference
-  if (existsSync(jsxTranspilerPath)) {
-    console.log('Updating JSX transpiler version reference');
+  // // Update JSX transpiler version reference
+  // if (existsSync(jsxTranspilerPath)) {
+  //   console.log('Updating JSX transpiler version reference');
     
-    // Read the file content
-    let transpilerContent = await Bun.file(jsxTranspilerPath).text();
+  //   // Read the file content
+  //   let transpilerContent = await Bun.file(jsxTranspilerPath).text();
     
-    // Replace version in the JSX runtime header
-    transpilerContent = transpilerContent.replace(
-      /0x1 Framework - JSX Runtime \(v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\)/g,
-      `0x1 Framework - JSX Runtime (v${version})`
-    );
+  //   // Replace version in the JSX runtime header
+  //   transpilerContent = transpilerContent.replace(
+  //     /0x1 Framework - JSX Runtime \(v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\)/g,
+  //     `0x1 Framework - JSX Runtime (v${version})`
+  //   );
     
-    // Write the updated content
-    await Bun.write(jsxTranspilerPath, transpilerContent);
-  }
+  //   // Write the updated content
+  //   await Bun.write(jsxTranspilerPath, transpilerContent);
+  // }
 }
 
 // Update version in README.md file
 async function updateReadmeVersion(version: string): Promise<void> {
+  // Debug helper function to show exact string content for debugging
+  function showExactString(str: string): string {
+    return JSON.stringify(str);
+  }
   const readmePath = join(ROOT_DIR, 'README.md');
   
   if (existsSync(readmePath)) {
@@ -191,16 +195,215 @@ async function updateReadmeVersion(version: string): Promise<void> {
     
     // Read the README content
     let readmeContent = await Bun.file(readmePath).text();
+    const originalContent = readmeContent; // Store original for comparison
+    let updatedCount = 0;
     
-    // Replace version in README.md
-    readmeContent = readmeContent.replace(
-      /Current version: \*\*[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\*\*/g,
-      `Current version: **${version}**`
-    );
+    // Define all version patterns with descriptive names
+    const patterns = [
+      {
+        name: "Current State Headers",
+        // This matches headers like: ### Current State (v0.0.176)
+        regex: /(### Current State \(v)[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?(\))/g,
+        replacement: `$1${version}$2`
+      },
+      {
+        name: "Current State Headers Exact",
+        // Exact match for the specific header in README.md
+        regex: /### Current State \(v0\.0\.176\)/g,
+        replacement: `### Current State (v${version})`
+      },
+      {
+        name: "Legacy Current Version",
+        // This matches explicit version references like: Current version: **0.0.176**
+        regex: /Current version: \*\*[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\*\*/g,
+        replacement: `Current version: **${version}**`
+      },
+      {
+        name: "Bun Add Commands",
+        // This matches commands like: bun add 0x1@0.0.176
+        regex: /bun add 0x1@[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?/g,
+        replacement: `bun add 0x1@${version}`
+      },
+      {
+        name: "NPM Install Commands",
+        // This matches commands like: npm install 0x1@0.0.176
+        regex: /npm install 0x1@[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?/g,
+        replacement: `npm install 0x1@${version}`
+      },
+      {
+        name: "NPX Commands",
+        // This matches commands like: npx 0x1@0.0.176
+        regex: /npx 0x1@[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?/g,
+        replacement: `npx 0x1@${version}`
+      },
+      {
+        name: "Single Quote Dependencies",
+        // This matches code like: '0x1': '^0.0.176'
+        regex: /'0x1':\s*'\^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?'/g,
+        replacement: `'0x1': '^${version}'`
+      },
+      {
+        name: "Double Quote Dependencies",
+        // This matches code like: "0x1": "^0.0.176"
+        regex: /"0x1":\s*"\^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?"\s*/g,
+        replacement: `"0x1": "^${version}"`
+      },
+      {
+        name: "Config Version Examples",
+        // This matches config like: version: '0.0.176',
+        regex: /version:\s*['"][0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?['"]\s*,/g,
+        replacement: `version: '${version}',`
+      },
+      {
+        name: "JSX Runtime Header",
+        // This matches comments like: 0x1 Framework - JSX Runtime (v0.0.176)
+        regex: /(0x1 Framework - JSX Runtime \(v)[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?(\))/g,
+        replacement: `$1${version}$2`
+      },
+      {
+        name: "Any Other Version",
+        // Generic catch-all for any other version mentions like v0.0.176 or 0.0.176
+        regex: /\bv?[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\b/g,
+        replacement: function(match: string): string {
+          // Only replace if it's a complete version number (not part of something else)
+          // and doesn't have context we want to preserve
+          if (match.startsWith('v')) {
+            return `v${version}`;
+          }
+          return version;
+        },
+        // This pattern is dangerous as it might replace versions we don't want to replace
+        // Only apply it to specific contexts
+        contexts: [
+          '0x1 version',
+          'framework version',
+          'current release',
+          'latest version'
+        ]
+      }
+    ];
     
-    // Write updated content
-    // Use Bun's native file API for better performance
-    await Bun.write(readmePath, readmeContent);
+    // Process each pattern
+    for (const pattern of patterns) {
+      // Skip the catch-all pattern for now (we'll handle it separately)
+      if (pattern.name === "Any Other Version") continue;
+      
+      // Check if the pattern exists in the content
+      if (readmeContent.match(pattern.regex)) {
+        // Store the original for comparison
+        const beforeReplace = readmeContent;
+        
+        // Apply the replacement
+        if (typeof pattern.replacement === 'function') {
+          readmeContent = readmeContent.replace(pattern.regex, pattern.replacement as (substring: string, ...args: any[]) => string);
+        } else {
+          readmeContent = readmeContent.replace(pattern.regex, pattern.replacement as string);
+        }
+        
+        // Count how many replacements were made
+        const replacementCount = (beforeReplace.match(pattern.regex) || []).length;
+        
+        if (beforeReplace !== readmeContent) {
+          updatedCount += replacementCount;
+          console.log(`  - Updated ${replacementCount} ${pattern.name} to use version ${version}`);
+        }
+      }
+    }
+    
+    // Handle the catch-all pattern carefully if we didn't find any other patterns
+    if (updatedCount === 0) {
+      const catchAllPattern = patterns.find(p => p.name === "Any Other Version");
+      if (catchAllPattern && catchAllPattern.contexts) {
+        for (const context of catchAllPattern.contexts) {
+          // Create a regex that looks for the context and a version number nearby
+          const contextRegex = new RegExp(`${context}[^\n]*?\b(v?[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)\b`, 'gi');
+          
+          // Find and replace within this context
+          readmeContent = readmeContent.replace(contextRegex, function(match: string, versionMatch: string) {
+            updatedCount++;
+            console.log(`  - Updated version in context "${context}" from ${versionMatch} to ${version}`);
+            return match.replace(versionMatch, versionMatch.startsWith('v') ? `v${version}` : version);
+          });
+        }
+      }
+    }
+    
+    // Try direct string replacement as a fallback for specific patterns
+    // This is a more targeted approach for known patterns that might be hard to match with regex
+    if (updatedCount === 0) {
+      console.log('Attempting direct string replacement for known patterns...');
+      
+      // Look for the Current State header specifically
+      const currentStateStr = "### Current State (v0.0.176)";
+      if (readmeContent.includes(currentStateStr)) {
+        const newCurrentStateStr = `### Current State (v${version})`;
+        readmeContent = readmeContent.replace(currentStateStr, newCurrentStateStr);
+        updatedCount++;
+        console.log(`  - Updated Current State header from ${currentStateStr} to ${newCurrentStateStr}`);
+      }
+    }
+    
+    // Debug version patterns if nothing was updated after direct replacement attempts
+    if (updatedCount === 0) {
+      console.log('\n\u26a0\ufe0f Unable to find version patterns. Debug information:');
+      
+      // Check for and log any version-like patterns in the README
+      const versionPatternDebug = /\b(v?[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)\b/g;
+      let match: RegExpExecArray | null;
+      
+      // Define our match info type
+      interface VersionMatch {
+        version: string;
+        context: string;
+        position: number;
+      }
+      
+      const versionMatches: VersionMatch[] = [];
+      
+      while ((match = versionPatternDebug.exec(readmeContent)) !== null) {
+        // Get some context around the match for better debugging
+        const start = Math.max(0, match.index - 30);
+        const end = Math.min(readmeContent.length, match.index + match[0].length + 30);
+        const context = readmeContent.substring(start, end).replace(/\n/g, ' ');
+        
+        versionMatches.push({
+          version: match[1],
+          context: `...${context}...`,
+          position: match.index
+        });
+      }
+      
+      if (versionMatches.length > 0) {
+        console.log('  Found these version-like patterns in README.md:');
+        versionMatches.forEach((v, i) => {
+          if (i < 10) { // Limit to 10 examples to avoid cluttering the output
+            console.log(`  ${i+1}. ${v.version} in context: ${v.context}`);
+          }
+        });
+        
+        if (versionMatches.length > 10) {
+          console.log(`  ...and ${versionMatches.length - 10} more`);
+        }
+        
+        console.log('\n  Consider updating the patterns in the script to match these specific occurrences.');
+      } else {
+        console.log('  No version-like patterns found in README.md. Please verify the file content.');
+      }
+    }
+    
+    // Check if content was actually modified
+    if (originalContent !== readmeContent) {
+      // Write updated content only if changes were made
+      await Bun.write(readmePath, readmeContent);
+      
+      if (updatedCount > 0) {
+        console.log(`\u2705 README.md version references updated to ${version} (${updatedCount} instances)`);
+      }
+    } else {
+      console.log(`\u26a0\ufe0f No changes made to README.md`);
+    }
+  } else {
+    console.log(`\u26a0\ufe0f README.md not found at ${readmePath}`);
   }
 }
 

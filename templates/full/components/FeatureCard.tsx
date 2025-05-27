@@ -1,5 +1,5 @@
 /**
- * Reusable FeatureCard component
+ * Reusable FeatureCard component with modern styling
  */
 
 interface FeatureCardProps {
@@ -7,19 +7,34 @@ interface FeatureCardProps {
   description: string;
   icon?: string;
   link?: string;
+  className?: string;
+  style?: any;
 }
 
-export function FeatureCard({ title, description, icon = '✨', link }: FeatureCardProps) {
+export function FeatureCard({ 
+  title, 
+  description, 
+  icon = '✨', 
+  link, 
+  className = '',
+  style 
+}: FeatureCardProps) {
+  const baseClasses = "card";
+  const combinedClasses = className ? `${baseClasses} ${className}` : baseClasses;
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow p-6 border border-gray-200 dark:border-gray-700">
-      <div className="text-3xl mb-3">{icon}</div>
-      <h3 className="text-xl font-bold mb-2">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-300">{description}</p>
-      {link && (
-        <a href={link} className="inline-block mt-3 text-blue-600 dark:text-blue-400 hover:underline">
-          Learn more →
-        </a>
-      )}
+    <div className={combinedClasses} style={style}>
+      <div className="p-6">
+        <div className="text-4xl mb-4">{icon}</div>
+        <h3 className="text-xl font-bold mb-3">{title}</h3>
+        <p className="text-muted-foreground mb-4">{description}</p>
+        {link && (
+          <a href={link} className="text-primary hover:text-accent inline-flex items-center transition-colors">
+            Learn more
+            <span className="ml-1">→</span>
+          </a>
+        )}
+      </div>
     </div>
   );
 }

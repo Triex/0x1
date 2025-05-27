@@ -1,24 +1,33 @@
 /**
- * Reusable Card Component
+ * Reusable Card Component with Modern Styling
  */
 
 interface CardProps {
-  title: string;
-  content: string;
+  title?: string;
+  content?: string;
   link?: {
     url: string;
     text: string;
   };
   children?: any;
+  className?: string;
+  style?: any;
 }
 
-export function Card(props: CardProps): JSX.Element {
+export function Card(props: CardProps) {
+  const baseClasses = "card";
+  const combinedClasses = props.className ? `${baseClasses} ${props.className}` : baseClasses;
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-100 dark:border-gray-700">
-      <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{props.title}</h3>
-      <p className="text-gray-600 dark:text-gray-300 mb-4">{props.content}</p>
+    <div className={combinedClasses} style={props.style}>
+      {props.title && (
+        <h3 className="text-xl font-bold mb-2">{props.title}</h3>
+      )}
+      {props.content && (
+        <p className="text-muted-foreground mb-4">{props.content}</p>
+      )}
       {props.link && (
-        <a href={props.link.url} className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center">
+        <a href={props.link.url} className="text-primary hover:text-accent inline-flex items-center transition-colors">
           {props.link.text}
           <span className="ml-1">&rarr;</span>
         </a>
