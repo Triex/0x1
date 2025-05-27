@@ -693,7 +693,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.177)
+### Current State (v0.0.178)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
@@ -831,7 +831,7 @@ Ultimately; adding crypto features to give the framework a real use case, and ab
   - [ ] `NFT`, NFT viewing UI, basic NFT minting and collection features.
 - [ ] Audit / ensure stable app router functionality (`"use server"`, `"use client"` tags work, `page.tsx` `actions.ts` work)
 - [ ] Functional templates
-  - [ ] Minimal (partially stable, needs styling)
+  - [x] Minimal
   - [ ] Standard (drafted, todo)
   - [ ] Full (drafted, todo)
 - [x] Full `ErrorBoundary` support, like `react-error-boundary` or `next-error-boundary`

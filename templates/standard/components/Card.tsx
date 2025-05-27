@@ -15,7 +15,7 @@ interface CardProps {
 }
 
 export function Card(props: CardProps) {
-  const baseClasses = "card";
+  const baseClasses = "card h-full";
   const combinedClasses = props.className ? `${baseClasses} ${props.className}` : baseClasses;
 
   return (

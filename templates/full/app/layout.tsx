@@ -22,6 +22,18 @@ if (typeof window !== 'undefined') {
       } catch (e) {
         console.error('Error setting initial theme:', e);
       }
+      
+      // Mobile menu functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        if (mobileMenuToggle && mobileMenu) {
+          mobileMenuToggle.addEventListener('click', function() {
+            mobileMenu.classList.toggle('hidden');
+          });
+        }
+      });
     })();
   `;
 }
@@ -43,9 +55,9 @@ export default function RootLayout({ children }: { children: any }) {
         {/* Script to handle initial theme setting */}
         {themeInitScript && <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />}
       </head>
-      <body className="h-full flex flex-col bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-gray-950 dark:via-violet-950/40 dark:to-purple-900/20">
+      <body className="h-full flex flex-col">
         <div id="app" className="min-h-screen flex flex-col">
-          <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60 dark:border-border/40 dark:bg-background/95 dark:supports-[backdrop-filter]:bg-background/60">
+          <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
             <nav className="container mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <a href="/" className="flex items-center space-x-2">
@@ -93,7 +105,7 @@ export default function RootLayout({ children }: { children: any }) {
             {children}
           </main>
 
-          <footer className="border-t border-slate-200/60 bg-white/60 backdrop-blur-md py-8 mt-auto dark:border-border/40 dark:bg-card/50">
+          <footer className="border-t border-border/40 glass-panel py-8 mt-auto">
             <div className="container mx-auto px-4">
               <div className="flex flex-col md:flex-row justify-between items-center mb-6">
                 <div className="mb-4 md:mb-0">
