@@ -47,7 +47,7 @@ async function fixTypeScriptArtifacts(filePath) {
     // Array of fixes to apply
     const fixes = [
       // Remove type annotations (Property: Type)
-      { pattern: /(\w+)\s*:\s*([\w\[\]<>|&'"{}]+);/g, replacement: "$1;" },
+      { pattern: /(\w+)\s*:\s*([\w[]<>|&'"{}]+);/g, replacement: "$1;" },
       
       // Remove interface definitions
       { pattern: /interface\s+\w+\s*\{[^}]*\}/g, replacement: "" },
@@ -59,19 +59,19 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /<[\w\s,[\]<>|&'"{}]+>/g, replacement: "" },
       
       // Fix function parameters with type annotations
-      { pattern: /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*[\w\[\]<>|&'"{}]+/g, replacement: "function $1($2)" },
+      { pattern: /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*[\w[]<>|&'"{}]+/g, replacement: "function $1($2)" },
       
       // Fix arrow functions with type annotations
-      { pattern: /(\([^)]*\))\s*:\s*[\w\[\]<>|&'"{}]+\s*=>/g, replacement: "$1 =>" },
+      { pattern: /(\([^)]*)\)\s*:\s*[\w[]<>|&'"{}]+\s*=>/g, replacement: "$1) =>" },
       
       // Remove parameter type annotations
-      { pattern: /(\w+)\s*:\s*([\w[\]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
+      { pattern: /(\w+)\s*:\s*([\w[]<>|&'"{}]+)(?=[,)])/g, replacement: "$1" },
       
       // Remove return type annotations from methods
-      { pattern: /(\w+\s*\([^)]*\))\s*:\s*([\w\[\]<>|&'"{}]+)\s*\{/g, replacement: "$1 {" },
+      { pattern: /(\w+\s*\([^)]*)\)\s*:\s*([\w[]<>|&'"{}]+)\s*\{/g, replacement: "$1) {" },
       
       // Remove 'as' type assertions
-      { pattern: /\s+as\s+[\w\[\]<>|&'"{}]+/g, replacement: "" },
+      { pattern: /\s+as\s+[\w[]<>|&'"{}]+/g, replacement: "" },
       
       // Remove namespaces
       { pattern: /namespace\s+\w+\s*\{/g, replacement: "{" },
@@ -80,7 +80,7 @@ async function fixTypeScriptArtifacts(filePath) {
       { pattern: /extends\s+\w+<[\w\s,[\]<>|&'"{}]+>/g, replacement: "extends Object" },
       
       // Remove standalone type annotations (variable: Type)
-      { pattern: /:\s*([\w\[\]<>|&'"{}]+)(?=\s*[=,);])/g, replacement: "" },
+      { pattern: /:\s*([\w[]<>|&'"{}]+)(?=\s*[=,);])/g, replacement: "" },
       
       // Clean up any resulting double semicolons
       { pattern: /;;/g, replacement: ";" },
