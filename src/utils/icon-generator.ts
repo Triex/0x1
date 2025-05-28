@@ -5,7 +5,7 @@
 
 import { existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import type { PWAConfig } from '../core/pwa';
 
 interface IconGeneratorOptions {
@@ -37,11 +37,11 @@ const SPLASH_SCREEN_SIZES = [
 
 // Default settings
 const DEFAULT_OPTIONS = {
-  baseColor: '#0077cc', 
-  backgroundColor: '#ffffff',
-  text: '',
-  subtext: '0x1', // Default 0x1 branding
-  outputPath: 'public/icons'
+  baseColor: "#7c3aed",
+  backgroundColor: "#ffffff",
+  text: "",
+  subtext: "0x1", // Default 0x1 branding
+  outputPath: "public/icons",
 };
 
 /**

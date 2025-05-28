@@ -26,27 +26,27 @@ export interface PWAConfig {
  * Default PWA configuration
  */
 export const DEFAULT_PWA_CONFIG: PWAConfig = {
-  name: '0x1 App',
-  shortName: '0x1',
-  description: 'Built with 0x1 - the ultra-minimal framework',
-  themeColor: '#0077cc',
-  backgroundColor: '#ffffff',
-  display: 'standalone',
-  startUrl: '/',
-  orientation: 'any',
-  iconsPath: '/icons',
+  name: "0x1 App",
+  shortName: "0x1",
+  description: "Built with 0x1 - the ultra-minimal framework",
+  themeColor: "#7c3aed",
+  backgroundColor: "#ffffff",
+  display: "standalone",
+  startUrl: "/",
+  orientation: "any",
+  iconsPath: "/icons",
   generateIcons: true,
   offlineSupport: true,
-  cacheStrategy: 'stale-while-revalidate',
-  cacheName: '0x1-cache-v1',
-  statusBarStyle: 'default', // iOS status bar style - can be 'default', 'black', or 'black-translucent'
+  cacheStrategy: "stale-while-revalidate",
+  cacheName: "0x1-cache-v1",
+  statusBarStyle: "default", // iOS status bar style - can be 'default', 'black', or 'black-translucent'
   precacheResources: [
-    '/',
-    '/index.html',
-    '/styles/main.css',
-    '/app.js',
-    '/icons/favicon.svg'
-  ]
+    "/",
+    "/index.html",
+    "/styles/main.css",
+    "/app.js",
+    "/icons/favicon.svg",
+  ],
 };
 
 /**
