@@ -371,38 +371,25 @@ const hooksContext = {
   },
   
   useState(initialValue) {
-    console.debug(\`[0x1 JSX Runtime] useState called with: \${initialValue}\`);
-    console.debug(\`[0x1 JSX Runtime] Current component: \${this.currentComponent}\`);
-    console.debug(\`[0x1 JSX Runtime] Call stack:\`, new Error().stack?.split('\\n').slice(1, 4).join('\\n'));
-    
     if (!this.currentComponent) {
       console.error('[0x1 JSX Runtime] No current component set when useState was called');
-      console.error('[0x1 JSX Runtime] Component states:', Array.from(this.componentStates.keys()));
-      console.error('[0x1 JSX Runtime] This object:', this);
-      console.error('[0x1 JSX Runtime] Available context:', {
-        componentStatesSize: this.componentStates.size,
-        hookIndex: this.hookIndex,
-        hasComponentStates: !!this.componentStates
-      });
       throw new Error('[0x1 Hooks] Hook called outside of component context');
     }
     
     const componentState = this.componentStates.get(this.currentComponent);
     if (!componentState) {
       console.error(\`[0x1 JSX Runtime] No component state found for: \${this.currentComponent}\`);
-      console.error('[0x1 JSX Runtime] Available components:', Array.from(this.componentStates.keys()));
       throw new Error('[0x1 Hooks] Component state not found');
     }
     
     const currentHookIndex = this.hookIndex++;
-    console.debug(\`[0x1 JSX Runtime] Hook index: \${currentHookIndex} for component: \${this.currentComponent}\`);
+    const capturedComponentId = this.currentComponent; // Capture for closure
     
     if (!componentState.hooks[currentHookIndex]) {
       componentState.hooks[currentHookIndex] = {
         type: 'useState',
         value: typeof initialValue === 'function' ? initialValue() : initialValue
       };
-      console.debug(\`[0x1 JSX Runtime] Initialized new state at index \${currentHookIndex} with value: \${componentState.hooks[currentHookIndex].value}\`);
     }
     
     const hook = componentState.hooks[currentHookIndex];
@@ -412,27 +399,18 @@ const hooksContext = {
       
       if (!Object.is(hook.value, nextValue)) {
         hook.value = nextValue;
-        // Removed excessive logging
         
-        // Trigger re-render
-        const updateCallback = updateCallbacks.get(currentComponentId);
-        if (updateCallback) {
+        // Trigger efficient component-level re-render using captured ID
+        componentState.updateCallbacks.forEach(updateCallback => {
           try {
             updateCallback();
           } catch (error) {
             console.error('[0x1 Framework] Error in update callback:', error);
           }
-        } else {
-          // CRITICAL FIX: Don't trigger router re-render for state updates
-          // This was causing the entire page to refresh instead of just the component
-          console.warn('[0x1 Framework] No update callback for component:', currentComponentId);
-          // Instead of router re-render, we should trigger a component-specific update
-          // For now, we'll skip the re-render to prevent page refreshes
-        }
+        });
       }
     };
     
-    console.debug(\`[0x1 JSX Runtime] Returning state: \${hook.value}\`);
     return [hook.value, setState];
   }
 };
@@ -505,8 +483,21 @@ function callComponentWithHooks(type, props) {
         // Update only this component - much more efficient than router re-render
         componentElements.forEach(element => {
           try {
+            // CRITICAL FIX: Set up hooks context before calling component
+            // Don't pass updateCallback to avoid infinite recursion
+            if (window.__0x1_enterComponentContext) {
+              window.__0x1_enterComponentContext(componentId);
+            }
+            
             const newResult = type(props);
-            const newElement = window.__0x1_renderToDOM ? window.__0x1_renderToDOM(newResult) : null;
+            
+            // Exit hooks context after component call
+            if (window.__0x1_exitComponentContext) {
+              window.__0x1_exitComponentContext();
+            }
+            
+            // Use the correct renderToDOM reference
+            const newElement = window.renderToDOM ? window.renderToDOM(newResult) : null;
             
             if (newElement && element.parentNode) {
               // Preserve the component ID on the new element
@@ -517,6 +508,10 @@ function callComponentWithHooks(type, props) {
             }
           } catch (error) {
             console.error('[0x1] Component update error:', error);
+            // Make sure to exit context on error
+            if (window.__0x1_exitComponentContext) {
+              window.__0x1_exitComponentContext();
+            }
             // Only fallback to router re-render on error
             if (window.__0x1_router?.renderCurrentRoute) {
               window.__0x1_router.renderCurrentRoute();
@@ -823,6 +818,7 @@ if (typeof window !== 'undefined') {
   window.createElement = createElement;
   window.Fragment = Fragment;
   window.renderToDOM = renderToDOM;
+  window.__0x1_renderToDOM = renderToDOM; // Add compatibility reference
   
   // React compatibility layer
   window.React = {
