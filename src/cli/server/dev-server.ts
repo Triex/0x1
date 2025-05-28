@@ -467,17 +467,20 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Generate stable component ID for hooks tracking
+ * Generate stable component ID for hooks tracking - optimized for performance
  */
 function generateComponentId(type, props) {
   const componentName = type.name || type.displayName || 'Anonymous';
-  const propsString = JSON.stringify(props || {});
+  
+  // Create a simpler, more stable hash for better performance
+  const propsKeys = props ? Object.keys(props).sort().join(',') : '';
   let hash = 0;
-  for (let i = 0; i < propsString.length; i++) {
-    const char = propsString.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+  const str = componentName + propsKeys;
+  
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xffffffff;
   }
+  
   return \`\${componentName}_\${Math.abs(hash).toString(36)}\`;
 }
 
@@ -487,77 +490,78 @@ function generateComponentId(type, props) {
 function callComponentWithHooks(type, props) {
   let componentId = generateComponentId(type, props);
   
-  // CRITICAL DEBUG: Log the generated component ID
-  console.debug(\`[0x1 JSX Runtime] Generated component ID: \${componentId} for type: \${type.name || 'Anonymous'}\`);
-  
   if (!componentId) {
     console.error('[0x1 JSX Runtime] Failed to generate component ID');
-    // Fallback ID
     const fallbackId = (type.name || 'Anonymous') + '_' + Math.random().toString(36).substr(2, 9);
-    console.warn(\`[0x1 JSX Runtime] Using fallback ID: \${fallbackId}\`);
     componentId = fallbackId;
   }
   
   const updateCallback = () => {
-    // Trigger component-specific re-render
-    console.debug(\`[0x1 Hooks] Component \${componentId} state updated - triggering re-render\`);
-    
-    // Find the component in the DOM and re-render it
+    // Efficient component-level re-render
     if (typeof window !== 'undefined') {
-      // For now, we'll use a simple DOM update approach
-      // In a full implementation, this would be more sophisticated
-      const componentElements = document.querySelectorAll(\`[data-component-id="\${componentId}"]\`);
+      const componentElements = document.querySelectorAll('[data-component-id="' + componentId + '"]');
+      
       if (componentElements.length > 0) {
+        // Update only this component - much more efficient than router re-render
         componentElements.forEach(element => {
-          // Re-render the component by calling it again and updating the DOM
           try {
             const newResult = type(props);
-            // This is a simplified approach - in practice you'd need proper DOM diffing
-            console.debug(\`[0x1 Hooks] Re-rendered component \${componentId}\`);
+            const newElement = window.__0x1_renderToDOM ? window.__0x1_renderToDOM(newResult) : null;
+            
+            if (newElement && element.parentNode) {
+              // Preserve the component ID on the new element
+              if (newElement.setAttribute) {
+                newElement.setAttribute('data-component-id', componentId);
+              }
+              element.parentNode.replaceChild(newElement, element);
+            }
           } catch (error) {
-            console.error(\`[0x1 Hooks] Error re-rendering component \${componentId}:\`, error);
+            console.error('[0x1] Component update error:', error);
+            // Only fallback to router re-render on error
+            if (window.__0x1_router?.renderCurrentRoute) {
+              window.__0x1_router.renderCurrentRoute();
+            }
           }
         });
       } else {
-        console.warn(\`[0x1 Hooks] No DOM elements found for component \${componentId}\`);
+        // Fallback to router re-render only if no DOM elements found
+        if (window.__0x1_router?.renderCurrentRoute) {
+          window.__0x1_router.renderCurrentRoute();
+        } else if (window.router?.renderCurrentRoute) {
+          window.router.renderCurrentRoute();
+        }
       }
     }
   };
   
   try {
-    // Use the framework's hooks context system
+    // Use framework's hooks context system
     if (typeof window !== 'undefined' && window.__0x1_enterComponentContext) {
-      console.debug(\`[0x1 JSX Runtime] Entering framework component context: \${componentId}\`);
       window.__0x1_enterComponentContext(componentId, updateCallback);
-      // Removed excessive logging
     } else {
-      // Fallback: use our own hooks context if framework's is not available
-      console.debug(\`[0x1 JSX Runtime] Entering fallback component context: \${componentId}\`);
-      hooksContext.enterComponent(componentId, updateCallback);
-      // Removed excessive logging
+      console.error('[0x1 JSX Runtime] Framework hooks context not available!');
+      throw new Error('[0x1 JSX] Framework hooks context not available');
     }
     
     // Call the component function
     const result = type(props);
     
-    // Removed excessive logging
+    // Add component ID to result for DOM targeting
+    if (result && typeof result === 'object' && result.$$typeof === REACT_ELEMENT_TYPE) {
+      if (!result.props) result.props = {};
+      result.props['data-component-id'] = componentId;
+    }
+    
     return result;
   } catch (error) {
     console.error('[0x1 JSX] Component error:', error);
-    console.error('[0x1 JSX] Component context state:', {
-      componentId,
-      hasFrameworkContext: typeof window !== 'undefined' && !!window.__0x1_enterComponentContext,
-      currentComponent: hooksContext.currentComponent,
-      componentStatesSize: hooksContext.componentStates?.size,
-      hookIndex: hooksContext.hookIndex
-    });
     throw error;
   } finally {
-    // Always exit component context using the appropriate system
+    // Always exit component context
     if (typeof window !== 'undefined' && window.__0x1_exitComponentContext) {
       window.__0x1_exitComponentContext();
     } else {
-      hooksContext.exitComponent();
+      console.error('[0x1 JSX Runtime] Framework hooks context exit not available!');
     }
   }
 }
@@ -1472,7 +1476,6 @@ const componentStates = new Map();
 const updateCallbacks = new Map();
 
 function enterComponentContext(componentId, updateCallback) {
-  // CRITICAL FIX: Ensure we actually set the currentComponentId
   if (!componentId) {
     console.error('[0x1 Framework] enterComponentContext called with null/undefined componentId');
     return;
@@ -1494,9 +1497,6 @@ function enterComponentContext(componentId, updateCallback) {
   
   const state = componentStates.get(componentId);
   state.mounted = true;
-  
-  // Add debug logging to verify component context is set correctly
-  console.debug(\`[0x1 Framework] Component context set: \${currentComponentId}\`);
 }
 
 function exitComponentContext() {
@@ -1505,8 +1505,6 @@ function exitComponentContext() {
 }
 
 function useState(initialValue) {
-  // Removed excessive logging - only keep essential errors
-  
   if (!currentComponentId) {
     console.error('[0x1 Framework] useState called outside component context');
     throw new Error('[0x1 Hooks] Hook called outside of component context');
@@ -1524,21 +1522,19 @@ function useState(initialValue) {
       type: 'useState',
       value: typeof initialValue === 'function' ? initialValue() : initialValue
     };
-    // Removed excessive logging
   }
   
   const hook = componentState.hooks[currentHookIndex];
-  // Removed excessive logging
+  const capturedComponentId = currentComponentId;
   
   const setState = (newValue) => {
     const nextValue = typeof newValue === 'function' ? newValue(hook.value) : newValue;
     
     if (!Object.is(hook.value, nextValue)) {
       hook.value = nextValue;
-      // Removed excessive logging
       
-      // Trigger re-render
-      const updateCallback = updateCallbacks.get(currentComponentId);
+      // Efficient component-level update using captured ID
+      const updateCallback = updateCallbacks.get(capturedComponentId);
       if (updateCallback) {
         try {
           updateCallback();
@@ -1546,11 +1542,7 @@ function useState(initialValue) {
           console.error('[0x1 Framework] Error in update callback:', error);
         }
       } else {
-        // CRITICAL FIX: Don't trigger router re-render for state updates
-        // This was causing the entire page to refresh instead of just the component
-        console.warn('[0x1 Framework] No update callback for component:', currentComponentId);
-        // Instead of router re-render, we should trigger a component-specific update
-        // For now, we'll skip the re-render to prevent page refreshes
+        console.warn(\`[0x1 Framework] No update callback for component: \${capturedComponentId}\`);
       }
     }
   };
@@ -1728,8 +1720,6 @@ if (typeof window !== 'undefined') {
   window.__0x1_enterComponentContext = enterComponentContext;
   window.__0x1_exitComponentContext = exitComponentContext;
   window.__0x1_useState = useState;
-  
-  console.log('[0x1 Framework] Global hooks context set up');
 }
 
 // CRITICAL FIX: Also set up globalThis for consistency
