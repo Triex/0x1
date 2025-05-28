@@ -74,10 +74,6 @@ class Router {
       ...options
     };
     
-    if (this.options.debug) {
-      console.log('[0x1 Router] Initializing router');
-    }
-    
     if (!this.isServer) {
       // Initialize hook system integration
       this.initializeHookSystem();
@@ -145,7 +141,6 @@ class Router {
   // Initialize router - required by the dev server
   init() {
     if (!this.isServer) {
-      console.log('[0x1 Router] Initializing router');
       this.currentPath = window.location.pathname;
       this.executeMiddleware(this.currentPath);
       this.renderCurrentRoute();
@@ -169,23 +164,40 @@ class Router {
     }
   }
 
-  // Navigate to path (client-side only)
+  // Navigate to path (client-side only) - optimized for instant navigation
   public navigate(path: string, pushState: boolean = true): void {
     if (this.isServer) return;
     
+    // Skip navigation if we're already on this path
+    if (this.currentPath === path) {
+      return;
+    }
+    
+    // Update current path immediately
     this.currentPath = path;
     
+    // Update browser history (non-blocking)
     if (pushState) {
       window.history.pushState(null, '', path);
     }
     
-    this.executeMiddleware(path);
-    this.listeners.forEach(listener => listener());
+    // Execute middleware asynchronously to avoid blocking
+    setTimeout(() => this.executeMiddleware(path), 0);
+    
+    // Notify listeners immediately for instant feedback
+    this.listeners.forEach(listener => {
+      try {
+        listener();
+      } catch (error) {
+        console.error('[0x1 Router] Error in route listener:', error);
+      }
+    });
+    
+    // Render the new route immediately
     this.renderCurrentRoute();
     
-    // Trigger re-render
-    if ((window as any).__0x1_triggerUpdate) {
-      (window as any).__0x1_triggerUpdate();
+    if (this.options.debug) {
+      console.log('[0x1 Router] Navigated to:', path);
     }
   }
 
@@ -215,18 +227,9 @@ class Router {
 
   // Match route with params extraction
   public matchRoute(path: string): RouteMatch | null {
-    if (this.options.debug) {
-      console.log(`[0x1 Router] Matching path: ${path}`);
-      console.log(`[0x1 Router] Available routes:`, this.routes.map(r => `${r.path} (exact: ${r.exact})`));
-    }
-    
     for (const route of this.routes) {
       const match = this.pathToRegExp(route.path, route.exact);
       const result = path.match(match.regex);
-      
-      if (this.options.debug) {
-        console.log(`[0x1 Router] Testing route ${route.path} with regex ${match.regex} against ${path}: ${!!result}`);
-      }
       
       if (result) {
         const params: Record<string, string> = {};
@@ -234,17 +237,13 @@ class Router {
           params[key] = result[index + 1] || '';
         });
         
-        if (this.options.debug) {
-          console.log(`[0x1 Router] ✅ Route matched: ${route.path}`, { params });
-        }
+        // Debug logging removed for cleaner output
         
         return { route, params };
       }
     }
     
-    if (this.options.debug) {
-      console.log(`[0x1 Router] ❌ No route found for: ${path}`);
-    }
+    // Debug logging removed for cleaner output
     
     return null;
   }
@@ -306,26 +305,40 @@ class Router {
           };
         }
         
-        // Render the component
+        // Render the component with error handling
         const result = component({ params: match.params });
         
-        // Clear root element content before rendering
-        rootElement.innerHTML = '';
-        
-        // Handle different result types
-        if (result && typeof result === 'object' && (result.type || result.__isVNode)) {
-          // JSX object - convert to DOM
-          const domElement = this.jsxToDom(result);
-          if (domElement) {
-            rootElement.appendChild(domElement);
+        // Use requestAnimationFrame for smooth rendering
+        requestAnimationFrame(() => {
+          // Clear root element content efficiently
+          while (rootElement.firstChild) {
+            rootElement.removeChild(rootElement.firstChild);
           }
-        } else if (result instanceof HTMLElement) {
-          // Already a DOM element
-          rootElement.appendChild(result);
-        } else if (typeof result === 'string') {
-          // HTML string
-          rootElement.innerHTML = result;
-        }
+          
+          // Handle different result types
+          if (result && typeof result === 'object' && (result.type || result.__isVNode)) {
+            // JSX object - convert to DOM
+            const domElement = this.jsxToDom(result);
+            if (domElement) {
+              rootElement.appendChild(domElement);
+            }
+          } else if (result instanceof HTMLElement) {
+            // Already a DOM element
+            rootElement.appendChild(result);
+          } else if (typeof result === 'string') {
+            // HTML string
+            rootElement.innerHTML = result;
+          }
+          
+          // Add smooth transition class for better UX
+          rootElement.style.opacity = '0';
+          rootElement.style.transition = 'opacity 0.15s ease-in-out';
+          
+          // Fade in the new content
+          setTimeout(() => {
+            rootElement.style.opacity = '1';
+          }, 10);
+        });
         
       } catch (error: unknown) {
         console.error('[0x1 Router] Error rendering route:', error);
@@ -383,7 +396,7 @@ class Router {
       // Handle JSX objects (both regular JSX and VNode objects)
       if (typeof jsx === 'object' && (jsx.type || jsx.__isVNode)) {
         // Handle React Fragment
-        if (jsx.type === Symbol.for('jsx.fragment') || jsx.type === Symbol.for('React.Fragment')) {
+        if (jsx.type === Symbol.for('react.fragment') || jsx.type === Symbol.for('React.Fragment')) {
           // Fragment - render children without wrapper
           const children = jsx.children || jsx.props?.children || [];
           const childArray = Array.isArray(children) ? children : [children];
@@ -690,9 +703,7 @@ class Router {
   public prefetch(path: string): void {
     // Basic implementation - just get the route match
     const match = this.matchRoute(path);
-    if (this.options?.debug && match) {
-      console.log(`[0x1 Router] Prefetched route: ${path}`);
-    }
+    // Debug logging removed for cleaner output
   }
 
   // Generate static routes for SSG
@@ -722,24 +733,36 @@ export function createRouter(options: RouterOptions): Router {
   return routerInstance;
 }
 
-// JSX-compatible Link component
+// JSX-compatible Link component with instant navigation
 export function Link({ href, className, children, prefetch }: LinkProps): any {
   // Check if prefetch is needed
   if (prefetch && typeof router !== 'undefined') {
     router.prefetch(href);
   }
   
-  // Return JSX structure directly
+  // Return JSX structure with proper event handling
   return {
     type: 'a',
     props: {
       href,
       className,
       onClick: (e: MouseEvent) => {
+        // Always prevent default browser navigation for internal links
         e.preventDefault();
-        if (typeof router !== 'undefined') {
-          router.navigate(href);
-        } else if (typeof window !== 'undefined') {
+        e.stopPropagation();
+        
+        // Only handle internal links (starting with /)
+        if (href.startsWith('/')) {
+          if (typeof router !== 'undefined') {
+            // Use router for instant client-side navigation
+            router.navigate(href);
+          } else if (typeof window !== 'undefined') {
+            // Fallback: use history API for client-side navigation
+            window.history.pushState(null, '', href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        } else {
+          // External links - allow normal navigation
           window.location.href = href;
         }
       },
@@ -792,7 +815,7 @@ export function useSearchParams(): URLSearchParams {
   return new URLSearchParams(searchStr);
 }
 
-// NavLink component with active class
+// NavLink component with active class and instant navigation
 export function NavLink(props: LinkProps & { activeClass?: string }): any {
   const { href, className, children, activeClass = 'active', prefetch } = props;
   const isActive = typeof router !== 'undefined' ? router.currentPath === href : false;
@@ -809,10 +832,22 @@ export function NavLink(props: LinkProps & { activeClass?: string }): any {
       href,
       className: combinedClass,
       onClick: (e: MouseEvent) => {
+        // Always prevent default browser navigation for internal links
         e.preventDefault();
-        if (typeof router !== 'undefined') {
-          router.navigate(href);
-        } else if (typeof window !== 'undefined') {
+        e.stopPropagation();
+        
+        // Only handle internal links (starting with /)
+        if (href.startsWith('/')) {
+          if (typeof router !== 'undefined') {
+            // Use router for instant client-side navigation
+            router.navigate(href);
+          } else if (typeof window !== 'undefined') {
+            // Fallback: use history API for client-side navigation
+            window.history.pushState(null, '', href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        } else {
+          // External links - allow normal navigation
           window.location.href = href;
         }
       },

@@ -25,7 +25,8 @@ function transformBareImports(content: string): string {
   // Transform 0x1 imports
   transformed = transformed
     .replace(/from\s+['"]0x1['"];?/g, 'from "/node_modules/0x1/index.js";')
-    .replace(/from\s+['"]0x1\/router['"];?/g, 'from "/0x1/router.js";');
+    .replace(/from\s+['"]0x1\/router['"];?/g, 'from "/0x1/router.js";')
+    .replace(/from\s+['"]0x1\/link['"];?/g, 'from "/0x1/link";');
   
   // Transform relative imports to absolute paths for components
   transformed = transformed
@@ -70,33 +71,11 @@ function normalizeJsxFunctionCalls(content: string): string {
 
 /**
  * Generate production-quality JSX runtime preamble
- * Provides comprehensive JSX function definitions with error handling
+ * Uses the proper JSX runtime with hooks context support
  */
 function generateJsxRuntimePreamble(): string {
-  return `// 0x1 Framework JSX Runtime - Production Quality
-import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
-
-// Define comprehensive JSX functions for maximum compatibility
-const jsxDEV = jsx;
-const createElement = jsx;
-
-// Ensure global availability for edge cases
-if (typeof globalThis !== 'undefined') {
-  globalThis.jsx = jsx;
-  globalThis.jsxs = jsxs;
-  globalThis.jsxDEV = jsx;
-  globalThis.Fragment = Fragment;
-  globalThis.createElement = jsx;
-}
-
-// Browser compatibility layer
-if (typeof window !== 'undefined') {
-  window.jsx = jsx;
-  window.jsxs = jsxs;
-  window.jsxDEV = jsx;
-  window.Fragment = Fragment;
-  window.createElement = jsx;
-}
+  return `// 0x1 Framework - Component uses global JSX runtime
+// JSX functions (jsx, jsxs, jsxDEV, Fragment, createElement) are available globally
 `;
 }
 
@@ -159,6 +138,27 @@ export function handleComponentRequest(
         
         // Normalize hashed JSX function calls to standard names
         transpiled = normalizeJsxFunctionCalls(transpiled);
+        
+        // Debug: Log the transpiled content to see what's happening
+        logger.debug(`Transpiled content for ${componentPath}:`);
+        logger.debug(`Has 'export default': ${transpiled.includes('export default')}`);
+        logger.debug(`Has 'function ': ${transpiled.includes('function ')}`);
+        
+        // TEMPORARILY DISABLED: Ensure we have a proper export default - fix missing exports
+        // This is causing duplicate exports, so let's disable it for now
+        /*
+        if (!transpiled.includes('export default') && transpiled.includes('function ')) {
+          // Find the main function and ensure it's exported
+          const functionMatch = transpiled.match(/function\s+(\w+)\s*\(/);
+          if (functionMatch) {
+            const functionName = functionMatch[1];
+            transpiled = transpiled.replace(
+              new RegExp(`function\\s+${functionName}\\s*\\(`),
+              `export default function ${functionName}(`
+            );
+          }
+        }
+        */
         
         // Generate production-quality JSX runtime preamble and combine with transpiled code
         const finalCode = `${generateJsxRuntimePreamble()}

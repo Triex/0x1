@@ -116,6 +116,26 @@ async function buildFramework() {
       }
     }
 
+    console.log("📦 Building Link component...");
+
+    // Build Link component
+    const linkPath = join(srcDir, "link.ts");
+    if (existsSync(linkPath)) {
+      const { success } = await Bun.build({
+        entrypoints: [linkPath],
+        outdir: distDir,
+        target: "browser",
+        format: "esm",
+        minify: true,
+      });
+
+      if (success) {
+        console.log("✅ Built link.js");
+      } else {
+        console.warn("⚠️ Failed to build link.js");
+      }
+    }
+
     console.log("📦 Building JSX runtime...");
 
     // Build JSX runtime files
@@ -181,7 +201,8 @@ async function buildFramework() {
     const essentialTypes = [
       "index.d.ts",
       "jsx.d.ts", 
-      "jsx-runtime.d.ts"
+      "jsx-runtime.d.ts",
+      "link.d.ts"
     ];
 
     const typesDir = join("types");

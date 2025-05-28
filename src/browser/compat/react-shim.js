@@ -5,43 +5,31 @@
 
 // Import main hooks (will be available when this loads)
 import {
-  useState,
-  useEffect,
-  useMemo,
+  clearComponentContext,
+  getAllComponentStats,
+  getComponentStats,
+  isComponentMounted,
+  setComponentContext,
+  unmountComponent,
   useCallback,
-  useRef,
   useClickOutside,
+  useEffect,
   useFetch,
   useForm,
   useLocalStorage,
-  setComponentContext,
-  clearComponentContext,
-  unmountComponent,
-  isComponentMounted,
-  getComponentStats,
-  getAllComponentStats
+  useMemo,
+  useRef,
+  useState
 } from '../core/hooks.js';
 
-// Fragment implementation
-export const Fragment = Symbol.for('React.Fragment');
+// Fragment implementation - use standardized React 19 symbol
+export const Fragment = Symbol.for('react.fragment');
 
 // Re-export all hooks from main system
 export {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-  useClickOutside,
-  useFetch,
+  clearComponentContext, getAllComponentStats, getComponentStats, isComponentMounted, setComponentContext, unmountComponent, useCallback, useClickOutside, useEffect, useFetch,
   useForm,
-  useLocalStorage,
-  setComponentContext,
-  clearComponentContext,
-  unmountComponent,
-  isComponentMounted,
-  getComponentStats,
-  getAllComponentStats
+  useLocalStorage, useMemo, useRef, useState
 };
 
 // Enhanced createElement that sets up hooks context

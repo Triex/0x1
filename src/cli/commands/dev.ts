@@ -468,16 +468,86 @@ export async function dev(options: DevOptions = {}): Promise<Server> {
       // Final ready message
       logger.info("💠 Ready for development. Press Ctrl+C to stop.");
 
-      // Handle shutdown gracefully
-      const cleanup = () => {
+      // Handle shutdown gracefully with comprehensive cleanup
+      let isShuttingDown = false;
+      
+      const cleanup = async () => {
+        if (isShuttingDown) return; // Prevent multiple cleanup calls
+        isShuttingDown = true;
+        
         logger.info("\n🛑 Shutting down dev server...");
-        server.stop();
-        logger.success("✅ Development server shutdown complete");
-        process.exit(0);
+        
+        try {
+          // Stop the server first
+          if (server) {
+            server.stop(true); // Force stop
+            logger.debug("💠 Development server stopped");
+          }
+          
+          // Kill any remaining processes on the port
+          try {
+            await Bun.spawn(['pkill', '-f', `bun.*${port}`], { 
+              stdout: 'pipe', 
+              stderr: 'pipe' 
+            }).exited;
+            logger.debug("💠 Killed remaining Bun processes");
+          } catch (e) {
+            // Ignore errors - process might not exist
+          }
+          
+          // Additional cleanup for any lingering processes
+          try {
+            const lsofProcess = Bun.spawn(['lsof', '-ti', `:${port}`], { 
+              stdout: 'pipe', 
+              stderr: 'pipe' 
+            });
+            
+            await lsofProcess.exited;
+            
+            if (lsofProcess.stdout) {
+              const output = await new Response(lsofProcess.stdout).text();
+              const pids = output.trim().split('\n').filter(pid => pid);
+              
+              for (const pid of pids) {
+                try {
+                  await Bun.spawn(['kill', '-9', pid], { 
+                    stdout: 'pipe', 
+                    stderr: 'pipe' 
+                  }).exited;
+                  logger.debug(`💠 Killed process ${pid}`);
+                } catch (e) {
+                  // Ignore errors
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore errors - lsof might not be available or no processes found
+          }
+          
+          logger.success("✅ Development server shutdown complete");
+        } catch (error) {
+          logger.error(`Error during cleanup: ${error}`);
+        } finally {
+          process.exit(0);
+        }
       };
 
+      // Handle multiple signal types for comprehensive shutdown
       process.on('SIGINT', cleanup);
       process.on('SIGTERM', cleanup);
+      process.on('SIGQUIT', cleanup);
+      process.on('exit', cleanup);
+      
+      // Handle uncaught exceptions
+      process.on('uncaughtException', (error) => {
+        logger.error(`Uncaught exception: ${error}`);
+        cleanup();
+      });
+      
+      process.on('unhandledRejection', (reason) => {
+        logger.error(`Unhandled rejection: ${reason}`);
+        cleanup();
+      });
 
       return server;
 

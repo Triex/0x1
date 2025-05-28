@@ -1,6 +1,7 @@
 /**
  * Header component with navigation and theme toggle
  */
+import { Link } from "0x1/link";
 import { useTheme } from "../lib/theme";
 
 export function Header() {
@@ -13,16 +14,18 @@ export function Header() {
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">0x1 App</h1>
+        <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">
+          <Link href="/">0x1 App</Link>
+        </h1>
         <nav className="flex space-x-6">
           {links.map((link) => (
-            <a 
+            <Link 
               key={link.href}
               href={link.href}
               className="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors"
             >
               {link.text}
-            </a>
+            </Link>
           ))}
         </nav>
         <button 

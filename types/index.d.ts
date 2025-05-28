@@ -58,6 +58,44 @@ export type JSXAttributes<T = HTMLElement> = Record<string, any> & {
  */
 export declare const Fragment: unique symbol;
 
+// Hooks type definitions - React-compatible hooks
+export interface RefObject<T> {
+  current: T | null;
+}
+
+export declare function useState<T>(initialState: T | (() => T)): [T, (newState: T | ((prevState: T) => T)) => void];
+export declare function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+export declare function useRef<T>(initialValue: T): RefObject<T>;
+export declare function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+export declare function useMemo<T>(factory: () => T, deps: any[]): T;
+
+// Custom hooks
+export declare function useClickOutside<T extends HTMLElement>(callback: () => void): RefObject<T>;
+export declare function useFetch<T = any>(url: string, options?: RequestInit): {
+  data: T | null;
+  loading: boolean;
+  error: Error | null;
+};
+export declare function useForm<T extends Record<string, any>>(
+  initialValues: T,
+  validationRules?: Partial<Record<keyof T, (value: any) => string | null>>
+): {
+  values: T;
+  errors: Partial<Record<keyof T, string>>;
+  touched: Partial<Record<keyof T, boolean>>;
+  setValue: (name: keyof T, value: any) => void;
+  setFieldTouched: (name: keyof T, isTouched?: boolean) => void;
+  validateField: (name: keyof T) => string | null;
+  validateAll: () => boolean;
+  reset: () => void;
+  handleSubmit: (onSubmit: (values: T) => void) => (event?: Event | { preventDefault?: () => void }) => void;
+  isValid: boolean;
+};
+export declare function useLocalStorage<T>(
+  key: string,
+  initialValue: T
+): [T, (value: T | ((prev: T) => T)) => void];
+
 // Store type definitions (re-exported from 0x1-store)
 export interface Action {
   type: string;

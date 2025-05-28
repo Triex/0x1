@@ -11,7 +11,7 @@ const requiredFiles = [
   'dist/index.js',
   'dist/package.json',
   
-  // JSX runtime files
+  // JSX runtime files (essential for framework)
   'dist/jsx-runtime.js',
   'dist/jsx-dev-runtime.js',
   
@@ -31,11 +31,13 @@ const requiredFiles = [
   'dist/types/index.d.ts',
   'dist/types/jsx.d.ts',
   'dist/types/jsx-runtime.d.ts',
+  'dist/types/link.d.ts',
 ];
 
 const optionalFiles = [
   // These files may or may not exist depending on build configuration
   'dist/types/0x1.d.ts',
+  'dist/link.js', // Link component
 ];
 
 // Files that should NOT exist in optimized build
@@ -50,6 +52,8 @@ const forbiddenFiles = [
   'dist/core/pwa.js',
   'dist/core/env.js',
   'dist/core/jsx-types.js',
+  'dist/jsx-templates.js', // Should not be in dist
+  'dist/cli/', // CLI should not be in framework dist
 ];
 
 async function validateBuild() {
@@ -98,26 +102,46 @@ async function validateBuild() {
   }
   
   // Validate package.json exports
-  const distPackageJson = JSON.parse(await Bun.file('dist/package.json').text());
-  const mainFile = distPackageJson.main;
-  
-  if (!existsSync(join('dist', mainFile))) {
-    console.error(`❌ Main file ${mainFile} not found!`);
+  try {
+    const distPackageJson = JSON.parse(await Bun.file('dist/package.json').text());
+    const mainFile = distPackageJson.main;
+    
+    if (!existsSync(join('dist', mainFile))) {
+      console.error(`❌ Main file ${mainFile} not found!`);
+      process.exit(1);
+    }
+    
+    // Validate JSX runtime exports
+    const jsxRuntimeExport = distPackageJson.exports?.['./jsx-runtime']?.import;
+    if (jsxRuntimeExport && !existsSync(join('dist', jsxRuntimeExport))) {
+      console.error(`❌ JSX runtime export ${jsxRuntimeExport} not found!`);
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error('❌ Failed to validate package.json:', error);
     process.exit(1);
   }
   
   // Calculate and report bundle sizes
-  const indexSize = (await Bun.file('dist/index.js').arrayBuffer()).byteLength;
-  const jsxRuntimeSize = (await Bun.file('dist/jsx-runtime.js').arrayBuffer()).byteLength;
-  
-  console.log('✅ Build validation passed!');
-  console.log(`📦 Optimized framework built successfully:`);
-  console.log(`  • Required files: ${requiredFiles.length - missingFiles.length}/${requiredFiles.length}`);
-  console.log(`  • Main bundle: ${(indexSize / 1024).toFixed(1)} KB`);
-  console.log(`  • JSX runtime: ${(jsxRuntimeSize / 1024).toFixed(1)} KB`);
-  
-  if (unexpectedFiles.length === 0) {
-    console.log('🎯 Build is fully optimized - no unnecessary files found');
+  try {
+    const indexSize = (await Bun.file('dist/index.js').arrayBuffer()).byteLength;
+    const jsxRuntimeSize = (await Bun.file('dist/jsx-runtime.js').arrayBuffer()).byteLength;
+    const jsxDevRuntimeSize = (await Bun.file('dist/jsx-dev-runtime.js').arrayBuffer()).byteLength;
+    
+    console.log('✅ Build validation passed!');
+    console.log(`📦 Optimized framework built successfully:`);
+    console.log(`  • Required files: ${requiredFiles.length - missingFiles.length}/${requiredFiles.length}`);
+    console.log(`  • Main bundle: ${(indexSize / 1024).toFixed(1)} KB`);
+    console.log(`  • JSX runtime: ${(jsxRuntimeSize / 1024).toFixed(1)} KB`);
+    console.log(`  • JSX dev runtime: ${(jsxDevRuntimeSize / 1024).toFixed(1)} KB`);
+    console.log(`  • Total core size: ${((indexSize + jsxRuntimeSize + jsxDevRuntimeSize) / 1024).toFixed(1)} KB`);
+    
+    if (unexpectedFiles.length === 0) {
+      console.log('🎯 Build is fully optimized - no unnecessary files found');
+    }
+  } catch (error) {
+    console.error('❌ Failed to calculate bundle sizes:', error);
+    process.exit(1);
   }
 }
 

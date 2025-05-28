@@ -1,11 +1,6 @@
 /**
- * 0x1 JSX Runtime Proxy
- * 
- * This file serves as a proxy for the browser JSX runtime.
- * The actual implementation is in src/browser/jsx/runtime.ts
- * 
- * THIS FILE CAN BE SAFELY REMOVED ONCE ALL IMPORTS REFERENCE
- * THE BROWSER VERSION DIRECTLY.
+ * 0x1 Framework JSX Runtime
+ * Main entry point for JSX runtime
  */
 
-export * from './browser/jsx/runtime';
+export * from './jsx/runtime';

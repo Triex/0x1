@@ -2,6 +2,7 @@
  * 0x1 Standard App - Root Layout
  * Using app directory structure with beautiful light & dark theme
  */
+import { Link } from "0x1/link";
 import { ThemeToggle } from "../components/ThemeToggle";
 import "./globals.css";
 
@@ -54,7 +55,7 @@ export default function RootLayout({ children }: { children: any }) {
         <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <a href="/" className="flex items-center space-x-2">
+              <Link href="/" className="flex items-center space-x-2">
                 <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="11" fill="url(#gradient)" />
                   <path d="M13.2 3H9.5l-3.1 9.4h4.2L8.2 21l9.1-11.3h-5.5L13.2 3z"
@@ -68,12 +69,12 @@ export default function RootLayout({ children }: { children: any }) {
                 </svg>
                 <span className="font-bold text-xl gradient-text">0x1</span>
                 <span className="text-sm text-muted-foreground hidden sm:inline">Standard</span>
-              </a>
+              </Link>
             </div>
             <nav className="hidden md:flex space-x-6">
-              <a href="/" className="text-foreground hover:text-primary transition-colors font-medium">Home</a>
-              <a href="/features" className="text-muted-foreground hover:text-primary transition-colors">Features</a>
-              <a href="/about" className="text-muted-foreground hover:text-primary transition-colors">About</a>
+              <Link href="/" className="text-foreground hover:text-primary transition-colors font-medium">Home</Link>
+              <Link href="/features" className="text-muted-foreground hover:text-primary transition-colors">Features</Link>
+              <Link href="/about" className="text-muted-foreground hover:text-primary transition-colors">About</Link>
             </nav>
             <div className="flex items-center space-x-4">
               <ThemeToggle iconOnly />
@@ -86,9 +87,9 @@ export default function RootLayout({ children }: { children: any }) {
           </div>
           <div id="mobile-menu" className="hidden md:hidden glass-panel border-t border-border/40">
             <div className="px-4 py-3 space-y-3">
-              <a href="/" className="block text-foreground hover:text-primary transition-colors">Home</a>
-              <a href="/features" className="block text-muted-foreground hover:text-primary transition-colors">Features</a>
-              <a href="/about" className="block text-muted-foreground hover:text-primary transition-colors">About</a>
+              <Link href="/" className="block text-foreground hover:text-primary transition-colors">Home</Link>
+              <Link href="/features" className="block text-muted-foreground hover:text-primary transition-colors">Features</Link>
+              <Link href="/about" className="block text-muted-foreground hover:text-primary transition-colors">About</Link>
             </div>
           </div>
         </header>

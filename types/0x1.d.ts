@@ -154,6 +154,22 @@ declare module '0x1' {
 
   export const Fragment: unique symbol;
   
+  // Link component - Next.js compatible
+  export interface LinkProps {
+    href: string;
+    className?: string;
+    children?: JSXChildren;
+    target?: string;
+    rel?: string;
+    prefetch?: boolean;
+    replace?: boolean;
+    scroll?: boolean;
+    [key: string]: any;
+  }
+  
+  export function Link(props: LinkProps): JSXNode;
+  export default Link;
+  
   // Store functionality
   export function createStore<T>(name: string, initialState: T, actions?: Record<string, (state: T, ...args: any[]) => T>): {
     getState(): T;
@@ -257,4 +273,21 @@ declare module '0x1/core/router' {
 
 declare module '0x1/core/component' {
   export type Component = (props?: any) => HTMLElement | DocumentFragment | Node | null | void;
+}
+
+// Link component module declaration
+declare module '0x1/link' {
+  export interface LinkProps {
+    href: string;
+    className?: string;
+    children?: any;
+    target?: string;
+    rel?: string;
+    prefetch?: boolean;
+    replace?: boolean;
+    scroll?: boolean;
+    [key: string]: any;
+  }
+  
+  export default function Link(props: LinkProps): any;
 }

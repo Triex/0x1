@@ -14,7 +14,7 @@ export function generateJsxRuntime(isDevRuntime = false): string {
   'use strict';
   
   // Define Fragment symbol
-  const Fragment = Symbol.for('React.Fragment');
+  const Fragment = Symbol.for('react.fragment');
   
   // AGGRESSIVE FRAGMENT RESOLUTION - Must run first!
   (function() {
@@ -288,7 +288,7 @@ export function generateJsxRuntime(isDevRuntime = false): string {
 export const jsx = typeof window !== 'undefined' ? window.jsx : null;
 export const jsxs = typeof window !== 'undefined' ? window.jsxs : null;
 export const jsxDEV = typeof window !== 'undefined' ? window.jsxDEV : null;
-export const Fragment = typeof window !== 'undefined' ? window.Fragment : Symbol.for('Fragment');
+export const Fragment = typeof window !== 'undefined' ? window.Fragment : Symbol.for('react.fragment');
 `;
 
   return baseScript;
@@ -752,8 +752,80 @@ export function generateRouterModule(): string {
           return fragment;
         }
         
-        // Handle JSX elements
-        if (element && typeof element === "object" && "type" in element) {
+        // Handle React 19 compatible elements with $$typeof
+        if (element && typeof element === "object" && element.$$typeof) {
+          // Handle Fragment
+          if (element.type === Symbol.for('react.fragment')) {
+            const fragment = document.createDocumentFragment();
+            const children = element.props.children;
+            if (children) {
+              const childArray = Array.isArray(children) ? children : [children];
+              childArray.forEach(child => {
+                const renderedChild = this.renderElement(child);
+                if (renderedChild) {
+                  fragment.appendChild(renderedChild);
+                }
+              });
+            }
+            return fragment;
+          }
+          
+          // Handle function components
+          if (typeof element.type === "function") {
+            try {
+              const result = element.type(element.props);
+              return this.renderElement(result);
+            } catch (err) {
+              console.error("[0x1] Error rendering React component:", err);
+              const errorElement = document.createElement('div');
+              errorElement.className = 'component-error';
+              errorElement.textContent = 'Error: ' + (err.message || String(err));
+              return errorElement;
+            }
+          }
+          
+          // Handle DOM elements
+          if (typeof element.type === "string") {
+            const domElement = document.createElement(element.type);
+            const props = element.props || {};
+            
+            // Add attributes
+            Object.entries(props).forEach(([key, value]) => {
+              if (key === "children") {
+                // Handled separately
+              } else if (key === "className") {
+                domElement.className = value;
+              } else if (key === "style" && typeof value === "object") {
+                Object.assign(domElement.style, value);
+              } else if (key === "dangerouslySetInnerHTML" && value && value.__html) {
+                domElement.innerHTML = value.__html;
+                return; // Skip children processing
+              } else if (key.startsWith("on") && typeof value === "function") {
+                const eventName = key.substring(2).toLowerCase();
+                domElement.addEventListener(eventName, value);
+              } else if (value !== undefined && value !== null && typeof value !== "function") {
+                domElement.setAttribute(key, String(value));
+              }
+            });
+            
+            // Add children
+            if (props.children) {
+              const children = Array.isArray(props.children) ? props.children : [props.children];
+              children.forEach(child => {
+                if (child !== undefined && child !== null) {
+                  const renderedChild = this.renderElement(child);
+                  if (renderedChild) {
+                    domElement.appendChild(renderedChild);
+                  }
+                }
+              });
+            }
+            
+            return domElement;
+          }
+        }
+        // Handle legacy JSX elements (fallback)
+        else if (element && typeof element === "object" && "type" in element) {
           const { type, props = {} } = element;
           
           // Handle functional components
@@ -762,7 +834,7 @@ export function generateRouterModule(): string {
               const result = type(props);
               return this.renderElement(result);
             } catch (err) {
-              console.error("[0x1] Error rendering component:", err);
+              console.error("[0x1] Error rendering legacy component:", err);
               const errorElement = document.createElement('div');
               errorElement.className = 'component-error';
               errorElement.textContent = 'Error: ' + (err.message || String(err));
@@ -771,38 +843,40 @@ export function generateRouterModule(): string {
           }
           
           // Handle HTML elements
-          const domElement = document.createElement(type);
-          
-          // Add attributes
-          Object.entries(props).forEach(([key, value]) => {
-            if (key === "children") {
-              // Handled separately
-            } else if (key === "className") {
-              domElement.className = value;
-            } else if (key === "style" && typeof value === "object") {
-              Object.assign(domElement.style, value);
-            } else if (key.startsWith("on") && typeof value === "function") {
-              const eventName = key.substring(2).toLowerCase();
-              domElement.addEventListener(eventName, value);
-            } else if (value !== undefined && value !== null) {
-              domElement.setAttribute(key, String(value));
-            }
-          });
-          
-          // Add children
-          if (props.children) {
-            const children = Array.isArray(props.children) ? props.children : [props.children];
-            children.forEach(child => {
-              if (child !== undefined && child !== null) {
-                const renderedChild = this.renderElement(child);
-                if (renderedChild) {
-                  domElement.appendChild(renderedChild);
-                }
+          if (typeof type === "string") {
+            const domElement = document.createElement(type);
+            
+            // Add attributes
+            Object.entries(props).forEach(([key, value]) => {
+              if (key === "children") {
+                // Handled separately
+              } else if (key === "className") {
+                domElement.className = value;
+              } else if (key === "style" && typeof value === "object") {
+                Object.assign(domElement.style, value);
+              } else if (key.startsWith("on") && typeof value === "function") {
+                const eventName = key.substring(2).toLowerCase();
+                domElement.addEventListener(eventName, value);
+              } else if (value !== undefined && value !== null) {
+                domElement.setAttribute(key, String(value));
               }
             });
+            
+            // Add children
+            if (props.children) {
+              const children = Array.isArray(props.children) ? props.children : [props.children];
+              children.forEach(child => {
+                if (child !== undefined && child !== null) {
+                  const renderedChild = this.renderElement(child);
+                  if (renderedChild) {
+                    domElement.appendChild(renderedChild);
+                  }
+                }
+              });
+            }
+            
+            return domElement;
           }
-          
-          return domElement;
         }
         
         // Fallback for unknown types
@@ -921,9 +995,13 @@ export function generateRouterModule(): string {
     
     // Render the result of a component
     renderResult(result) {
-      // First check if result has a full HTML structure
-      const hasFullHtmlStructure = typeof window.__0x1_hasHtmlStructure === 'function' && 
-                                  window.__0x1_hasHtmlStructure(result);
+      // First check if result has a full HTML structure (React 19 compatible or legacy)
+      const hasFullHtmlStructure = (result && typeof result === 'object' && 
+                                   result.$$typeof && result.type === 'html') ||
+                                  (result && typeof result === 'object' && 
+                                   result.type === 'html' && result.props) ||
+                                  (typeof window.__0x1_hasHtmlStructure === 'function' && 
+                                   window.__0x1_hasHtmlStructure(result));
       
       if (hasFullHtmlStructure) {
         // For a full HTML structure, we want to extract the <body> content 
@@ -931,46 +1009,49 @@ export function generateRouterModule(): string {
         console.log("[0x1] Detected full HTML structure in layout");
         
         try {
-          // Handle the different ways the HTML structure might be represented
-          if (typeof result === 'string') {
-            // For string HTML
-            document.documentElement.innerHTML = result;
-            return;
-          } else if (result && typeof result === 'object') {
-            // For JSX object structure with html/head/body elements
-            if (result.type === 'html') {
-              // Extract important parts from head (title, meta, links)
-              const headElement = result.props.children.find(child => 
+          // Handle React 19 compatible elements with $$typeof
+          if (result && result.$$typeof && result.type === 'html') {
+            console.log("[0x1] Processing React 19 compatible HTML structure");
+            const children = result.props.children;
+            if (children) {
+              const childArray = Array.isArray(children) ? children : [children];
+              
+              // Extract head and body elements
+              const headElement = childArray.find(child => 
                 child && child.type === 'head'
               );
+              const bodyElement = childArray.find(child => 
+                child && child.type === 'body'
+              );
               
+              // Update document head if present
               if (headElement && headElement.props && headElement.props.children) {
-                const head = document.head;
-                // Update title if present
-                const titleElement = Array.isArray(headElement.props.children) ?
-                  headElement.props.children.find(child => child && child.type === 'title') :
-                  (headElement.props.children.type === 'title' ? headElement.props.children : null);
+                const headChildren = Array.isArray(headElement.props.children) ?
+                  headElement.props.children : [headElement.props.children];
+                
+                const titleElement = headChildren.find(child => 
+                  child && child.type === 'title'
+                );
                 
                 if (titleElement && titleElement.props && titleElement.props.children) {
                   document.title = titleElement.props.children;
                 }
               }
               
-              // Extract body content
-              const bodyElement = result.props.children.find(child => 
-                child && child.type === 'body'
-              );
-              
-              if (bodyElement && bodyElement.props && bodyElement.props.children) {
+              // Extract and render body content
+              if (bodyElement && bodyElement.props) {
                 // Clear the root element
                 while (this.rootElement.firstChild) {
                   this.rootElement.removeChild(this.rootElement.firstChild);
                 }
                 
-                // Add the body children
-                const renderedContent = this.renderElement(bodyElement.props.children);
-                if (renderedContent) {
-                  this.rootElement.appendChild(renderedContent);
+                // Add the body children using the modern renderElement
+                const bodyChildren = bodyElement.props.children;
+                if (bodyChildren) {
+                  const renderedContent = this.renderElement(bodyChildren);
+                  if (renderedContent) {
+                    this.rootElement.appendChild(renderedContent);
+                  }
                 }
                 
                 // Add body className if present
@@ -979,6 +1060,72 @@ export function generateRouterModule(): string {
                 }
                 
                 return;
+              }
+            }
+          }
+          // Handle legacy JSX structure (fallback)
+          else if (result && typeof result === 'object') {
+            // For string HTML
+            if (typeof result === 'string') {
+              document.documentElement.innerHTML = result;
+              return;
+            }
+            
+            // For JSX object structure with html/head/body elements
+            if (result.type === 'html') {
+              console.log("[0x1] Processing legacy HTML structure");
+              
+              // Get children from either props.children or direct children property
+              const children = result.props?.children || result.children;
+              if (children) {
+                const childArray = Array.isArray(children) ? children : [children];
+                
+                // Extract important parts from head (title, meta, links)
+                const headElement = childArray.find(child => 
+                  child && child.type === 'head'
+                );
+                
+                if (headElement && headElement.props && headElement.props.children) {
+                  // Update title if present
+                  const headChildren = Array.isArray(headElement.props.children) ?
+                    headElement.props.children : [headElement.props.children];
+                  
+                  const titleElement = headChildren.find(child => 
+                    child && child.type === 'title'
+                  );
+                  
+                  if (titleElement && titleElement.props && titleElement.props.children) {
+                    document.title = titleElement.props.children;
+                  }
+                }
+                
+                // Extract body content
+                const bodyElement = childArray.find(child => 
+                  child && child.type === 'body'
+                );
+                
+                if (bodyElement) {
+                  // Clear the root element
+                  while (this.rootElement.firstChild) {
+                    this.rootElement.removeChild(this.rootElement.firstChild);
+                  }
+                  
+                  // Add the body children
+                  const bodyChildren = bodyElement.props?.children || bodyElement.children;
+                  if (bodyChildren) {
+                    const renderedContent = this.renderElement(bodyChildren);
+                    if (renderedContent) {
+                      this.rootElement.appendChild(renderedContent);
+                    }
+                  }
+                  
+                  // Add body className if present
+                  if (bodyElement.props?.className) {
+                    document.body.className = bodyElement.props.className;
+                  }
+                  
+                  return;
+                }
               }
             }
           }

@@ -24,15 +24,19 @@ export interface LinkProps {
 export default function Link(props: LinkProps): JSX.Element {
   const { href, children, className = '', target, rel, ...otherProps } = props;
   
-  // Create JSX element instead of HTMLElement
+  // Create proper React 19 compatible JSX element
   return {
+    $$typeof: Symbol.for('react.element'),
     type: 'a',
+    key: null,
+    ref: null,
     props: {
       href,
       className,
       target,
       rel,
       ...otherProps,
+      children,
       onClick: (e: MouseEvent) => {
         // Only handle internal links for SPA navigation
         if (href.startsWith('/') && !target) {
@@ -51,9 +55,8 @@ export default function Link(props: LinkProps): JSX.Element {
         }
       }
     },
-    children: Array.isArray(children) ? children : [children],
-    key: null
-  } as JSX.Element;
+    _owner: null
+  } as unknown as JSX.Element;
 }
 
 // Add a preload method to the Link component for API compatibility
