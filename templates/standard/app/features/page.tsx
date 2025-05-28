@@ -5,6 +5,14 @@
 
 import { Card } from "../../components/Card";
 
+// Static metadata for this page (Next.js 15 style)
+export const metadata = {
+  title: 'Features - 0x1 Framework',
+  description: 'Discover the powerful features of 0x1 Framework: ultra-fast performance, TypeScript support, and modern development experience.',
+  image: '/features-og.png',
+  url: '/pages/features'
+};
+
 export default function FeaturesPage() {
   return (
     <div className="container mx-auto px-4 py-12">

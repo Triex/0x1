@@ -597,43 +597,50 @@ class Router {
     }
     
     try {
-      // Efficient update callback that only re-renders this specific component
+      // Optimized update callback that uses requestAnimationFrame for smooth updates
       const updateCallback = () => {
-        try {
-          // Find the specific DOM element for this component
-          const element = document.querySelector(`[data-component-id="${componentId}"]`);
-          
-          if (element && element.parentNode) {
-            // Re-render only this component, not the entire route
+        // Use requestAnimationFrame to prevent blocking scrolling
+        requestAnimationFrame(() => {
+          try {
+            // Find the specific DOM element for this component
+            const element = document.querySelector(`[data-component-id="${componentId}"]`);
             
-            // Enter component context again for re-rendering
-            (window as any).__0x1_enterComponentContext(componentId, updateCallback);
-            
-            const newResult = component(props);
-            const newDomElement = this.jsxToDom(newResult);
-            
-            // Exit component context after re-rendering
-            (window as any).__0x1_exitComponentContext();
-            
-            if (newDomElement) {
-              // Ensure the new element has the same component ID
-              if (newDomElement.setAttribute) {
-                newDomElement.setAttribute('data-component-id', componentId);
+            if (element && element.parentNode) {
+              // Re-render only this component, not the entire route
+              
+              // Enter component context again for re-rendering (no recursive callback)
+              (window as any).__0x1_enterComponentContext(componentId);
+              
+              const newResult = component(props);
+              const newDomElement = this.jsxToDom(newResult);
+              
+              // Exit component context after re-rendering
+              (window as any).__0x1_exitComponentContext();
+              
+              if (newDomElement) {
+                // Ensure the new element has the same component ID
+                if (newDomElement.setAttribute) {
+                  newDomElement.setAttribute('data-component-id', componentId);
+                }
+                element.parentNode.replaceChild(newDomElement, element);
               }
-              element.parentNode.replaceChild(newDomElement, element);
+            } else {
+              // Fallback to full route render if element not found (debounced)
+              if (!(this as any)._renderPending) {
+                (this as any)._renderPending = true;
+                requestAnimationFrame(() => {
+                  this.renderCurrentRoute();
+                  (this as any)._renderPending = false;
+                });
+              }
             }
-          } else {
-            // Fallback to full route render if element not found
-            this.renderCurrentRoute();
+          } catch (e) {
+            console.error('[0x1 Router] Error updating component:', e);
           }
-          return true;
-        } catch (e) {
-          console.error('[0x1 Router] Error updating component:', e);
-          return false;
-        }
+        });
       };
       
-      // Enter component context with the efficient update callback
+      // Enter component context with the optimized update callback
       (window as any).__0x1_enterComponentContext(componentId, updateCallback);
       
       // Execute the component with props

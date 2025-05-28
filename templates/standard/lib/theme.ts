@@ -1,7 +1,7 @@
 import { useEffect, useState } from '0x1';
 
 export function useTheme() {
-  const [isDark, setIsDark] = useState<boolean>(() => {
+  const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('0x1-dark-mode');
       if (saved) return saved === 'dark';

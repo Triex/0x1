@@ -88,7 +88,11 @@ async function buildFramework() {
       'hooks.ts',
       'component.ts',
       'navigation.ts',
-      'error-boundary.ts'
+      'error-boundary.ts',
+      'metadata.ts',
+      'head.ts',
+      'directives.ts',
+      'pwa.ts'
     ];
 
     for (const file of essentialCoreFiles) {

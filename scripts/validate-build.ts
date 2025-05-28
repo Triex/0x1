@@ -21,6 +21,16 @@ const requiredFiles = [
   'dist/core/navigation.js',
   'dist/core/error-boundary.js',
   
+  // Metadata and head management system
+  'dist/core/metadata.js',
+  'dist/core/head.js',
+  
+  // Client/server directives system
+  'dist/core/directives.js',
+  
+  // PWA system
+  'dist/core/pwa.js',
+  
   // 0x1 router (built from 0x1-router package)
   'dist/core/router.js',
   
@@ -49,7 +59,6 @@ const forbiddenFiles = [
   'dist/error-boundary.js', // Should only be in core/
   'dist/react-shim.js',
   'dist/core/suspense.js',
-  'dist/core/pwa.js',
   'dist/core/env.js',
   'dist/core/jsx-types.js',
   'dist/jsx-templates.js', // Should not be in dist

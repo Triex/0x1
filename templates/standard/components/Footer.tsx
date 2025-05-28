@@ -2,7 +2,31 @@
  * Footer Component
  */
 
-import Link from '0x1/link'; // Next.js-style import
+// Simple Link component for now
+function Link({ href, children, className, ...props }: { href: string; children: any; className?: string; [key: string]: any }) {
+  return (
+    <a 
+      href={href} 
+      className={className}
+      onClick={(e) => {
+        if (href.startsWith('/')) {
+          e.preventDefault();
+          if ((window as any).__0x1_router?.navigate) {
+            (window as any).__0x1_router.navigate(href);
+          } else if ((window as any).router?.navigate) {
+            (window as any).router.navigate(href);
+          } else {
+            window.history.pushState(null, '', href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
 
 export function Footer() {
   return (

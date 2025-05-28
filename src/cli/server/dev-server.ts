@@ -463,7 +463,7 @@ function generateComponentId(type, props) {
 }
 
 /**
- * Call component with proper hooks context (React 19 style)
+ * Call component with proper hooks context (React 19 style) - Optimized for performance
  */
 function callComponentWithHooks(type, props) {
   let componentId = generateComponentId(type, props);
@@ -474,17 +474,23 @@ function callComponentWithHooks(type, props) {
     componentId = fallbackId;
   }
   
+  // Optimized update callback with reduced DOM queries and better performance
   const updateCallback = () => {
-    // Efficient component-level re-render
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return;
+    
+    // Use immediate update for better SVG handling instead of requestAnimationFrame
+    try {
+      // Cache DOM query result to avoid repeated queries
       const componentElements = document.querySelectorAll('[data-component-id="' + componentId + '"]');
       
       if (componentElements.length > 0) {
-        // Update only this component - much more efficient than router re-render
+        // Batch DOM updates for better performance
+        const fragment = document.createDocumentFragment();
+        let hasUpdates = false;
+        
         componentElements.forEach(element => {
           try {
-            // CRITICAL FIX: Set up hooks context before calling component
-            // Don't pass updateCallback to avoid infinite recursion
+            // Set up hooks context before calling component (no recursive callback)
             if (window.__0x1_enterComponentContext) {
               window.__0x1_enterComponentContext(componentId);
             }
@@ -496,15 +502,19 @@ function callComponentWithHooks(type, props) {
               window.__0x1_exitComponentContext();
             }
             
-            // Use the correct renderToDOM reference
-            const newElement = window.renderToDOM ? window.renderToDOM(newResult) : null;
+            // Use cached renderToDOM reference for better performance
+            const renderToDOM = window.renderToDOM || window.__0x1_renderToDOM;
+            const newElement = renderToDOM ? renderToDOM(newResult) : null;
             
             if (newElement && element.parentNode) {
               // Preserve the component ID on the new element
               if (newElement.setAttribute) {
                 newElement.setAttribute('data-component-id', componentId);
               }
+              
+              // Use replaceChild for better performance than innerHTML
               element.parentNode.replaceChild(newElement, element);
+              hasUpdates = true;
             }
           } catch (error) {
             console.error('[0x1] Component update error:', error);
@@ -512,20 +522,25 @@ function callComponentWithHooks(type, props) {
             if (window.__0x1_exitComponentContext) {
               window.__0x1_exitComponentContext();
             }
-            // Only fallback to router re-render on error
-            if (window.__0x1_router?.renderCurrentRoute) {
-              window.__0x1_router.renderCurrentRoute();
-            }
           }
         });
+        
+        // Only trigger router update if no specific updates were made
+        if (!hasUpdates) {
+          const router = window.__0x1_router || window.router;
+          if (router?.renderCurrentRoute) {
+            router.renderCurrentRoute();
+          }
+        }
       } else {
         // Fallback to router re-render only if no DOM elements found
-        if (window.__0x1_router?.renderCurrentRoute) {
-          window.__0x1_router.renderCurrentRoute();
-        } else if (window.router?.renderCurrentRoute) {
-          window.router.renderCurrentRoute();
+        const router = window.__0x1_router || window.router;
+        if (router?.renderCurrentRoute) {
+          router.renderCurrentRoute();
         }
       }
+    } catch (error) {
+      console.error('[0x1] Update callback error:', error);
     }
   };
   
@@ -748,15 +763,35 @@ function renderToDOM(element) {
       return renderToDOM(result);
     }
     
-    // Handle DOM elements
-    const domElement = document.createElement(element.type);
+    // Handle DOM elements - Fixed SVG handling
+    const tagName = element.type;
+    let domElement;
+    
+    // SVG elements need special namespace handling
+    const svgElements = new Set([
+      'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
+      'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
+      'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
+      'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
+    ]);
+    
+    if (svgElements.has(tagName)) {
+      domElement = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    } else {
+      domElement = document.createElement(tagName);
+    }
     
     // Set attributes and properties
     Object.entries(element.props || {}).forEach(([key, value]) => {
       if (key === 'children') return;
       
       if (key === 'className') {
-        domElement.className = String(value);
+        // SVG elements need class attribute, not className property
+        if (svgElements.has(tagName)) {
+          domElement.setAttribute('class', String(value));
+        } else {
+          domElement.className = String(value);
+        }
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
         domElement.addEventListener(eventName, value);
@@ -1348,6 +1383,41 @@ export function createDevServer(options: DevServerOptions): Server {
         });
       }
 
+      // Handle server actions (Next15 style)
+      if (reqPath === "/__0x1_server_action" && req.method === "POST") {
+        try {
+          logRequestStatus(200, reqPath, "Processing server action");
+          
+          // Import the directives handler
+          const { handleServerAction } = await import('../../core/directives.js');
+          const result = await handleServerAction(req);
+          
+          return result;
+        } catch (error) {
+          logRequestStatus(500, reqPath, `Server action error: ${error}`);
+          return new Response(JSON.stringify({ 
+            error: "Server action failed",
+            message: error instanceof Error ? error.message : String(error)
+          }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Handle server action preflight requests
+      if (reqPath === "/__0x1_server_action" && req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '86400'
+          }
+        });
+      }
+
       // Handle JSX runtime requests
       const jsxResponse = handleJsxComponent(reqPath, projectPath);
       if (jsxResponse) {
@@ -1830,28 +1900,40 @@ export default {
         // Fallback: Generate Link component dynamically
         logRequestStatus(200, reqPath, "Serving generated Link component");
         const linkComponent = `
-// 0x1 Framework Link Component
-export default function Link({ href, children, className, ...props }) {
-  // Return proper JSX element instead of DOM element
+// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility
+export default function Link({ href, children, className, target, rel, ...props }) {
+  // Ensure proper JSX element structure for 0x1 runtime
   return {
     $$typeof: Symbol.for('react.element'),
     type: 'a',
     props: {
       href,
       className,
+      target,
+      rel,
       ...props,
       children,
       onClick: (e) => {
-        e.preventDefault();
+        // Only prevent default for internal links
+        if (href && href.startsWith('/') && !target) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Use the router for navigation if available
+          if (window.__0x1_router && window.__0x1_router.navigate) {
+            window.__0x1_router.navigate(href);
+          } else if (window.router && window.router.navigate) {
+            window.router.navigate(href);
+          } else {
+            // Fallback to history API for SPA navigation
+            window.history.pushState(null, '', href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }
         
-        // Use the router for navigation if available
-        if (window.__0x1_router && window.__0x1_router.navigate) {
-          window.__0x1_router.navigate(href);
-        } else if (window.router && window.router.navigate) {
-          window.router.navigate(href);
-        } else {
-          // Fallback to window.location
-          window.location.href = href;
+        // Call original onClick if provided
+        if (props.onClick) {
+          props.onClick(e);
         }
       }
     },
@@ -1863,6 +1945,9 @@ export default function Link({ href, children, className, ...props }) {
 
 // Named export for compatibility
 export { Link };
+
+// Export as both default and named for maximum compatibility
+export const LinkComponent = Link;
 `;
 
         return new Response(linkComponent, {

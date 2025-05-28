@@ -85,6 +85,9 @@
     background-image:
       radial-gradient(circle at 100% 0%, rgba(124, 58, 237, 0.03) 0%, transparent 25%),
       radial-gradient(circle at 0% 100%, rgba(167, 139, 250, 0.03) 0%, transparent 25%);
+    /* Optimize scrolling performance */
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
   }
 
   .dark body {
@@ -306,11 +309,11 @@
   .container-gradient {
     background: linear-gradient(
       135deg,
-      rgba(248, 250, 252, 0.8) 0%,
-      rgba(241, 245, 249, 0.9) 25%,
-      rgba(248, 250, 252, 0.8) 50%,
-      rgba(241, 245, 249, 0.9) 75%,
-      rgba(248, 250, 252, 0.8) 100%
+      rgba(124, 58, 237, 0.05) 0%,
+      rgba(167, 139, 250, 0.05) 25%,
+      rgba(196, 181, 253, 0.05) 50%,
+      rgba(139, 92, 246, 0.05) 75%,
+      rgba(124, 58, 237, 0.05) 100%
     );
     background-size: 400% 400%;
     animation: subtle-shift 20s ease-in-out infinite;
@@ -324,15 +327,13 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(
-      circle at 30% 20%,
-      rgba(124, 58, 237, 0.05) 0%,
-      transparent 50%
-    ),
-    radial-gradient(
-      circle at 70% 80%,
-      rgba(139, 92, 246, 0.05) 0%,
-      transparent 50%
+    background: linear-gradient(
+      45deg,
+      rgba(124, 58, 237, 0.02) 0%,
+      rgba(167, 139, 250, 0.02) 25%,
+      rgba(196, 181, 253, 0.02) 50%,
+      rgba(139, 92, 246, 0.02) 75%,
+      rgba(124, 58, 237, 0.02) 100%
     );
     pointer-events: none;
   }
@@ -382,7 +383,7 @@
     background-clip: text;
   }
 
-  /* Custom scrollbar */
+  /* Custom scrollbar - optimized for performance */
   ::-webkit-scrollbar {
     width: 8px;
   }
@@ -395,6 +396,7 @@
   ::-webkit-scrollbar-thumb {
     background: var(--primary);
     border-radius: 4px;
+    transition: background-color 0.2s ease;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -526,4 +528,5 @@
       opacity: 0.5;
     }
   }
+
 }

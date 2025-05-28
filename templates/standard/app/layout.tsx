@@ -2,9 +2,22 @@
  * 0x1 Standard App - Root Layout
  * Using app directory structure with beautiful light & dark theme
  */
-import { Link } from "0x1/link";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { Header } from "components/Header";
 import "./globals.css";
+
+export const metadata = {
+  title: "0x1 Framework Standard App",
+  description:
+    "Discover the powerful features of 0x1 Framework: ultra-fast performance, TypeScript support, and modern development experience.",
+  image: "/og-image.png",
+  url: "/pages/features",
+  type: "website",
+  authors: [{ name: "0x1 Framework" }],
+  creator: "0x1 Framework",
+  publisher: "0x1 Framework",
+  themeColor: "#7c3aed",
+  colorScheme: "light dark",
+};
 
 // Ensure our code is compatible with client-side execution
 let themeInitScript = '';
@@ -23,20 +36,9 @@ if (typeof window !== 'undefined') {
       } catch (e) {
         console.error('Error setting initial theme:', e);
       }
-      
-      // Mobile menu functionality
-      document.addEventListener('DOMContentLoaded', function() {
-        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-        const mobileMenu = document.getElementById('mobile-menu');
-        
-        if (mobileMenuToggle && mobileMenu) {
-          mobileMenuToggle.addEventListener('click', function() {
-            mobileMenu.classList.toggle('hidden');
-          });
-        }
-      });
     })();
   `;
+
 }
 
 // Export RootLayout as a named export and default export for maximum compatibility
@@ -52,7 +54,8 @@ export default function RootLayout({ children }: { children: any }) {
         {themeInitScript && <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />}
       </head>
       <body className="h-full flex flex-col">
-        <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
+        <Header />
+        {/* <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Link href="/" className="flex items-center space-x-2">
@@ -92,7 +95,7 @@ export default function RootLayout({ children }: { children: any }) {
               <Link href="/about" className="block text-muted-foreground hover:text-primary transition-colors">About</Link>
             </div>
           </div>
-        </header>
+        </header> */}
 
         <main className="flex-grow">
           {children}
