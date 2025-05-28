@@ -472,17 +472,27 @@
     border: 1px solid rgba(46, 46, 106, 0.4);
   }
 
-  /* Animation classes */
+  /* Animation classes - Fixed to prevent flash on re-renders */
   .animate-fade-in {
-    animation: fadeIn 0.6s ease-out;
+    animation: fadeIn 0.6s ease-out forwards;
+    animation-fill-mode: both;
   }
 
   .animate-slide-up {
-    animation: slideUp 0.6s ease-out;
+    animation: slideUp 0.6s ease-out forwards;
+    animation-fill-mode: both;
   }
 
   .animate-pulse {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Prevent animation restart on re-renders */
+  .animate-fade-in.animation-complete,
+  .animate-slide-up.animation-complete {
+    animation: none !important;
+    opacity: 1;
+    transform: translateY(0);
   }
 
   /* Keyframes */
