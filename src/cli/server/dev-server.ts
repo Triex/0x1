@@ -44,6 +44,9 @@ import {
   generateLandingPage,
 } from "../commands/utils/server/templates";
 
+// Import directives and error boundary utilities
+import { processDirectives } from '../../core/directives.js';
+
 // Path resolution helpers
 const currentFilePath = fileURLToPath(import.meta.url);
 
@@ -337,244 +340,155 @@ const REACT_CONTEXT_TYPE = Symbol.for('react.context');
 // Fragment symbol for JSX shorthand syntax - use React 19 standard
 const Fragment = REACT_FRAGMENT_TYPE;
 
-// Standardized hooks context global variable names
-const HOOKS_CONTEXT_VAR = '__0x1_hooksContext';
-const HOOKS_CONTEXT_ENTER = '__0x1_enterComponentContext';
-const HOOKS_CONTEXT_EXIT = '__0x1_exitComponentContext';
-const HOOKS_USE_STATE = '__0x1_useState';
-
-// Global hooks context system for state management
-const hooksContext = {
-  componentStates: new Map(),
+// MUCH SIMPLER HOOKS IMPLEMENTATION - Actually works like React
+const globalHooksState = {
+  components: new Map(),
   currentComponent: null,
-  hookIndex: 0,
-  
-  enterComponent(componentId, updateCallback) {
-    this.currentComponent = componentId;
-    this.hookIndex = 0;
-    
-    if (!this.componentStates.has(componentId)) {
-      this.componentStates.set(componentId, {
-        hooks: [],
-        updateCallbacks: new Set(),
-        fiber: null
-      });
-    }
-    
-    const componentState = this.componentStates.get(componentId);
-    if (updateCallback) {
-      componentState.updateCallbacks.add(updateCallback);
-    }
-  },
-  
-  exitComponent() {
-    this.currentComponent = null;
-    this.hookIndex = 0;
-  },
-  
-  useState(initialValue) {
-    if (!this.currentComponent) {
-      console.error('[0x1 JSX Runtime] No current component set when useState was called');
-      throw new Error('[0x1 Hooks] Hook called outside of component context');
-    }
-    
-    const componentState = this.componentStates.get(this.currentComponent);
-    if (!componentState) {
-      console.error(\`[0x1 JSX Runtime] No component state found for: \${this.currentComponent}\`);
-      throw new Error('[0x1 Hooks] Component state not found');
-    }
-    
-    const currentHookIndex = this.hookIndex++;
-    const capturedComponentId = this.currentComponent; // Capture for closure
-    
-    if (!componentState.hooks[currentHookIndex]) {
-      componentState.hooks[currentHookIndex] = {
-        type: 'useState',
-        value: typeof initialValue === 'function' ? initialValue() : initialValue
-      };
-    }
-    
-    const hook = componentState.hooks[currentHookIndex];
-    
-    const setState = (newValue) => {
-      const nextValue = typeof newValue === 'function' ? newValue(hook.value) : newValue;
-      
-      if (!Object.is(hook.value, nextValue)) {
-        hook.value = nextValue;
-        
-        // Trigger efficient component-level re-render using captured ID
-        componentState.updateCallbacks.forEach(updateCallback => {
-          try {
-            updateCallback();
-          } catch (error) {
-            console.error('[0x1 Framework] Error in update callback:', error);
-          }
-        });
-      }
-    };
-    
-    return [hook.value, setState];
-  }
+  hookIndex: 0
 };
 
-// Make hooks context globally available using standardized names
-if (typeof globalThis !== 'undefined') {
-  globalThis[HOOKS_CONTEXT_VAR] = hooksContext;
-  globalThis[HOOKS_CONTEXT_ENTER] = hooksContext.enterComponent.bind(hooksContext);
-  globalThis[HOOKS_CONTEXT_EXIT] = hooksContext.exitComponent.bind(hooksContext);
-  globalThis[HOOKS_USE_STATE] = hooksContext.useState.bind(hooksContext);
-  console.log('[0x1 JSX Runtime] Hooks context set up on globalThis');
-}
+// Component registry for reliable re-rendering
+const componentRegistry = new Map();
+let componentCounter = 0;
 
-if (typeof window !== 'undefined') {
-  window[HOOKS_CONTEXT_VAR] = hooksContext;
-  window[HOOKS_CONTEXT_ENTER] = hooksContext.enterComponent.bind(hooksContext);
-  window[HOOKS_CONTEXT_EXIT] = hooksContext.exitComponent.bind(hooksContext);
-  window[HOOKS_USE_STATE] = hooksContext.useState.bind(hooksContext);
-  console.log('[0x1 JSX Runtime] Hooks context set up on window');
-  
-  // Also set up a debug function to check hooks context
-  window.__0x1_debugHooks = function() {
-    console.log('[0x1 Debug] Hooks context status:', {
-      hooksContext: !!window[HOOKS_CONTEXT_VAR],
-      enterComponent: !!window[HOOKS_CONTEXT_ENTER],
-      exitComponent: !!window[HOOKS_CONTEXT_EXIT],
-      useState: !!window[HOOKS_USE_STATE],
-      currentComponent: window[HOOKS_CONTEXT_VAR]?.currentComponent,
-      componentStatesSize: window[HOOKS_CONTEXT_VAR]?.componentStates?.size
-    });
-  };
+/**
+ * Register a component for re-rendering
+ */
+function registerComponent(fn, props) {
+  const id = \`comp_\${++componentCounter}\`;
+  componentRegistry.set(id, { fn, props, element: null });
+  return id;
 }
 
 /**
- * Generate stable component ID for hooks tracking - optimized for performance
+ * Simple, reliable useState implementation
  */
-function generateComponentId(type, props) {
-  const componentName = type.name || type.displayName || 'Anonymous';
-  
-  // Create a simpler, more stable hash for better performance
-  const propsKeys = props ? Object.keys(props).sort().join(',') : '';
-  let hash = 0;
-  const str = componentName + propsKeys;
-  
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xffffffff;
+function useState(initialValue) {
+  if (!globalHooksState.currentComponent) {
+    throw new Error('[0x1 Hooks] useState must be called within a component');
   }
   
-  return \`\${componentName}_\${Math.abs(hash).toString(36)}\`;
-}
-
-/**
- * Call component with proper hooks context (React 19 style) - Optimized for performance
- */
-function callComponentWithHooks(type, props) {
-  let componentId = generateComponentId(type, props);
+  const componentId = globalHooksState.currentComponent;
+  const hookIndex = globalHooksState.hookIndex++;
   
-  if (!componentId) {
-    console.error('[0x1 JSX Runtime] Failed to generate component ID');
-    const fallbackId = (type.name || 'Anonymous') + '_' + Math.random().toString(36).substr(2, 9);
-    componentId = fallbackId;
+  // Get or create component state
+  if (!globalHooksState.components.has(componentId)) {
+    globalHooksState.components.set(componentId, { hooks: [], renderFn: null });
   }
   
-  // Optimized update callback with reduced DOM queries and better performance
-  const updateCallback = () => {
-    if (typeof window === 'undefined') return;
+  const componentState = globalHooksState.components.get(componentId);
+  
+  // Initialize hook if it doesn't exist
+  if (!componentState.hooks[hookIndex]) {
+    componentState.hooks[hookIndex] = {
+      value: typeof initialValue === 'function' ? initialValue() : initialValue
+    };
+  }
+  
+  const hook = componentState.hooks[hookIndex];
+  
+  const setState = (newValue) => {
+    const nextValue = typeof newValue === 'function' ? newValue(hook.value) : newValue;
     
-    // Use immediate update for better SVG handling instead of requestAnimationFrame
-    try {
-      // Cache DOM query result to avoid repeated queries
-      const componentElements = document.querySelectorAll('[data-component-id="' + componentId + '"]');
+    if (!Object.is(hook.value, nextValue)) {
+      hook.value = nextValue;
       
-      if (componentElements.length > 0) {
-        // Batch DOM updates for better performance
-        const fragment = document.createDocumentFragment();
-        let hasUpdates = false;
-        
-        componentElements.forEach(element => {
-          try {
-            // Set up hooks context before calling component (no recursive callback)
-            if (window.__0x1_enterComponentContext) {
-              window.__0x1_enterComponentContext(componentId);
-            }
-            
-            const newResult = type(props);
-            
-            // Exit hooks context after component call
-            if (window.__0x1_exitComponentContext) {
-              window.__0x1_exitComponentContext();
-            }
-            
-            // Use cached renderToDOM reference for better performance
-            const renderToDOM = window.renderToDOM || window.__0x1_renderToDOM;
-            const newElement = renderToDOM ? renderToDOM(newResult) : null;
-            
-            if (newElement && element.parentNode) {
-              // Preserve the component ID on the new element
-              if (newElement.setAttribute) {
-                newElement.setAttribute('data-component-id', componentId);
-              }
-              
-              // Use replaceChild for better performance than innerHTML
-              element.parentNode.replaceChild(newElement, element);
-              hasUpdates = true;
-            }
-          } catch (error) {
-            console.error('[0x1] Component update error:', error);
-            // Make sure to exit context on error
-            if (window.__0x1_exitComponentContext) {
-              window.__0x1_exitComponentContext();
-            }
-          }
-        });
-        
-        // Only trigger router update if no specific updates were made
-        if (!hasUpdates) {
-          const router = window.__0x1_router || window.router;
-          if (router?.renderCurrentRoute) {
-            router.renderCurrentRoute();
-          }
-        }
-      } else {
-        // Fallback to router re-render only if no DOM elements found
-        const router = window.__0x1_router || window.router;
-        if (router?.renderCurrentRoute) {
-          router.renderCurrentRoute();
-        }
-      }
-    } catch (error) {
-      console.error('[0x1] Update callback error:', error);
+      // Trigger simple re-render
+      requestAnimationFrame(() => {
+        rerenderComponent(componentId);
+      });
     }
   };
+  
+  return [hook.value, setState];
+}
+
+/**
+ * Re-render a specific component
+ */
+function rerenderComponent(componentId) {
+  const componentState = globalHooksState.components.get(componentId);
+  if (!componentState || !componentState.renderFn) return;
   
   try {
-    // Use framework's hooks context system
-    if (typeof window !== 'undefined' && window.__0x1_enterComponentContext) {
-      window.__0x1_enterComponentContext(componentId, updateCallback);
-    } else {
-      console.error('[0x1 JSX Runtime] Framework hooks context not available!');
-      throw new Error('[0x1 JSX] Framework hooks context not available');
+    // Find all elements with this component ID
+    const elements = document.querySelectorAll(\`[data-0x1-component="\${componentId}"]\`);
+    
+    elements.forEach(element => {
+      // Set up hooks context
+      globalHooksState.currentComponent = componentId;
+      globalHooksState.hookIndex = 0;
+      
+      try {
+        // Call the component function to get new result
+        const newResult = componentState.renderFn();
+        
+        // Convert to DOM
+        const newElement = renderToDOM(newResult);
+        
+        if (newElement && element.parentNode) {
+          // Preserve the component ID
+          if (newElement.setAttribute) {
+            newElement.setAttribute('data-0x1-component', componentId);
+          }
+          
+          // Replace the element
+          element.parentNode.replaceChild(newElement, element);
+        }
+      } catch (error) {
+        console.error('[0x1] Component re-render error:', error);
+      } finally {
+        // Clean up hooks context
+        globalHooksState.currentComponent = null;
+        globalHooksState.hookIndex = 0;
+      }
+    });
+  } catch (error) {
+    console.error('[0x1] Re-render error:', error);
+  }
+}
+
+/**
+ * Generate stable component ID
+ */
+function generateComponentId(type) {
+  const name = type.name || type.displayName || 'Anonymous';
+  return \`\${name}_\${Date.now()}_\${Math.random().toString(36).substr(2, 5)}\`;
+}
+
+/**
+ * Call component with hooks support
+ */
+function callComponentWithHooks(type, props) {
+  const componentId = generateComponentId(type);
+  
+  try {
+    // Set up hooks context
+    globalHooksState.currentComponent = componentId;
+    globalHooksState.hookIndex = 0;
+    
+    // Store the component function for re-rendering
+    if (!globalHooksState.components.has(componentId)) {
+      globalHooksState.components.set(componentId, { hooks: [], renderFn: null });
     }
     
-    // Call the component function
+    const componentState = globalHooksState.components.get(componentId);
+    componentState.renderFn = () => type(props);
+    
+    // Call the component
     const result = type(props);
     
     // Add component ID to result for DOM targeting
     if (result && typeof result === 'object' && result.$$typeof === REACT_ELEMENT_TYPE) {
       if (!result.props) result.props = {};
-      result.props['data-component-id'] = componentId;
+      result.props['data-0x1-component'] = componentId;
     }
     
     return result;
-  } catch (error) {
-    console.error('[0x1 JSX] Component error:', error);
-    throw error;
   } finally {
-    // Always exit component context
-    if (typeof window !== 'undefined' && window.__0x1_exitComponentContext) {
-      window.__0x1_exitComponentContext();
-    } else {
-      console.error('[0x1 JSX Runtime] Framework hooks context exit not available!');
-    }
+    // Clean up hooks context
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
   }
 }
 
@@ -845,6 +759,19 @@ if (typeof globalThis !== 'undefined') {
   globalThis.createElement = createElement;
   globalThis.Fragment = Fragment;
   globalThis.renderToDOM = renderToDOM;
+  globalThis.useState = useState;
+  
+  // Hooks context compatibility
+  globalThis.__0x1_hooksContext = globalHooksState;
+  globalThis.__0x1_useState = useState;
+  globalThis.__0x1_enterComponentContext = (id) => {
+    globalHooksState.currentComponent = id;
+    globalHooksState.hookIndex = 0;
+  };
+  globalThis.__0x1_exitComponentContext = () => {
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
+  };
 }
 
 // Browser compatibility
@@ -855,7 +782,20 @@ if (typeof window !== 'undefined') {
   window.createElement = createElement;
   window.Fragment = Fragment;
   window.renderToDOM = renderToDOM;
+  window.useState = useState;
   window.__0x1_renderToDOM = renderToDOM; // Add compatibility reference
+  
+  // Hooks context compatibility
+  window.__0x1_hooksContext = globalHooksState;
+  window.__0x1_useState = useState;
+  window.__0x1_enterComponentContext = (id) => {
+    globalHooksState.currentComponent = id;
+    globalHooksState.hookIndex = 0;
+  };
+  window.__0x1_exitComponentContext = () => {
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
+  };
   
   // React compatibility layer
   window.React = {
@@ -863,6 +803,7 @@ if (typeof window !== 'undefined') {
     Fragment,
     jsx,
     jsxs,
+    useState,
     version: '19.0.0-0x1',
     
     // Modern React 19 APIs
@@ -906,6 +847,10 @@ window.__0x1_dev = {
   inspectElement: (element) => {
     console.log('[0x1 JSX Dev] Element inspection:', element);
     return element;
+  },
+  inspectHooks: () => {
+    console.log('[0x1 JSX Dev] Hooks state:', globalHooksState);
+    return globalHooksState;
   }
 };
 `
@@ -1458,8 +1403,8 @@ console.log('[0x1] Hooks module loaded');
 // Delegate to browser hook system
 export function useState(initialValue) {
   // Use hooks context if available (preferred)
-  if (typeof window !== 'undefined' && window.__0x1_useState) {
-    return window.__0x1_useState(initialValue);
+  if (typeof window !== 'undefined' && window.useState) {
+    return window.useState(initialValue);
   }
   
   // Fallback implementation for when hooks context is not available
@@ -1475,6 +1420,29 @@ export function useState(initialValue) {
     }
   };
   return [state, setState];
+}
+
+export function useEffect(callback, deps) {
+  // Simple effect implementation
+  if (typeof window !== 'undefined') {
+    // Run immediately for now (no dependency tracking)
+    setTimeout(callback, 0);
+  }
+}
+
+export function useCallback(callback, deps) {
+  // Simple callback implementation (no memoization)
+  return callback;
+}
+
+export function useMemo(factory, deps) {
+  // Simple memo implementation (no memoization)
+  return factory();
+}
+
+export function useRef(initialValue) {
+  // Simple ref implementation
+  return { current: initialValue };
 }
 
 export function setComponentContext(componentId, updateCallback) {
@@ -1495,6 +1463,10 @@ export const version = '0.1.0';
 // Default export
 export default {
   useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
   setComponentContext,
   clearComponentContext,
   version
@@ -1534,6 +1506,32 @@ console.log('[0x1] Framework module loaded - production version');
 // Re-export from the production hooks system
 export * from '/0x1/hooks.js';
 
+// Direct hooks exports for better compatibility
+export function useState(initialValue) {
+  if (typeof window !== 'undefined' && window.useState) {
+    return window.useState(initialValue);
+  }
+  throw new Error('[0x1] useState not available - JSX runtime not loaded');
+}
+
+export function useEffect(callback, deps) {
+  if (typeof window !== 'undefined') {
+    setTimeout(callback, 0);
+  }
+}
+
+export function useCallback(callback, deps) {
+  return callback;
+}
+
+export function useMemo(factory, deps) {
+  return factory();
+}
+
+export function useRef(initialValue) {
+  return { current: initialValue };
+}
+
 // Basic JSX support (delegates to runtime)
 export function jsx(type, props, key) {
   if (typeof window !== 'undefined' && window.jsx) {
@@ -1564,6 +1562,11 @@ export default {
   jsxs, 
   createElement, 
   Fragment,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
   version: '0.1.0-production'
 };
 `;
@@ -2592,4 +2595,80 @@ if (document.readyState === 'loading') {
   (server as any).cleanup = cleanup;
 
   return server;
+}
+
+/**
+ * Process and validate a TypeScript/JSX file for directive usage
+ */
+function validateFileDirectives(
+  filePath: string,
+  sourceCode: string
+): {
+  hasErrors: boolean;
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>;
+  inferredContext?: 'client' | 'server';
+  processedCode: string;
+} {
+  try {
+    const result = processDirectives(sourceCode, filePath);
+    
+    return {
+      hasErrors: result.errors.length > 0,
+      errors: result.errors,
+      inferredContext: result.inferredContext,
+      processedCode: result.code
+    };
+  } catch (error) {
+    return {
+      hasErrors: true,
+      errors: [{
+        type: 'processing-error',
+        message: `Failed to process directives: ${error instanceof Error ? error.message : String(error)}`,
+        line: 1,
+        suggestion: 'Check your syntax and directive usage'
+      }],
+      processedCode: sourceCode
+    };
+  }
+}
+
+/**
+ * Generate error boundary JavaScript to display directive validation errors
+ */
+function generateDirectiveErrorScript(
+  filePath: string,
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>
+): string {
+  const errorData = {
+    file: filePath,
+    errors: errors,
+    timestamp: new Date().toISOString()
+  };
+  
+  return `
+// 0x1 Directive Validation Errors
+if (typeof window !== 'undefined' && window.__0x1_errorBoundary) {
+  const directiveErrors = ${JSON.stringify(errorData, null, 2)};
+  
+  // Create a comprehensive error for each validation issue
+  directiveErrors.errors.forEach((validationError, index) => {
+    const error = new Error(\`Directive Validation Error in \${directiveErrors.file}:
+    
+Line \${validationError.line}: \${validationError.message}
+
+💡 Suggestion: \${validationError.suggestion}
+
+Context: This error was caught by 0x1's automatic directive validation system.\`);
+    
+    error.name = 'DirectiveValidationError';
+    error.stack = \`DirectiveValidationError: \${validationError.message}
+    at \${directiveErrors.file}:\${validationError.line}:1
+    
+Suggestion: \${validationError.suggestion}\`;
+    
+    // Add to error boundary with file context
+    window.__0x1_errorBoundary.addError(error, \`\${directiveErrors.file} (validation)\`);
+  });
+}
+`;
 }

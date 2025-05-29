@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, extname, join } from 'path';
-import { logger } from '../../utils/logger';
+import { logger } from '../../utils/logger.js';
+
+// Import directive validation functions
+import { processDirectives } from '../../../core/directives.js';
 
 /**
  * Transform code content to handle imports for browser compatibility
@@ -80,6 +83,82 @@ function generateJsxRuntimePreamble(): string {
 }
 
 /**
+ * Process and validate a TypeScript/JSX file for directive usage
+ */
+function validateFileDirectives(
+  filePath: string,
+  sourceCode: string
+): {
+  hasErrors: boolean;
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>;
+  inferredContext?: 'client' | 'server';
+  processedCode: string;
+} {
+  try {
+    const result = processDirectives(sourceCode, filePath);
+    
+    return {
+      hasErrors: result.errors.length > 0,
+      errors: result.errors,
+      inferredContext: result.inferredContext,
+      processedCode: result.code
+    };
+  } catch (error) {
+    return {
+      hasErrors: true,
+      errors: [{
+        type: 'processing-error',
+        message: `Failed to process directives: ${error instanceof Error ? error.message : String(error)}`,
+        line: 1,
+        suggestion: 'Check your syntax and directive usage'
+      }],
+      processedCode: sourceCode
+    };
+  }
+}
+
+/**
+ * Generate error boundary JavaScript to display directive validation errors
+ */
+function generateDirectiveErrorScript(
+  filePath: string,
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>
+): string {
+  const errorData = {
+    file: filePath,
+    errors: errors,
+    timestamp: new Date().toISOString()
+  };
+  
+  return `
+// 0x1 Directive Validation Errors
+if (typeof window !== 'undefined' && window.__0x1_errorBoundary) {
+  const directiveErrors = ${JSON.stringify(errorData, null, 2)};
+  
+  // Create a comprehensive error for each validation issue
+  directiveErrors.errors.forEach((validationError, index) => {
+    const error = new Error(\`Directive Validation Error in \${directiveErrors.file}:
+    
+Line \${validationError.line}: \${validationError.message}
+
+💡 Suggestion: \${validationError.suggestion}
+
+Context: This error was caught by 0x1's automatic directive validation system.\`);
+    
+    error.name = 'DirectiveValidationError';
+    error.stack = \`DirectiveValidationError: \${validationError.message}
+    at \${directiveErrors.file}:\${validationError.line}:1
+    
+Suggestion: \${validationError.suggestion}\`;
+    
+    // Add to error boundary with file context
+    window.__0x1_errorBoundary.addError(error, \`\${directiveErrors.file} (validation)\`);
+  });
+}
+`;
+}
+
+/**
  * Handles component requests and transpilation
  */
 export function handleComponentRequest(
@@ -144,26 +223,50 @@ export function handleComponentRequest(
         logger.debug(`Has 'export default': ${transpiled.includes('export default')}`);
         logger.debug(`Has 'function ': ${transpiled.includes('function ')}`);
         
-        // TEMPORARILY DISABLED: Ensure we have a proper export default - fix missing exports
-        // This is causing duplicate exports, so let's disable it for now
-        /*
-        if (!transpiled.includes('export default') && transpiled.includes('function ')) {
-          // Find the main function and ensure it's exported
-          const functionMatch = transpiled.match(/function\s+(\w+)\s*\(/);
-          if (functionMatch) {
-            const functionName = functionMatch[1];
-            transpiled = transpiled.replace(
-              new RegExp(`function\\s+${functionName}\\s*\\(`),
-              `export default function ${functionName}(`
-            );
-          }
-        }
-        */
-        
-        // Generate production-quality JSX runtime preamble and combine with transpiled code
+        // Generate final code (clean, no directive processing interference)
         const finalCode = `${generateJsxRuntimePreamble()}
 
 ${transpiled}`;
+
+        // Perform directive validation in the background (server-side only, no code modification)
+        try {
+          const validation = validateFileDirectives(componentPath, sourceCode);
+          
+          // Log context inference if applicable (server-side only)
+          if (validation.inferredContext) {
+            logger.info(`🔍 Auto-inferred context for ${componentPath}: "${validation.inferredContext}"`);
+          }
+          
+          // Log validation issues but don't inject anything into browser code
+          if (validation.hasErrors) {
+            const criticalErrors = validation.errors.filter(error => 
+              error.type.includes('error') && !error.type.includes('warning')
+            );
+            
+            if (criticalErrors.length > 0) {
+              logger.error(`🚨 Critical directive validation errors in ${componentPath}:`);
+              criticalErrors.forEach((error, index) => {
+                logger.error(`  ${index + 1}. Line ${error.line}: ${error.message}`);
+                logger.info(`     💡 ${error.suggestion}`);
+              });
+            }
+            
+            const warnings = validation.errors.filter(error => 
+              error.type.includes('warning')
+            );
+            
+            if (warnings.length > 0) {
+              logger.warn(`⚠️ Directive validation warnings in ${componentPath}:`);
+              warnings.forEach((error, index) => {
+                logger.warn(`  ${index + 1}. Line ${error.line}: ${error.message}`);
+                logger.info(`     💡 ${error.suggestion}`);
+              });
+            }
+          }
+        } catch (validationError) {
+          // Don't let validation errors break the actual transpilation
+          logger.debug(`Directive validation failed for ${componentPath}: ${validationError}`);
+        }
         
         logger.debug(`Successfully transpiled and normalized ${componentPath}`);
         

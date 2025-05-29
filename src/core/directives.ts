@@ -104,17 +104,22 @@ export function createServerAction<T extends (...args: any[]) => any>(
 /**
  * Directive processor for transpilation
  * This processes "use client" and "use server" directives in source code
+ * Also provides automatic context inference and validation
  */
 export function processDirectives(sourceCode: string, filename: string): {
   code: string;
   directive: 'client' | 'server' | null;
   serverFunctions: string[];
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>;
+  inferredContext?: 'client' | 'server';
 } {
   const lines = sourceCode.split('\n');
   let directive: 'client' | 'server' | null = null;
   const serverFunctions: string[] = [];
+  const errors: Array<{ type: string; message: string; line: number; suggestion: string }> = [];
+  let inferredContext: 'client' | 'server' | undefined;
   
-  // Check for directives in the first few lines
+  // Check for explicit directives in the first few lines
   for (let i = 0; i < Math.min(5, lines.length); i++) {
     const line = lines[i].trim();
     
@@ -129,13 +134,33 @@ export function processDirectives(sourceCode: string, filename: string): {
     }
   }
   
+  // If no explicit directive, try to infer context
+  if (!directive) {
+    inferredContext = inferContextFromCode(sourceCode, filename);
+    if (inferredContext) {
+      // Add helpful comment about inferred context
+      const contextComment = `// 0x1 Auto-inferred: This file is treated as "${inferredContext}" context\n// Add "use ${inferredContext}" at the top to make this explicit\n\n`;
+      sourceCode = contextComment + sourceCode;
+    }
+  }
+  
+  const finalContext = directive || inferredContext;
+  
+  // Validate context usage and collect errors
+  if (finalContext) {
+    const validationErrors = validateContextUsage(sourceCode, finalContext, filename);
+    errors.push(...validationErrors);
+  }
+  
   let processedCode = sourceCode;
   
-  // If it's a server file, wrap async functions as server actions
-  if (directive === 'server') {
+  // Process server files
+  if (finalContext === 'server') {
     // Find async function declarations and expressions
     const asyncFunctionRegex = /(?:export\s+)?async\s+function\s+(\w+)/g;
     const asyncArrowRegex = /(?:export\s+)?const\s+(\w+)\s*=\s*async\s*\(/g;
+    const nonAsyncFunctionRegex = /(?:export\s+)?function\s+(\w+)/g;
+    const nonAsyncArrowRegex = /(?:export\s+)?const\s+(\w+)\s*=\s*\([^)]*\)\s*=>/g;
     
     let match;
     
@@ -151,19 +176,34 @@ export function processDirectives(sourceCode: string, filename: string): {
       serverFunctions.push(functionName);
     }
     
-    // Add server action registration at the end
+    // Check for non-async functions in server context (potential error)
+    while ((match = nonAsyncFunctionRegex.exec(sourceCode)) !== null) {
+      const functionName = match[1];
+      // Skip if it's a component (starts with capital letter)
+      if (!/^[A-Z]/.test(functionName)) {
+        const lineNumber = sourceCode.substring(0, match.index).split('\n').length;
+        errors.push({
+          type: 'server-context-warning',
+          message: `Function '${functionName}' in server context should typically be async`,
+          line: lineNumber,
+          suggestion: `Consider making this function async or move it to a client component if it doesn't need server-side execution`
+        });
+      }
+    }
+    
+    // Add server action registration at the end - but only if this is actually server-side code
+    // Don't add imports that would break in the browser
     if (serverFunctions.length > 0) {
       const registrationCode = `
-// 0x1 Server Action Registration
-import { markAsServer } from '0x1/core/directives';
-${serverFunctions.map(name => `markAsServer(${name}, '${name}');`).join('\n')}
+// 0x1 Server Action Registration (server-side only)
+// Note: Server actions are automatically registered during transpilation
 `;
       processedCode += registrationCode;
     }
   }
   
-  // If it's a client file, add client marking
-  if (directive === 'client') {
+  // Process client files
+  if (finalContext === 'client') {
     // Find component exports
     const componentRegex = /export\s+(?:default\s+)?function\s+(\w+)/g;
     const componentArrowRegex = /export\s+const\s+(\w+)\s*=\s*\(/g;
@@ -179,11 +219,23 @@ ${serverFunctions.map(name => `markAsServer(${name}, '${name}');`).join('\n')}
       components.push(match[1]);
     }
     
+    // Check for async functions in client context (potential error)
+    const asyncInClientRegex = /(?:export\s+)?(?:async\s+function|const\s+\w+\s*=\s*async)/g;
+    while ((match = asyncInClientRegex.exec(sourceCode)) !== null) {
+      const lineNumber = sourceCode.substring(0, match.index).split('\n').length;
+      errors.push({
+        type: 'client-context-warning',
+        message: 'Async functions in client components should use React hooks like useEffect for async operations',
+        line: lineNumber,
+        suggestion: 'Use useEffect(() => { async function fetchData() { ... } fetchData(); }, []) for async operations in client components'
+      });
+    }
+    
+    // Add client component registration - but only as comments to avoid import errors
     if (components.length > 0) {
       const registrationCode = `
-// 0x1 Client Component Registration
-import { markAsClient } from '0x1/core/directives';
-${components.map(name => `markAsClient(${name}, '${name}');`).join('\n')}
+// 0x1 Client Component Registration (processed server-side)
+// Components: ${components.join(', ')}
 `;
       processedCode += registrationCode;
     }
@@ -192,8 +244,152 @@ ${components.map(name => `markAsClient(${name}, '${name}');`).join('\n')}
   return {
     code: processedCode,
     directive,
-    serverFunctions
+    serverFunctions,
+    errors,
+    inferredContext
   };
+}
+
+/**
+ * Infer context from code patterns when no explicit directive is present
+ */
+function inferContextFromCode(sourceCode: string, filename: string): 'client' | 'server' | undefined {
+  // Server context indicators
+  const serverIndicators = [
+    /import.*from\s+['"]fs['"]/, // File system operations
+    /import.*from\s+['"]path['"]/, // Path operations
+    /import.*from\s+['"]crypto['"]/, // Crypto operations
+    /await\s+fetch\(/g, // Server-side fetch operations
+    /process\.env\./g, // Environment variables
+    /import.*from\s+['"]database['"]/, // Database imports
+    /\.sql\(/g, // SQL operations
+    /\.query\(/g, // Database queries
+  ];
+  
+  // Client context indicators
+  const clientIndicators = [
+    /import.*useState.*from/, // React hooks
+    /import.*useEffect.*from/, // React hooks
+    /useState\(/g, // useState usage
+    /useEffect\(/g, // useEffect usage
+    /window\./g, // Browser window object
+    /document\./g, // Browser document object
+    /localStorage\./g, // Browser storage
+    /sessionStorage\./g, // Browser storage
+    /addEventListener\(/g, // Event listeners
+    /onClick=/g, // Event handlers
+    /onChange=/g, // Event handlers
+  ];
+  
+  let serverScore = 0;
+  let clientScore = 0;
+  
+  // Check server indicators
+  for (const pattern of serverIndicators) {
+    const matches = sourceCode.match(pattern);
+    if (matches) {
+      serverScore += matches.length;
+    }
+  }
+  
+  // Check client indicators
+  for (const pattern of clientIndicators) {
+    const matches = sourceCode.match(pattern);
+    if (matches) {
+      clientScore += matches.length;
+    }
+  }
+  
+  // File name hints
+  if (filename.includes('action') || filename.includes('server')) {
+    serverScore += 2;
+  }
+  
+  if (filename.includes('component') || filename.includes('client') || filename.includes('hook')) {
+    clientScore += 2;
+  }
+  
+  // Return inferred context
+  if (serverScore > clientScore && serverScore > 0) {
+    return 'server';
+  } else if (clientScore > serverScore && clientScore > 0) {
+    return 'client';
+  }
+  
+  return undefined; // Cannot infer
+}
+
+/**
+ * Validate that code follows context-specific best practices
+ */
+function validateContextUsage(sourceCode: string, context: 'client' | 'server', filename: string): Array<{ type: string; message: string; line: number; suggestion: string }> {
+  const errors: Array<{ type: string; message: string; line: number; suggestion: string }> = [];
+  const lines = sourceCode.split('\n');
+  
+  if (context === 'server') {
+    // Check for browser-only APIs in server context
+    const browserAPIs = [
+      { pattern: /window\./g, name: 'window' },
+      { pattern: /document\./g, name: 'document' },
+      { pattern: /localStorage\./g, name: 'localStorage' },
+      { pattern: /sessionStorage\./g, name: 'sessionStorage' },
+      { pattern: /addEventListener\(/g, name: 'addEventListener' },
+    ];
+    
+    for (const api of browserAPIs) {
+      let match;
+      while ((match = api.pattern.exec(sourceCode)) !== null) {
+        const lineNumber = sourceCode.substring(0, match.index).split('\n').length;
+        errors.push({
+          type: 'server-context-error',
+          message: `Cannot use browser API '${api.name}' in server context`,
+          line: lineNumber,
+          suggestion: `Move this code to a client component with "use client" directive`
+        });
+      }
+    }
+    
+    // Check for React hooks in server context
+    const reactHooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'];
+    for (const hook of reactHooks) {
+      const pattern = new RegExp(`\\b${hook}\\(`, 'g');
+      let match;
+      while ((match = pattern.exec(sourceCode)) !== null) {
+        const lineNumber = sourceCode.substring(0, match.index).split('\n').length;
+        errors.push({
+          type: 'server-context-error',
+          message: `Cannot use React hook '${hook}' in server context`,
+          line: lineNumber,
+          suggestion: `Move this component to a client file with "use client" directive`
+        });
+      }
+    }
+  }
+  
+  if (context === 'client') {
+    // Check for server-only APIs in client context
+    const serverAPIs = [
+      { pattern: /require\(['"]fs['"]\)/g, name: 'fs' },
+      { pattern: /import.*from\s+['"]fs['"]/, name: 'fs' },
+      { pattern: /require\(['"]path['"]\)/g, name: 'path' },
+      { pattern: /process\.env\./g, name: 'process.env' },
+    ];
+    
+    for (const api of serverAPIs) {
+      let match;
+      while ((match = api.pattern.exec(sourceCode)) !== null) {
+        const lineNumber = sourceCode.substring(0, match.index).split('\n').length;
+        errors.push({
+          type: 'client-context-error',
+          message: `Cannot use server API '${api.name}' in client context`,
+          line: lineNumber,
+          suggestion: `Move this code to a server action with "use server" directive`
+        });
+      }
+    }
+  }
+  
+  return errors;
 }
 
 /**

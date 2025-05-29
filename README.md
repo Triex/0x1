@@ -58,6 +58,8 @@
 - **Minimal abstractions**: Near-vanilla performance with type-checked templates
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
+- **Smart Context Inference**: Automatically detects client/server context and validates usage
+- **Runtime Error Boundaries**: Beautiful error display for development with helpful suggestions
 
 ### 📁 App Directory Structure
 - **Next.js 15-compatible**: Modern app directory structure with file-based routing
@@ -936,7 +938,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.189)
+### Current State (v0.0.190)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
