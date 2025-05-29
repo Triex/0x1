@@ -48,6 +48,8 @@
 - **Next.js-compatible Link**: Drop-in replacement for `next/link`
 - **App Directory Structure**: Next.js 15-style file-based routing
 - **JSX Runtime**: Custom JSX implementation without React dependencies
+- **Efficient Server Actions**: `"use server"` functions with automatic internal API generation (never exposed publicly)
+- **Explicitly Split Client/Server**: Simply use `"use server"` for server-side functions and `"use client"` for client-side components, or leave it up to 0x1 to automatically infer the context
 - **Easy Migration**: Simple find-and-replace from React/Next.js imports
 
 ### 🧩 Component System
@@ -391,9 +393,11 @@ export default function UserProfile({ userId }: { userId: string }) {
 
 Server actions automatically create internal API endpoints:
 - Functions in `"use server"` files become callable from client components
-- Type safety is maintained across the client/server boundary
-- No manual API route creation required
-- Not exposed to the client, only used for server-side logic (never deal with exposed API endpoints)
+- **Zero exposed endpoints**: Internal API generation means no public API routes to secure or document
+- **Automatic type safety**: Full TypeScript safety maintained across the client/server boundary  
+- **No manual API creation**: Skip the boilerplate of creating `/api/` routes manually
+- **Built-in security**: Server actions are never exposed to the client, only used for server-side logic
+- **Simplified architecture**: Call server functions directly from client components without HTTP overhead
 
 ### Best Practices
 
@@ -932,7 +936,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.188)
+### Current State (v0.0.189)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
