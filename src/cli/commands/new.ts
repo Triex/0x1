@@ -732,7 +732,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
     secondaryColor: pwaSecondaryColor,
     statusBarStyle: pwaStatusBarStyle
   };
-};
+}
 
 /**
  * Copy template files to project directory
@@ -1114,7 +1114,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.185' // Use current version with caret for compatibility
+      "0x1": '^0.0.187' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'
@@ -1630,4 +1630,105 @@ yarn-error.log*
 .DS_Store
 `
   );
+}
+
+// Generate metadata configuration
+async function createMetadataConfig(projectPath: string, config: {
+  name: string;
+  description: string;
+  themeColor: string;
+  pwa: boolean;
+  pwaConfig: any;
+}): Promise<void> {
+  const metadataContent = `/**
+ * Global Metadata Configuration
+ * This file defines the default metadata for your application
+ */
+
+export const metadata = {
+  title: {
+    template: '%s | ${config.name}',
+    default: '${config.name}'
+  },
+  description: '${config.description}',
+  keywords: ['0x1', 'framework', 'typescript', 'web app'],
+  authors: [{ name: 'Your Name' }],
+  creator: 'Your Name',
+  publisher: '${config.name}',
+  
+  // SEO
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  
+  // Social Media
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://yoursite.com',
+    title: '${config.name}',
+    description: '${config.description}',
+    siteName: '${config.name}',
+  },
+  
+  twitter: {
+    card: 'summary_large_image',
+    title: '${config.name}',
+    description: '${config.description}',
+  },
+  
+  // PWA & Mobile
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+  },
+  themeColor: '${config.themeColor}',
+  ${config.pwa ? `manifest: '/manifest.json',` : ''}
+  
+  // Icons
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon-16x16.png',
+    apple: '/apple-touch-icon.png',
+  },
+  
+  // Verification (add your verification codes)
+  verification: {
+    // google: 'your-google-verification-code',
+    // yandex: 'your-yandex-verification-code',
+  },
+  
+  // Analytics (uncomment and configure as needed)
+  // analytics: {
+  //   googleAnalytics: 'GA_MEASUREMENT_ID',
+  // },
+};
+
+/**
+ * Create page-specific metadata
+ * Use this helper to create metadata for individual pages
+ */
+export function createPageMetadata(overrides: any = {}) {
+  return {
+    ...metadata,
+    ...overrides,
+  };
+}
+`;
+
+  await Bun.write(join(projectPath, 'app', 'metadata.ts'), metadataContent);
+}
+
+// Generate PWA files if requested
+async function generatePWAFiles(projectPath: string, pwaConfig: any): Promise<void> {
+  // Implementation of generatePWAFiles function
 }

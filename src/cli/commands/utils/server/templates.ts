@@ -7,7 +7,6 @@ declare global {
   interface Window {
     __0x1_loadComponentStyles: (path: string) => Promise<void>;
     __0x1_hasHtmlStructure: (content: any) => boolean;
-    __0x1_extractBodyContent: (htmlContent: any) => any;
     process: { env: { NODE_ENV: string } };
     jsx: (type: any, props: any, key: any) => any;
     jsxs: (type: any, props: any, key: any) => any;
@@ -171,27 +170,8 @@ export const BODY_START = `</head>
         return false;
       };
       
-      // Function to extract body content from HTML structure
-      window.__0x1_extractBodyContent = function(htmlContent) {
-        if (typeof htmlContent === 'string') {
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = htmlContent;
-          
-          const bodyElement = tempDiv.querySelector('body');
-          return bodyElement ? bodyElement.innerHTML : htmlContent;
-        }
-        
-        // Handle React/JSX component structure
-        if (htmlContent && typeof htmlContent === 'object' && htmlContent.props) {
-          const bodyElement = htmlContent.props.children.find(child => 
-            child && child.type === 'body'
-          );
-          
-          return bodyElement ? bodyElement.props.children : htmlContent;
-        }
-        
-        return htmlContent;
-      };
+      // Removed global extractBodyContent function to prevent browser extension interference
+      // Body content extraction will be handled inline in the app.js generation instead
     })();
     
     // Handle proxying of JSX functions with hash suffixes
@@ -917,21 +897,8 @@ export const APP_SCRIPT = `
           console.warn('[0x1] Router navigate method not available');
         }
         
-        // Initialize click handling for navigation
-        document.addEventListener("click", (event) => {
-          // Find closest anchor tag
-          let anchor = event.target.closest("a");
-          if (anchor && anchor.href && anchor.href.startsWith(window.location.origin)) {
-            // Get the path without the origin
-            const path = anchor.href.slice(window.location.origin.length) || '/';
-            
-            // Only handle internal links
-            if (path && !path.startsWith("http")) {
-              event.preventDefault();
-              patchedRouter.navigate(path);
-            }
-          }
-        });
+        // Make router globally available for debugging
+        window.__0x1_router = patchedRouter;
         
         console.log("[0x1 DEBUG] App initialization complete");
       } catch (error) {
@@ -975,29 +942,29 @@ export function generateLiveReloadScript(host?: string): string {
   let reconnectTimer = null;
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   // Use provided host if available, otherwise fallback to window.location.host
-  const hostName = '${host || "' + window.location.host + '"}'; 
+  const hostName = ${host ? `'${host}'` : 'window.location.host'}; 
   const wsUrl = wsProtocol + '//' + hostName + '/__0x1_ws';
   
   // Connect to WebSocket server
   function connect() {
     try {
-      console.log('[0x1] Connecting to WebSocket server...');
+      console.log('[0x1] Connecting to WebSocket server at:', wsUrl);
       
       socket = new WebSocket(wsUrl);
       
       socket.onopen = () => {
-        console.log('[0x1] WebSocket connection established');
+        console.log('[0x1] Live reload connected');
         clearReconnectTimer();
       };
       
       socket.onclose = () => {
-        console.log('[0x1] WebSocket connection closed');
+        console.log('[0x1] Live reload disconnected');
         socket = null;
         scheduleReconnect();
       };
       
       socket.onerror = (err) => {
-        console.error('[0x1] Error establishing WebSocket connection:', err);
+        console.error('[0x1] Live reload error:', err);
         socket = null;
         scheduleReconnect();
       };
@@ -1111,7 +1078,7 @@ export function composeHtmlTemplate(options: {
   
   if (includeAppScript) {
     // Use external app.js instead of inline script for better caching and debugging
-    template += `<script src="/app.js?t=${Date.now()}" type="module"></script>`;
+    template += `<script src="/app.js?t=${Date.now()}&r=${Math.random()}" type="module"></script>`;
   }
   
   template += BODY_END;

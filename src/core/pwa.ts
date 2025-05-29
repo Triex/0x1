@@ -3,6 +3,8 @@
  * Provides progressive web app capabilities
  */
 
+import { Metadata } from './metadata.js';
+
 export interface PWAConfig {
   name: string;
   shortName: string;
@@ -449,4 +451,36 @@ export function generateOfflinePage(config: PWAConfig): string {
 export function registerPWA(config: PWAConfig): void {
   // Implementation will be handled by CLI commands
   // This is a placeholder for direct usage in applications
+}
+
+/**
+ * Convert PWA config to metadata format
+ * This enables seamless integration with the metadata system
+ */
+export function pwaConfigToMetadata(config: PWAConfig): Metadata {
+  return {
+    title: config.name,
+    description: config.description,
+    themeColor: config.themeColor,
+    manifest: '/manifest.json',
+    viewport: {
+      width: 'device-width',
+      initialScale: 1,
+      themeColor: config.themeColor
+    },
+    appleWebApp: {
+      capable: true,
+      title: config.shortName || config.name,
+      statusBarStyle: config.statusBarStyle || 'default'
+    },
+    icons: {
+      icon: [
+        { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+        { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+      ],
+      apple: [
+        { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }
+      ]
+    }
+  };
 }

@@ -179,6 +179,245 @@ cd my-app
 
 ---
 
+## 🎯 Metadata & SEO Management
+
+0x1 provides a Next.js 15-compatible metadata system that works automatically without requiring manual imports or function calls.
+
+### Static Metadata Export
+
+Simply export a `metadata` constant from any page or layout:
+
+```typescript
+// app/page.tsx
+export const metadata = {
+  title: 'Home Page',
+  description: 'Welcome to my awesome app',
+  keywords: ['nextjs', '0x1', 'typescript'],
+  openGraph: {
+    title: 'Home Page',
+    description: 'Welcome to my awesome app',
+    images: ['/og-image.jpg'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Home Page',
+    description: 'Welcome to my awesome app',
+  }
+};
+
+export default function HomePage() {
+  return <h1>Welcome!</h1>;
+}
+```
+
+### Global Metadata Configuration
+
+Create a global metadata configuration in `app/metadata.ts`:
+
+```typescript
+// app/metadata.ts
+export const metadata = {
+  title: {
+    template: '%s | My App',
+    default: 'My App'
+  },
+  description: 'A modern web application built with 0x1',
+  keywords: ['0x1', 'framework', 'typescript'],
+  
+  // SEO
+  robots: {
+    index: true,
+    follow: true,
+  },
+  
+  // Social Media
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://myapp.com',
+    siteName: 'My App',
+  },
+  
+  // PWA & Mobile
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+  },
+  themeColor: '#000000',
+  manifest: '/manifest.json',
+  
+  // Icons
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
+};
+```
+
+### Page-Specific Metadata
+
+Override global metadata for specific pages:
+
+```typescript
+// app/pages/about/page.tsx
+export const metadata = {
+  title: 'About Us',
+  description: 'Learn more about our company',
+  openGraph: {
+    title: 'About Us',
+    description: 'Learn more about our company',
+  }
+};
+
+export default function AboutPage() {
+  return <div>About us content...</div>;
+}
+```
+
+### Dynamic Metadata
+
+For dynamic metadata based on props or data:
+
+```typescript
+// app/pages/blog/[slug]/page.tsx
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const post = await fetchPost(params.slug);
+  
+  return {
+    title: post.title,
+    description: post.excerpt,
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      images: [post.image],
+    }
+  };
+}
+
+export default function BlogPost({ params }: { params: { slug: string } }) {
+  // Component implementation
+}
+```
+
+## Client/Server Directives
+
+0x1 supports Next.js 15-style client and server directives for clear separation of concerns.
+
+### Client Components
+
+Use `"use client"` for browser-only components:
+
+```typescript
+"use client";
+
+import { useState } from 'react';
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+  
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>
+        Increment
+      </button>
+    </div>
+  );
+}
+```
+
+### Server Actions
+
+Use `"use server"` for server-side functions:
+
+```typescript
+"use server";
+
+// app/actions/user-actions.ts
+export async function fetchUserData(userId: string) {
+  const response = await fetch(`/api/users/${userId}`);
+  return response.json();
+}
+
+export async function updateUserProfile(userId: string, data: any) {
+  const response = await fetch(`/api/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to update profile');
+  }
+  
+  return response.json();
+}
+```
+
+### Using Server Actions in Client Components
+
+```typescript
+"use client";
+
+import { fetchUserData, updateUserProfile } from '../actions/user-actions';
+
+export default function UserProfile({ userId }: { userId: string }) {
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    fetchUserData(userId).then(setUser);
+  }, [userId]);
+  
+  const handleUpdate = async (data: any) => {
+    try {
+      await updateUserProfile(userId, data);
+      // Refresh user data
+      const updatedUser = await fetchUserData(userId);
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Update failed:', error);
+    }
+  };
+  
+  return (
+    <div>
+      {/* User profile UI */}
+    </div>
+  );
+}
+```
+
+### Automatic API Generation
+
+Server actions automatically create internal API endpoints:
+- Functions in `"use server"` files become callable from client components
+- Type safety is maintained across the client/server boundary
+- No manual API route creation required
+- Not exposed to the client, only used for server-side logic (never deal with exposed API endpoints)
+
+### Best Practices
+
+1. **Metadata**: Always export `const metadata = {}` for static metadata
+2. **Client Components**: Use `"use client"` only when necessary (state, events, browser APIs)
+3. **Server Actions**: Use `"use server"` for data fetching, mutations, and server-side logic
+4. **Type Safety**: Leverage TypeScript for full type safety across client/server boundaries
+
+### PWA Integration
+
+When creating a PWA project, metadata is automatically configured:
+
+```bash
+0x1 new my-pwa-app --pwa --theme-color="#007acc"
+```
+
+This automatically generates:
+- Manifest file with proper metadata
+- Icon files in multiple sizes
+- Service worker for offline support
+- Metadata configuration with PWA-specific tags
+
+---
+
 ## 🔄 Migration from React/Next.js
 
 0x1 is designed as a **drop-in replacement** for React and Next.js applications. Migration is as simple as updating your imports:
@@ -693,7 +932,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.185)
+### Current State (v0.0.187)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support

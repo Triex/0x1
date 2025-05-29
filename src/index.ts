@@ -1,88 +1,48 @@
 /**
- * 0x1 Framework
- * 
- * An ultra-minimal TypeScript framework with extreme performance powered by Bun
- * https://github.com/Triex/0x1
- * Main entry point exporting all core functionality
+ * 0x1 Framework - Main Entry Point
+ * Ultra-minimal TypeScript framework for modern web development
  */
 
-// Import JSX types instead of using triple slash references
-import './jsx-runtime.js';
+// JSX Runtime exports
+export { createElement, Fragment, jsx, jsxDEV, jsxs, type JSXElement } from './jsx-runtime.js';
 
-// Export core components and functionality
-export {
-  // Use legacy names for HTML element creation functions
-  createElement as createComponentElement, fromHTML,
-  mount,
-  template,
-  textElement,
-  updateComponent
-} from './core/component.js';
-
-// Export Next.js-compatible Link component as the main Link export
+// Component exports
 export { default as Link } from './components/link.js';
-export type { LinkProps } from './components/link.js';
-export type { Component, ComponentProps } from './core/component.js';
 
-// Export JSX runtime for TSX support
-// These exports take precedence for TSX files
-export * from './jsx-runtime.js';
-
-// Export JSX types
-export type {
-  ComponentFunction, JSXAttributes,
-  JSXChildren, JSXNode
-} from './jsx-runtime.js';
-
-// Export router and navigation with renamed legacy components to avoid conflicts  
+// Browser utilities
 export {
-  Link as DOMLink, // Rename to avoid conflict with JSX Link
-  NavLink as DOMNavLink,
-  Redirect as RouterRedirect,
-  type Page
-} from './core/navigation.js';
+  renderToDOM, renderToString,
+  type ComponentFunction, type JSXAttributes, type JSXChildren, type JSXNode
+} from './browser/jsx/runtime.js';
 
-// Export the new router implementation
-export { Router, type RouteParams } from '0x1-router';
-
-// Export the error boundary for catching and displaying runtime errors
+// Hooks
 export {
-  createDefaultErrorUI, createErrorBoundary, ErrorBoundary, withErrorBoundary
-} from './core/error-boundary.js';
-
-// Export hooks system - ensure this is the single source of truth
-export {
-  clearComponentContext, getAllComponentStats, getComponentStats, isComponentMounted, setComponentContext, unmountComponent, useCallback, useClickOutside, useEffect, useFetch,
-  useForm,
-  useLocalStorage, useMemo, useRef, useState, type RefObject
+  clearComponentContext, setComponentContext, useCallback,
+  useClickOutside, useEffect, useFetch, useForm, useLocalStorage, useMemo, useRef, useState, type RefObject
 } from './core/hooks.js';
 
-// Store exports are handled by the re-export from 0x1-store below
+// Router (from 0x1-router package)
+export { Router, type RouteParams } from '0x1-router';
 
-// Export animations
-export {
-  animate, animateProperties, easings, fadeIn,
-  fadeOut,
-  slideDown,
-  slideUp, spring, type AnimationOptions
-} from './utils/animations.js';
-
-// DOM utilities
-export { clearElement, patchElement, setAttributes, setStyles } from './utils/dom.js';
-
-// Config types
-export type { _0x1Config } from '../types/config.js';
-
-// Version info
-export const version = '0.0.169';
-
-// Re-export router from the standalone package
-export * from '0x1-router';
-
-// Re-export store from the standalone package  
-export * from '0x1-store';
-
-// Convenience sub-module exports for the 0x1/router and 0x1/store pattern
-export * as router from '0x1-router';
+// Store (from 0x1-store package)
 export * as store from '0x1-store';
+
+// Export metadata and head management system
+export {
+  DEFAULT_METADATA, generateAnalyticsScripts, generateHeadContent, generateLinkTags, generateMetaTags,
+  // Metadata types and utilities
+  type Metadata, type OpenGraph, type OpenGraphImage, type Robots, type TwitterCard, type Viewport
+} from './core/metadata.js';
+
+// Export head management
+export { getGlobalMetadata, Head, initializeHeadManagement, setGlobalMetadata, updateDocumentHead, useMetadata } from './core/head.js';
+
+// Export directives system
+export { clientComponent, createServerAction, executeServerFunction, handleServerAction, initializeDirectives, markAsClient, markAsServer, processDirectives, serverAction, type ServerFunction } from './core/directives.js';
+
+// Export PWA utilities
+export { generateManifest, generateServiceWorker, pwaConfigToMetadata, registerPWA, type PWAConfig } from './core/pwa.js';
+
+// CLI utilities (for build tools)
+export * from './cli/utils/transpilation.js';
 

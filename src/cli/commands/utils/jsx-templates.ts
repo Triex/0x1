@@ -610,13 +610,144 @@ export function generateRouterModule(): string {
     }
     
     // Navigate to a specific path
-    navigate(path) {
-      if (this.mode === "hash") {
-        window.location.hash = path;
-      } else {
-        window.history.pushState(null, null, path);
-        this.handleRouteChange();
+    navigate(path, pushState = true) {
+      // Normalize the path
+      path = path || '/';
+      if (!path.startsWith('/')) {
+        path = '/' + path;
       }
+      
+      console.log("[0x1] Router navigating to: " + path);
+      console.log("[0x1] Current routes:", this.routes.map(r => ({ path: r.path, hasComponent: !!r.component })));
+      
+      // Find a matching route or use fallback
+      const match = this.findMatchingRoute(path);
+      console.log("[0x1] Route match result:", match);
+      
+      if (!match) {
+        console.warn("[0x1] No route found for path: " + path);
+        // Try default route if available
+        if (this.defaultRoute && this.defaultRoute !== path) {
+          return this.navigate(this.defaultRoute, false);
+        }
+        return this.renderErrorMessage("No route found for: " + path);
+      }
+      
+      // Execute the navigation
+      try {
+        console.log("[0x1] Executing navigation for:", path);
+        
+        // Call the onNavigate callback if provided
+        if (this.onNavigate) {
+          this.onNavigate(path, match.params);
+        }
+        
+        // Get the component and apply layouts
+        let component = match.component;
+        console.log("[0x1] Component type:", typeof component);
+        console.log("[0x1] Component name:", component?.name || 'Anonymous');
+        
+        // Use layouts from the route match, fallback to root layout if no route layouts
+        if (match.layouts && match.layouts.length > 0) {
+          // Use layouts from the route
+          component = this.applyLayouts(component, match.layouts, match.params);
+        } else if (this.rootLayout) {
+          // Fallback to root layout
+          component = this.applyLayouts(component, [this.rootLayout], match.params);
+        }
+        
+        // Check if component is a function
+        if (typeof component !== 'function') {
+          console.error("[0x1] Router error: component is not a function for path: " + path);
+          console.error("[0x1] Component type: " + typeof component);
+          return this.renderErrorMessage("Component error: handler is not a function");
+        }
+        
+        console.log("[0x1] Calling component with params:", match.params);
+        
+        // Call the component with params
+        const result = component({ params: match.params });
+        console.log("[0x1] Component result:", result);
+        
+        // Process the result directly without global function calls to prevent browser extension interference
+        let processedResult = result;
+        
+        console.log("[0x1] Processed result:", processedResult);
+        
+        // Render the processed result
+        this.renderResult(processedResult);
+        
+        // Update the browser history if pushState is true and not triggered by a popstate event
+        if (pushState && !this._handlingPopState && path !== window.location.pathname) {
+          console.log("[0x1] Updating browser history to:", path);
+          window.history.pushState(null, '', path);
+        }
+        
+        console.log("[0x1] Navigation completed successfully for:", path);
+        return true;
+      } catch (error) {
+        console.error("[0x1] Navigation error for " + path + ":", error);
+        this.renderErrorMessage("Error navigating to " + path + ": " + (error.message || String(error)));
+        return false;
+      }
+    }
+    
+    // Initialize routes from app directory components
+    initAppDirectoryRoutes(components) {
+      // This is a simplified version
+      for (const [path, component] of Object.entries(components)) {
+        if (component && component.default) {
+          this.addRoute(path, component.default);
+        }
+      }
+    }
+    
+    // Initialize the router
+    init() {
+      console.log("[0x1] Router initializing...");
+      
+      // Set up event listeners
+      if (this.mode === "hash") {
+        window.addEventListener("hashchange", () => this.handleRouteChange());
+      } else {
+        window.addEventListener("popstate", () => this.handleRouteChange());
+        
+        // Intercept link clicks for history mode
+        const clickHandler = (e) => {
+          console.log('[0x1] Router click handler triggered', e.target);
+          
+          // Find the nearest anchor element (handles clicks on child elements like SVG icons)
+          const anchor = e.target.closest('a');
+          
+          console.log('[0x1] Found anchor:', anchor);
+          
+          // Only handle links with href attribute that should be handled by the router
+          if (anchor && anchor.href && !anchor.hasAttribute("target") && 
+              !anchor.hasAttribute("download") && anchor.hostname === window.location.hostname) {
+            console.log('[0x1] Router intercepting link click to:', anchor.href);
+            e.preventDefault();
+            e.stopPropagation();
+            const href = anchor.getAttribute("href");
+            console.log('[0x1] Router navigating to:', href);
+            this.navigate(href);
+          } else {
+            console.log('[0x1] Router ignoring click - not a valid internal link');
+          }
+        };
+        
+        // Remove any existing click handlers to avoid conflicts
+        document.removeEventListener("click", clickHandler);
+        
+        // Add the click handler
+        document.addEventListener("click", clickHandler, true); // Use capture phase
+        
+        console.log('[0x1] Router click handler attached');
+      }
+      
+      // Initial route handling
+      this.handleRouteChange();
+      
+      console.log('[0x1] Router initialization complete');
     }
     
     // Replace current history state with new path
@@ -632,28 +763,6 @@ export function generateRouterModule(): string {
       }
     }
     
-    // Initialize the router
-    init() {
-      // Set up event listeners
-      if (this.mode === "hash") {
-        window.addEventListener("hashchange", () => this.handleRouteChange());
-      } else {
-        window.addEventListener("popstate", () => this.handleRouteChange());
-        // Intercept link clicks for history mode
-        document.addEventListener("click", (e) => {
-          // Only handle links with href attribute that should be handled by the router
-          if (e.target && e.target.tagName === "A" && e.target.href && !e.target.hasAttribute("target") && 
-              !e.target.hasAttribute("download") && e.target.hostname === window.location.hostname) {
-            e.preventDefault();
-            const href = e.target.getAttribute("href");
-            this.navigate(href);
-          }
-        });
-      }
-      // Initial route handling
-      this.handleRouteChange();
-    }
-    
     // Handle route changes
     async handleRouteChange() {
       const path = this.getPath();
@@ -667,8 +776,8 @@ export function generateRouterModule(): string {
       
       if (route) {
         try {
-          // Extract route parameters
-          const params = this.extractParams(route, path);
+          // Use the params already extracted by findMatchingRoute
+          const params = route.params || {};
           
           // Get component function (applying layouts if necessary)
           let component = route.component;
@@ -703,21 +812,184 @@ export function generateRouterModule(): string {
       }
     }
     
+    // Get the current path from either hash or location
+    getPath() {
+      if (this.mode === "hash") {
+        return window.location.hash.slice(1) || "/";
+      }
+      return window.location.pathname || "/";
+    }
+    
+    // Find a route that matches the given path
+    findMatchingRoute(path) {
+      console.log("[0x1] Finding matching route for: " + path);
+      
+      // Try exact match first
+      for (let i = 0; i < this.routes.length; i++) {
+        const route = this.routes[i];
+        
+        if (route.exact && route.path === path) {
+          console.log("[0x1] Found exact route match: " + route.path);
+          return {
+            component: route.component,
+            params: {},
+            layouts: route.layouts || null
+          };
+        }
+      }
+      
+      // Try pattern matching for dynamic routes
+      for (let i = 0; i < this.routes.length; i++) {
+        const route = this.routes[i];
+        
+        if (route.path.includes(':') || route.path.includes('*')) {
+          const params = this.extractParamsFromPath(route.path, path);
+          if (params) {
+            console.log("[0x1] Found dynamic route match: " + route.path);
+            return {
+              component: route.component,
+              params: params,
+              layouts: route.layouts || null
+            };
+          }
+        }
+      }
+      
+      // No match found
+      console.warn("[0x1] No route match found for path: " + path);
+      return null;
+    }
+    
+    // Extract parameters from a path based on a route pattern
+    extractParamsFromPath(routePath, currentPath) {
+      // Create pattern segments for matching
+      const routeSegments = routePath.split('/');
+      const pathSegments = currentPath.split('/');
+      
+      // Different segment count means no match
+      // Unless the route has a wildcard at the end
+      const hasWildcard = routePath.includes('*');
+      if (!hasWildcard && routeSegments.length !== pathSegments.length) {
+        return null;
+      }
+      
+      const params = {};
+      
+      // Check each segment for match or parameter
+      for (let i = 0; i < routeSegments.length; i++) {
+        const routeSegment = routeSegments[i];
+        
+        // Handle parameter segment
+        if (routeSegment.startsWith(':')) {
+          const paramName = routeSegment.substring(1);
+          params[paramName] = pathSegments[i];
+          continue;
+        }
+        
+        // Handle wildcard segment
+        if (routeSegment === '*' || routeSegment.includes('*')) {
+          const remainingPath = pathSegments.slice(i).join('/');
+          params.wildcard = remainingPath;
+          break;
+        }
+        
+        // Handle exact match segment
+        if (routeSegment !== pathSegments[i]) {
+          // This segment doesn't match, so the whole route doesn't match
+          return null;
+        }
+      }
+      
+      return params;
+    }
+    
+    // Render the result of a component
+    renderResult(result) {
+      // Clear the root element first
+      while (this.rootElement.firstChild) {
+        this.rootElement.removeChild(this.rootElement.firstChild);
+      }
+      
+      // Use completely direct inline body content extraction to prevent browser extension interference
+      let finalContent = result;
+      
+      try {
+        // Direct inline detection and extraction that can't be intercepted
+        if (result && typeof result === 'object' && 
+            result.$$typeof && result.type === 'html' && 
+            result.props && result.props.children) {
+          
+          console.log('[0x1] Router detected full HTML layout structure');
+          const children = result.props.children;
+          const childArray = Array.isArray(children) ? children : [children];
+          
+          // Look for body element and extract its content
+          for (let i = 0; i < childArray.length; i++) {
+            const child = childArray[i];
+            if (child && child.type === 'body') {
+              console.log('[0x1] Router found body element, extracting content');
+              finalContent = child.props && child.props.children ? child.props.children : child;
+              console.log('[0x1] Router successfully extracted body content');
+              break;
+            }
+          }
+        }
+        
+        // Handle legacy JSX structure
+        else if (result && typeof result === 'object' && result.props && result.props.children) {
+          const children = Array.isArray(result.props.children) ? result.props.children : [result.props.children];
+          
+          for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child && child.type === 'body') {
+              console.log('[0x1] Router found body element in legacy structure');
+              finalContent = child.props && child.props.children ? child.props.children : child;
+              console.log('[0x1] Router successfully extracted body content from legacy structure');
+              break;
+            }
+          }
+        }
+        
+        // Handle direct body element
+        else if (result && result.type === 'body') {
+          console.log('[0x1] Router result is a body element directly');
+          finalContent = result.props && result.props.children ? result.props.children : result;
+          console.log('[0x1] Router successfully extracted direct body content');
+        }
+        
+        // Render the final content
+        if (finalContent) {
+          const renderedContent = this.renderElement(finalContent);
+          if (renderedContent) {
+            this.rootElement.appendChild(renderedContent);
+          }
+        }
+      } catch (error) {
+        console.error('[0x1] Router error during rendering:', error);
+        // Fallback: try to render the original result
+        try {
+          const fallbackContent = this.renderElement(result);
+          if (fallbackContent) {
+            this.rootElement.appendChild(fallbackContent);
+          }
+        } catch (fallbackError) {
+          console.error('[0x1] Router fallback rendering also failed:', fallbackError);
+        }
+      }
+    }
+    
     // Render an element to the DOM
     renderElement(jsxElement) {
       try {
-        // Filter boolean values first if the global function exists
+        // Direct inline boolean filtering to prevent browser extension interference
         let element = jsxElement;
-        if (typeof window !== 'undefined' && window.__0x1_filterBooleanValues) {
-          element = window.__0x1_filterBooleanValues(jsxElement);
-        }
         
         // Handle primitive values
         if (typeof element === "string" || typeof element === "number") {
           return document.createTextNode(String(element));
         }
         
-        // Handle boolean values (should be filtered already but just in case)
+        // Handle boolean values and null/undefined
         if (typeof element === "boolean" || element == null) {
           return null;
         }
@@ -727,16 +999,37 @@ export function generateRouterModule(): string {
           return element;
         }
         
-        // Check if this is a full HTML structure that should be preserved
-        if (typeof window !== 'undefined' && window.__0x1_hasHtmlStructure && window.__0x1_hasHtmlStructure(element)) {
-          console.log("[0x1] Detected full HTML structure in component");
+        // Direct inline detection for full HTML structure - no global function calls
+        if (element && typeof element === 'object' && 
+            element.$$typeof && element.type === 'html' && 
+            element.props && element.props.children) {
           
-          // If we have HTML structure in browser context, extract body content
-          if (typeof window.__0x1_extractBodyContent === 'function') {
-            const bodyContent = window.__0x1_extractBodyContent(element);
-            if (bodyContent) {
-              element = bodyContent;
+          console.log("[0x1] Router detected full HTML structure in renderElement");
+          
+          // Use direct inline body content extraction
+          let extractedContent = null;
+          
+          try {
+            const children = element.props.children;
+            const childArray = Array.isArray(children) ? children : [children];
+            
+            for (let i = 0; i < childArray.length; i++) {
+              const child = childArray[i];
+              if (child && child.type === 'body') {
+                console.log('[0x1] Router renderElement found body element, extracting content');
+                extractedContent = child.props && child.props.children ? child.props.children : child;
+                console.log('[0x1] Router renderElement successfully extracted body content');
+                break;
+              }
             }
+            
+            // If extraction succeeded, use the extracted content
+            if (extractedContent) {
+              element = extractedContent;
+              console.log('[0x1] Router renderElement using extracted body content');
+            }
+          } catch (error) {
+            console.error('[0x1] Router renderElement error during body content extraction:', error);
           }
         }
         
@@ -891,268 +1184,6 @@ export function generateRouterModule(): string {
       }
     }
     
-    // Get the current path from either hash or location
-    getPath() {
-      if (this.mode === "hash") {
-        return window.location.hash.slice(1) || "/";
-      }
-      return window.location.pathname || "/";
-    }
-    
-    // Find a route that matches the given path
-    findMatchingRoute(path) {
-      console.log("[0x1] Finding matching route for: " + path);
-      
-      // Try exact match first
-      for (let i = 0; i < this.routes.length; i++) {
-        const route = this.routes[i];
-        
-        if (route.exact && route.path === path) {
-          console.log("[0x1] Found exact route match: " + route.path);
-          return {
-            handler: route.component,
-            params: {},
-            layouts: route.layouts || null
-          };
-        }
-      }
-      
-      // Try pattern matching for dynamic routes
-      for (let i = 0; i < this.routes.length; i++) {
-        const route = this.routes[i];
-        
-        if (route.path.includes(':') || route.path.includes('*')) {
-          const params = this.extractParamsFromPath(route.path, path);
-          if (params) {
-            console.log("[0x1] Found dynamic route match: " + route.path);
-            return {
-              handler: route.component,
-              params: params,
-              layouts: route.layouts || null
-            };
-          }
-        }
-      }
-      
-      // No match found
-      console.warn("[0x1] No route match found for path: " + path);
-      return null;
-    }
-    
-    // Extract parameters from a path based on a route pattern
-    extractParamsFromPath(routePath, currentPath) {
-      // Create pattern segments for matching
-      const routeSegments = routePath.split('/');
-      const pathSegments = currentPath.split('/');
-      
-      // Different segment count means no match
-      // Unless the route has a wildcard at the end
-      const hasWildcard = routePath.includes('*');
-      if (!hasWildcard && routeSegments.length !== pathSegments.length) {
-        return null;
-      }
-      
-      const params = {};
-      
-      // Check each segment for match or parameter
-      for (let i = 0; i < routeSegments.length; i++) {
-        const routeSegment = routeSegments[i];
-        
-        // Handle parameter segment
-        if (routeSegment.startsWith(':')) {
-          const paramName = routeSegment.substring(1);
-          params[paramName] = pathSegments[i];
-          continue;
-        }
-        
-        // Handle wildcard segment
-        if (routeSegment === '*' || routeSegment.includes('*')) {
-          const remainingPath = pathSegments.slice(i).join('/');
-          params.wildcard = remainingPath;
-          break;
-        }
-        
-        // Handle exact match segment
-        if (routeSegment !== pathSegments[i]) {
-          // This segment doesn't match, so the whole route doesn't match
-          return null;
-        }
-      }
-      
-      return params;
-    }
-    
-    // Convert a path pattern to a regular expression
-    // Simplified version for compatibility
-    pathToRegex(path) {
-      // We use a simpler implementation to avoid complex escaping issues
-      if (path === '/') {
-        // Handle root path specially (match '/' or empty string)
-        return new RegExp("^/|^$");
-      }
-      return new RegExp("^" + path + "$");
-    }
-    
-    // Render the result of a component
-    renderResult(result) {
-      // First check if result has a full HTML structure (React 19 compatible or legacy)
-      const hasFullHtmlStructure = (result && typeof result === 'object' && 
-                                   result.$$typeof && result.type === 'html') ||
-                                  (result && typeof result === 'object' && 
-                                   result.type === 'html' && result.props) ||
-                                  (typeof window.__0x1_hasHtmlStructure === 'function' && 
-                                   window.__0x1_hasHtmlStructure(result));
-      
-      if (hasFullHtmlStructure) {
-        // For a full HTML structure, we want to extract the <body> content 
-        // and replace the document's elements rather than nesting
-        console.log("[0x1] Detected full HTML structure in layout");
-        
-        try {
-          // Handle React 19 compatible elements with $$typeof
-          if (result && result.$$typeof && result.type === 'html') {
-            console.log("[0x1] Processing React 19 compatible HTML structure");
-            const children = result.props.children;
-            if (children) {
-              const childArray = Array.isArray(children) ? children : [children];
-              
-              // Extract head and body elements
-              const headElement = childArray.find(child => 
-                child && child.type === 'head'
-              );
-              const bodyElement = childArray.find(child => 
-                child && child.type === 'body'
-              );
-              
-              // Update document head if present
-              if (headElement && headElement.props && headElement.props.children) {
-                const headChildren = Array.isArray(headElement.props.children) ?
-                  headElement.props.children : [headElement.props.children];
-                
-                const titleElement = headChildren.find(child => 
-                  child && child.type === 'title'
-                );
-                
-                if (titleElement && titleElement.props && titleElement.props.children) {
-                  document.title = titleElement.props.children;
-                }
-              }
-              
-              // Extract and render body content
-              if (bodyElement && bodyElement.props) {
-                // Clear the root element
-                while (this.rootElement.firstChild) {
-                  this.rootElement.removeChild(this.rootElement.firstChild);
-                }
-                
-                // Add the body children using the modern renderElement
-                const bodyChildren = bodyElement.props.children;
-                if (bodyChildren) {
-                  const renderedContent = this.renderElement(bodyChildren);
-                  if (renderedContent) {
-                    this.rootElement.appendChild(renderedContent);
-                  }
-                }
-                
-                // Add body className if present
-                if (bodyElement.props.className) {
-                  document.body.className = bodyElement.props.className;
-                }
-                
-                return;
-              }
-            }
-          }
-          // Handle legacy JSX structure (fallback)
-          else if (result && typeof result === 'object') {
-            // For string HTML
-            if (typeof result === 'string') {
-              document.documentElement.innerHTML = result;
-              return;
-            }
-            
-            // For JSX object structure with html/head/body elements
-            if (result.type === 'html') {
-              console.log("[0x1] Processing legacy HTML structure");
-              
-              // Get children from either props.children or direct children property
-              const children = result.props?.children || result.children;
-              if (children) {
-                const childArray = Array.isArray(children) ? children : [children];
-                
-                // Extract important parts from head (title, meta, links)
-                const headElement = childArray.find(child => 
-                  child && child.type === 'head'
-                );
-                
-                if (headElement && headElement.props && headElement.props.children) {
-                  // Update title if present
-                  const headChildren = Array.isArray(headElement.props.children) ?
-                    headElement.props.children : [headElement.props.children];
-                  
-                  const titleElement = headChildren.find(child => 
-                    child && child.type === 'title'
-                  );
-                  
-                  if (titleElement && titleElement.props && titleElement.props.children) {
-                    document.title = titleElement.props.children;
-                  }
-                }
-                
-                // Extract body content
-                const bodyElement = childArray.find(child => 
-                  child && child.type === 'body'
-                );
-                
-                if (bodyElement) {
-                  // Clear the root element
-                  while (this.rootElement.firstChild) {
-                    this.rootElement.removeChild(this.rootElement.firstChild);
-                  }
-                  
-                  // Add the body children
-                  const bodyChildren = bodyElement.props?.children || bodyElement.children;
-                  if (bodyChildren) {
-                    const renderedContent = this.renderElement(bodyChildren);
-                    if (renderedContent) {
-                      this.rootElement.appendChild(renderedContent);
-                    }
-                  }
-                  
-                  // Add body className if present
-                  if (bodyElement.props?.className) {
-                    document.body.className = bodyElement.props.className;
-                  }
-                  
-                  return;
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.error("[0x1] Error processing HTML structure:", err);
-        }
-      }
-      
-      // Standard rendering for non-HTML structure results
-      // Clear the root element
-      while (this.rootElement.firstChild) {
-        this.rootElement.removeChild(this.rootElement.firstChild);
-      }
-      
-      // Handle different types of results
-      if (result instanceof Node) {
-        this.rootElement.appendChild(result);
-      } else if (typeof result === "string") {
-        this.rootElement.innerHTML = result;
-      } else {
-        const renderedElement = this.renderElement(result);
-        if (renderedElement) {
-          this.rootElement.appendChild(renderedElement);
-        }
-      }
-    }
-    
     // Utility method to render error message
     renderErrorMessage(message) {
       const errorElement = document.createElement("div");
@@ -1203,118 +1234,17 @@ export function generateRouterModule(): string {
       return wrappedComponent;
     }
     
-    // Handle navigation to a specific path
-    navigate(path, pushState = true) {
-      // Normalize the path
-      path = path || '/';
-      if (!path.startsWith('/')) {
-        path = '/' + path;
+    // Re-render the current route (for state updates)
+    renderCurrentRoute() {
+      console.log("[0x1] Re-rendering current route:", this.currentPath);
+      
+      if (!this.currentPath) {
+        console.warn("[0x1] No current path to re-render");
+        return;
       }
       
-      console.log("[0x1] Router navigating to: " + path);
-      
-      // Find a matching route or use fallback
-      const match = this.findMatchingRoute(path);
-      if (!match) {
-        console.warn("[0x1] No route found for path: " + path);
-        // Try default route if available
-        if (this.defaultRoute && this.defaultRoute !== path) {
-          return this.navigate(this.defaultRoute, false);
-        }
-        return this.renderErrorMessage("No route found for: " + path);
-      }
-      
-      // Execute the navigation
-      try {
-        // Call the onNavigate callback if provided
-        if (this.onNavigate) {
-          this.onNavigate(path, match.params);
-        }
-        
-        // Get the component and apply layouts
-        let component = match.handler;
-        
-        // Use layouts from the route match, fallback to root layout if no route layouts
-        if (match.layouts && match.layouts.length > 0) {
-          // Use layouts from the route
-          component = this.applyLayouts(component, match.layouts, match.params);
-        } else if (this.rootLayout) {
-          // Fallback to root layout
-          component = this.applyLayouts(component, [this.rootLayout], match.params);
-        }
-        
-        // Check if component is a function
-        if (typeof component !== 'function') {
-          console.error("[0x1] Router error: component is not a function for path: " + path);
-          console.error("[0x1] Component type: " + typeof component);
-          return this.renderErrorMessage("Component error: handler is not a function");
-        }
-        
-        // Call the component with params
-        const result = component({ params: match.params });
-        
-        // Process the result using the global utility if available
-        let processedResult = result;
-        if (typeof window !== 'undefined' && window.__0x1_filterBooleanValues) {
-          processedResult = window.__0x1_filterBooleanValues(result);
-        }
-        
-        // Render the processed result
-        this.renderResult(processedResult);
-        
-        // Update the browser history if pushState is true and not triggered by a popstate event
-        if (pushState && !this._handlingPopState && path !== window.location.pathname) {
-          window.history.pushState(null, '', path);
-        }
-        
-        return true;
-      } catch (error) {
-        console.error("[0x1] Navigation error for " + path + ":", error);
-        this.renderErrorMessage("Error navigating to " + path + ": " + (error.message || String(error)));
-        return false;
-      }
-    }
-    
-    // Initialize the router
-    init() {
-      console.log("[0x1] Router initializing...");
-      
-      // Set up event listeners
-      if (this.mode === "hash") {
-        window.addEventListener("hashchange", () => this.handleRouteChange());
-      } else {
-        window.addEventListener("popstate", () => {
-          this._handlingPopState = true;
-          this.handleRouteChange();
-          this._handlingPopState = false;
-        });
-        
-        // Intercept link clicks for history mode
-        document.addEventListener("click", (e) => {
-          // Only handle links with href attribute that should be handled by the router
-          if (e.target && e.target.tagName === "A" && e.target.href && !e.target.hasAttribute("target") && 
-              !e.target.hasAttribute("download") && e.target.hostname === window.location.hostname) {
-            e.preventDefault();
-            const href = e.target.getAttribute("href");
-            this.navigate(href);
-          }
-        });
-      }
-      
-      // Initial route handling
+      // Use handleRouteChange to re-render the current route
       this.handleRouteChange();
-      
-      return this; // Return this for chaining
-    }
-    
-    // Initialize routes from app directory components
-    initAppDirectoryRoutes(components) {
-      // This is a simplified version
-      for (const [path, component] of Object.entries(components)) {
-        if (component && component.default) {
-          this.addRoute(path, component.default);
-        }
-      }
     }
   }
   
@@ -1322,36 +1252,6 @@ export function generateRouterModule(): string {
   function createRouter(options) {
     return new Router(options);
   }
-  
-  // Create a utility function for filtering boolean values in JSX
-  window.__0x1_filterBooleanValues = function(element) {
-    // Handle null/undefined
-    if (element == null) return element;
-    
-    // Handle primitive values
-    if (typeof element !== 'object') return element;
-    
-    // Handle arrays (fragments)
-    if (Array.isArray(element)) {
-      return element.filter(item => item !== true && item !== false && item != null);
-    }
-    
-    // Handle JSX elements
-    if (element && typeof element === 'object' && 'type' in element && element.props) {
-      // Filter children if they exist
-      if (element.props.children) {
-        if (Array.isArray(element.props.children)) {
-          element.props.children = element.props.children.filter(
-            child => child !== true && child !== false && child != null
-          );
-        } else if (element.props.children === true || element.props.children === false) {
-          element.props.children = null;
-        }
-      }
-    }
-    
-    return element;
-  };
   
   // Expose to global scope
   window.Router = Router;

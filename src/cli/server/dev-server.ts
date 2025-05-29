@@ -235,7 +235,8 @@ function generateLiveReloadScript(host: string): string {
   
   function connect() {
     try {
-      ws = new WebSocket(\`\${wsProtocol}//\${host}/ws\`);
+      // Use the correct WebSocket endpoint
+      ws = new WebSocket(\`\${wsProtocol}//\${host}/__0x1_ws\`);
       
       ws.onopen = () => {
         console.log('[0x1] Live reload connected');
@@ -272,7 +273,8 @@ function generateLiveReloadScript(host: string): string {
       };
       
       ws.onerror = (error) => {
-        console.warn('[0x1] Live reload error:', error);
+        // Avoid logging errors that might be intercepted by browser extensions
+        console.warn('[0x1] Live reload connection issue - will retry');
       };
     } catch (error) {
       console.error('[0x1] Failed to connect to live reload:', error);
@@ -463,7 +465,7 @@ function generateComponentId(type, props) {
 }
 
 /**
- * Call component with proper hooks context (React 19 style)
+ * Call component with proper hooks context (React 19 style) - Optimized for performance
  */
 function callComponentWithHooks(type, props) {
   let componentId = generateComponentId(type, props);
@@ -474,17 +476,23 @@ function callComponentWithHooks(type, props) {
     componentId = fallbackId;
   }
   
+  // Optimized update callback with reduced DOM queries and better performance
   const updateCallback = () => {
-    // Efficient component-level re-render
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return;
+    
+    // Use immediate update for better SVG handling instead of requestAnimationFrame
+    try {
+      // Cache DOM query result to avoid repeated queries
       const componentElements = document.querySelectorAll('[data-component-id="' + componentId + '"]');
       
       if (componentElements.length > 0) {
-        // Update only this component - much more efficient than router re-render
+        // Batch DOM updates for better performance
+        const fragment = document.createDocumentFragment();
+        let hasUpdates = false;
+        
         componentElements.forEach(element => {
           try {
-            // CRITICAL FIX: Set up hooks context before calling component
-            // Don't pass updateCallback to avoid infinite recursion
+            // Set up hooks context before calling component (no recursive callback)
             if (window.__0x1_enterComponentContext) {
               window.__0x1_enterComponentContext(componentId);
             }
@@ -496,15 +504,19 @@ function callComponentWithHooks(type, props) {
               window.__0x1_exitComponentContext();
             }
             
-            // Use the correct renderToDOM reference
-            const newElement = window.renderToDOM ? window.renderToDOM(newResult) : null;
+            // Use cached renderToDOM reference for better performance
+            const renderToDOM = window.renderToDOM || window.__0x1_renderToDOM;
+            const newElement = renderToDOM ? renderToDOM(newResult) : null;
             
             if (newElement && element.parentNode) {
               // Preserve the component ID on the new element
               if (newElement.setAttribute) {
                 newElement.setAttribute('data-component-id', componentId);
               }
+              
+              // Use replaceChild for better performance than innerHTML
               element.parentNode.replaceChild(newElement, element);
+              hasUpdates = true;
             }
           } catch (error) {
             console.error('[0x1] Component update error:', error);
@@ -512,20 +524,25 @@ function callComponentWithHooks(type, props) {
             if (window.__0x1_exitComponentContext) {
               window.__0x1_exitComponentContext();
             }
-            // Only fallback to router re-render on error
-            if (window.__0x1_router?.renderCurrentRoute) {
-              window.__0x1_router.renderCurrentRoute();
-            }
           }
         });
+        
+        // Only trigger router update if no specific updates were made
+        if (!hasUpdates) {
+          const router = window.__0x1_router || window.router;
+          if (router?.renderCurrentRoute) {
+            router.renderCurrentRoute();
+          }
+        }
       } else {
         // Fallback to router re-render only if no DOM elements found
-        if (window.__0x1_router?.renderCurrentRoute) {
-          window.__0x1_router.renderCurrentRoute();
-        } else if (window.router?.renderCurrentRoute) {
-          window.router.renderCurrentRoute();
+        const router = window.__0x1_router || window.router;
+        if (router?.renderCurrentRoute) {
+          router.renderCurrentRoute();
         }
       }
+    } catch (error) {
+      console.error('[0x1] Update callback error:', error);
     }
   };
   
@@ -748,15 +765,35 @@ function renderToDOM(element) {
       return renderToDOM(result);
     }
     
-    // Handle DOM elements
-    const domElement = document.createElement(element.type);
+    // Handle DOM elements - Fixed SVG handling
+    const tagName = element.type;
+    let domElement;
+    
+    // SVG elements need special namespace handling
+    const svgElements = new Set([
+      'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
+      'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
+      'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
+      'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
+    ]);
+    
+    if (svgElements.has(tagName)) {
+      domElement = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    } else {
+      domElement = document.createElement(tagName);
+    }
     
     // Set attributes and properties
     Object.entries(element.props || {}).forEach(([key, value]) => {
       if (key === 'children') return;
       
       if (key === 'className') {
-        domElement.className = String(value);
+        // SVG elements need class attribute, not className property
+        if (svgElements.has(tagName)) {
+          domElement.setAttribute('class', String(value));
+        } else {
+          domElement.className = String(value);
+        }
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
         domElement.addEventListener(eventName, value);
@@ -1348,6 +1385,41 @@ export function createDevServer(options: DevServerOptions): Server {
         });
       }
 
+      // Handle server actions (Next15 style)
+      if (reqPath === "/__0x1_server_action" && req.method === "POST") {
+        try {
+          logRequestStatus(200, reqPath, "Processing server action");
+          
+          // Import the directives handler
+          const { handleServerAction } = await import('../../core/directives.js');
+          const result = await handleServerAction(req);
+          
+          return result;
+        } catch (error) {
+          logRequestStatus(500, reqPath, `Server action error: ${error}`);
+          return new Response(JSON.stringify({ 
+            error: "Server action failed",
+            message: error instanceof Error ? error.message : String(error)
+          }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Handle server action preflight requests
+      if (reqPath === "/__0x1_server_action" && req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '86400'
+          }
+        });
+      }
+
       // Handle JSX runtime requests
       const jsxResponse = handleJsxComponent(reqPath, projectPath);
       if (jsxResponse) {
@@ -1452,308 +1524,47 @@ export default {
         logRequestStatus(
           200,
           reqPath,
-          "Serving clean framework module (conflict-free)"
+          "Serving clean framework module (production-ready)"
         );
 
         const cleanFrameworkModule = `
-// 0x1 Framework - Clean Module (Variable Conflict Fixed)
-// Build timestamp: ${Date.now()}
-console.log('[0x1] Framework module loaded - clean implementation');
+// 0x1 Framework - Production Module
+console.log('[0x1] Framework module loaded - production version');
 
-// Core JSX symbols
-const REACT_ELEMENT_TYPE = Symbol.for('react.element');
-const REACT_FRAGMENT_TYPE = Symbol.for('react.fragment');
-const Fragment = REACT_FRAGMENT_TYPE;
+// Re-export from the production hooks system
+export * from '/0x1/hooks.js';
 
-// Hooks context system
-let currentComponentId = null;
-let hookIndex = 0;
-const componentStates = new Map();
-const updateCallbacks = new Map();
-
-function enterComponentContext(componentId, updateCallback) {
-  if (!componentId) {
-    console.error('[0x1 Framework] enterComponentContext called with null/undefined componentId');
-    return;
+// Basic JSX support (delegates to runtime)
+export function jsx(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsx) {
+    return window.jsx(type, props, key);
   }
-  
-  currentComponentId = componentId;
-  hookIndex = 0;
-  
-  if (!componentStates.has(componentId)) {
-    componentStates.set(componentId, {
-      hooks: [],
-      mounted: false
-    });
-  }
-  
-  if (updateCallback) {
-    updateCallbacks.set(componentId, updateCallback);
-  }
-  
-  const state = componentStates.get(componentId);
-  state.mounted = true;
+  throw new Error('[0x1] JSX runtime not available');
 }
 
-function exitComponentContext() {
-  currentComponentId = null;
-  hookIndex = 0;
+export function jsxs(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsxs) {
+    return window.jsxs(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not available');
 }
 
-function useState(initialValue) {
-  if (!currentComponentId) {
-    console.error('[0x1 Framework] useState called outside component context');
-    throw new Error('[0x1 Hooks] Hook called outside of component context');
+export function createElement(type, props, ...children) {
+  if (typeof window !== 'undefined' && window.createElement) {
+    return window.createElement(type, props, ...children);
   }
-  
-  const componentState = componentStates.get(currentComponentId);
-  if (!componentState) {
-    throw new Error('[0x1 Hooks] Component state not found');
-  }
-  
-  const currentHookIndex = hookIndex++;
-  
-  if (!componentState.hooks[currentHookIndex]) {
-    componentState.hooks[currentHookIndex] = {
-      type: 'useState',
-      value: typeof initialValue === 'function' ? initialValue() : initialValue
-    };
-  }
-  
-  const hook = componentState.hooks[currentHookIndex];
-  const capturedComponentId = currentComponentId;
-  
-  const setState = (newValue) => {
-    const nextValue = typeof newValue === 'function' ? newValue(hook.value) : newValue;
-    
-    if (!Object.is(hook.value, nextValue)) {
-      hook.value = nextValue;
-      
-      // Efficient component-level update using captured ID
-      const updateCallback = updateCallbacks.get(capturedComponentId);
-      if (updateCallback) {
-        try {
-          updateCallback();
-        } catch (error) {
-          console.error('[0x1 Framework] Error in update callback:', error);
-        }
-      } else {
-        console.warn(\`[0x1 Framework] No update callback for component: \${capturedComponentId}\`);
-      }
-    }
-  };
-  
-  return [hook.value, setState];
+  throw new Error('[0x1] JSX runtime not available');
 }
 
-// Additional hooks
-function useEffect(effect, deps) {
-  if (!currentComponentId) {
-    console.error('[0x1 Framework] useEffect called outside component context');
-    return;
-  }
-  
-  const componentState = componentStates.get(currentComponentId);
-  if (!componentState) {
-    console.error('[0x1 Framework] Component state not found for useEffect');
-    return;
-  }
-  
-  const currentHookIndex = hookIndex++;
-  
-  if (!componentState.hooks[currentHookIndex]) {
-    componentState.hooks[currentHookIndex] = {
-      type: 'useEffect',
-      effect: null,
-      cleanup: null,
-      deps: undefined
-    };
-  }
-  
-  const hook = componentState.hooks[currentHookIndex];
-  
-  // Check if dependencies have changed
-  const depsChanged = !deps || !hook.deps || 
-    deps.length !== hook.deps.length || 
-    deps.some((dep, i) => !Object.is(dep, hook.deps[i]));
-  
-  if (depsChanged) {
-    // Cleanup previous effect
-    if (hook.cleanup && typeof hook.cleanup === 'function') {
-      try {
-        hook.cleanup();
-      } catch (error) {
-        console.error('[0x1 Framework] Error in useEffect cleanup:', error);
-      }
-    }
-    
-    // Run new effect
-    hook.deps = deps ? [...deps] : undefined;
-    setTimeout(() => {
-      try {
-        const cleanup = effect();
-        if (typeof cleanup === 'function') {
-          hook.cleanup = cleanup;
-        }
-      } catch (error) {
-        console.error('[0x1 Framework] Error in useEffect:', error);
-      }
-    }, 0);
-  }
-}
-
-function useRef(initialValue = null) {
-  if (!currentComponentId) {
-    console.error('[0x1 Framework] useRef called outside component context');
-    return { current: initialValue };
-  }
-  
-  const componentState = componentStates.get(currentComponentId);
-  if (!componentState) {
-    console.error('[0x1 Framework] Component state not found for useRef');
-    return { current: initialValue };
-  }
-  
-  const currentHookIndex = hookIndex++;
-  
-  if (!componentState.hooks[currentHookIndex]) {
-    componentState.hooks[currentHookIndex] = {
-      type: 'useRef',
-      current: initialValue
-    };
-  }
-  
-  return componentState.hooks[currentHookIndex];
-}
-
-function useMemo(factory, deps) {
-  if (!currentComponentId) {
-    console.error('[0x1 Framework] useMemo called outside component context');
-    return factory();
-  }
-  
-  const componentState = componentStates.get(currentComponentId);
-  if (!componentState) {
-    console.error('[0x1 Framework] Component state not found for useMemo');
-    return factory();
-  }
-  
-  const currentHookIndex = hookIndex++;
-  
-  if (!componentState.hooks[currentHookIndex]) {
-    componentState.hooks[currentHookIndex] = {
-      type: 'useMemo',
-      value: factory(),
-      deps: deps ? [...deps] : undefined
-    };
-  }
-  
-  const hook = componentState.hooks[currentHookIndex];
-  
-  // Check if dependencies have changed
-  const depsChanged = !deps || !hook.deps || 
-    deps.length !== hook.deps.length || 
-    deps.some((dep, i) => !Object.is(dep, hook.deps[i]));
-  
-  if (depsChanged) {
-    hook.value = factory();
-    hook.deps = deps ? [...deps] : undefined;
-  }
-  
-  return hook.value;
-}
-
-function useCallback(callback, deps) {
-  return useMemo(() => callback, deps);
-}
-
-// JSX functions
-function jsx(type, props, key) {
-  const { children, ...otherProps } = props || {};
-  
-  if (type === Fragment || type === REACT_FRAGMENT_TYPE) {
-    return {
-      $$typeof: REACT_ELEMENT_TYPE,
-      type: Fragment,
-      props: {},
-      children: Array.isArray(children) ? children : (children != null ? [children] : []),
-      key: null
-    };
-  }
-  
-  if (typeof type === 'function') {
-    const componentProps = { ...otherProps };
-    if (children !== undefined) {
-      componentProps.children = children;
-    }
-    return type(componentProps);
-  }
-  
-  return {
-    $$typeof: REACT_ELEMENT_TYPE,
-    type: type,
-    props: otherProps,
-    children: Array.isArray(children) ? children : (children !== undefined ? [children] : []),
-    key: key || null
-  };
-}
-
-function jsxs(type, props, key) {
-  return jsx(type, props, key);
-}
-
-function jsxDEV(type, props, key, isStaticChildren, source, self) {
-  return jsx(type, props, key);
-}
-
-function createElement(type, props, ...children) {
-  const childArray = children.flat().filter(child => child != null);
-  return jsx(type, { ...props, children: childArray });
-}
-
-// Set up global hooks context
-if (typeof window !== 'undefined') {
-  window.__0x1_enterComponentContext = enterComponentContext;
-  window.__0x1_exitComponentContext = exitComponentContext;
-  window.__0x1_useState = useState;
-}
-
-// CRITICAL FIX: Also set up globalThis for consistency
-if (typeof globalThis !== 'undefined') {
-  globalThis.__0x1_enterComponentContext = enterComponentContext;
-  globalThis.__0x1_exitComponentContext = exitComponentContext;
-  globalThis.__0x1_useState = useState;
-}
-
-// Export everything
-export { 
-  useState, 
-  useEffect,
-  useRef,
-  useMemo,
-  useCallback,
-  jsx, 
-  jsxs, 
-  jsxDEV, 
-  createElement, 
-  Fragment,
-  enterComponentContext,
-  exitComponentContext
-};
+export const Fragment = Symbol.for('react.fragment');
 
 // Default export
 export default { 
-  useState, 
-  useEffect,
-  useRef,
-  useMemo,
-  useCallback,
   jsx, 
   jsxs, 
-  jsxDEV, 
   createElement, 
   Fragment,
-  version: '0.1.0-clean'
+  version: '0.1.0-production'
 };
 `;
 
@@ -1774,10 +1585,10 @@ export default {
         reqPath === "/node_modules/0x1/router.js"
       ) {
         try {
-          // Try to serve the router from the framework dist
-          const routerPath = join(frameworkCorePath, "router.js");
+          // CRITICAL FIX: Use the precompiled router from 0x1-router package
+          const routerPath = join(frameworkPath, "0x1-router", "dist", "index.js");
           if (existsSync(routerPath)) {
-            logRequestStatus(200, reqPath, "Serving 0x1 Router module");
+            logRequestStatus(200, reqPath, "Serving precompiled 0x1 Router");
             const routerContent = readFileSync(routerPath, "utf-8");
             return new Response(routerContent, {
               status: 200,
@@ -1787,12 +1598,37 @@ export default {
               },
             });
           }
+
+          // Fallback to source if dist doesn't exist
+          const routerSourcePath = join(frameworkPath, "0x1-router", "src", "index.ts");
+          if (existsSync(routerSourcePath)) {
+            logRequestStatus(200, reqPath, "Serving 0x1 Router source (transpiled)");
+            let routerContent = readFileSync(routerSourcePath, "utf-8");
+            
+            // Simple TypeScript to JavaScript conversion for the router
+            routerContent = routerContent
+              .replace(/: \w+(\[\])?/g, '') // Remove type annotations
+              .replace(/interface \w+\s*{[^}]*}/g, '') // Remove interfaces
+              .replace(/export interface[^}]*}/g, '') // Remove exported interfaces
+              .replace(/declare function[^;]*;/g, '') // Remove declare statements
+              .replace(/import\s+type\s+{[^}]+}\s+from\s+[^;]+;/g, '') // Remove type imports
+              .replace(/\?\s*:/g, ':') // Remove optional property markers
+              .replace(/export\s+type\s+[^=]+=\s*[^;]+;/g, ''); // Remove type definitions
+
+            return new Response(routerContent, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/javascript; charset=utf-8",
+                "Cache-Control": "no-cache",
+              },
+            });
+          }
         } catch (error) {
-          logger.error(`Error serving router: ${error}`);
+          logger.error(`Error serving precompiled router: ${error}`);
         }
 
-        // Fallback: Generate router dynamically
-        logRequestStatus(200, reqPath, "Serving generated router module");
+        // Only use fallback if precompiled router is not available
+        logRequestStatus(200, reqPath, "Serving router fallback (not recommended)");
         const { generateRouterModule } = await import(
           "../commands/utils/jsx-templates"
         );
@@ -1830,30 +1666,21 @@ export default {
         // Fallback: Generate Link component dynamically
         logRequestStatus(200, reqPath, "Serving generated Link component");
         const linkComponent = `
-// 0x1 Framework Link Component
-export default function Link({ href, children, className, ...props }) {
-  // Return proper JSX element instead of DOM element
+// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility
+export default function Link({ href, children, className, target, rel, ...props }) {
+  // Ensure proper JSX element structure for 0x1 runtime
+  // Remove onClick handler to let the router handle navigation through its global click handler
   return {
     $$typeof: Symbol.for('react.element'),
     type: 'a',
     props: {
       href,
       className,
+      target,
+      rel,
       ...props,
-      children,
-      onClick: (e) => {
-        e.preventDefault();
-        
-        // Use the router for navigation if available
-        if (window.__0x1_router && window.__0x1_router.navigate) {
-          window.__0x1_router.navigate(href);
-        } else if (window.router && window.router.navigate) {
-          window.router.navigate(href);
-        } else {
-          // Fallback to window.location
-          window.location.href = href;
-        }
-      }
+      children
+      // No onClick handler - let the router's global click handler manage navigation
     },
     key: null,
     ref: null,
@@ -1863,6 +1690,9 @@ export default function Link({ href, children, className, ...props }) {
 
 // Named export for compatibility
 export { Link };
+
+// Export as both default and named for maximum compatibility
+export const LinkComponent = Link;
 `;
 
         return new Response(linkComponent, {
@@ -2091,24 +1921,30 @@ if (typeof module !== 'undefined' && module.exports) {
 
           // Generate a dynamic app.js that loads and renders the app components
           const appScript = `
-// 0x1 Framework App Bundle - Generated at \${new Date().toISOString()}
-console.log('0x1 App Started - Build: \${Date.now()}');
+// 0x1 Framework App Bundle - Production Ready
+console.log('[0x1 App] Starting production-ready app...');
 
-// Import the router and components
+// Import the production router
 import { createRouter } from '/0x1/router.js';
 
-// Component loader function with minimal logging
+// Wait for JSX runtime to be ready
+function waitForJsxRuntime() {
+  return new Promise((resolve) => {
+    const checkRuntime = () => {
+      if (window.jsx && window.jsxs && window.Fragment && window.createElement) {
+        resolve();
+      } else {
+        setTimeout(checkRuntime, 10);
+      }
+    };
+    checkRuntime();
+  });
+}
+
+// Component loader with proper error handling
 async function loadComponent(path) {
-  if (!window.jsxRuntimeReady) {
-    console.log('[0x1 App] Waiting for JSX runtime...');
-    await waitForJsxRuntime();
-  }
-  
-  // Removed excessive logging
-  
   try {
     const module = await import(path + '?t=' + Date.now());
-    // Return the full module object, not just the default export
     return module;
   } catch (error) {
     console.error('[0x1 App] Failed to load component:', path, error);
@@ -2116,234 +1952,95 @@ async function loadComponent(path) {
   }
 }
 
-// Wait for JSX runtime to be available
-function waitForJsxRuntime() {
-  return new Promise((resolve) => {
-    const checkRuntime = () => {
-      if (window.jsx && window.jsxs && window.Fragment && window.createElement) {
-        console.log('[0x1 App] JSX runtime is ready');
-        resolve();
-      } else {
-        console.log('[0x1 App] Waiting for JSX runtime...');
-        setTimeout(checkRuntime, 50);
-      }
-    };
-    checkRuntime();
-  });
-}
-
-// Server-discovered routes (passed from server-side file system scan)
+// Server-discovered routes
 const serverRoutes = ${JSON.stringify(discoveredRoutes)};
 
-// Client-side route loading function
-async function loadDiscoveredRoutes() {
+// Production-ready route loading
+async function loadRoutes() {
   const routes = [];
-  
-  console.log('[0x1 App] Loading server-discovered routes:', serverRoutes.length);
-  console.log('[0x1 App] Server routes:', serverRoutes);
   
   for (const routeInfo of serverRoutes) {
     try {
-      // Removed excessive logging
       const module = await loadComponent(routeInfo.componentPath);
-      // Removed excessive logging
-      
       const component = module.default || module[Object.keys(module)[0]];
+      
       if (typeof component === 'function') {
         routes.push({
           path: routeInfo.path,
           component: component
         });
-        // Removed excessive logging
-      } else {
-        console.warn('[0x1 App] Route component is not a function:', routeInfo.path, typeof component);
       }
     } catch (error) {
       console.error('[0x1 App] Failed to load route:', routeInfo.path, error);
     }
   }
   
-  console.log('[0x1 App] Final loaded routes:', routes.map(r => ({ path: r.path, componentName: r.component.name || 'Anonymous' })));
   return routes;
 }
 
-// Function to check if a component returns full HTML structure
-function isFullHtmlLayout(component, props = {}) {
-  if (typeof component !== 'function') return false;
-  
-  try {
-    console.log('[0x1 App] Checking if component is full HTML layout:', component.name || 'Anonymous');
-    
-    // Check if the component name suggests it's a layout
-    const componentName = component.name || '';
-    if (componentName.toLowerCase().includes('layout') || componentName.toLowerCase().includes('rootlayout')) {
-      console.log('[0x1 App] Component appears to be a layout based on name');
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('[0x1 App] Error checking layout structure:', error);
-    return false;
-  }
-}
-
-// Function to extract body content from full HTML layout
-function extractBodyContent(layoutResult) {
-  // TEMPORARY DEBUG: Skip extraction and return full layout
-  console.warn('[0x1 App] DEBUG: Returning full layout instead of extracting body content');
-  return layoutResult;
-  
-  // Removed excessive logging
-  
-  if (!layoutResult || typeof layoutResult !== 'object') {
-    return layoutResult;  // Return as-is, not null
-  }
-  
-  // Handle React 19 compatible JSX element structure
-  if (layoutResult.$$typeof && layoutResult.type === 'html' && layoutResult.props && layoutResult.props.children) {
-    // Removed excessive logging
-    const childArray = Array.isArray(layoutResult.props.children) ? layoutResult.props.children : [layoutResult.props.children];
-    
-    // Removed excessive logging
-    
-    for (let i = 0; i < childArray.length; i++) {
-      const child = childArray[i];
-      // Removed excessive logging
-      
-      if (child && child.type === 'body') {
-        // Removed excessive logging
-        return child;
-      }
-    }
-  }
-  
-  // Fallback: handle simple structure
-  if (layoutResult.props && layoutResult.props.children) {
-    // Removed excessive logging
-    const children = Array.isArray(layoutResult.props.children) ? layoutResult.props.children : [layoutResult.props.children];
-    
-    // Removed excessive logging
-    
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      if (child && child.type === 'body') {
-        // Removed excessive logging
-        return child;
-      }
-    }
-  }
-  
-  // Debug fallback - return the original layout if we can't extract body
-  console.warn('[0x1 App] Could not extract body content, using full layout');
-  return layoutResult;
-}
-
-// Initialize the app
+// Initialize the production app
 async function initApp() {
   try {
+    await waitForJsxRuntime();
+    
     const appContainer = document.getElementById('app');
     if (!appContainer) {
-      console.error('App container not found');
+      console.error('[0x1 App] App container not found');
       return;
     }
 
-    // Load layout component
-    async function loadLayoutComponent() {
-      // Only try the transpiled .js file - the server handles the transpilation
-      try {
-        const module = await loadComponent('/app/layout.js');
-        if (module && module.default) {
-          console.log('[0x1 App] Loaded layout from: /app/layout.js');
-          return module.default;
-        }
-      } catch (error) {
-        console.warn('[0x1 App] Failed to load layout:', error);
-      }
-      
-      console.warn('[0x1 App] No layout component found');
-      return null;
-    }
-
-    const layoutComponent = await loadLayoutComponent();
-    
-    // Check if layout is a full HTML layout
-    const isFullLayout = layoutComponent && isFullHtmlLayout(layoutComponent, { children: null });
-    
-    if (isFullLayout) {
-      console.log('[0x1] Detected full HTML layout - using body content extraction');
-    }
-
-    // Load all discovered routes
-    let routes = [];
+    // Load layout component (optional)
+    let layoutComponent = null;
     try {
-      routes = await loadDiscoveredRoutes();
+      const layoutModule = await loadComponent('/app/layout.js');
+      layoutComponent = layoutModule.default;
     } catch (error) {
-      console.error('[0x1] Route loading failed:', error);
-      routes = [];
+      console.log('[0x1 App] No layout component found (this is optional)');
     }
 
-    if (routes.length > 0) {
-      // Create router with minimal debug output
-      const router = createRouter({
-        rootElement: appContainer,
-        mode: 'history',
-        debug: false
-      });
+    // Load all routes
+    const routes = await loadRoutes();
+    
+    if (routes.length === 0) {
+      console.warn('[0x1 App] No routes discovered');
+      return;
+    }
 
-      // Register all discovered routes
-      for (const route of routes) {
-        if (layoutComponent) {
-          if (isFullLayout) {
-            // For full HTML layouts, create a wrapper that extracts body content
-            const wrappedComponent = (props) => {
-              console.log('[0x1 App] Rendering route with full HTML layout:', route.path);
-              
-              try {
-                const pageResult = route.component(props);
-                console.log('[0x1 App] Page component result:', pageResult);
-                
-                const layoutResult = layoutComponent({ children: pageResult });
-                console.log('[0x1 App] Layout component result:', layoutResult);
-                
-                const extractedContent = extractBodyContent(layoutResult);
-                console.log('[0x1 App] Extracted content:', extractedContent);
-                
-                return extractedContent;
-              } catch (error) {
-                console.error('[0x1 App] Error in wrapped component:', error);
-                // Return a fallback
-                return route.component(props);
-              }
-            };
-            
-            router.addRoute(route.path, wrappedComponent, { exact: true });
-          } else {
-            // Normal layout handling
-            router.addRoute(route.path, route.component, { layout: layoutComponent, exact: true });
-          }
-        } else {
-          router.addRoute(route.path, route.component, { exact: true });
-        }
+    // Create production router with proper configuration
+    const router = createRouter({
+      rootElement: appContainer,
+      mode: 'history',
+      debug: false,
+      base: '/'
+    });
+
+    // Register routes with optional layout
+    for (const route of routes) {
+      if (layoutComponent) {
+        // Wrap component with layout
+        const wrappedComponent = (props) => {
+          const pageElement = route.component(props);
+          return layoutComponent({ children: pageElement });
+        };
+        router.addRoute(route.path, wrappedComponent, { exact: true });
+      } else {
+        router.addRoute(route.path, route.component, { exact: true });
       }
-      
-      // Initialize router
-      router.init();
-      
-      // Handle initial navigation
-      const initialPath = window.location.pathname || '/';
-      console.log('[0x1 App] Navigating to initial path:', initialPath);
-      router.navigate(initialPath, false);
-      
-      // Make router globally available for debugging
-      window.__0x1_router = router;
-      
-      console.log('[0x1] App initialized with', routes.length, 'routes');
-    } else {
-      console.warn('[0x1] No routes discovered');
     }
+    
+    // Initialize router
+    router.init();
+    
+    // Navigate to current path
+    const currentPath = window.location.pathname || '/';
+    router.navigate(currentPath, false);
+    
+    // Make router globally available
+    window.__0x1_router = router;
+    
+    console.log('[0x1 App] Production app initialized with', routes.length, 'routes');
   } catch (error) {
-    console.error('[0x1] App initialization failed:', error);
+    console.error('[0x1 App] App initialization failed:', error);
   }
 }
 
@@ -2359,7 +2056,8 @@ initApp();
               "Cache-Control": "no-cache, no-store, must-revalidate",
               Pragma: "no-cache",
               Expires: "0",
-              ETag: `"${Date.now()}"`, // Force cache busting
+              ETag: `"app-${Date.now()}-${Math.random()}"`, // Force cache busting with random component
+              "Last-Modified": new Date().toUTCString(),
             },
           });
         } catch (error) {

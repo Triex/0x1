@@ -26,7 +26,7 @@ const HOOKS_CONTEXT_ENTER = '__0x1_enterComponentContext';
 const HOOKS_CONTEXT_EXIT = '__0x1_exitComponentContext';
 
 /**
- * Call a component function with proper hooks context
+ * Call component with proper hooks context - Enhanced for better component nesting
  */
 function callComponentWithContext(type: ComponentFunction, props: any): JSXNode {
   // Check if hooks context functions are available using standardized names
@@ -36,7 +36,21 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   if (!setContext || !clearContext) {
     // Fallback: call component directly without hooks context
     console.warn('[0x1 JSX] Hooks context not available, component will run without hooks');
-    return type(props);
+    try {
+      return type(props);
+    } catch (error: any) {
+      console.error('[0x1 JSX] Component error (no hooks context):', error);
+      // Return error boundary fallback
+      return {
+        type: 'div',
+        props: { 
+          className: 'error-boundary',
+          style: { color: 'red', padding: '10px', border: '1px solid red' }
+        },
+        children: [`Error in component: ${error.message}`],
+        key: null
+      };
+    }
   }
   
   // Generate stable component ID
@@ -60,10 +74,44 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   
   try {
     const result = type(props);
-    return result;
-  } catch (error) {
+    
+    // Ensure result is properly formatted
+    if (result === null || result === undefined) {
+      return null;
+    }
+    
+    // Handle string/number results
+    if (typeof result === 'string' || typeof result === 'number') {
+      return result;
+    }
+    
+    // Handle array results (fragments)
+    if (Array.isArray(result)) {
+      return result;
+    }
+    
+    // Handle JSX element results
+    if (typeof result === 'object' && result && 'type' in result) {
+      return result;
+    }
+    
+    // Fallback for unexpected result types
+    console.warn('[0x1 JSX] Unexpected component result type:', typeof result, result);
+    return String(result);
+    
+  } catch (error: any) {
     console.error('[0x1 JSX] Component error:', error);
-    throw error;
+    
+    // Return error boundary fallback
+    return {
+      type: 'div',
+      props: { 
+        className: 'error-boundary',
+        style: { color: 'red', padding: '10px', border: '1px solid red' }
+      },
+      children: [`Error in ${componentName}: ${error.message}`],
+      key: null
+    };
   } finally {
     clearContext();
   }
@@ -190,23 +238,52 @@ export function renderToDOM(node: JSXNode): Node | null {
       return renderToDOM(result);
     }
     
-    // Handle DOM elements
-    const element = document.createElement(node.type as string);
+    // Handle DOM elements - Fixed SVG handling
+    const tagName = node.type as string;
+    let element: Element;
+    
+    // SVG elements need special namespace handling
+    const svgElements = new Set([
+      'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
+      'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
+      'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
+      'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
+    ]);
+    
+    if (svgElements.has(tagName)) {
+      element = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    } else {
+      element = document.createElement(tagName);
+    }
     
     // Set attributes and properties
     Object.entries(node.props || {}).forEach(([key, value]) => {
       if (key === 'children') return;
       
       if (key === 'className') {
-        element.className = String(value);
+        // SVG elements need class attribute, not className property
+        if (svgElements.has(tagName)) {
+          element.setAttribute('class', String(value));
+        } else {
+          (element as HTMLElement).className = String(value);
+        }
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
+        
+        // CRITICAL FIX: Don't interfere with anchor tag click events - let the router handle navigation
+        if (tagName === 'a' && eventName === 'click') {
+          // For anchor tags, don't add click handlers - let the router's global click handler manage navigation
+          // This prevents conflicts with client-side routing
+          return;
+        }
+        
         element.addEventListener(eventName, value as EventListener);
       } else if (key === 'style' && typeof value === 'object') {
-        Object.assign(element.style, value as CSSStyleDeclaration);
+        Object.assign((element as HTMLElement).style, value as CSSStyleDeclaration);
       } else if (typeof value === 'boolean') {
         if (value) element.setAttribute(key, '');
       } else if (value != null) {
+        // For SVG elements, use setAttribute for all attributes
         element.setAttribute(key, String(value));
       }
     });
