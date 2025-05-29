@@ -1,57 +1,77 @@
 # 0x1 Framework Architecture
 
-This document outlines the architectural design of 0x1, an ultra-minimal TypeScript framework focused on extreme performance.
+This document outlines the architectural design of 0x1, an ultra-minimal TypeScript framework focused on extreme performance and React/Next.js compatibility.
+
+## Core Philosophy
+
+0x1 follows a minimalist architecture with zero dependencies, designed as a drop-in replacement for React and Next.js while maintaining sub-30KB bundle size and extreme performance.
+
+### Key Principles
+
+1. **Zero abstraction cost**: No virtual DOM or complex state tracking
+2. **Browser-native**: Leverage what browsers are good at
+3. **Minimal over comprehensive**: Focused feature set, exceptional at few things
+4. **No dependencies**: Entire framework in one tiny package
+5. **TypeScript-first**: Built exclusively for TypeScript with full type safety
+6. **React/Next.js compatibility**: Drop-in replacement for existing applications
 
 ## Core Architecture
 
-0x1 follows a minimalist architecture with these key components:
+### 1. JSX Runtime (`src/jsx-runtime.ts`)
 
-### 1. Component System (`src/core/component.ts`)
-
-The component system provides a lightweight abstraction for creating DOM elements without the overhead of a virtual DOM:
+0x1 includes a custom JSX runtime that eliminates React dependencies while maintaining full JSX functionality:
 
 ```typescript
-// Component creation
-export function createElement<T extends Element>(
-  tag: string,
-  props: ComponentProps
-): T {
-  const element = document.createElement(tag) as T;
+// Custom JSX runtime
+export function jsx(type: string, props: any): HTMLElement {
+  const element = document.createElement(type);
   
-  // Apply props to element
-  applyProps(element, props);
+  // Apply props efficiently
+  Object.keys(props || {}).forEach(key => {
+    if (key === 'children') {
+      appendChildren(element, props.children);
+    } else if (key.startsWith('on') && typeof props[key] === 'function') {
+      // Event handlers
+      element.addEventListener(key.slice(2).toLowerCase(), props[key]);
+    } else if (key === 'className') {
+      element.className = props[key];
+    } else {
+      element.setAttribute(key, props[key]);
+    }
+  });
   
   return element;
 }
 
-// Component function type for type safety
-export type Component<P = {}> = (props: P) => HTMLElement;
+export { jsx as jsxs };
+export function Fragment({ children }: { children: any }) {
+  const fragment = document.createDocumentFragment();
+  appendChildren(fragment, children);
+  return fragment;
+}
 ```
 
 Key features:
-- Direct DOM manipulation for maximum performance
-- Type-safe prop handling with TypeScript
-- No virtual DOM overhead
-- Support for event handling and attributes
+- **Zero React dependencies**: Use JSX without React
+- **Automatic transpilation**: Bun handles JSX transforms
+- **Development/production modes**: Enhanced debugging in dev
+- **TypeScript integration**: Full type safety
 
-### 2. Hooks System (`src/core/hooks.ts`)
+### 2. React-Compatible Hooks System (`src/hooks/`)
 
-Provides React-like hooks for state management and side effects:
+Provides a complete React-compatible hooks API with enhanced features:
 
 ```typescript
-// State management like React's useState
+// State management identical to React's useState
 export function useState<T>(initialValue: T): [T, (newValue: T | ((prev: T) => T)) => void] {
   const componentId = getCurrentComponentId();
-  const stateId = getNextStateId();
+  const hookIndex = getNextHookIndex();
   
-  if (!stateRegistry[componentId]?.[stateId]) {
-    stateRegistry[componentId] = stateRegistry[componentId] || {};
-    stateRegistry[componentId][stateId] = {
-      value: typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue
-    };
+  if (!stateRegistry[componentId]?.[hookIndex]) {
+    initializeState(componentId, hookIndex, initialValue);
   }
   
-  const state = stateRegistry[componentId][stateId];
+  const state = stateRegistry[componentId][hookIndex];
   
   const setState = (newValue: T | ((prev: T) => T)) => {
     const nextValue = typeof newValue === 'function' 
@@ -60,256 +80,421 @@ export function useState<T>(initialValue: T): [T, (newValue: T | ((prev: T) => T
       
     if (nextValue !== state.value) {
       state.value = nextValue;
-      scheduleUpdate(componentId);
+      scheduleComponentUpdate(componentId);
     }
   };
   
   return [state.value, setState];
 }
-```
 
-Key features:
-- Full useState/useEffect/useRef/useMemo/useCallback support
-- Custom hooks for common patterns
-- Efficient re-rendering strategy
-- Side effect management
-
-### 3. Router (`src/core/navigation.ts`)
-
-Zero-dependency router for SPA navigation with code splitting:
-
-```typescript
-export class Router {
-  private routes: Record<string, () => Promise<any>>;
-  private root: HTMLElement;
+// Enhanced hooks for 0x1
+export function useFetch<T>(url: string, options?: RequestInit) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
-  constructor(options: RouterOptions) {
-    this.routes = options.routes || {};
-    this.root = options.root;
-    
-    // Set up event listeners for navigation
-    window.addEventListener('popstate', this.handleRouteChange.bind(this));
-    document.addEventListener('click', this.handleLinkClick.bind(this));
-    
-    // Initial route
-    this.handleRouteChange();
-  }
-  
-  // Navigate to a new route
-  navigate(path: string) {
-    history.pushState(null, '', path);
-    this.handleRouteChange();
-  }
-  
-  // Handle route changes
-  private async handleRouteChange() {
-    const path = window.location.pathname;
-    const route = this.routes[path] || this.routes['*'];
-    
-    if (route) {
-      // Show loading state
-      this.showLoading();
-      
+  useEffect(() => {
+    async function fetchData() {
       try {
-        // Load component (with code splitting)
-        const component = await route();
-        
-        // Render component
-        this.renderComponent(component);
-      } catch (error) {
-        console.error('Error loading route:', error);
-        this.showError();
+        setLoading(true);
+        const response = await fetch(url, options);
+        const result = await response.json();
+        setData(result);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
     }
-  }
+    
+    fetchData();
+  }, [url]);
+  
+  return { data, loading, error };
 }
 ```
 
-Key features:
-- History API and hash-based navigation support
-- Automatic code splitting
-- Suspense-like loading states
-- Link prefetching for performance
+Supported hooks:
+- **useState** - State management with React compatibility
+- **useEffect** - Side effects and lifecycle
+- **useCallback** - Function memoization
+- **useMemo** - Value memoization
+- **useRef** - DOM references and mutable values
+- **useFetch** - Built-in data fetching with loading states
+- **useForm** - Form state management with validation
+- **useLocalStorage** - Persistent state with localStorage
 
-### 4. Store (`src/core/store.ts`)
+### 3. App Directory Router (`src/router/`)
 
-Lightweight Redux-inspired state management:
+Next.js 15-compatible file-based routing with app directory structure:
 
 ```typescript
-export function createStore<T>(
-  reducer: Reducer<T>,
-  initialState: T,
-  middlewares: Middleware<T>[] = []
-): Store<T> {
-  let state = initialState;
-  const listeners = new Set<Listener>();
+export class AppRouter {
+  private routes: Map<string, RouteComponent> = new Map();
+  private layouts: Map<string, LayoutComponent> = new Map();
   
-  // Apply middlewares
-  const middlewareAPI = {
-    getState: () => state,
-    dispatch: (action: any) => dispatch(action)
-  };
-  
-  const chain = middlewares.map(middleware => middleware(middlewareAPI));
-  let dispatch = (action: any) => {
-    state = reducer(state, action);
-    listeners.forEach(listener => listener());
-    return action;
-  };
-  
-  // Compose middlewares
-  if (chain.length > 0) {
-    dispatch = compose(...chain)(dispatch);
+  constructor(private rootElement: HTMLElement) {
+    this.initializeRouter();
+    this.setupNavigation();
   }
   
-  return {
-    getState: () => state,
-    dispatch,
-    subscribe: (listener: Listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+  // Automatically discover routes from app directory
+  async discoverRoutes() {
+    const routes = await this.scanAppDirectory();
+    
+    routes.forEach(({ path, component, layout }) => {
+      this.addRoute(path, component);
+      if (layout) this.addLayout(path, layout);
+    });
+  }
+  
+  // Handle client-side navigation
+  navigate(path: string, options: NavigationOptions = {}) {
+    if (options.replace) {
+      history.replaceState(null, '', path);
+    } else {
+      history.pushState(null, '', path);
     }
-  };
+    
+    this.renderRoute(path);
+  }
+  
+  // Render route with nested layouts
+  private async renderRoute(path: string) {
+    const route = this.findRoute(path);
+    const layouts = this.getLayoutsForPath(path);
+    
+    // Show loading state
+    this.showLoading();
+    
+    try {
+      // Load component and layouts
+      const [component, ...layoutComponents] = await Promise.all([
+        route.load(),
+        ...layouts.map(layout => layout.load())
+      ]);
+      
+      // Render with nested layouts
+      const rendered = this.renderWithLayouts(component, layoutComponents);
+      this.rootElement.innerHTML = '';
+      this.rootElement.appendChild(rendered);
+      
+    } catch (error) {
+      this.renderError(error);
+    }
+  }
 }
 ```
 
-Key features:
-- Predictable state container
-- Action creators and reducers
-- Middleware support
-- Selectors for efficient derived data
+Features:
+- **File-based routing**: `app/page.tsx`, `app/about/page.tsx`
+- **Nested layouts**: `app/layout.tsx`, `app/blog/layout.tsx`
+- **Special files**: `loading.tsx`, `error.tsx`, `not-found.tsx`
+- **Dynamic routes**: `app/blog/[slug]/page.tsx`
+- **Client-side navigation**: Fast SPA transitions
+- **Code splitting**: Automatic lazy loading
+
+### 4. Link Component (`src/components/Link.tsx`)
+
+Next.js-compatible Link component for client-side navigation:
+
+```typescript
+import { useRouter } from '../router';
+
+interface LinkProps {
+  href: string;
+  children: React.ReactNode;
+  replace?: boolean;
+  scroll?: boolean;
+  prefetch?: boolean;
+  className?: string;
+}
+
+export default function Link({ 
+  href, 
+  children, 
+  replace = false, 
+  scroll = true,
+  prefetch = true,
+  ...props 
+}: LinkProps) {
+  const router = useRouter();
+  
+  const handleClick = (e: Event) => {
+    e.preventDefault();
+    router.navigate(href, { replace, scroll });
+  };
+  
+  // Prefetch on hover (when enabled)
+  const handleMouseEnter = () => {
+    if (prefetch) {
+      router.prefetch(href);
+    }
+  };
+  
+  return (
+    <a 
+      href={href}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
+```
+
+### 5. Metadata System (`src/metadata/`)
+
+Next.js 15-compatible metadata handling:
+
+```typescript
+// Metadata types
+export interface Metadata {
+  title?: string | { template?: string; default?: string };
+  description?: string;
+  keywords?: string[];
+  openGraph?: {
+    title?: string;
+    description?: string;
+    images?: string[];
+    type?: string;
+  };
+  twitter?: {
+    card?: string;
+    title?: string;
+    description?: string;
+  };
+  robots?: {
+    index?: boolean;
+    follow?: boolean;
+  };
+  icons?: {
+    icon?: string;
+    apple?: string;
+  };
+}
+
+// Automatic metadata processing
+export function processMetadata(metadata: Metadata, pathname: string) {
+  // Update document head with metadata
+  updateTitle(metadata.title, pathname);
+  updateMetaTags(metadata);
+  updateOpenGraph(metadata.openGraph);
+  updateTwitterCard(metadata.twitter);
+}
+```
 
 ## CLI Architecture (`src/cli/`)
 
-The CLI is structured for an excellent developer experience:
+### 1. Project Creation
 
-### 1. Command System
-
-Each command is a separate module with a consistent API:
+Modern project scaffolding with multiple template options:
 
 ```typescript
-// src/cli/commands/new.ts
-export async function createNewProject(name: string, options: NewProjectOptions = {}): Promise<void> {
-  // Implementation
+// Template complexity levels
+export enum TemplateComplexity {
+  MINIMAL = 'minimal',    // Basic structure, essential files
+  STANDARD = 'standard',  // Complete structure with routing
+  FULL = 'full'          // Everything + PWA + advanced features
 }
 
-// src/cli/index.ts
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const command = args._[0] || 'help';
+export async function createProject(name: string, options: CreateOptions) {
+  const templatePath = getTemplatePath(options.complexity);
   
-  switch (command) {
-    case 'new':
-    case 'create':
-      await createNewProject(args._[1], args);
-      break;
-    // Other commands
+  // Copy template files
+  await copyTemplate(templatePath, name);
+  
+  // Process template variables
+  await processTemplateFiles(name, options);
+  
+  // Install dependencies
+  await installDependencies(name);
+  
+  // Initialize PWA if requested
+  if (options.pwa) {
+    await setupPWA(name, options);
   }
 }
 ```
 
-### 2. Interactive UI
+### 2. Development Server
 
-Enhanced with beautiful prompts for configuration:
+Bun-powered development server with hot reload:
 
 ```typescript
-async function promptProjectOptions(defaultOptions: {...}): Promise<{...}> {
-  // Template selection with enhanced UI
-  const templateResponse = await prompts({
-    type: 'select',
-    name: 'template',
-    message: '📦 Select a template:',
-    choices: [
-      { title: '🔧 Basic', value: 'basic', description: 'A minimal starter template' },
-      // Other choices
-    ],
-    initial: 0,
-    hint: '← → to navigate, ↵ to select'
-  });
+export class DevServer {
+  private server: Server;
+  private watcher: FSWatcher;
   
-  // More prompts...
+  async start(port: number = 3000) {
+    // Start Bun server
+    this.server = Bun.serve({
+      port,
+      fetch: this.handleRequest.bind(this),
+      websocket: this.handleWebSocket.bind(this)
+    });
+    
+    // Set up file watching
+    this.watcher = watch('./src', { recursive: true });
+    this.watcher.on('change', this.handleFileChange.bind(this));
+    
+    // Auto-detect and process Tailwind
+    if (await this.hasTailwindConfig()) {
+      await this.processTailwind();
+    }
+  }
   
-  return {
-    template: templateResponse.template,
-    // Other options
-  };
+  private async handleFileChange(filename: string) {
+    // TypeScript compilation
+    if (filename.endsWith('.ts') || filename.endsWith('.tsx')) {
+      await this.compileTypeScript(filename);
+    }
+    
+    // CSS processing
+    if (filename.endsWith('.css')) {
+      await this.processCSS(filename);
+    }
+    
+    // Trigger hot reload
+    this.broadcastReload();
+  }
 }
 ```
 
-### 3. Logger Utility
+## Build System
 
-Beautiful terminal output:
+### 1. Production Optimization
 
 ```typescript
-export const logger = {
-  info: (message: string) => {
-    console.log(kleur.blue('ℹ'), message);
-  },
-  success: (message: string) => {
-    console.log(kleur.green('✓'), message);
-  },
-  // Other methods
-};
+export async function buildForProduction() {
+  // Bundle application
+  const result = await Bun.build({
+    entrypoints: ['./src/index.ts'],
+    outdir: './dist',
+    target: 'browser',
+    minify: true,
+    splitting: true,
+    sourcemap: false
+  });
+  
+  // Optimize assets
+  await optimizeImages('./dist');
+  await generateManifest('./dist');
+  
+  // Generate service worker if PWA
+  if (await isPWAProject()) {
+    await generateServiceWorker('./dist');
+  }
+}
 ```
 
-## Template System
+### 2. Bundle Analysis
 
-Templates are organized by type with a consistent structure:
-
+```typescript
+export function analyzeBundleSize(buildResult: BuildResult) {
+  const stats = {
+    totalSize: calculateTotalSize(buildResult),
+    jsSize: calculateJSSize(buildResult),
+    cssSize: calculateCSSSize(buildResult),
+    dependencies: analyzeDependencies(buildResult)
+  };
+  
+  // Ensure under 30KB target
+  if (stats.totalSize > 30 * 1024) {
+    console.warn('Bundle size exceeds 30KB target');
+  }
+  
+  return stats;
+}
 ```
-templates/
-├── basic/              # JavaScript template
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── styles/
-│   │   ├── app.js
-│   │   └── index.html
-│   ├── public/
-│   ├── 0x1.config.js
-│   └── README.md
-└── typescript/         # TypeScript template
-    ├── src/
-    │   ├── components/
-    │   ├── pages/
-    │   ├── styles/
-    │   ├── app.ts
-    │   └── index.html
-    ├── public/
-    ├── 0x1.config.ts
-    ├── tsconfig.json
-    └── README.md
+
+## PWA Architecture
+
+### 1. Automatic Asset Generation
+
+```typescript
+export async function generatePWAAssets(config: PWAConfig) {
+  // Generate icons in multiple sizes
+  await generateIcons(config.icon, [16, 32, 48, 96, 144, 192, 512]);
+  
+  // Generate manifest
+  const manifest = {
+    name: config.name,
+    short_name: config.shortName,
+    description: config.description,
+    theme_color: config.themeColor,
+    background_color: config.backgroundColor,
+    display: 'standalone',
+    icons: generateIconEntries(),
+    start_url: '/',
+    scope: '/'
+  };
+  
+  await writeFile('./public/manifest.json', JSON.stringify(manifest, null, 2));
+}
+```
+
+### 2. Service Worker Generation
+
+```typescript
+export function generateServiceWorker(options: SWOptions) {
+  const swContent = `
+// 0x1 Service Worker
+const CACHE_NAME = '0x1-v${options.version}';
+const STATIC_ASSETS = [${options.staticAssets.map(a => `'${a}'`).join(', ')}];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_ASSETS))
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
+  );
+});
+`;
+  
+  return swContent;
+}
 ```
 
 ## Performance Optimizations
 
-0x1 achieves extreme performance through:
+### 1. Minimal Runtime
 
-1. **Zero abstraction cost**: Direct DOM manipulation with no virtual DOM
-2. **Native ESM imports**: Browser-native module loading
-3. **Bun runtime**: Using Bun's performance advantages
-4. **Code splitting**: Loading only what's needed
-5. **Minimal dependencies**: Keeping the bundle size tiny
-6. **Tree-shaking**: Eliminating unused code
+- **Direct DOM manipulation**: No virtual DOM overhead
+- **Tree shaking**: Unused code elimination
+- **Code splitting**: Load only what's needed
+- **Native ESM**: Browser-native modules
 
-## Testing Strategy
+### 2. Build-time Optimizations
 
-1. **Unit tests**: For core utilities and components
-2. **Integration tests**: For routers, stores, and hooks
-3. **Performance benchmarks**: Ensuring speed targets are met
-4. **Build verification**: Ensuring small bundle size
+- **Bun bundling**: Ultra-fast compilation
+- **TypeScript optimization**: Efficient transpilation
+- **CSS processing**: Tailwind optimization
+- **Asset optimization**: Image compression, font subsetting
 
-## Deployment Strategy
+### 3. Runtime Optimizations
 
-0x1 applications are optimized for:
+- **Efficient diffing**: Minimal DOM updates
+- **Memory management**: Automatic cleanup
+- **Event delegation**: Optimized event handling
+- **Lazy loading**: Component and route splitting
 
-1. **Vercel**: Edge function deployment
-2. **Static hosting**: Netlify, GitHub Pages, etc.
-3. **Self-hosted**: Simple static file serving
+## Future Architecture
 
-## Future Directions
+### Planned Features
 
-1. **Server-side rendering**: For improved SEO and initial load
-2. **Streaming**: Progressive rendering for large pages
-3. **Plugin system**: Extensibility without bloat
-4. **Build optimization**: Further reducing bundle size
+1. **Server Actions**: `"use server"` and `"use client"` directives
+2. **Streaming SSR**: Server-side rendering with streaming
+3. **Edge Runtime**: Optimized edge deployment
+4. **Enhanced Error Boundaries**: React-error-boundary compatibility
+5. **Crypto Template**: Wallet Connect, NFT viewing, DeFi components
+
+The architecture is designed to scale while maintaining the core philosophy of minimalism and extreme performance.

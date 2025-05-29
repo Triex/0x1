@@ -1,0 +1,139 @@
+name: 🐛 Bug Report
+description: Report a bug in the 0x1 framework
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! 🐛
+        
+        Please fill out the information below to help us reproduce and fix the issue.
+        
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened and what you expected to happen instead.
+    validations:
+      required: true
+      
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run `0x1 new my-app`
+        2. Navigate to '...'
+        3. Click on '...'
+        4. See error
+    validations:
+      required: true
+      
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe the expected behavior
+    validations:
+      required: true
+      
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened (include any error messages)
+      placeholder: Describe the actual behavior, including any error messages or console output
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 0x1 Version
+      description: What version of 0x1 are you using?
+      placeholder: "Run `0x1 --version` or check package.json"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bun-version
+    attributes:
+      label: Bun Version
+      description: What version of Bun are you using?
+      options:
+        - "1.1.x"
+        - "1.0.x"
+        - "0.8.x"
+        - "Other (please specify in additional context)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you using?
+      options:
+        - "macOS"
+        - "Linux"
+        - "Windows"
+        - "Other (please specify in additional context)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: template
+    attributes:
+      label: Template Used
+      description: Which template were you using when the bug occurred?
+      options:
+        - "Minimal"
+        - "Standard"
+        - "Full"
+        - "Custom/Modified"
+        - "Not applicable"
+    validations:
+      required: false
+
+  - type: textarea
+    id: minimal-reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: If possible, provide a minimal code example that reproduces the issue
+      placeholder: |
+        ```typescript
+        // Minimal code example that demonstrates the bug
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here
+      placeholder: |
+        - Browser version (if applicable)
+        - Node.js version
+        - Any relevant configuration files
+        - Screenshots or recordings
+        - Related issues or discussions
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched for existing issues before creating this report
+          required: true
+        - label: I can reproduce this issue consistently
+          required: true
+        - label: I have included all relevant information above
+          required: true 

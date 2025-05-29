@@ -1,0 +1,161 @@
+name: 💡 Feature Request
+description: Suggest a new feature for the 0x1 framework
+title: "[Feature]: "
+labels: ["enhancement", "needs-discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! 💡
+        
+        Before submitting, please consider discussing your idea in [GitHub Discussions](https://github.com/Triex/0x1/discussions) first.
+        This helps us gauge community interest and refine the idea together.
+        
+        **Note**: 0x1 follows a philosophy of extreme minimalism and zero dependencies. 
+        Features should align with our core principles of performance-first design.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: A brief, clear summary of the feature you'd like to see
+      placeholder: "Add support for..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What use case does it address?
+      placeholder: |
+        Currently, when I try to..., I have to..., which is problematic because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see
+      placeholder: |
+        I would like 0x1 to...
+        
+        This could work by...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: |
+        I've considered:
+        1. Using X library, but...
+        2. Implementing Y manually, but...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Feature Complexity
+      description: How complex do you think this feature would be to implement?
+      options:
+        - "Simple (small API addition)"
+        - "Medium (new component or hook)"
+        - "Complex (architectural change)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: alignment
+    attributes:
+      label: 0x1 Philosophy Alignment
+      description: Please confirm this feature aligns with 0x1's core principles
+      options:
+        - label: This feature maintains 0x1's minimal bundle size (<30KB)
+          required: true
+        - label: This feature does not introduce new dependencies
+          required: true
+        - label: This feature prioritizes performance over developer convenience
+          required: true
+        - label: This feature has broad applicability (not just for niche use cases)
+          required: true
+
+  - type: textarea
+    id: api-design
+    attributes:
+      label: API Design (Optional)
+      description: If you have ideas about how this feature's API should look, share them here
+      placeholder: |
+        ```typescript
+        // Example of how the API might work
+        const result = useNewFeature(options);
+        ```
+    validations:
+      required: false
+
+  - type: dropdown
+    id: breaking-change
+    attributes:
+      label: Breaking Change Impact
+      description: Would this feature require breaking changes to existing APIs?
+      options:
+        - "No breaking changes"
+        - "Minor breaking changes"
+        - "Major breaking changes"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: migration-path
+    attributes:
+      label: Migration Path
+      description: If this involves breaking changes, how would users migrate their existing code?
+      placeholder: "Users would need to..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: implementation-help
+    attributes:
+      label: Implementation Help
+      description: Are you willing to help implement this feature?
+      placeholder: |
+        - [ ] I can help with design discussions
+        - [ ] I can help with implementation
+        - [ ] I can help with testing
+        - [ ] I can help with documentation
+        - [ ] I need others to implement this
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, mockups, or references about the feature
+      placeholder: |
+        - Links to similar implementations in other frameworks
+        - Performance benchmarks or considerations
+        - Screenshots or mockups
+        - Related discussions or issues
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched for existing feature requests before creating this one
+          required: true
+        - label: I have considered discussing this in GitHub Discussions first
+          required: true
+        - label: This feature aligns with 0x1's performance-first philosophy
+          required: true 

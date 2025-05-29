@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🟣 Website
+    url: https://0x1.onl
+    about: Visit the 0x1 website for more information & documentation (plus auto AI system prompt blob to allow any AI to quickly use 0x1)
+  - name: 💬 GitHub Discussions
+    url: https://github.com/Triex/0x1/discussions
+    about: Ask questions, share ideas, and connect with the community
+  - name: 📚 Documentation
+    url: https://github.com/Triex/0x1#readme
+    about: Check the README for comprehensive guides and examples
+  - name: 🚀 Quick Start Guide
+    url: https://github.com/Triex/0x1/blob/main/QUICKSTART.md
+    about: Get up and running with 0x1 in minutes 
