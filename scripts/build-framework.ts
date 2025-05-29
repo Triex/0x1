@@ -14,8 +14,26 @@ async function buildFramework() {
     const distDir = resolve("dist");
 
     // Clean dist directory
-    if (existsSync(distDir)) {
-      await Bun.$`rm -rf ${distDir}`;
+    console.log("🧹 Cleaning dist directory...");
+    if (existsSync("dist")) {
+      await Bun.$`rm -rf dist`;
+    }
+    await Bun.$`mkdir -p dist`;
+
+    // Copy types directory to dist
+    console.log("📝 Copying type definitions...");
+    if (existsSync("types")) {
+      await Bun.$`cp -r types dist/`;
+      // Also create React compatibility types in dist
+      await Bun.$`mkdir -p dist/react`;
+      await Bun.write(
+        "dist/react/jsx-runtime.d.ts", 
+        'export * from "../types/jsx-runtime.js";'
+      );
+      await Bun.write(
+        "dist/react/jsx-dev-runtime.d.ts", 
+        'export * from "../types/jsx-runtime.js";'
+      );
     }
 
     // Create minimal dist structure
@@ -270,6 +288,14 @@ async function buildFramework() {
       await Bun.write(routerDest, await Bun.file(routerSource).text());
       console.log("✅ Copied router to dist/core/router.js");
     }
+
+    // FIXME: Add crypto-dash template build when ready for production
+    // This should include:
+    // - Building crypto dashboard components
+    // - Compiling wallet connection modules  
+    // - Processing DeFi integration components
+    // - Building NFT viewing components
+    // Note: Currently crypto-dash template exists but is not production-ready
 
     console.log("🔍 Final validation...");
 

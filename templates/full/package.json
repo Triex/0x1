@@ -13,7 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "0x1": "^0.0.190"
+    "0x1": "^0.0.191"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {
@@ -24,8 +24,6 @@
     "prettier": "^3.2.5",
     "tailwindcss": "^4.1.7",
     "typescript": "^5.4.5",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
     "sharp": "^0.33.2",
     "workbox-cli": "^7.0.0"
   },

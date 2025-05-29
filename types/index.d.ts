@@ -1,4 +1,32 @@
 /**
+ * 0x1 Framework - Main Type Definitions
+ * React 19+ compatible framework with full type safety
+ */
+
+import * as React from './react-compat.js';
+
+// Re-export React compatibility
+export = React;
+export as namespace React;
+
+// Export main 0x1 types
+export * from './0x1.js';
+export * from './jsx-runtime.js';
+export * from './jsx.js';
+export * from './link.js';
+
+// Core 0x1 Framework exports
+export { default as Link } from './link.js';
+
+// Make React available globally for JSX
+declare global {
+  namespace React {
+    // Export all React types from our compatibility layer
+    export = React;
+  }
+}
+
+/**
  * 0x1 Framework Type Definitions
  * 
  * This file re-exports all type definitions to make them available to consuming applications

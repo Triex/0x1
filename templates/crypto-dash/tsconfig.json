@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "ES2020"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "0x1",
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "0x1": ["../../dist/index"],
+      "0x1/*": ["../../dist/types/*"],
+      "0x1/link": ["../../dist/types/link"],
+      "0x1/jsx-runtime": ["../../dist/types/jsx-runtime"],
+      "0x1/jsx-dev-runtime": ["../../dist/types/jsx-runtime"],
+      "react": ["../../dist/types/index"],
+      "react/jsx-runtime": ["../../dist/types/jsx-runtime"],
+      "react/jsx-dev-runtime": ["../../dist/types/jsx-runtime"],
+      "components/*": ["./components/*"],
+      "app/*": ["./app/*"]
+    },
+    "typeRoots": ["./node_modules/@types", "../../dist/types"],
+    "types": ["node"],
+    "plugins": []
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "../../dist/types/**/*.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}

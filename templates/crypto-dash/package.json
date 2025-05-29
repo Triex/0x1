@@ -1,21 +1,27 @@
 {
-  "name": "0x1-standard-app",
+  "name": "crypto-dash-app",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "0x1 dev",
     "build": "0x1 build",
     "preview": "0x1 preview",
-    "deploy": "0x1 deploy",
-    "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write '**/*.{ts,tsx,css,html}'"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "0x1": "^0.0.191"
+    "@rainbow-me/rainbowkit": "^2.2.5",
+    "@tanstack/react-query": "^5.28.6",
+    "@web3modal/wagmi": "^4.1.11",
+    "clsx": "^2.1.0",
+    "lucide-react": "^0.363.0",
+    "recharts": "^2.12.2",
+    "viem": "^2.30.5",
+    "wagmi": "^2.5.7"
   },
-  "packageManager": "bun@1.2.13",
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.11.30",
+    "@tailwindcss/postcss": "^4.1.7",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
     "eslint": "^8.57.0",

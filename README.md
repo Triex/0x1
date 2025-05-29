@@ -938,7 +938,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.190)
+### Current State (v0.0.191)
 - ✅ Full React Hooks API compatibility
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
@@ -948,6 +948,8 @@ The framework is specially optimized for:
 - ✅ Bun-optimized build system
 - ✅ SSE + WebSocket live reload
 - ✅ Zero-dependency architecture
+- ✅ Simplified, reliable hooks implementation
+- ✅ Auto-context inference with directive validation
 
 ### Upcoming Features
 - 🔄 **Server Actions**: `"use server"` and `"use client"` directive support

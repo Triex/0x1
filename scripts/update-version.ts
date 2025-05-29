@@ -38,7 +38,7 @@ async function getMainVersion(newVersion?: string): Promise<string> {
 // Update all template package.json files
 async function updateTemplateVersions(version: string): Promise<void> {
   const templatesDir = join(ROOT_DIR, 'templates');
-  const templateTypes = ['minimal', 'standard', 'full'];
+  const templateTypes = ['minimal', 'standard', 'full', 'crypto-dash'];
   const languageTypes = ['typescript', 'javascript'];
   
   // Update all template package.json files

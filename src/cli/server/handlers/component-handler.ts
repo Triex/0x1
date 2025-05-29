@@ -10,7 +10,7 @@ import { processDirectives } from '../../../core/directives.js';
  * This converts React and 0x1 imports to browser-compatible paths
  * and removes CSS imports that would cause MIME type errors
  */
-function transformBareImports(content: string): string {
+function transformBareImports(content: string, filePath?: string): string {
   let transformed = content;
   
   // Remove CSS imports that cause MIME type errors in the browser
@@ -24,6 +24,18 @@ function transformBareImports(content: string): string {
     .replace(/from\s+['"]react['"];?/g, 'from "/node_modules/0x1/index.js";')
     .replace(/from\s+['"]react\/jsx-runtime['"];?/g, 'from "/0x1/jsx-runtime.js";')
     .replace(/from\s+['"]react\/jsx-dev-runtime['"];?/g, 'from "/0x1/jsx-runtime.js";');
+    
+  // Fix use-sync-external-store module paths - critical for component loading
+  transformed = transformed
+    .replace(/from\s+['"]use-sync-external-store\/([^'"]+)['"];?/g, (match, path) => {
+      // Make sure the path is properly absolute to prevent resolution errors
+      return `from "/node_modules/use-sync-external-store/${path}"`;  
+    })
+    // Specific fixes for common problematic imports
+    .replace(/from\s+['"]use-sync-external-store\/shim\/with-selector(\.js)?['"];?/g, 
+      'from "/node_modules/use-sync-external-store/shim/with-selector.js";')
+    .replace(/from\s+['"]use-sync-external-store\/shim(\.js)?['"];?/g, 
+      'from "/node_modules/use-sync-external-store/shim/index.js";');
   
   // Transform 0x1 imports
   transformed = transformed

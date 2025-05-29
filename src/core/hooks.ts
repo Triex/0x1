@@ -67,8 +67,8 @@ interface ComponentContext {
 const componentUpdateCallbacks = new Map<string, () => void>();
 
 // Performance monitoring
-let updateCount = 0;
-let lastUpdateTime = 0;
+const _updateCount = 0;
+const _lastUpdateTime = 0;
 
 // Component context stack for nested components
 const componentContextStack: ComponentContext[] = [];
@@ -299,6 +299,7 @@ export function initializeBrowserCompat(): void {
     // Attach hook functions to React for compatibility
     (window as any).React.useState = useState;
     (window as any).React.useEffect = useEffect;
+    (window as any).React.useLayoutEffect = useLayoutEffect;
     (window as any).React.useRef = useRef;
     (window as any).React.useMemo = useMemo;
     (window as any).React.useCallback = useCallback;
@@ -491,6 +492,48 @@ export function useEffect(effect: () => void | (() => void), deps?: any[]): void
         handleError(error, 'useEffect');
       }
     });
+  }
+}
+
+/**
+ * useLayoutEffect - Handle layout effects synchronously
+ * Runs synchronously after all DOM mutations but before browser paint
+ */
+export function useLayoutEffect(effect: () => void | (() => void), deps?: any[]): void {
+  const componentData = getCurrentComponentData();
+  const hookIndex = currentHookIndex++;
+  
+  // Initialize effect data if needed
+  if (componentData.effects.length <= hookIndex) {
+    componentData.effects[hookIndex] = {
+      effect,
+      cleanup: undefined,
+      deps: undefined
+    };
+  }
+  
+  const effectData = componentData.effects[hookIndex];
+  const hasChanged = depsChanged(effectData.deps, deps);
+  
+  if (hasChanged) {
+    // Store new dependencies
+    effectData.deps = deps ? [...deps] : undefined;
+    effectData.effect = effect;
+    
+    // Run effect synchronously (before browser paint)
+    // This is the key difference from useEffect
+    try {
+      // Clean up previous effect
+      if (effectData.cleanup && typeof effectData.cleanup === 'function') {
+        effectData.cleanup();
+      }
+      
+      // Run new effect immediately (synchronous)
+      const cleanup = effect();
+      effectData.cleanup = cleanup;
+    } catch (error) {
+      handleError(error, 'useLayoutEffect');
+    }
   }
 }
 
@@ -900,6 +943,7 @@ export {
 export default {
   useState,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useCallback,
   useRef,
