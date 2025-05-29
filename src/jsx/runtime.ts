@@ -269,6 +269,14 @@ export function renderToDOM(node: JSXNode): Node | null {
         }
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
+        
+        // CRITICAL FIX: Don't interfere with anchor tag click events - let the router handle navigation
+        if (tagName === 'a' && eventName === 'click') {
+          // For anchor tags, don't add click handlers - let the router's global click handler manage navigation
+          // This prevents conflicts with client-side routing
+          return;
+        }
+        
         element.addEventListener(eventName, value as EventListener);
       } else if (key === 'style' && typeof value === 'object') {
         Object.assign((element as HTMLElement).style, value as CSSStyleDeclaration);

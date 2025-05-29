@@ -373,83 +373,82 @@ export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((p
 }
 
 /**
- * Optimized DOM update function with reduced DOM queries and better performance
- * Fixed for proper SVG element handling during theme toggles
+ * Update affected elements when component state changes - IMMEDIATE UPDATES
  */
 function updateAffectedElements(componentId: string | null): void {
-  if (!componentId || typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !componentId) return;
   
-  // Performance monitoring
-  updateCount++;
-  const now = performance.now();
-  
-  // Skip update if too frequent (prevents scroll lag)
-  if (now - lastUpdateTime < 4) { // Minimum 4ms between updates
-    return;
-  }
-  lastUpdateTime = now;
-  
-  // Cancel existing timeout to prevent duplicate updates
-  const existingTimeout = pendingUpdates.get(componentId);
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-  }
-  
-  // Use immediate update for better SVG handling instead of requestAnimationFrame
-  // This prevents SVG elements from disappearing during theme toggles
-  const timeoutId = setTimeout(() => {
-    pendingUpdates.delete(componentId);
-    performOptimizedUpdate(componentId);
-  }, 0) as any;
-  
-  pendingUpdates.set(componentId, timeoutId);
+  // Use immediate synchronous update instead of requestAnimationFrame
+  // This prevents timing issues with rapid user interactions like link clicks
+  performOptimizedUpdate(componentId);
 }
 
 /**
- * Performs optimized DOM update with minimal DOM queries - Fixed for SVG elements
+ * Perform optimized component update with immediate DOM updates
  */
 function performOptimizedUpdate(componentId: string): void {
-  if (!componentId || typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return;
   
   try {
-    // Use the update callback if available (most efficient path)
-    const updateCallback = componentUpdateCallbacks.get(componentId);
+    // Find all DOM elements for this component immediately
+    const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
     
-    if (updateCallback) {
-      // For critical UI updates (like theme toggles), use immediate updates
-      // to prevent SVG rendering issues
-      if (!isProcessingUpdates) {
-        isProcessingUpdates = true;
-        
-        try {
-          // Immediate update for better SVG handling
-          updateCallback();
-        } catch (error) {
-          handleError(error, 'component update callback');
-        } finally {
-          isProcessingUpdates = false;
-        }
+    if (elements.length === 0) {
+      // If no specific elements found, trigger router re-render as fallback
+      const router = (window as any).__0x1_router || (window as any).router;
+      if (router?.renderCurrentRoute) {
+        router.renderCurrentRoute();
       }
       return;
     }
-    
-    // Fallback: minimal router update only if no callback available
-    if ((window as any).__0x1_router && typeof (window as any).__0x1_router.renderCurrentRoute === 'function') {
-      // Use immediate update for router as well to prevent SVG issues
-      if (!isProcessingUpdates) {
-        isProcessingUpdates = true;
-        try {
-          (window as any).__0x1_router.renderCurrentRoute();
-        } catch (error) {
-          handleError(error, 'router update');
-        } finally {
-          isProcessingUpdates = false;
+
+    // Get the component data
+    const data = componentRegistry.get(componentId);
+    if (!data) return;
+
+    // Re-render each element immediately (synchronous)
+    elements.forEach(element => {
+      try {
+        // Get the original component function from the element's dataset
+        const componentName = element.getAttribute('data-component-name');
+        if (!componentName) return;
+
+        // Use the global component registry to get the component function
+        const componentFunction = (window as any).__0x1_components?.[componentName];
+        if (typeof componentFunction === 'function') {
+          // Set up hooks context for re-render
+          enterComponentContext(componentId);
+          
+          // Call the component function to get updated JSX
+          const result = componentFunction(element.getAttribute('data-component-props') ? 
+            JSON.parse(element.getAttribute('data-component-props') || '{}') : {});
+          
+          // Exit hooks context
+          exitComponentContext();
+          
+          // Render new element
+          const renderToDOM = (window as any).renderToDOM || (window as any).__0x1_renderToDOM;
+          if (renderToDOM) {
+            const newElement = renderToDOM(result);
+            if (newElement && element.parentNode) {
+              // Preserve component metadata
+              if (newElement.setAttribute) {
+                newElement.setAttribute('data-component-id', componentId);
+                newElement.setAttribute('data-component-name', componentName);
+              }
+              
+              // Replace the element immediately
+              element.parentNode.replaceChild(newElement, element);
+            }
+          }
         }
+      } catch (error) {
+        console.error('[0x1 Hooks] Error updating component element:', error);
       }
-    }
+    });
+    
   } catch (error) {
-    handleError(error, 'optimized update');
-    isProcessingUpdates = false;
+    console.error('[0x1 Hooks] Error in performOptimizedUpdate:', error);
   }
 }
 

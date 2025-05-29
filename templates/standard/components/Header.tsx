@@ -4,25 +4,12 @@
 import { useEffect, useState } from "0x1";
 import { useTheme } from "../lib/theme";
 
-// Simple Link component for now
+// Simple Link component that works with the main JSX runtime
 function Link({ href, children, className, ...props }: { href: string; children: any; className?: string; [key: string]: any }) {
   return (
     <a 
       href={href} 
       className={className}
-      onClick={(e) => {
-        if (href.startsWith('/')) {
-          e.preventDefault();
-          if ((window as any).__0x1_router?.navigate) {
-            (window as any).__0x1_router.navigate(href);
-          } else if ((window as any).router?.navigate) {
-            (window as any).router.navigate(href);
-          } else {
-            window.history.pushState(null, '', href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        }
-      }}
       {...props}
     >
       {children}
@@ -61,7 +48,7 @@ export function Header() {
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <Link href="/" className="flex items-center space-x-2" onClick={handleNavigation}>
+          <Link href="/" className="flex items-center space-x-2">
             <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="11" fill="url(#gradient)" />
               <path d="M13.2 3H9.5l-3.1 9.4h4.2L8.2 21l9.1-11.3h-5.5L13.2 3z"
@@ -85,7 +72,6 @@ export function Header() {
               key={link.href}
               href={link.href}
               className="text-foreground hover:text-primary transition-colors font-medium"
-              onClick={handleNavigation}
             >
               {link.text}
             </Link>
@@ -137,7 +123,6 @@ export function Header() {
               key={link.href}
               href={link.href}
               className="block text-foreground hover:text-primary transition-colors"
-              onClick={handleNavigation}
             >
               {link.text}
             </Link>
