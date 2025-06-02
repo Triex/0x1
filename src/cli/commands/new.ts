@@ -473,13 +473,54 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
     name: "template",
     message: "Select a template complexity level:",
     choices: [
-      { title: "Minimal", value: "minimal", description: "Basic setup with minimal dependencies" },
-      { title: "Standard", value: "standard", description: "Common libraries and project structure" },
-      { title: "Full", value: "full", description: "Complete setup with all recommended features" },
-      { title: "Cryptocurrency (WIP/unstable)", value: "crypto-dash", description: "Crypto wallet and dashboard with DeFi features" },
+      { title: "Minimal", value: "minimal", description: "Basic setup with minimal dependencies (bundled)" },
+      { title: "Standard", value: "standard", description: "Common libraries and project structure (bundled)" },
+      { title: "Full", value: "full", description: "Complete setup with all features (requires 0x1-templates)" },
+      { title: "Crypto Dashboard", value: "crypto-dash", description: "Crypto wallet and DeFi features (requires 0x1-templates)" },
     ],
-    initial: 0 // Default to Minimal
+    initial: 1 // Default to Standard (recommended)
   });
+
+  // Check if user selected a heavy template that requires 0x1-templates package
+  const heavyTemplates = ['full', 'crypto-dash'];
+  let selectedTemplate = templateResponse.template;
+  
+  if (heavyTemplates.includes(selectedTemplate)) {
+    // Check if 0x1-templates is available
+    const currentDir = import.meta.dirname || '';
+    const templatePaths = [
+      join(currentDir, '../../../0x1-templates', selectedTemplate),
+      join(currentDir, '../0x1-templates', selectedTemplate),
+      join(process.cwd(), '0x1-templates', selectedTemplate),
+      join(currentDir, '../../0x1-templates', selectedTemplate),
+    ];
+    
+    const hasTemplatePackage = templatePaths.some(path => existsSync(path));
+    
+    if (!hasTemplatePackage) {
+      logger.warn(`Template '${selectedTemplate}' requires the 0x1-templates package.`);
+      
+      const installChoice = await promptWithCancel({
+        type: 'select',
+        name: 'installTemplates',
+        message: '📦 0x1-templates package not found. What would you like to do?',
+        choices: [
+          { title: 'Switch to Standard template', value: 'standard', description: 'Use bundled template instead (recommended)' },
+          { title: 'Cancel and install manually', value: 'cancel', description: 'Install 0x1-templates yourself' }
+        ],
+        initial: 0
+      });
+      
+      if (installChoice.installTemplates === 'cancel') {
+        logger.info('Project creation canceled.');
+        logger.info('To use heavy templates, install: bun add 0x1-templates');
+        process.exit(0);
+      } else {
+        logger.info('Switching to Standard template...');
+        selectedTemplate = 'standard';
+      }
+    }
+  }
 
   // Ask about state management using select instead of confirm for consistency
   const stateResponse = await promptWithCancel({
@@ -614,7 +655,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
   // If not specified, default to No
   const pwaDefault = defaultOptions.pwa === true ? 0 : 1;
   
-  const pwaResponse = templateResponse.template !== 'minimal' ? await promptWithCancel({
+  const pwaResponse = selectedTemplate !== 'minimal' ? await promptWithCancel({
     type: 'select',
     name: 'pwa',
     message: '📱 Add Progressive Web App (PWA) support?',
@@ -718,7 +759,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
   
   // Return the complete options object with properly typed template
   return {
-    template: templateResponse.template,
+    template: selectedTemplate,
     stateManagement: stateResponse.stateManagement,
     tailwind: tailwindResponse.tailwind, // Use the response from the Tailwind prompt
     licenseType: defaultOptions.licenseType || 'mit', // Default to MIT if undefined
@@ -737,6 +778,7 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
 
 /**
  * Copy template files to project directory
+ * Production-ready approach: Use 0x1-templates package with CLI fallbacks
  */
 async function copyTemplate(
   template: string,
@@ -752,32 +794,49 @@ async function copyTemplate(
     const { useTailwind, useStateManagement = false, themeMode = 'dark' } = options;
     const templateType = template as 'minimal' | 'standard' | 'full' | 'crypto-dash';
     
-    // Get the current file's directory
-    const currentDir = import.meta.dirname || '';
-    
-    // Use prioritized template path search strategy
-    const templatePaths = [
-      join(currentDir, '../../../templates', templateType), // Dev environment path
-      join(currentDir, '../templates', templateType),       // Local install path
-      join(process.cwd(), 'templates', templateType),       // Current directory path
-      join(currentDir, '../../templates', templateType),    // Global install path
-    ];
-    // Crypto-dash template paths included - contains the DeFi dashboard template
-    // with wallet connection components, crypto portfolio tracking, and NFT viewing capabilities
-    
     // Create project directory if needed
     if (!existsSync(projectPath)) {
       await mkdir(projectPath, { recursive: true });
     }
     
+    // Production template resolution strategy:
+    // 1. Try 0x1-templates package (all templates)
+    // 2. Fall back to CLI bundled templates (minimal/standard only)
+    
+    logger.debug(`Resolving template ${templateType}...`);
+    
+    const currentDir = import.meta.dirname || '';
+    const templatePaths = [
+      // First try 0x1-templates package locations
+      join(currentDir, '../../../0x1-templates', templateType), // Dev environment
+      join(currentDir, '../0x1-templates', templateType),       // Local install
+      join(process.cwd(), '0x1-templates', templateType),       // Current directory
+      join(currentDir, '../../0x1-templates', templateType),    // Global install
+      
+      // CLI fallback for minimal/standard only (bundled with CLI)
+      ...(templateType === 'minimal' || templateType === 'standard' ? [
+        join(currentDir, '../../../templates-cli', templateType), // CLI fallback path
+      ] : [])
+    ];
+    
     // Find first valid template path
     const sourcePath = templatePaths.find(path => existsSync(path));
+    
     if (!sourcePath) {
-      throw new Error(`Template '${templateType}' not found. Tried: ${templatePaths.length} locations.`);
+      // Provide helpful error message based on template type
+      if (templateType === 'full' || templateType === 'crypto-dash') {
+        throw new Error(
+          `Template '${templateType}' requires the 0x1-templates package.\n` +
+          `Install it with: bun add 0x1-templates\n` +
+          `Or use 'minimal' or 'standard' templates instead.`
+        );
+      } else {
+        throw new Error(`Template '${templateType}' not found. Tried ${templatePaths.length} locations.`);
+      }
     }
 
     // Copy template files from source to project directory
-    logger.debug(`Copying template from ${sourcePath} to ${projectPath}`);
+    logger.info(`📦 Using template from ${sourcePath.includes('0x1-templates') ? '0x1-templates package' : 'CLI bundle'}`);
     await copyTemplateFiles(sourcePath, projectPath, {
       useTailwind,
       complexity: templateType,
