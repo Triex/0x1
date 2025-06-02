@@ -398,14 +398,29 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
   <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Loading fallback styles */
+    .loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .error { color: red; padding: 20px; text-align: center; }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
-  <script src="/app.js" type="module"></script>
+  <div id="app">
+    <div class="loading">Loading...</div>
+  </div>
+  <script>
+    // Basic error handling
+    window.addEventListener('error', function(e) {
+      console.error('App Error:', e.error);
+      document.getElementById('app').innerHTML = '<div class="error">App failed to load. Check console for details.</div>';
+    });
+  </script>
+  <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
 </body>
 </html>`;
 
       await Bun.write(join(outputPath, 'index.html'), indexHtml);
+      logger.info('✅ Created index.html for app directory structure');
     }
   }
 }
@@ -440,9 +455,12 @@ async function bundleJavaScript(
   // File extensions to look for
   const fileExtensions = ['.tsx', '.ts', '.jsx', '.js'];
 
-  // Create public directory for bundled JS
+  // Create public directory for bundled JS (but also put main files in root)
   const jsOutputPath = join(outputPath, 'public', 'js');
   await mkdir(jsOutputPath, { recursive: true });
+  
+  // Also ensure we can put main files directly in the output root
+  await mkdir(outputPath, { recursive: true });
 
   // Create .0x1 directory for temp files if it doesn't exist
   const tempDir = join(projectPath, '.0x1', 'temp');
@@ -501,7 +519,9 @@ async function bundleJavaScript(
     const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
     if (existsSync(builtBundlePath)) {
       const bundleContent = await Bun.file(builtBundlePath).text();
+      // Copy to both locations for flexibility
       await Bun.write(join(jsOutputPath, 'app-bundle.js'), bundleContent);
+      await Bun.write(join(outputPath, 'app.js'), bundleContent); // Main app.js for HTML
     }
   }
 

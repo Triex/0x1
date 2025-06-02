@@ -1711,6 +1711,34 @@ production = true
 "sharp" = { auto = "force" }
 `
   );
+  
+  // Create vercel.json for proper deployment routing
+  await Bun.write(
+    join(projectPath, 'vercel.json'),
+    `{
+  "buildCommand": "0x1 build",
+  "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "/styles.css",
+      "dest": "/styles.css"
+    },
+    {
+      "src": "/app.js",
+      "dest": "/app.js"
+    },
+    {
+      "src": "/public/(.*)",
+      "dest": "/public/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}
+`
+  );
 }
 
 // Generate metadata configuration
