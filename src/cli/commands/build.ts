@@ -136,6 +136,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
   try {
     // Handle CSS files - look for Tailwind setup
+    let tailwindSuccess = false;
     const appGlobalsCss = join(projectPath, 'app', 'globals.css');
     if (existsSync(appGlobalsCss)) {
       log.info(`📂 Found app/globals.css - processing with Tailwind`);
@@ -178,8 +179,6 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
       // Run Tailwind CSS build on globals.css - use multiple fallback approaches
       log.info('Processing Tailwind CSS...');
-      
-      let tailwindSuccess = false;
       
       // Try different Tailwind execution methods
       const tailwindCommands = [
@@ -229,8 +228,8 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       }
     }
 
-    // Process all other CSS files
-    await processCssFiles(projectPath, outputPath, { minify, ignorePatterns });
+    // Process CSS files (will handle fallback internally if Tailwind failed)
+    await processCssFiles(projectPath, outputPath, { minify, ignorePatterns, tailwindFailed: !tailwindSuccess });
     cssSpin.stop('success', 'CSS styles: processed and optimized');
   } catch (error) {
     // CSS processing is optional, so just show a warning
@@ -983,9 +982,9 @@ export default {
 async function processCssFiles(
   projectPath: string,
   outputPath: string,
-  options: { minify: boolean, ignorePatterns?: string[] }
+  options: { minify: boolean, ignorePatterns?: string[], tailwindFailed: boolean }
 ): Promise<void> {
-  const { minify, ignorePatterns = ['node_modules', '.git', 'dist'] } = options;
+  const { minify, ignorePatterns = ['node_modules', '.git', 'dist'], tailwindFailed } = options;
 
   // Get all css files
   const cssFiles = await findFiles(projectPath, '.css', ignorePatterns);
@@ -994,7 +993,14 @@ async function processCssFiles(
   const hasTailwind = existsSync(join(projectPath, 'tailwind.config.js')) ||
     existsSync(join(projectPath, 'tailwind.config.ts'));
 
-  // Process Tailwind CSS if available
+  // If Tailwind processing already failed upstream, go directly to standard processing
+  if (tailwindFailed) {
+    logger.info('Using standard CSS processing (Tailwind failed upstream)');
+    await processCssFilesStandard();
+    return;
+  }
+
+  // Process Tailwind CSS if available and not already attempted
   if (hasTailwind) {
     // Create a combined CSS file for all CSS files
     let combinedCSS = '';
