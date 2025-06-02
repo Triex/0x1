@@ -633,7 +633,7 @@ export function createDevServer(options: DevServerOptions): Server {
   
   // SSE Connection management with proper rate limiting
   const lastSSEConnection = new Map<string, number>();
-  const SSE_RATE_LIMIT_MS = 2000; // Reduced to 2 seconds - more reasonable for development
+  const SSE_RATE_LIMIT_MS = 5000; // Increased to 5 seconds to prevent 429 errors in dev
   
   // Component transpilation cache to prevent duplicate work
   const transpilationCache = new Map<string, { content: string; mtime: number }>();
@@ -3372,46 +3372,310 @@ body {
             routesJson = '[]'; // Fallback to empty array
           }
 
-          // Generate a dynamic app.js with INSTANT RENDERING and progressive loading
+          // Generate a PRODUCTION-READY app.js with SEQUENCED LOADING
           const appScript = `
-// 0x1 Framework App Bundle - INSTANT RENDERING with Progressive Loading
-console.log('[0x1 App] Starting instant-render app...');
+// 0x1 Framework App Bundle - PRODUCTION-READY with SEQUENCED LOADING
+console.log('[0x1 App] Starting production-ready app with proper sequencing...');
 
-// INSTANT RENDERING: Show layout immediately, load everything else progressively
-console.log('[0x1 App] Initializing application...');
-
-// Server-discovered routes - CRITICAL FIX: Safely serialized
+// Server-discovered routes
 const serverRoutes = ${routesJson};
 
-// ===== INSTANT LAYOUT RENDERING =====
-// Show minimal indicator like Next.js, not a big loading screen
-async function showMinimalIndicator() {
-  console.log('[0x1 App] 🚀 INSTANT: Minimal framework indicator');
+// ===== PRODUCTION-READY POLYFILL SYSTEM =====
+const polyfillCache = new Map();
+const polyfillQueue = new Map(); // Prevent duplicate loading
+
+async function loadPolyfillOnDemand(polyfillName) {
+  if (polyfillCache.has(polyfillName)) {
+    return polyfillCache.get(polyfillName);
+  }
   
-  const appElement = document.getElementById('app');
-  if (!appElement) {
-    console.error('[0x1 App] App container not found');
+  // Check if already being loaded
+  if (polyfillQueue.has(polyfillName)) {
+    return polyfillQueue.get(polyfillName);
+  }
+  
+  console.log('[0x1 App] Loading polyfill:', polyfillName);
+  
+  const promise = (async () => {
+    try {
+      const polyfillScript = document.createElement('script');
+      polyfillScript.type = 'module';
+      polyfillScript.src = '/node_modules/' + polyfillName + '?t=' + Date.now();
+      
+      await new Promise((resolve, reject) => {
+        polyfillScript.onload = resolve;
+        polyfillScript.onerror = reject;
+        document.head.appendChild(polyfillScript);
+      });
+      
+      // Wait for polyfill to be available globally
+      let retries = 0;
+      const maxRetries = 20;
+      
+      while (retries < maxRetries) {
+        const isAvailable = checkPolyfillAvailability(polyfillName);
+        if (isAvailable) {
+          console.log('[0x1 App] ✅ Polyfill verified:', polyfillName);
+          break;
+        }
+        
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (retries >= maxRetries) {
+        console.warn('[0x1 App] ⚠️ Polyfill verification timeout:', polyfillName);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
+      throw error;
+    }
+  })();
+  
+  polyfillQueue.set(polyfillName, promise);
+  polyfillCache.set(polyfillName, promise);
+  
+  try {
+    await promise;
+    return promise;
+  } finally {
+    polyfillQueue.delete(polyfillName);
+  }
+}
+
+function checkPolyfillAvailability(polyfillName) {
+  const checks = {
+    '@rainbow-me/rainbowkit': () => 
+      window.rainbowkit || window.RainbowKit || window['@rainbow-me/rainbowkit'] ||
+      (window.ConnectButton && typeof window.ConnectButton === 'function'),
+    'wagmi': () => 
+      window.wagmi || window.WAGMI || window.useAccount,
+    'viem': () => 
+      window.viem || window.createPublicClient,
+    '@tanstack/react-query': () => 
+      window.ReactQuery || window.useQuery || window['@tanstack/react-query'],
+    'zustand': () => 
+      window.zustand || window.create
+  };
+  
+  const checker = checks[polyfillName];
+  return checker ? checker() : true; // Assume available if no specific check
+}
+
+// ===== PRODUCTION-READY DEPENDENCY ANALYSIS =====
+async function analyzeComponentDependencies(componentPath) {
+  const packageNames = new Set(); // FIXED: Proper scoping
+  const analyzedFiles = new Set(); // Prevent infinite recursion
+  
+  async function analyzeFile(filePath, depth = 0) {
+    // Prevent infinite recursion and limit depth
+    if (analyzedFiles.has(filePath) || depth > 3) {
+      return;
+    }
+    analyzedFiles.add(filePath);
+    
+    try {
+      console.log('[0x1 App] 🔍 Analyzing dependencies for:', filePath, 'depth:', depth);
+      
+      const response = await fetch(filePath + '?source=true&t=' + Date.now());
+      if (!response.ok) return;
+      
+      const sourceCode = await response.text();
+      const localComponentPaths = [];
+      
+      try {
+        // ULTIMATE STRING-BASED DETECTION - No regex, just string operations
+        const lines = sourceCode.split('\\n');
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          
+          // Detect import statements
+          if (trimmedLine.startsWith('import ') && (trimmedLine.includes(' from ') || trimmedLine.includes('import('))) {
+            // Extract package name from import statements
+            const extractPackageFromImport = (importLine) => {
+              // Handle: import ... from 'package'
+              if (importLine.includes(' from ')) {
+                const fromIndex = importLine.lastIndexOf(' from ');
+                const afterFrom = importLine.substring(fromIndex + 6).trim();
+                const quote = afterFrom.charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterFrom.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterFrom.substring(1, endQuote);
+                  }
+                }
+              }
+              
+              // Handle: import('package')
+              const importParenIndex = importLine.indexOf('import(');
+              if (importParenIndex >= 0) {
+                const afterParen = importLine.substring(importParenIndex + 7);
+                const quote = afterParen.trim().charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterParen.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterParen.substring(1, endQuote);
+                  }
+                }
+              }
+              
+              return null;
+            };
+            
+            const packageName = extractPackageFromImport(trimmedLine);
+            if (packageName) {
+              // Check if it's a local component (starts with ./ or ../ or absolute path)
+              if (packageName.startsWith('./') || packageName.startsWith('../') || packageName.startsWith('/')) {
+                // Convert relative path to absolute component path for analysis
+                let componentPath;
+                if (packageName.startsWith('./') || packageName.startsWith('../')) {
+                  // TRULY DYNAMIC: Resolve relative path based on current file location
+                  const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
+                  const resolvedPath = new URL(packageName, 'file://' + currentDir + '/').pathname;
+                  // Remove the leading slash if present and add .js extension if needed
+                  componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
+                  console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
+                } else {
+                  // Handle absolute component paths
+                  componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
+                }
+                
+                localComponentPaths.push(componentPath);
+                console.log('[0x1 App] 📄 Found local component import:', packageName, '->', componentPath);
+              } else if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
+                // It's an external package
+                const rootPackage = packageName.startsWith('@') 
+                  ? packageName.split('/').slice(0, 2).join('/')
+                  : packageName.split('/')[0];
+                
+                if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
+                  packageNames.add(rootPackage);
+                  console.log('[0x1 App] 📦 Detected import:', rootPackage);
+                }
+              }
+            }
+          }
+          
+          // Detect require statements
+          if (trimmedLine.includes('require(')) {
+            const requireIndex = trimmedLine.indexOf('require(');
+            const afterRequire = trimmedLine.substring(requireIndex + 8);
+            const quote = afterRequire.trim().charAt(0);
+            if (quote === '"' || quote === "'") {
+              const endQuote = afterRequire.indexOf(quote, 1);
+              if (endQuote > 0) {
+                const packageName = afterRequire.substring(1, endQuote);
+                if (packageName && !packageName.startsWith('.') && !packageName.startsWith('/')) {
+                  const rootPackage = packageName.startsWith('@')
+                    ? packageName.split('/').slice(0, 2).join('/')
+                    : packageName.split('/')[0];
+                  
+                  if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
+                    packageNames.add(rootPackage);
+                    console.log('[0x1 App] 📦 Detected require:', rootPackage);
+                  }
+                }
+              }
+            }
+          }
+          
+          // Detect component usage patterns
+          if (trimmedLine.includes('<ConnectButton')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected ConnectButton usage -> @rainbow-me/rainbowkit');
+          }
+          if (trimmedLine.includes('<QueryClient') || trimmedLine.includes('QueryClient')) {
+            packageNames.add('@tanstack/react-query');
+            console.log('[0x1 App] 📦 Detected QueryClient usage -> @tanstack/react-query');
+          }
+          if (trimmedLine.includes('<WagmiConfig') || trimmedLine.includes('WagmiConfig')) {
+            packageNames.add('wagmi');
+            console.log('[0x1 App] 📦 Detected WagmiConfig usage -> wagmi');
+          }
+          if (trimmedLine.includes('<RainbowKitProvider') || trimmedLine.includes('RainbowKitProvider')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected RainbowKitProvider usage -> @rainbow-me/rainbowkit');
+          }
+          
+          // Detect hook usage patterns
+          if (trimmedLine.includes('useAccount') || trimmedLine.includes('useConnect') || trimmedLine.includes('useDisconnect')) {
+            packageNames.add('wagmi');
+            console.log('[0x1 App] 📦 Detected wagmi hook usage -> wagmi');
+          }
+          if (trimmedLine.includes('useQuery') || trimmedLine.includes('useMutation')) {
+            packageNames.add('@tanstack/react-query');
+            console.log('[0x1 App] 📦 Detected react-query hook usage -> @tanstack/react-query');
+          }
+          if (trimmedLine.includes('useConnectModal')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected RainbowKit hook usage -> @rainbow-me/rainbowkit');
+          }
+        }
+        
+        // RECURSIVE ANALYSIS: Analyze imported local components
+        for (const localPath of localComponentPaths) {
+          console.log('[0x1 App] 🔄 Recursively analyzing:', localPath);
+          await analyzeFile(localPath, depth + 1);
+        }
+        
+      } catch (analysisError) {
+        console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
+      }
+    } catch (error) {
+      console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
+    }
+  }
+  
+  // Start analysis with the main component
+  await analyzeFile(componentPath, 0);
+  
+  console.log('[0x1 App] 🔍 RECURSIVE Total dependencies found:', Array.from(packageNames));
+  return packageNames;
+}
+
+// ===== SEQUENTIAL POLYFILL LOADING =====
+async function loadPolyfillsSequentially(packageNames) {
+  const polyfillsNeeded = Array.from(packageNames);
+  
+  if (polyfillsNeeded.length === 0) {
+    console.log('[0x1 App] 📦 No polyfills needed');
     return;
   }
   
-  // Just add a tiny lightning bolt indicator like Next.js (minimal, non-intrusive)
+  console.log('[0x1 App] 🔍 Loading polyfills sequentially:', polyfillsNeeded);
+  
+  // Load critical polyfills first (order matters!)
+  const criticalFirst = ['@tanstack/react-query', 'wagmi', 'viem', '@rainbow-me/rainbowkit'];
+  const orderedPolyfills = [
+    ...criticalFirst.filter(p => polyfillsNeeded.includes(p)),
+    ...polyfillsNeeded.filter(p => !criticalFirst.includes(p))
+  ];
+  
+  for (const polyfill of orderedPolyfills) {
+    try {
+      await loadPolyfillOnDemand(polyfill);
+      console.log('[0x1 App] ✅ Loaded polyfill:', polyfill);
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfill, error);
+    }
+  }
+  
+  console.log('[0x1 App] ✅ All polyfills loaded');
+}
+
+// ===== MINIMAL INDICATOR =====
+function showMinimalIndicator() {
+  console.log('[0x1 App] 🚀 INSTANT: Minimal loading indicator');
+  
   const indicator = document.createElement('div');
   indicator.id = '0x1-loading-indicator';
   indicator.innerHTML = '⚡';
-  indicator.style.cssText = \`
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    font-size: 16px;
-    opacity: 0.7;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    color: #3b82f6;
-  \`;
+  indicator.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; font-size: 16px; opacity: 0.7; transition: opacity 0.3s ease; pointer-events: none; color: #3b82f6;';
   document.body.appendChild(indicator);
   
-  // Remove indicator after a short time
   setTimeout(() => {
     const existingIndicator = document.getElementById('0x1-loading-indicator');
     if (existingIndicator) {
@@ -3421,76 +3685,10 @@ async function showMinimalIndicator() {
   }, 2000);
 }
 
-// ===== OPTIMIZED ROUTER CREATION =====
-// Create router quickly without heavy dependency analysis
-async function createAppRouter() {
-  console.log('[0x1 App] Creating router...');
+// ===== ESSENTIAL DEPENDENCIES =====
+async function loadEssentialDependencies() {
+  console.log('[0x1 App] 🎯 Loading essential dependencies...');
   
-  try {
-    // Import the real router module
-    const routerModule = await import('/0x1/router.js');
-    const { createRouter } = routerModule;
-    
-    if (typeof createRouter !== 'function') {
-      throw new Error('createRouter function not found in router module');
-    }
-    
-    console.log('[0x1 App] ✅ Router package loaded');
-    
-    // Create the real router instance
-    const appElement = document.getElementById('app');
-    if (!appElement) {
-      throw new Error('App container element not found');
-    }
-    
-    const router = createRouter({
-      rootElement: appElement,
-      mode: 'history',
-      debug: false,
-      base: '/'
-    });
-    
-    // Store globally
-    window.__0x1_ROUTER__ = router;
-    window.__0x1_router = router;
-    window.router = router;
-    
-    console.log('[0x1 App] ✅ Router ready');
-    return router;
-    
-  } catch (error) {
-    console.error('[0x1 App] ❌ Router creation failed:', error);
-    throw error;
-  }
-}
-
-// ===== PROGRESSIVE COMPONENT LOADING =====
-// Load components on-demand instead of upfront
-async function loadComponent(componentPath) {
-  try {
-    console.log('[0x1 App] Loading component:', JSON.stringify(componentPath));
-    const url = componentPath + '?t=' + Date.now();
-    const module = await import(url);
-    
-    if (module && (module.default || module)) {
-      console.log('[0x1 App] ✅ Component loaded:', JSON.stringify(componentPath));
-      return module;
-    } else {
-      console.warn('[0x1 App] ⚠️ Component has no exports:', JSON.stringify(componentPath));
-      return null;
-    }
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load component:', JSON.stringify(componentPath), error);
-    throw error;
-  }
-}
-
-// ===== OPTIMIZED DEPENDENCY LOADING =====
-// Only load essential hooks immediately
-async function loadMinimalDependencies() {
-  console.log('[0x1 App] 🎯 Loading hooks only...');
-  
-  // Only load hooks first - everything else is lazy loaded
   try {
     const hooksScript = document.createElement('script');
     hooksScript.type = 'module';
@@ -3514,445 +3712,219 @@ async function loadMinimalDependencies() {
   }
 }
 
-// ===== LAZY POLYFILL LOADING =====
-// Only load polyfills when components that need them are rendered
-const polyfillCache = new Map();
-
-async function loadPolyfillOnDemand(polyfillName) {
-  if (polyfillCache.has(polyfillName)) {
-    return polyfillCache.get(polyfillName);
-  }
-  
-  console.log('[0x1 App] Loading polyfill on-demand:', polyfillName);
+// ===== ROUTER CREATION =====
+async function createAppRouter() {
+  console.log('[0x1 App] Creating router...');
   
   try {
-    const polyfillScript = document.createElement('script');
-    polyfillScript.type = 'module';
-    polyfillScript.src = \`/node_modules/\${polyfillName}?t=\${Date.now()}\`;
+    const routerModule = await import('/0x1/router.js');
+    const { createRouter } = routerModule;
     
-    const promise = new Promise((resolve, reject) => {
-      polyfillScript.onload = resolve;
-      polyfillScript.onerror = reject;
-      document.head.appendChild(polyfillScript);
+    if (typeof createRouter !== 'function') {
+      throw new Error('createRouter function not found in router module');
+    }
+    
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    const router = createRouter({
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/'
     });
     
-    polyfillCache.set(polyfillName, promise);
-    await promise;
+    window.__0x1_ROUTER__ = router;
+    window.__0x1_router = router;
+    window.router = router;
     
-    console.log('[0x1 App] ✅ Polyfill loaded:', polyfillName);
-    return promise;
+    console.log('[0x1 App] ✅ Router ready');
+    return router;
+    
   } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
-    polyfillCache.delete(polyfillName);
+    console.error('[0x1 App] ❌ Router creation failed:', error);
     throw error;
   }
 }
 
-// ===== LAZY POLYFILL DETECTION =====
-// Check .js files directly (no more .tsx/.jsx/.ts 404s)
-async function loadPolyfillsForComponent(componentPath) {
+// ===== COMPONENT LOADING WITH PROPER CACHING =====
+async function loadComponent(componentPath) {
   try {
-    // Try to fetch the .js file directly (since that's what we actually have)
-    const response = await fetch(componentPath + '?source=true&t=' + Date.now());
-    if (!response.ok) return;
+    console.log('[0x1 App] Loading component:', componentPath);
+    const url = componentPath + '?t=' + Date.now();
+    const module = await import(url);
     
-    const sourceCode = await response.text();
-    
-    // Quick pattern detection without heavy analysis
-    const polyfillsNeeded = [];
-    
-    if (sourceCode.includes('wagmi') || sourceCode.includes('useAccount') || sourceCode.includes('useConnect')) {
-      polyfillsNeeded.push('wagmi');
+    if (module && (module.default || module)) {
+      console.log('[0x1 App] ✅ Component loaded:', componentPath);
+      return module;
+    } else {
+      console.warn('[0x1 App] ⚠️ Component has no exports:', componentPath);
+      return null;
     }
-    if (sourceCode.includes('viem') || sourceCode.includes('createPublicClient')) {
-      polyfillsNeeded.push('viem');
-    }
-    if (sourceCode.includes('rainbowkit') || sourceCode.includes('RainbowKitProvider') || sourceCode.includes('ConnectButton')) {
-      polyfillsNeeded.push('@rainbow-me/rainbowkit');
-    }
-    if (sourceCode.includes('react-query') || sourceCode.includes('QueryClient')) {
-      polyfillsNeeded.push('@tanstack/react-query');
-    }
-    
-    // Load polyfills FAST in parallel
-    if (polyfillsNeeded.length > 0) {
-      console.log('[0x1 App] Fast-loading polyfills:', polyfillsNeeded);
-      await Promise.all(polyfillsNeeded.map(loadPolyfillOnDemand));
-      console.log('[0x1 App] ✅ Polyfills ready for:', componentPath);
-    }
-    
   } catch (error) {
-    console.warn('[0x1 App] Could not load polyfills for component:', componentPath, error);
+    console.error('[0x1 App] ❌ Failed to load component:', componentPath, error);
     throw error;
   }
 }
 
-// ===== LAYOUT INTEGRATION =====
-// Load layout quickly with essential polyfills
-async function loadLayoutComponent() {
+// ===== LAYOUT LOADING WITH DEPENDENCY RESOLUTION =====
+async function loadLayoutWithDependencies() {
   try {
-    console.log('[0x1 App] Loading layout...');
+    console.log('[0x1 App] 🏗️ Loading layout with dependencies...');
     
-    // Fast polyfill loading
-    await Promise.all([
-      loadPolyfillOnDemand('@rainbow-me/rainbowkit'),
-      loadPolyfillOnDemand('wagmi'),
-      loadPolyfillOnDemand('viem'),
-      loadPolyfillOnDemand('@tanstack/react-query')
-    ]);
+    // Analyze layout dependencies first
+    const layoutDeps = await analyzeComponentDependencies('/app/layout.js');
+    console.log('[0x1 App] 📋 Layout dependencies:', Array.from(layoutDeps));
     
-    console.log('[0x1 App] ✅ Layout polyfills ready');
+    // Load dependencies BEFORE loading layout
+    await loadPolyfillsSequentially(layoutDeps);
     
+    // Now load the layout component
     const layoutModule = await loadComponent('/app/layout.js');
-    
     if (layoutModule && layoutModule.default) {
-      console.log('[0x1 App] ✅ Layout loaded');
+      console.log('[0x1 App] ✅ Layout loaded with dependencies');
       return layoutModule.default;
     }
   } catch (error) {
-    console.warn('[0x1 App] Layout failed, using fallback:', error.message);
+    console.error('[0x1 App] ❌ Layout loading failed:', error);
   }
   
-  // Minimal fallback that actually renders
-  return ({ children }) => children;
+  // Enhanced fallback
+  console.log('[0x1 App] 📦 Using layout fallback');
+  return ({ children }) => {
+    console.log('[0x1 Layout] Fallback rendering children');
+    return children;
+  };
 }
 
-// ===== ROUTE REGISTRATION =====
-// Register routes with lazy loading
+// ===== ROUTE REGISTRATION WITH PROPER SEQUENCING =====
 async function registerRoutes(router) {
-  console.log('[0x1 App] 📝 Registering routes...');
+  console.log('[0x1 App] 📝 Registering routes with proper sequencing...');
+  
+  // Load shared layout first
+  const sharedLayoutComponent = await loadLayoutWithDependencies();
   
   for (const route of serverRoutes) {
     try {
-      // Create a lazy-loading wrapper for each route
-      const lazyComponent = async (props) => {
-        try {
-          // Load component on-demand
-          const componentModule = await loadComponent(route.componentPath);
-          
+      const routeComponent = (props) => {
+        console.log('[0x1 App] 🔍 Route component called for:', route.path);
+        
+        return loadComponentWithDependencies(route.componentPath).then(componentModule => {
           if (componentModule && componentModule.default) {
-            // Load any required polyfills based on component content
-            await loadPolyfillsForComponent(route.componentPath);
-            
-            // Render the component
+            console.log('[0x1 App] ✅ Route component resolved:', route.path);
             return componentModule.default(props);
-          } else {
-            console.warn('[0x1 App] Component has no default export:', route.path);
-            return {
-              type: 'div',
-              props: { style: 'padding: 20px; text-align: center;' },
-              children: ['Error: Component not found']
-            };
-          }
-        } catch (error) {
-          console.error('[0x1 App] Error loading route component:', route.path, error);
-          return {
-            type: 'div',
-            props: { style: 'padding: 20px; text-align: center; color: #ef4444;' },
-            children: ['Error loading page: ' + error.message]
-          };
-        }
-      };
-      
-      // Register the lazy-loading route
-      router.addRoute(route.path, lazyComponent, { componentPath: route.componentPath });
-      console.log('[0x1 App] ✅ Route registered (lazy):', route.path);
-      
-    } catch (error) {
-      console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
-    }
-  }
-  
-  console.log('[0x1 App] 📊 Routes registered: ✅', serverRoutes.length, 'total');
-}
-
-// ===== MAIN INITIALIZATION (TRULY INSTANT) =====
-async function initApp() {
-  try {
-    // MINIMAL: Just show tiny indicator like Next.js
-    showMinimalIndicator();
-    
-    // FAST: Essential dependencies only
-    await loadMinimalDependencies();
-    
-    // FAST: Create router
-    const router = await createAppRouter();
-    
-    // FAST: Load layout
-    const LayoutComponent = await loadLayoutComponent();
-    
-    // CRITICAL FIX: Ensure router actually renders content to DOM
-    const originalAddRoute = router.addRoute.bind(router);
-    router.addRoute = function(path, component, metadata = {}) {
-      const wrappedComponent = (props) => {
-        console.log('[0x1 App] 🔍 Route component called for:', path, 'with props:', props);
-        
-        try {
-          // Call the component and get the result
-          let result;
-          if (typeof component === 'function') {
-            result = component(props);
-          } else {
-            result = component;
-          }
-          
-          console.log('[0x1 App] 🔍 Component result type:', typeof result, 'value:', result);
-          
-          // CRITICAL FIX: Handle async components properly
-          if (result && typeof result.then === 'function') {
-            console.log('[0x1 App] 🔄 Async component detected - handling properly...');
-            
-            // Show loading state immediately
-            const loadingContent = {
-              type: 'div',
-              props: { 
-                style: 'padding: 40px; text-align: center; min-height: 200px; display: flex; align-items: center; justify-content: center;',
-                'data-loading': 'true'
-              },
-              children: [
-                {
-                  type: 'div',
-                  props: { style: 'color: #6b7280;' },
-                  children: ['Loading...']
-                }
-              ]
-            };
-            
-            // Handle the promise in the background
-            result.then(asyncResult => {
-              console.log('[0x1 App] 🔄 Async component resolved, re-rendering...');
-              const finalContent = LayoutComponent({ children: asyncResult });
-              
-              // CRITICAL: Force router to re-render with the resolved content
-              const rootElement = router.options?.rootElement;
-              if (rootElement && finalContent) {
-                try {
-                  // Clear current content
-                  while (rootElement.firstChild) {
-                    rootElement.removeChild(rootElement.firstChild);
-                  }
-                  
-                  // Render the resolved content using router's jsxToDom
-                  const domElement = router.jsxToDom(finalContent);
-                  if (domElement) {
-                    rootElement.appendChild(domElement);
-                    console.log('[0x1 App] ✅ Async content rendered to DOM');
-                  }
-                } catch (renderError) {
-                  console.error('[0x1 App] ❌ Error rendering async content:', renderError);
-                }
-              }
-            }).catch(error => {
-              console.error('[0x1 App] 💥 Async component error:', error);
-              const errorContent = LayoutComponent({ 
-                children: {
-                  type: 'div',
-                  props: { style: 'padding: 20px; color: #ef4444; text-align: center;' },
-                  children: ['Error: ' + error.message]
-                }
-              });
-              
-              // Render error content
-              const rootElement = router.options?.rootElement;
-              if (rootElement) {
-                try {
-                  while (rootElement.firstChild) {
-                    rootElement.removeChild(rootElement.firstChild);
-                  }
-                  const domElement = router.jsxToDom(errorContent);
-                  if (domElement) {
-                    rootElement.appendChild(domElement);
-                  }
-                } catch (renderError) {
-                  console.error('[0x1 App] ❌ Error rendering error content:', renderError);
-                }
-              }
-            });
-            
-            // Return loading content immediately (synchronous)
-            return LayoutComponent({ children: loadingContent });
-          }
-          
-          // Synchronous result - wrap with layout
-          const wrappedContent = LayoutComponent({ children: result });
-          console.log('[0x1 App] 🔍 Wrapped content:', wrappedContent);
-          
-          return wrappedContent;
-        } catch (error) {
-          console.error('[0x1 App] 💥 Error in wrapped component:', error);
-          return LayoutComponent({ 
-            children: {
-              type: 'div',
-              props: { style: 'padding: 20px; color: #ef4444;' },
-              children: ['Error: ' + error.message]
-            }
-          });
-        }
-      };
-      
-      return originalAddRoute(path, wrappedComponent, metadata);
-    };
-    
-    // Register routes - NOW WITH PROPER ASYNC HANDLING
-    await registerRoutesWithAsyncFix(router);
-    
-    // Remove test navigation - go straight to real page
-    console.log('[0x1 App] 🎯 Starting router...');
-    router.init();
-    
-    // Force immediate navigation to real page
-    setTimeout(() => {
-      console.log('[0x1 App] 🚀 Navigating to real page...');
-      router.navigate(window.location.pathname, false);
-    }, 0);
-    
-    console.log('[0x1 App] ✅ Ready!');
-    
-  } catch (error) {
-    console.error('[0x1 App] ❌ Init failed:', error);
-    
-    // Minimal error display
-    const appElement = document.getElementById('app');
-    if (appElement) {
-      appElement.innerHTML = \`
-        <div style="padding: 40px; text-align: center;">
-          <h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2>
-          <p style="color: #6b7280;">\${error.message}</p>
-        </div>
-      \`;
-    }
-  }
-}
-
-// ===== SIMPLIFIED ROUTE REGISTRATION FOR DEBUGGING =====
-async function registerSimpleRoutes(router) {
-  console.log('[0x1 App] 📝 Registering simple routes for debugging...');
-  
-  for (const route of serverRoutes) {
-    try {
-      // Create SIMPLE synchronous component first
-      const simpleComponent = (props) => {
-        console.log('[0x1 App] 🔍 Simple component called for:', route.path);
-        return {
-          type: 'div',
-          props: { style: 'padding: 40px; text-align: center; background: #fef3c7;' },
-          children: [
-            {
-              type: 'h1',
-              props: { style: 'color: #d97706; margin: 0 0 16px 0;' },
-              children: ['Simple Route: ' + route.path]
-            },
-            {
-              type: 'p',
-              props: { style: 'color: #92400e; margin: 0;' },
-              children: ['Component path: ' + route.componentPath]
-            }
-          ]
-        };
-      };
-      
-      // Register the simple route
-      router.addRoute(route.path, simpleComponent, { componentPath: route.componentPath });
-      console.log('[0x1 App] ✅ Simple route registered:', route.path);
-      
-    } catch (error) {
-      console.error('[0x1 App] ❌ Failed to register simple route:', route.path, error);
-    }
-  }
-  
-  console.log('[0x1 App] 📊 Simple routes registered: ✅', serverRoutes.length, 'total');
-}
-
-// ===== PROPER ASYNC ROUTE REGISTRATION =====
-// Load real components with proper async handling
-async function registerRoutesWithAsyncFix(router) {
-  console.log('[0x1 App] 📝 Registering routes with async fix...');
-  
-  for (const route of serverRoutes) {
-    try {
-      // Create async component loader that the router can handle
-      const asyncComponentLoader = (props) => {
-        console.log('[0x1 App] 🔍 Loading real component for:', route.path);
-        
-        // Return a promise that resolves to JSX
-        return loadComponentAndPolyfills(route.componentPath).then(componentModule => {
-          console.log('[0x1 App] ✅ Component loaded for:', route.path);
-          
-          if (componentModule && componentModule.default) {
-            const pageContent = componentModule.default(props);
-            console.log('[0x1 App] 🔍 Page content created for:', route.path);
-            return pageContent;
           } else {
             console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
-              props: { style: 'padding: 20px; text-align: center; color: #f59e0b;' },
-              children: ['⚠️ Component loaded but has no default export: ' + route.componentPath]
+              props: { 
+                className: 'p-8 text-center',
+                style: 'color: #f59e0b;' 
+              },
+              children: ['⚠️ Component loaded but has no default export']
             };
           }
         }).catch(error => {
-          console.error('[0x1 App] ❌ Failed to load component for:', route.path, error);
+          console.error('[0x1 App] ❌ Route component error:', route.path, error);
           return {
             type: 'div',
-            props: { style: 'padding: 20px; text-align: center; color: #ef4444;' },
+            props: { 
+              className: 'p-8 text-center',
+              style: 'color: #ef4444;' 
+            },
             children: ['❌ Error loading component: ' + error.message]
           };
         });
       };
       
-      // Register the async component loader
-      router.addRoute(route.path, asyncComponentLoader, { componentPath: route.componentPath });
-      console.log('[0x1 App] ✅ Async route registered:', route.path);
+      router.addRoute(route.path, routeComponent, { 
+        layout: sharedLayoutComponent,
+        componentPath: route.componentPath 
+      });
+      
+      console.log('[0x1 App] ✅ Route registered:', route.path);
       
     } catch (error) {
       console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
     }
   }
   
-  // Handle 404s
-  router.addRoute('*', () => {
-    console.log('[0x1 App] 🔍 404 handler called');
-    const notFoundContent = {
-      type: 'div',
-      props: { style: 'padding: 40px; text-align: center;' },
-      children: [
-        {
-          type: 'h3',
-          props: { style: 'margin: 0 0 16px 0; font-size: 24px;' },
-          children: ['404 - Page Not Found']
-        },
-        {
-          type: 'p',
-          props: { style: 'margin: 0; color: #6b7280;' },
-          children: ['The page you are looking for does not exist.']
-        }
-      ]
-    };
-    
-    return notFoundContent; // No layout needed for 404, it gets wrapped automatically
-  });
-  
-  console.log('[0x1 App] 📊 Async routes registered: ✅', serverRoutes.length, 'total');
+  console.log('[0x1 App] 📊 All routes registered successfully');
 }
 
-// ===== OPTIMIZED COMPONENT + POLYFILL LOADER =====
-async function loadComponentAndPolyfills(componentPath) {
+// ===== COMPONENT LOADING WITH DEPENDENCIES =====
+async function loadComponentWithDependencies(componentPath) {
   try {
-    // Load polyfills for component in parallel with component loading
-    const [componentModule] = await Promise.all([
-      loadComponent(componentPath),
-      loadPolyfillsForComponent(componentPath)
-    ]);
+    const cacheKey = componentPath;
+    if (!window.__0x1_componentCache) {
+      window.__0x1_componentCache = new Map();
+    }
+    
+    if (window.__0x1_componentCache.has(cacheKey)) {
+      console.log('[0x1 App] 📦 Component cached:', componentPath);
+      return window.__0x1_componentCache.get(cacheKey);
+    }
+    
+    console.log('[0x1 App] 🔄 Loading component with dependencies:', componentPath);
+    
+    // Analyze and load dependencies
+    const componentDeps = await analyzeComponentDependencies(componentPath);
+    await loadPolyfillsSequentially(componentDeps);
+    
+    // Load the component
+    const componentModule = await loadComponent(componentPath);
+    
+    // Cache successful result
+    if (componentModule) {
+      window.__0x1_componentCache.set(cacheKey, componentModule);
+    }
     
     return componentModule;
   } catch (error) {
-    console.error('[0x1 App] Error loading component and polyfills:', componentPath, error);
+    console.error('[0x1 App] ❌ Component loading failed:', componentPath, error);
     throw error;
   }
 }
 
+// ===== MAIN INITIALIZATION =====
+async function initApp() {
+  try {
+    console.log('[0x1 App] 🚀 Starting production-ready initialization...');
+    
+    // Step 1: Show minimal indicator
+    showMinimalIndicator();
+    
+    // Step 2: Load essential dependencies
+    await loadEssentialDependencies();
+    
+    // Step 3: Create router
+    const router = await createAppRouter();
+    
+    // Step 4: Register routes with proper dependency loading
+    await registerRoutes(router);
+    
+    // Step 5: Start router
+    console.log('[0x1 App] 🎯 Starting router...');
+    router.init();
+    
+    // Step 6: Navigate to current path
+    router.navigate(window.location.pathname, false);
+    
+    console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
+    
+  } catch (error) {
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details></div>';
+    }
+  }
+}
+
 // ===== START IMMEDIATELY =====
-// Start as soon as possible
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
@@ -3960,7 +3932,7 @@ if (document.readyState === 'loading') {
 }
 `;
 
-          logRequestStatus(200, reqPath, "Serving ultra-dynamic app bundle");
+          logRequestStatus(200, reqPath, "Serving production-ready app bundle");
           return new Response(appScript, {
             status: 200,
             headers: {
