@@ -113,6 +113,8 @@ import { yourChain } from 'wagmi/chains';
 const supportedChains: Chain[] = [
   mainnet,
   polygon,
+  bsc,
+  base,
   yourChain, // Add your chain here
   // ... more chains
 ];

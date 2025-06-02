@@ -66,38 +66,124 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   
   // Create update callback for state changes
   const updateCallback = () => {
-    console.debug(`[0x1 Hooks] Component ${componentId} state changed`);
-    // Trigger re-render logic here if needed
+    console.debug(`[0x1 Hooks] Component ${componentId} state changed, triggering re-render`);
+    
+    // CRITICAL FIX: Use requestAnimationFrame to run after DOM updates complete
+    // This ensures the DOM is fully updated before we try to find elements
+    requestAnimationFrame(() => {
+      console.debug(`[0x1 JSX] RAF running - searching for component ${componentId}`);
+      
+      // Debug: Check if document and DOM are available
+      if (typeof document === 'undefined') {
+        console.error(`[0x1 JSX] Document is undefined in RAF for ${componentId}`);
+        return;
+      }
+      
+      // SMART APPROACH: Check if element exists, if not, queue for retry
+      const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+      
+      if (elements.length === 0) {
+        // Element doesn't exist yet - QUEUE FOR RETRY instead of skipping
+        console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
+        
+        // Retry after a short delay to allow DOM to be ready
+        requestAnimationFrame(() => {
+          const retryElements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+          if (retryElements.length === 0) {
+            console.debug(`[0x1 JSX] Component ${componentId} still not in DOM after retry - final skip`);
+            return;
+          }
+          
+          // Execute the re-render now that element exists
+          executeReRender(componentId, componentName, type, props, retryElements);
+        });
+        return;
+      }
+      
+      // Element exists, proceed with re-render
+      executeReRender(componentId, componentName, type, props, elements);
+    });
   };
+  
+  // EXTRACTED: Re-render execution logic
+  function executeReRender(componentId: string, componentName: string, type: ComponentFunction, props: any, elements: NodeListOf<Element>) {
+    console.debug(`[0x1 JSX] Found ${elements.length} elements for ${componentId}, proceeding with re-render`);
+    
+    // Re-execute the component function to get fresh result
+    setContext(componentId, updateCallback);
+    try {
+      const newResult = type(props);
+      
+      // DEBUGGING: Log what the re-rendered component is generating
+      if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
+        console.log(`[0x1 JSX] Re-render generated new result for ${componentId}:`, newResult);
+      }
+      
+      const newElements = renderToDOM(newResult);
+      
+      // DEBUGGING: Log the actual DOM elements being created
+      if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
+        console.log(`[0x1 JSX] renderToDOM created elements for ${componentId}:`, newElements);
+        if (newElements instanceof Element) {
+          console.log(`[0x1 JSX] New element HTML for ${componentId}:`, newElements.outerHTML.substring(0, 200) + '...');
+        }
+      }
+      
+      // Replace each found element
+      elements.forEach((element, index) => {
+        if (element.parentNode && newElements) {
+          
+          // DEBUGGING: Log what we're about to replace
+          if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
+            console.log(`[0x1 JSX] About to replace element ${index} for ${componentId}:`);
+            console.log(`[0x1 JSX] Old element HTML:`, element.outerHTML.substring(0, 200) + '...');
+          }
+          
+          // For single element results, replace directly
+          if (newElements instanceof DocumentFragment) {
+            // Handle fragment results
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('data-component-id', componentId);
+            wrapper.setAttribute('data-component-name', componentName);
+            wrapper.style.display = 'contents'; // Make wrapper invisible
+            wrapper.appendChild(newElements);
+            element.parentNode.replaceChild(wrapper, element);
+            
+            // DEBUGGING: Log replacement result
+            if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
+              console.log(`[0x1 JSX] Replaced with fragment wrapper for ${componentId}`);
+            }
+          } else if (newElements instanceof Element) {
+            // Ensure metadata is preserved
+            newElements.setAttribute('data-component-id', componentId);
+            newElements.setAttribute('data-component-name', componentName);
+            element.parentNode.replaceChild(newElements, element);
+            
+            // DEBUGGING: Log replacement result
+            if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
+              console.log(`[0x1 JSX] Replaced with new element for ${componentId}:`, newElements.outerHTML.substring(0, 200) + '...');
+            }
+          }
+        }
+      });
+      
+      console.debug(`[0x1 JSX] Successfully re-rendered component ${componentId}`);
+    } catch (error) {
+      console.error(`[0x1 JSX] Error re-rendering component ${componentId}:`, error);
+    } finally {
+      clearContext();
+    }
+  }
   
   setContext(componentId, updateCallback);
   
   try {
     const result = type(props);
     
-    // Ensure result is properly formatted
-    if (result === null || result === undefined) {
-      return null;
-    }
+    // CRITICAL: Ensure component metadata is applied to the result
+    const enhancedResult = ensureComponentMetadata(result, componentId, componentName);
     
-    // Handle string/number results
-    if (typeof result === 'string' || typeof result === 'number') {
-      return result;
-    }
-    
-    // Handle array results (fragments)
-    if (Array.isArray(result)) {
-      return result;
-    }
-    
-    // Handle JSX element results
-    if (typeof result === 'object' && result && 'type' in result) {
-      return result;
-    }
-    
-    // Fallback for unexpected result types
-    console.warn('[0x1 JSX] Unexpected component result type:', typeof result, result);
-    return String(result);
+    return enhancedResult;
     
   } catch (error: any) {
     console.error('[0x1 JSX] Component error:', error);
@@ -107,7 +193,9 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
       type: 'div',
       props: { 
         className: 'error-boundary',
-        style: { color: 'red', padding: '10px', border: '1px solid red' }
+        style: { color: 'red', padding: '10px', border: '1px solid red' },
+        'data-component-id': componentId,
+        'data-component-name': componentName
       },
       children: [`Error in ${componentName}: ${error.message}`],
       key: null
@@ -115,6 +203,59 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   } finally {
     clearContext();
   }
+}
+
+/**
+ * Ensure component metadata is applied to JSX result for re-render tracking
+ */
+function ensureComponentMetadata(result: JSXNode, componentId: string, componentName: string): JSXNode {
+  if (!result || typeof result !== 'object') {
+    return result;
+  }
+  
+  // Handle JSX element
+  if ('type' in result && 'props' in result) {
+    const jsxElement = result as JSXElement;
+    
+    // Apply metadata to the root element
+    if (!jsxElement.props) {
+      jsxElement.props = {};
+    }
+    
+    jsxElement.props['data-component-id'] = componentId;
+    jsxElement.props['data-component-name'] = componentName;
+    
+    return jsxElement;
+  }
+  
+  // Handle arrays (fragments)
+  if (Array.isArray(result)) {
+    // Wrap array in a container with metadata
+    return {
+      type: 'div',
+      props: {
+        'data-component-id': componentId,
+        'data-component-name': componentName,
+        'data-component-wrapper': 'true',
+        style: { display: 'contents' }
+      },
+      children: result,
+      key: componentId
+    };
+  }
+  
+  // Handle other objects by wrapping them
+  return {
+    type: 'div',
+    props: {
+      'data-component-id': componentId,
+      'data-component-name': componentName,
+      'data-component-wrapper': 'true',
+      style: { display: 'contents' }
+    },
+    children: [result],
+    key: componentId
+  };
 }
 
 /**
@@ -270,14 +411,13 @@ export function renderToDOM(node: JSXNode): Node | null {
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
         
-        // CRITICAL FIX: Don't interfere with anchor tag click events - let the router handle navigation
+        // For anchor tags, ensure onClick handlers work properly with client-side routing
         if (tagName === 'a' && eventName === 'click') {
-          // For anchor tags, don't add click handlers - let the router's global click handler manage navigation
-          // This prevents conflicts with client-side routing
-          return;
+          // Allow the onClick handler - it's needed for Link component navigation
+          element.addEventListener(eventName, value as EventListener);
+        } else {
+          element.addEventListener(eventName, value as EventListener);
         }
-        
-        element.addEventListener(eventName, value as EventListener);
       } else if (key === 'style' && typeof value === 'object') {
         Object.assign((element as HTMLElement).style, value as CSSStyleDeclaration);
       } else if (typeof value === 'boolean') {
@@ -352,4 +492,45 @@ export function renderToString(node: JSXNode): string {
   }
   
   return '';
+}
+
+// ============================================================================
+// GLOBAL INITIALIZATION - ESTABLISH ONE SOURCE OF TRUTH
+// ============================================================================
+
+/**
+ * Initialize the JSX runtime as the global standard
+ */
+function initializeGlobalJSXRuntime() {
+  if (typeof window !== 'undefined') {
+    // Make all JSX functions globally available
+    (window as any).jsx = jsx;
+    (window as any).jsxs = jsxs;
+    (window as any).jsxDEV = jsxDEV;
+    (window as any).createElement = createElement;
+    (window as any).Fragment = Fragment;
+    (window as any).renderToDOM = renderToDOM;
+    
+    // CRITICAL: Make renderToDOM available under multiple names for compatibility
+    (window as any).jsxToDom = renderToDOM; // For router compatibility
+    (window as any).__0x1_renderToDOM = renderToDOM;
+    
+    // React compatibility layer
+    if (!(window as any).React) {
+      (window as any).React = {};
+    }
+    
+    (window as any).React.createElement = createElement;
+    (window as any).React.Fragment = Fragment;
+    (window as any).React.jsx = jsx;
+    (window as any).React.jsxs = jsxs;
+    
+    console.log('[0x1 JSX] Production-ready runtime loaded');
+  }
+}
+
+// Auto-initialize when module loads
+if (typeof window !== 'undefined') {
+  // Use setTimeout to ensure this runs after all module code is parsed
+  setTimeout(initializeGlobalJSXRuntime, 0);
 } 

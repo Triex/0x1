@@ -81,6 +81,7 @@ async function installDependencies(projectPath: string): Promise<void> {
 interface NewProjectOptions {
   // Project fundamentals
   template?: 'minimal' | 'standard' | 'full'; // Template type/complexity level
+  // FIXME: Add 'crypto-dash' to template union type when ready: 'minimal' | 'standard' | 'full' | 'crypto-dash'
   tailwind?: boolean;                       // Include Tailwind CSS  
   stateManagement?: boolean;                // Include state management
   licenseType?: 'tdl' | 'mit' | 'none';     // License type
@@ -412,6 +413,7 @@ To build for production:
 interface ProjectPromptOptions {
   // Project fundamentals
   template?: 'minimal' | 'standard' | 'full'; // Template type/complexity level
+  // FIXME: Add 'crypto-dash' to template union type when ready: 'minimal' | 'standard' | 'full' | 'crypto-dash'
   tailwind?: boolean;                       // Include Tailwind CSS  
   stateManagement?: boolean;                // Include state management
   licenseType?: 'tdl' | 'mit' | 'none';     // License type
@@ -432,6 +434,7 @@ interface ProjectPromptOptions {
 async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promise<{
   // Project fundamentals
   template: 'standard' | 'minimal' | 'full'; // The selected template type
+  // FIXME: Add 'crypto-dash' to template union type when ready: 'standard' | 'minimal' | 'full' | 'crypto-dash'
   tailwind: boolean;
   stateManagement: boolean;
   licenseType: 'tdl' | 'mit' | 'none';
@@ -476,6 +479,8 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
       { title: "Minimal", value: "minimal", description: "Basic setup with minimal dependencies" },
       { title: "Standard", value: "standard", description: "Common libraries and project structure" },
       { title: "Full", value: "full", description: "Complete setup with all recommended features" },
+      // FIXME: Add crypto-dash template when ready for production
+      // { title: "Crypto Dashboard", value: "crypto-dash", description: "Crypto wallet and dashboard with DeFi features" },
     ],
     initial: 0 // Default to Minimal
   });
@@ -750,6 +755,7 @@ async function copyTemplate(
     // Extract and normalize options
     const { useTailwind, useStateManagement = false, themeMode = 'dark' } = options;
     const templateType = template as 'minimal' | 'standard' | 'full';
+    // FIXME: Add 'crypto-dash' handling when ready: template as 'minimal' | 'standard' | 'full' | 'crypto-dash';
     
     // Get the current file's directory
     const currentDir = import.meta.dirname || '';
@@ -761,6 +767,11 @@ async function copyTemplate(
       join(process.cwd(), 'templates', templateType),       // Current directory path
       join(currentDir, '../../templates', templateType),    // Global install path
     ];
+    // FIXME: Add crypto-dash template paths when ready:
+    // - templates/crypto-dash should contain the DeFi dashboard template
+    // - Add wallet connection components
+    // - Add crypto portfolio tracking
+    // - Add NFT viewing capabilities
     
     // Create project directory if needed
     if (!existsSync(projectPath)) {
@@ -923,6 +934,7 @@ async function copyTemplateFiles(
   options: {
     useTailwind: boolean;
     complexity: 'minimal' | 'standard' | 'full';
+    // FIXME: Add 'crypto-dash' to complexity type when ready: 'minimal' | 'standard' | 'full' | 'crypto-dash'
     useStateManagement?: boolean;
     themeMode?: string;
     projectStructure?: 'app' | 'minimal' | 'root' | 'src'; 

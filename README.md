@@ -940,6 +940,7 @@ The framework is specially optimized for:
 
 ### Current State (v0.0.191)
 - ✅ Full React Hooks API compatibility
+- ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
 - ✅ Tailwind CSS v4 integration
@@ -952,9 +953,8 @@ The framework is specially optimized for:
 - ✅ Auto-context inference with directive validation
 
 ### Upcoming Features
-- 🔄 **Server Actions**: `"use server"` and `"use client"` directive support
-- 🔄 **Enhanced Error Boundaries**: React-error-boundary compatibility
-- 🔄 **Streaming SSR**: Server-side rendering with streaming
+- 🔄 **Enhanced Error Boundaries**: `React-error-boundary` & `next-error-boundary` compatibility
+- 🔄 **Streaming SSR**: Server-side rendering with streaming (in progress)
 - 🔄 **Edge Runtime**: Optimized edge deployment
 - 🚀 **Crypto Template**: Wallet Connect, NFT viewing, DeFi dashboard components
 
@@ -1066,7 +1066,7 @@ Please see our [Contributing Guidelines](https://github.com/Triex/0x1/blob/main/
 
 ## Pending Features
 
-Actual project intent is to allow development in Next/React styles-flows-APIs that everyone is used to, but allow devs to instantly spin up what usually takes hours of work, with the added benefit of Bun's speed and zero dependencies (magnitudes' faster than Next/React bolt in replacement).
+Actual project intent is to allow development in Next/React styles-flows-APIs that everyone is used to, but allow devs to instantly spin up what usually takes hours of work, with the added benefit of Bun's speed and zero overhead dependencies (magnitudes' faster than Next/React bolt in replacement).
 
 Another key point is that AI's understand Next/React, and can generate code for it. So this makes 0x1 a super speed way for vibe-coders to build websites, and apps as AI advances. (Currently quite stable for basics). Pending solid website & documentation.
 

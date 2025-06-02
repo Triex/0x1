@@ -3,6 +3,9 @@ node_modules
 **/node_modules
 templates/**/node_modules
 
+# In Progress
+templates/crypto-dash
+
 # Build artifacts
 dist
 **/dist

@@ -283,95 +283,566 @@ console.log('[0x1] Live reload fallback - could not load proper live-reload.js')
 }
 
 /**
- * Create JSX runtime script - loads our ONE SOURCE OF TRUTH runtime
+ * Create JSX runtime script - Modern React 19 / Next.js 15 compatible
  */
 function generateJsxRuntime(isDevRuntime: boolean = false): string {
   return `
-// 0x1 Framework JSX Runtime - Load ONE SOURCE OF TRUTH
-console.log('[0x1 JSX Runtime] Loading ONE SOURCE OF TRUTH JSX runtime');
+// 0x1 Framework JSX Runtime - React 19 / Next.js 15 Compatible
+console.log('[0x1 JSX Runtime] Loading modern JSX runtime');
 
-// Import our main JSX runtime (ONE SOURCE OF TRUTH)
-const loadMainJSXRuntime = async () => {
-  try {
-    // Load our unified JSX runtime
-    const jsxModule = await import('/jsx-runtime.js');
-    
-    // Make all functions globally available
-    Object.assign(window, jsxModule);
-    
-    // Ensure backward compatibility aliases
-    window.jsxToDom = jsxModule.renderToDOM;
-    window.__0x1_renderToDOM = jsxModule.renderToDOM;
-    
-    console.log('[0x1 JSX Runtime] ✅ ONE SOURCE OF TRUTH loaded successfully');
-    
-    // Signal that JSX runtime is ready
-    if (window.__0x1_polyfillLoadedCallback) {
-      window.__0x1_polyfillLoadedCallback();
-    }
-    
-    return jsxModule;
-  } catch (error) {
-    console.error('[0x1 JSX Runtime] ❌ Failed to load ONE SOURCE OF TRUTH:', error);
-    
-    // Fallback: minimal implementation for dev server
-    console.log('[0x1 JSX Runtime] Using minimal fallback implementation');
-    
-    const Fragment = Symbol.for('react.fragment');
-    const REACT_ELEMENT_TYPE = Symbol.for('react.element');
-    
-    const jsx = (type, config, maybeKey) => ({
-      $$typeof: REACT_ELEMENT_TYPE,
-      type,
-      key: maybeKey !== undefined ? '' + maybeKey : (config?.key !== undefined ? '' + config.key : null),
-      ref: config?.ref || null,
-      props: config || {}
-    });
-    
-    const jsxs = jsx;
-    const jsxDEV = jsx;
-    const createElement = jsx;
-    
-    const renderToDOM = (node) => {
-      if (!node) return null;
-      if (typeof node === 'string' || typeof node === 'number') {
-        return document.createTextNode(String(node));
-      }
-      if (typeof node === 'object' && node.$$typeof === REACT_ELEMENT_TYPE) {
-        const element = document.createElement(node.type === Fragment ? 'div' : node.type);
-        if (node.props) {
-          Object.entries(node.props).forEach(([key, value]) => {
-            if (key === 'children') {
-              if (Array.isArray(value)) {
-                value.forEach(child => {
-                  const childNode = renderToDOM(child);
-                  if (childNode) element.appendChild(childNode);
-                });
-              } else {
-                const childNode = renderToDOM(value);
-                if (childNode) element.appendChild(childNode);
-              }
-            } else if (key !== 'key' && key !== 'ref') {
-              element.setAttribute(key, value);
-            }
-          });
-        }
-        return element;
-      }
-      return null;
-    };
-    
-    // Make fallback available globally
-    Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
-    window.jsxToDom = renderToDOM;
-    window.__0x1_renderToDOM = renderToDOM;
-    
-    return { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM };
-  }
+// Core JSX symbols following React 19 standards - STANDARDIZED
+const REACT_ELEMENT_TYPE = Symbol.for('react.element');
+const REACT_FRAGMENT_TYPE = Symbol.for('react.fragment');
+const REACT_PROVIDER_TYPE = Symbol.for('react.provider');
+const REACT_CONTEXT_TYPE = Symbol.for('react.context');
+
+// Fragment symbol for JSX shorthand syntax - use React 19 standard
+const Fragment = REACT_FRAGMENT_TYPE;
+
+// MUCH SIMPLER HOOKS IMPLEMENTATION - Actually works like React
+const globalHooksState = {
+  components: new Map(),
+  currentComponent: null,
+  hookIndex: 0
 };
 
-// Load the runtime immediately
-loadMainJSXRuntime();
+// Component registry for reliable re-rendering
+const componentRegistry = new Map();
+let componentCounter = 0;
+
+/**
+ * Register a component for re-rendering
+ */
+function registerComponent(fn, props) {
+  const id = \`comp_\${++componentCounter}\`;
+  componentRegistry.set(id, { fn, props, element: null });
+  return id;
+}
+
+/**
+ * Simple, reliable useState implementation
+ */
+function useState(initialValue) {
+  // Delegate to hooks.ts implementation
+  if (typeof window !== 'undefined' && window.__0x1_hooks && window.__0x1_hooks.useState) {
+    return window.__0x1_hooks.useState(initialValue);
+  }
+  
+  // Fallback if hooks not loaded yet
+  throw new Error('[0x1 Hooks] useState not available - hooks system not initialized');
+}
+
+/**
+ * Simple, reliable useEffect implementation  
+ */
+function useEffect(callback, deps) {
+  // Delegate to hooks.ts implementation
+  if (typeof window !== 'undefined' && window.__0x1_hooks && window.__0x1_hooks.useEffect) {
+    return window.__0x1_hooks.useEffect(callback, deps);
+  }
+  
+  // Fallback if hooks not loaded yet
+  throw new Error('[0x1 Hooks] useEffect not available - hooks system not initialized');
+}
+
+/**
+ * Re-render a specific component
+ */
+function rerenderComponent(componentId) {
+  const componentState = globalHooksState.components.get(componentId);
+  if (!componentState || !componentState.renderFn) return;
+  
+  try {
+    // Find all elements with this component ID
+    const elements = document.querySelectorAll(\`[data-0x1-component="\${componentId}"]\`);
+    
+    elements.forEach(element => {
+      // Set up hooks context
+      globalHooksState.currentComponent = componentId;
+      globalHooksState.hookIndex = 0;
+      
+      try {
+        // Call the component function to get new result
+        const newResult = componentState.renderFn();
+        
+        // Convert to DOM
+        const newElement = renderToDOM(newResult);
+        
+        if (newElement && element.parentNode) {
+          // Preserve the component ID
+          if (newElement.setAttribute) {
+            newElement.setAttribute('data-0x1-component', componentId);
+          }
+          
+          // Replace the element
+          element.parentNode.replaceChild(newElement, element);
+        }
+      } catch (error) {
+        console.error('[0x1] Component re-render error:', error);
+      } finally {
+        // Clean up hooks context
+        globalHooksState.currentComponent = null;
+        globalHooksState.hookIndex = 0;
+      }
+    });
+  } catch (error) {
+    console.error('[0x1] Re-render error:', error);
+  }
+}
+
+/**
+ * Generate stable component ID
+ */
+function generateComponentId(type) {
+  const name = type.name || type.displayName || 'Anonymous';
+  return \`\${name}_\${Date.now()}_\${Math.random().toString(36).substr(2, 5)}\`;
+}
+
+/**
+ * Call component with hooks support
+ */
+function callComponentWithHooks(type, props) {
+  const componentId = generateComponentId(type);
+  
+  try {
+    // Set up hooks context
+    globalHooksState.currentComponent = componentId;
+    globalHooksState.hookIndex = 0;
+    
+    // Store the component function for re-rendering
+    if (!globalHooksState.components.has(componentId)) {
+      globalHooksState.components.set(componentId, { hooks: [], renderFn: null });
+    }
+    
+    const componentState = globalHooksState.components.get(componentId);
+    componentState.renderFn = () => type(props);
+    
+    // Call the component
+    const result = type(props);
+    
+    // Add component ID to result for DOM targeting
+    if (result && typeof result === 'object' && result.$$typeof === REACT_ELEMENT_TYPE) {
+      if (!result.props) result.props = {};
+      result.props['data-0x1-component'] = componentId;
+    }
+    
+    return result;
+  } finally {
+    // Clean up hooks context
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
+  }
+}
+
+/**
+ * Modern JSX factory function following React 19 automatic transform
+ */
+function jsx(type, config, maybeKey) {
+  let propName;
+  const props = {};
+  let key = null;
+  let ref = null;
+  
+  if (maybeKey !== undefined) {
+    key = '' + maybeKey;
+  }
+  
+  if (config != null) {
+    if (config.key !== undefined) {
+      key = '' + config.key;
+    }
+    
+    if (config.ref !== undefined) {
+      ref = config.ref;
+    }
+    
+    // Copy props from config
+    for (propName in config) {
+      if (
+        config.hasOwnProperty(propName) &&
+        propName !== 'key' &&
+        propName !== 'ref'
+      ) {
+        props[propName] = config[propName];
+      }
+    }
+  }
+  
+  // Handle Fragment using standardized symbol
+  if (type === Fragment || type === REACT_FRAGMENT_TYPE) {
+    return {
+      $$typeof: REACT_ELEMENT_TYPE,
+      type: REACT_FRAGMENT_TYPE,
+      key: key,
+      ref: null,
+      props: {
+        children: props.children
+      },
+      _owner: null
+    };
+  }
+  
+  // Handle function components
+  if (typeof type === 'function') {
+    return callComponentWithHooks(type, props);
+  }
+  
+  // Handle DOM elements - create proper React element structure
+  return {
+    $$typeof: REACT_ELEMENT_TYPE,
+    type: type,
+    key: key,
+    ref: ref,
+    props: props,
+    _owner: null
+  };
+}
+
+/**
+ * JSX factory for static children (React 19 automatic transform)
+ */
+function jsxs(type, config, maybeKey) {
+  return jsx(type, config, maybeKey);
+}
+
+/**
+ * Development JSX function with enhanced debugging
+ */
+function jsxDEV(type, config, maybeKey, isStaticChildren, source, self) {
+  const element = jsx(type, config, maybeKey);
+  
+  ${
+    isDevRuntime
+      ? `
+  // Add development-only properties
+  if (element && typeof element === 'object') {
+    if (source) {
+      element._source = source;
+    }
+    if (self !== undefined) {
+      element._self = self;
+    }
+  }
+  `
+      : ""
+  }
+  
+  return element;
+}
+
+/**
+ * Legacy createElement for React compatibility
+ */
+function createElement(type, config, ...children) {
+  let propName;
+  const props = {};
+  let key = null;
+  let ref = null;
+  
+  if (config != null) {
+    if (config.key !== undefined) {
+      key = '' + config.key;
+    }
+    
+    if (config.ref !== undefined) {
+      ref = config.ref;
+    }
+    
+    for (propName in config) {
+      if (
+        config.hasOwnProperty(propName) &&
+        propName !== 'key' &&
+        propName !== 'ref'
+      ) {
+        props[propName] = config[propName];
+      }
+    }
+  }
+  
+  // Handle children
+  const childrenLength = children.length;
+  if (childrenLength === 1) {
+    props.children = children[0];
+  } else if (childrenLength > 1) {
+    props.children = children;
+  }
+  
+  return jsx(type, props, key);
+}
+
+/**
+ * Render JSX to DOM with proper React 19 patterns
+ */
+function renderToDOM(element) {
+  if (typeof window === 'undefined') {
+    throw new Error('[0x1 JSX] renderToDOM can only be used in browser environment');
+  }
+  
+  if (!element) return null;
+  
+  // Handle primitives
+  if (typeof element === 'string' || typeof element === 'number') {
+    return document.createTextNode(String(element));
+  }
+  
+  if (typeof element === 'boolean' || element === null || element === undefined) {
+    return null;
+  }
+  
+  // Handle arrays (fragments)
+  if (Array.isArray(element)) {
+    const fragment = document.createDocumentFragment();
+    element.forEach(child => {
+      const childNode = renderToDOM(child);
+      if (childNode) fragment.appendChild(childNode);
+    });
+    return fragment;
+  }
+  
+  // Handle React elements
+  if (typeof element === 'object' && element.$$typeof === REACT_ELEMENT_TYPE) {
+    // Handle Fragment using standardized symbol
+    if (element.type === REACT_FRAGMENT_TYPE) {
+      const fragment = document.createDocumentFragment();
+      const children = element.props.children;
+      if (children) {
+        const childArray = Array.isArray(children) ? children : [children];
+        childArray.forEach(child => {
+          const childNode = renderToDOM(child);
+          if (childNode) fragment.appendChild(childNode);
+        });
+      }
+      return fragment;
+    }
+    
+    // Handle function components
+    if (typeof element.type === 'function') {
+      const result = callComponentWithHooks(element.type, element.props);
+      return renderToDOM(result);
+    }
+    
+    // Handle DOM elements - Fixed SVG handling
+    const tagName = element.type;
+    let domElement;
+    
+    // SVG elements need special namespace handling
+    const svgElements = new Set([
+      'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
+      'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
+      'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
+      'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
+    ]);
+    
+    if (svgElements.has(tagName)) {
+      domElement = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    } else {
+      domElement = document.createElement(tagName);
+    }
+    
+    // Set attributes and properties
+    Object.entries(element.props || {}).forEach(([key, value]) => {
+      if (key === 'children') return;
+      
+      if (key === 'className') {
+        // SVG elements need class attribute, not className property
+        if (svgElements.has(tagName)) {
+          domElement.setAttribute('class', String(value));
+        } else {
+          domElement.className = String(value);
+        }
+      } else if (key.startsWith('on') && typeof value === 'function') {
+        const eventName = key.slice(2).toLowerCase();
+        domElement.addEventListener(eventName, value);
+      } else if (key === 'style' && typeof value === 'object') {
+        Object.assign(domElement.style, value);
+      } else if (key === 'dangerouslySetInnerHTML' && value && value.__html) {
+        domElement.innerHTML = value.__html;
+        return; // Skip children processing
+      } else if (typeof value === 'boolean') {
+        if (value) domElement.setAttribute(key, '');
+      } else if (value != null) {
+        domElement.setAttribute(key, String(value));
+      }
+    });
+    
+    // Add children
+    const children = element.props.children;
+    if (children) {
+      const childArray = Array.isArray(children) ? children : [children];
+      childArray.forEach(child => {
+        const childNode = renderToDOM(child);
+        if (childNode) domElement.appendChild(childNode);
+      });
+    }
+    
+    return domElement;
+  }
+  
+  // Handle legacy JSX objects (fallback)
+  if (typeof element === 'object' && element.type) {
+    return renderToDOM({
+      $$typeof: REACT_ELEMENT_TYPE,
+      type: element.type,
+      props: element.props || {},
+      key: element.key,
+      ref: null,
+      _owner: null
+    });
+  }
+  
+  return null;
+}
+
+// Make functions globally available using standardized names
+if (typeof globalThis !== 'undefined') {
+  globalThis.jsx = jsx;
+  globalThis.jsxs = jsxs;
+  globalThis.jsxDEV = jsxDEV;
+  globalThis.createElement = createElement;
+  globalThis.Fragment = Fragment;
+  globalThis.renderToDOM = renderToDOM;
+  globalThis.useState = useState;
+  globalThis.useEffect = useEffect;
+  
+  // Initialize hooks system bridge
+  globalThis.__0x1_initHooks = function() {
+    // Load hooks.ts implementation
+    import('/0x1/hooks.js').then(hooksModule => {
+      globalThis.__0x1_hooks = hooksModule.default || hooksModule;
+      console.log('[0x1 JSX] Hooks system bridge initialized');
+    }).catch(error => {
+      console.warn('[0x1 JSX] Could not load hooks system:', error);
+    });
+  };
+  
+  // Auto-initialize hooks
+  setTimeout(() => globalThis.__0x1_initHooks(), 100);
+  
+  // Hooks context compatibility
+  globalThis.__0x1_hooksContext = globalHooksState;
+  try {
+  globalThis.__0x1_useState = useState;
+  } catch (e) {
+    // Property may already be defined as read-only, skip assignment
+    console.warn('[0x1 JSX] __0x1_useState already defined, skipping assignment');
+  }
+  try {
+  globalThis.__0x1_useEffect = useEffect;
+  } catch (e) {
+    // Property may already be defined as read-only, skip assignment
+    console.warn('[0x1 JSX] __0x1_useEffect already defined, skipping assignment');
+  }
+  globalThis.__0x1_enterComponentContext = (id) => {
+    globalHooksState.currentComponent = id;
+    globalHooksState.hookIndex = 0;
+  };
+  globalThis.__0x1_exitComponentContext = () => {
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
+  };
+}
+
+// Browser compatibility
+if (typeof window !== 'undefined') {
+  window.jsx = jsx;
+  window.jsxs = jsxs;
+  window.jsxDEV = jsxDEV;
+  window.createElement = createElement;
+  window.Fragment = Fragment;
+  window.renderToDOM = renderToDOM;
+  window.useState = useState;
+  window.useEffect = useEffect;
+  window.__0x1_renderToDOM = renderToDOM; // Add compatibility reference
+  
+  // Hooks context compatibility
+  window.__0x1_hooksContext = globalHooksState;
+  try {
+  window.__0x1_useState = useState;
+  } catch (e) {
+    // Property may already be defined as read-only, skip assignment
+    console.warn('[0x1 JSX] window.__0x1_useState already defined, skipping assignment');
+  }
+  try {
+  window.__0x1_useEffect = useEffect;
+  } catch (e) {
+    // Property may already be defined as read-only, skip assignment
+    console.warn('[0x1 JSX] window.__0x1_useEffect already defined, skipping assignment');
+  }
+  window.__0x1_enterComponentContext = (id) => {
+    globalHooksState.currentComponent = id;
+    globalHooksState.hookIndex = 0;
+  };
+  window.__0x1_exitComponentContext = () => {
+    globalHooksState.currentComponent = null;
+    globalHooksState.hookIndex = 0;
+  };
+  
+  // React compatibility layer
+  window.React = {
+    createElement,
+    Fragment,
+    jsx,
+    jsxs,
+    useState,
+    useEffect,
+    version: '19.0.0-0x1',
+    
+    // Modern React 19 APIs
+    use: function(promise) {
+      throw new Error('React.use() not implemented in 0x1 runtime');
+    },
+    
+    // Legacy APIs for compatibility
+    Component: class Component {
+      constructor(props) {
+        this.props = props;
+      }
+      render() {
+        throw new Error('Class components not supported in 0x1 runtime');
+      }
+    },
+    
+    PureComponent: class PureComponent {
+      constructor(props) {
+        this.props = props;
+      }
+      render() {
+        throw new Error('Class components not supported in 0x1 runtime');
+      }
+    }
+  };
+}
+
+${
+  isDevRuntime
+    ? `
+// Development-only features
+console.log('[0x1 JSX Dev] Development mode enabled');
+window.__0x1_dev = {
+  version: '0.1.0',
+  runtime: 'jsx-dev',
+  refresh: () => {
+    console.log('[0x1 JSX Dev] Refreshing...');
+    window.location.reload();
+  },
+  inspectElement: (element) => {
+    console.log('[0x1 JSX Dev] Element inspection:', element);
+    return element;
+  },
+  inspectHooks: () => {
+    console.log('[0x1 JSX Dev] Hooks state:', globalHooksState);
+    return globalHooksState;
+  }
+};
+`
+    : ""
+}
+
+console.log('[0x1 JSX Runtime] Modern runtime ready (React 19 compatible)');
+
+// CRITICAL: ES6 module exports for import statements
+// This fixes "The requested module '/0x1/jsx-runtime.js' does not provide an export named 'Fragment'" errors
+export { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM, useState, useEffect };
 `;
 }
 
@@ -1304,8 +1775,8 @@ Object.defineProperty(globalThis, '__0x1_hooks_getter', {
       ? Object.keys(window.React).filter(k => typeof window.React[k] === 'function')
       : 'React not available';
     
-    console.error('[0x1] Hook "' + hookName + '" not found. Available: ' + available);
-    throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+    console.error(\`[0x1] Hook "\${hookName}" not found. Available: \${available}\`);
+    throw new Error(\`[0x1] \${hookName} not available - hooks may not be loaded yet\`);
   },
   writable: false,
   enumerable: false
@@ -1426,29 +1897,18 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
         if (!isSystemPackage(packageName)) {
           logRequestStatus(200, reqPath, `🚀 Dynamic polyfill: ${packageName}`);
 
-          const polyfillCode = `
+          return new Response(
+            `
 // 0x1 Ultra-Dynamic Polyfill for ${packageName}
-console.log('[0x1 🚀] Auto-generating polyfill for: ' + '${packageName}');
+console.log('[0x1 🚀] Auto-generating polyfill for: ${packageName}');
 
 // =====================================================
-// INTELLIGENT EXPORT PATTERN DETECTION - IMMEDIATE EXECUTION
+// INTELLIGENT EXPORT PATTERN DETECTION
 // Works with ANY package - zero hardcoding!
 // =====================================================
 
-(function() {
-  // Wrap entire polyfill in IIFE for immediate execution
-
 function createIntelligentExport(name, packageContext) {
   const nameStr = String(name);
-  // Intelligent name analysis - semantic understanding
-  const nameLower = nameStr.toLowerCase();
-  const nameWords = nameLower.split(/(?=[A-Z])|[_-]/).filter(w => w);
-  
-  // Context analysis from package - PURE GENERIC DETECTION (no domain assumptions)
-  const isWebUILibrary = packageContext.includes('ui') || packageContext.includes('component');
-  const isStateLibrary = packageContext.includes('state') || packageContext.includes('store');
-  const isQueryLibrary = packageContext.includes('query') || packageContext.includes('fetch');
-  const isUtilityLibrary = packageContext.includes('util') || packageContext.includes('helper');
   
   // Pattern 1: React Hooks (use + PascalCase)
   if (/^use[A-Z]/.test(nameStr)) {
@@ -1464,21 +1924,26 @@ function createIntelligentExport(name, packageContext) {
         status: 'idle'
       };
       
-      // Generic pattern detection for different hook types - NO DOMAIN ASSUMPTIONS
-      if (/account|user|auth|profile/i.test(nameStr)) {
+      // Smart pattern detection for different hook types
+      if (/account|wallet|auth/i.test(nameStr)) {
         return { 
           ...base, 
-          data: undefined, 
-          isAuthenticated: false, 
-          status: 'unauthenticated'
+          address: undefined, 
+          isConnected: false, 
+          status: 'disconnected',
+          connector: null
         };
       }
       
-      if (/balance|amount|value|count/i.test(nameStr)) {
+      if (/balance|token|amount/i.test(nameStr)) {
         return { 
           ...base, 
-          data: 0,
-          formatted: '0'
+          data: { 
+            decimals: 18, 
+            formatted: '0.0', 
+            symbol: 'ETH', 
+            value: 0n 
+          }
         };
       }
       
@@ -1486,6 +1951,7 @@ function createIntelligentExport(name, packageContext) {
         return { 
           ...base, 
           connect: async () => console.log('[0x1]', nameStr, 'connect called'), 
+          connectors: [],
           isLoading: false
         };
       }
@@ -1519,7 +1985,7 @@ function createIntelligentExport(name, packageContext) {
   
   // Pattern 2: React Components (PascalCase)
   if (/^[A-Z]/.test(nameStr)) {
-    const componentFunction = function(props = {}) {
+    return function(props = {}) {
       console.log('[0x1 Component]', nameStr, 'from', packageContext, props);
       
       // =====================================================
@@ -1537,19 +2003,30 @@ function createIntelligentExport(name, packageContext) {
       const hasOpen = 'open' in props || 'show' in props || 'visible' in props;
       const hasHref = 'href' in props || 'to' in props;
       
+      // Intelligent name analysis - semantic understanding
+      const nameLower = nameStr.toLowerCase();
+      const nameWords = nameLower.split(/(?=[A-Z])|[_-]/).filter(w => w);
+      
+      // Context analysis from package
+      const isWebUILibrary = packageContext.includes('ui') || packageContext.includes('component');
+      const isStateLibrary = packageContext.includes('state') || packageContext.includes('store');
+      const isCryptoLibrary = packageContext.includes('wagmi') || packageContext.includes('rainbow') || 
+                            packageContext.includes('viem') || packageContext.includes('crypto');
+      const isQueryLibrary = packageContext.includes('query') || packageContext.includes('fetch');
+      
       // 🧠 INTELLIGENT BEHAVIOR DETECTION
       
-      // Provider/Context Pattern: Has children + ends with Provider/Context + from state/query libs
+      // Provider/Context Pattern: Has children + ends with Provider/Context + from state/crypto/query libs
       if (hasChildren && (nameWords.includes('provider') || nameWords.includes('context')) &&
-          (isStateLibrary || isQueryLibrary)) {
+          (isStateLibrary || isCryptoLibrary || isQueryLibrary)) {
         console.log('[0x1 AI] Detected Provider pattern:', nameStr, '- rendering children');
         
         // CRITICAL FIX: Return proper JSX object instead of DOM element
         return {
           type: 'div',
           props: {
-            className: nameLower + ' provider-component',
-            'data-component': nameStr,
+            className: \`\${nameLower}-provider provider-component\`,
+            'data-provider': nameStr,
             'data-package': packageContext,
             'data-component-id': nameStr + '_' + Math.random().toString(36).slice(2, 8),
             'data-component-name': nameStr,
@@ -1564,7 +2041,7 @@ function createIntelligentExport(name, packageContext) {
       if (hasOnClick || hasHref) {
         const tagName = hasHref ? 'a' : 'button';
         const elementProps = {
-          className: nameLower + ' ' + (props.className || ''),
+          className: \`\${nameLower} \${props.className || ''}\`,
           children: props.children || props.title || props.label || nameStr
         };
         
@@ -1576,12 +2053,12 @@ function createIntelligentExport(name, packageContext) {
           elementProps.onClick = props.onClick;
         }
         
-        // Generic styling based on context - no hardcoded domain assumptions
+        // Smart styling based on context
         if (!props.className) {
-          if (isWebUILibrary) {
+          if (isCryptoLibrary) {
+            elementProps.className += ' bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600';
+          } else if (isWebUILibrary) {
             elementProps.className += ' border rounded px-3 py-1 hover:bg-gray-100';
-          } else {
-            elementProps.className += ' px-4 py-2 rounded hover:bg-gray-100';
           }
         }
         
@@ -1600,7 +2077,7 @@ function createIntelligentExport(name, packageContext) {
       if (hasValue || hasPlaceholder || hasType || propKeys.some(k => k.toLowerCase().includes('change'))) {
         const inputProps = {
           type: props.type || 'text',
-          className: nameLower + ' border rounded px-3 py-2 ' + (props.className || '')
+          className: \`\${nameLower} border rounded px-3 py-2 \${props.className || ''}\`
         };
         
         if (hasPlaceholder) inputProps.placeholder = props.placeholder;
@@ -1692,7 +2169,7 @@ function createIntelligentExport(name, packageContext) {
         return {
           type: 'div',
           props: {
-            className: nameLower + ' ' + (props.className || ''),
+            className: \`\${nameLower} \${props.className || ''}\`,
             'data-component': nameStr,
             'data-package': packageContext
           },
@@ -1708,7 +2185,7 @@ function createIntelligentExport(name, packageContext) {
       return {
         type: 'div',
         props: {
-          className: nameLower + ' ' + (props.className || ''),
+          className: \`\${nameLower} \${props.className || ''}\`,
           'data-component': nameStr,
           'data-package': packageContext,
           'data-component-id': nameStr + '_' + Math.random().toString(36).slice(2, 8),
@@ -1727,7 +2204,7 @@ function createIntelligentExport(name, packageContext) {
                 children: [nameStr],
                 key: null
               },
-              isQueryLibrary ? {
+              isCryptoLibrary ? {
                 type: 'span',
                 props: {
                   className: 'text-blue-600'
@@ -1748,20 +2225,6 @@ function createIntelligentExport(name, packageContext) {
                 },
                 children: [' [State Component]'],
                 key: null
-              } : isWebUILibrary ? {
-                type: 'span',
-                props: {
-                  className: 'text-blue-600'
-                },
-                children: [' [UI Component]'],
-                key: null
-              } : isUtilityLibrary ? {
-                type: 'span',
-                props: {
-                  className: 'text-orange-600'
-                },
-                children: [' [Utility Component]'],
-                key: null
               } : null,
               {
                 type: 'br',
@@ -1774,7 +2237,7 @@ function createIntelligentExport(name, packageContext) {
                 props: {
                   className: 'text-gray-500'
                 },
-                children: ['from ' + packageContext],
+                children: [\`from \${packageContext}\`],
                 key: null
               }
             ].filter(Boolean), // Remove null elements
@@ -1784,352 +2247,229 @@ function createIntelligentExport(name, packageContext) {
         key: null
       };
     };
-
-    // 🚀 CRITICAL FIX: Special handling for RainbowKit ConnectButton.Custom
-    if (nameStr === 'ConnectButton' && packageContext.includes('rainbow')) {
-      componentFunction.Custom = function(props = {}) {
-        console.log('[0x1 RainbowKit] ConnectButton.Custom called with render prop:', typeof props.children);
-        
-        // RainbowKit ConnectButton.Custom uses a render prop pattern
-        // The children prop should be a function that receives wallet connection state
-        if (typeof props.children === 'function') {
-          // 🔧 ENHANCED: Real wallet connection functionality
-          const mockConnectionState = {
-            account: undefined,  // No account = not connected
-            chain: undefined,    // No chain = not connected
-            openAccountModal: () => {
-              console.log('[0x1 RainbowKit] Opening account modal');
-              // Show a real account modal or redirect to wallet management
-              if (typeof window !== 'undefined') {
-                alert('Account modal would open here in production. Connect your wallet first!');
-              }
-            },
-            openChainModal: () => {
-              console.log('[0x1 RainbowKit] Opening chain modal');
-              
-              // PURE 0x1: Just a generic modal placeholder - no hardcoded crypto logic
-              if (typeof window !== 'undefined') {
-                const selection = prompt('Chain selection would be handled by your app logic');
-                console.log('[0x1] Chain selection:', selection);
-              }
-            },
-            openConnectModal: () => {
-              console.log('[0x1 RainbowKit] Opening connect modal');
-              
-              // PURE 0x1: Generic modal placeholder - no hardcoded wallet logic
-              if (typeof window !== 'undefined') {
-                const selection = prompt('Wallet connection would be handled by your app logic');
-                console.log('[0x1] Wallet selection:', selection);
-              }
-            }
-          };
-          
-          // Call the render prop with disconnected state and return the result
-          return props.children(mockConnectionState);
-        }
-        
-        // Fallback if not used correctly
-        console.warn('[0x1 RainbowKit] ConnectButton.Custom requires children render prop function');
-        return {
-          type: 'button',
-          props: {
-            className: 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl',
-            onClick: () => {
-              console.log('[0x1 RainbowKit] Connect wallet clicked - launching connection flow');
-              if (typeof window !== 'undefined') {
-                alert('🔐 Click "Connect Wallet" button in the header to connect your wallet!');
-              }
-            }
-          },
-          children: ['Connect Wallet'],
-          key: null
-        };
-      }
-      
-      // =====================================================
-      // 🚀 INTELLIGENT RENDER PROP PATTERN DETECTION
-      // Zero hardcoding - works with ANY library using render props
-      // =====================================================
-      
-      // Intelligent pattern analysis for components that might need sub-components
-      const hasRenderPropIndicators = nameWords.some(word => 
-        word.includes('button') || word.includes('connect') || word.includes('custom') || 
-        word.includes('render') || word.includes('provider') || word.includes('modal')
-      );
-      
-      // Detect if this might be a compound component (Component.SubComponent pattern)
-      const mightNeedSubComponents = hasRenderPropIndicators || 
-        nameWords.some(word => word.includes('button') || word.includes('connect') || word.includes('provider'));
-      
-      if (mightNeedSubComponents) {
-        // 🧠 INTELLIGENT: Add common sub-component patterns automatically
-        const intelligentSubComponents = ['Custom', 'Trigger', 'Content', 'Modal', 'Dropdown', 'Item'];
-        
-        intelligentSubComponents.forEach(subName => {
-          componentFunction[subName] = function(props = {}) {
-            // 🚀 ZERO HARDCODING: Intelligent render prop detection
-            if (typeof props.children === 'function') {
-              console.log('[0x1 AI] Detected render prop pattern: ' + nameStr + '.' + subName);
-              
-              // 🧠 INTELLIGENT: Analyze context to provide appropriate mock state
-              const isConnectButton = nameStr.toLowerCase().includes('connect') && 
-                                    (subName === 'Custom' || nameWords.includes('button'));
-              
-              if (isConnectButton) {
-                // Intelligent connection state - default to disconnected for better UX
-                const mockState = {
-                  account: undefined,
-                  chain: undefined,
-                  openAccountModal: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' account modal'),
-                  openChainModal: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' chain modal'),
-                  openConnectModal: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' connect modal - user can connect real wallet'),
-                  authenticationStatus: undefined,
-                  mounted: true
-                };
-                
-                return props.children(mockState);
-              }
-              
-              // Generic render prop mock for other patterns
-              const genericMockState = {
-                isOpen: false,
-                isConnected: false,
-                isLoading: false,
-                data: null,
-                error: null,
-                open: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' open'),
-                close: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' close'),
-                toggle: () => console.log('[0x1 AI] ' + nameStr + '.' + subName + ' toggle'),
-                _0x1Generated: true
-              };
-              
-              return props.children(genericMockState);
-            }
-            
-            // Fallback: Regular component without render prop
-            return {
-              type: 'div',
-              props: {
-                className: nameLower + '-' + subName.toLowerCase() + ' ' + (props.className || ''),
-                'data-component': nameStr + '.' + subName,
-                'data-package': packageContext,
-                'data-component-id': nameStr + '_' + subName + '_' + Math.random().toString(36).slice(2, 8),
-                children: props.children || nameStr + ' ' + subName
-              },
-              children: props.children || [nameStr + ' ' + subName],
-              key: null
-            };
-          };
-        });
-        
-        console.log('[0x1 AI] Enhanced ' + nameStr + ' with intelligent sub-components: ' + intelligentSubComponents.join(', '));
-      }
-      
-      return componentFunction;
-    }
-    
-    // Pattern 3: Utility Functions (camelCase)
-    if (/^[a-z]/.test(nameStr)) {
-      // Config/setup functions
-      if (/config|setup|init|create/i.test(nameStr)) {
-        return function(options = {}) {
-          console.log('[0x1 Config]', nameStr, 'from', packageContext, options);
-          return {
-            ...options,
-            _0x1Generated: true,
-            _package: packageContext
-          };
-        };
-      }
-      
-      // Storage/persistence
-      if (/storage|persist|cache/i.test(nameStr)) {
-        return {
-          getItem: (key) => {
-            console.log('[0x1 Storage]', nameStr, 'getItem', key);
-            return null;
-          },
-          setItem: (key, value) => {
-            console.log('[0x1 Storage]', nameStr, 'setItem', key, value);
-          },
-          removeItem: (key) => {
-            console.log('[0x1 Storage]', nameStr, 'removeItem', key);
-          },
-          clear: () => {
-            console.log('[0x1 Storage]', nameStr, 'clear');
-          },
-          length: 0
-        };
-      }
-      
-      // Generic utility function
-      return function(...args) {
-        console.log('[0x1 Utility]', nameStr, 'from', packageContext, args);
-        return args[0] || {};
-      };
-    }
-    // 🚀 PURE INTELLIGENT PATTERN DETECTION - NO HARDCODING!
-    // Pattern 4: Constants/Objects - INTELLIGENT DETECTION
-    if (/^[A-Z_]+$/.test(nameStr) || nameStr.includes('Config') || nameStr.includes('Constant')) {
-      
-      // 🧠 INTELLIGENT CONSTANT ANALYSIS
-      // Context-aware constant generation
-      const constantValue = {
-        id: Math.floor(Math.random() * 1000) + 1,
-        name: nameStr,
-        _package: packageContext,
-        _0x1Generated: true,
-        _detectedPattern: 'constant'
-      };
-      
-      // Config Pattern Detection
-      if (nameWords.some(word => word.includes('config') || word.includes('setting'))) {
-        console.log('[0x1 AI] Detected Configuration:', nameStr);
-        return {
-          ...constantValue,
-          _detectedAs: 'configuration',
-          // Generic config structure based on package context
-          ...(isQueryLibrary ? {
-            defaultOptions: {},
-            queryClient: null
-          } : isStateLibrary ? {
-            store: {},
-            initialState: {}
-          } : isWebUILibrary ? {
-            theme: 'default',
-            components: {}
-          } : {
-            settings: {},
-            options: {}
-          })
-        };
-      }
-      
-      console.log('[0x1 AI] Generated Intelligent Constant:', nameStr, constantValue);
-      return constantValue;
-    }
-    
-    // Fallback: Dynamic proxy for unknown patterns
-    return new Proxy(function(...args) {
-      console.log('[0x1 Unknown]', nameStr, 'from', packageContext, args);
-      return args[0] || {};
-    }, {
-      get(target, prop) {
-        if (prop === 'toString') return () => '[0x1 Generated: ' + nameStr + ']';
-        if (prop === 'valueOf') return () => nameStr;
-        return createIntelligentExport(prop, packageContext + '.' + nameStr);
-      }
-    });
   }
-
-  // =====================================================
-  // ULTRA-DYNAMIC NAMESPACE CREATION
-  // =====================================================
-
-  const intelligentNamespace = new Proxy({}, {
-    get(target, prop) {
-      // Handle special symbols
-      if (typeof prop === 'symbol') {
-        if (prop === Symbol.toStringTag) return 'Module';
-        if (prop === Symbol.iterator) return undefined;
-        return undefined;
-      }
-      
-      // Handle __esModule flag
-      if (prop === '__esModule') return true;
-      
-      // DEBUG: Log what's being accessed
-      console.log('[0x1 DEBUG] Accessing:', prop, 'from polyfill for ' + '${packageName}');
-      
-      // Cache the export to avoid recreating
-      if (!target[prop]) {
-        target[prop] = createIntelligentExport(prop, '${packageName}');
-        console.log('[0x1 DEBUG] Created export:', prop, 'type:', typeof target[prop]);
-      }
-      
-      return target[prop];
-    },
-    
-    has(target, prop) {
-      // Always return true to indicate any export is available
-      return true;
-    },
-    
-    ownKeys(target) {
-      // Return common export names that might be expected
-      return ['default', '__esModule'];
-    },
-    
-    getOwnPropertyDescriptor(target, prop) {
-      return {
-        enumerable: true,
-        configurable: true,
-        get: () => this.get(target, prop)
+  
+  // Pattern 3: Utility Functions (camelCase)
+  if (/^[a-z]/.test(nameStr)) {
+    // Config/setup functions
+    if (/config|setup|init|create/i.test(nameStr)) {
+      return function(options = {}) {
+        console.log('[0x1 Config]', nameStr, 'from', packageContext, options);
+        return {
+          ...options,
+          _0x1Generated: true,
+          _package: packageContext
+        };
       };
+    }
+    
+    // Storage/persistence
+    if (/storage|persist|cache/i.test(nameStr)) {
+      return {
+        getItem: (key) => {
+          console.log('[0x1 Storage]', nameStr, 'getItem', key);
+          return null;
+        },
+        setItem: (key, value) => {
+          console.log('[0x1 Storage]', nameStr, 'setItem', key, value);
+        },
+        removeItem: (key) => {
+          console.log('[0x1 Storage]', nameStr, 'removeItem', key);
+        },
+        clear: () => {
+          console.log('[0x1 Storage]', nameStr, 'clear');
+        },
+        length: 0
+      };
+    }
+    
+    // Generic utility function
+    return function(...args) {
+      console.log('[0x1 Utility]', nameStr, 'from', packageContext, args);
+      return args[0] || {};
+    };
+  }
+  // 🚀 PURE INTELLIGENT PATTERN DETECTION - NO HARDCODING!
+  // Pattern 4: Constants/Objects - INTELLIGENT DETECTION
+  if (/^[A-Z_]+$/.test(nameStr) || nameStr.includes('Config') || nameStr.includes('Constant')) {
+    
+    // 🧠 INTELLIGENT CONSTANT ANALYSIS
+    const nameLower = nameStr.toLowerCase();
+    const nameWords = nameLower.split(/[_-]/).filter(w => w);
+    
+    // Context-aware constant generation
+    const constantValue = {
+      id: Math.floor(Math.random() * 1000) + 1,
+      name: nameStr,
+      _package: packageContext,
+      _0x1Generated: true,
+      _detectedPattern: 'constant'
+    };
+    
+    // Blockchain/Network Pattern Detection (intelligent, not hardcoded)
+    const hasNetworkIndicators = nameWords.some(word => 
+      word.length > 3 && (
+        word.endsWith('net') || word.endsWith('chain') || 
+        word.includes('test') || word.includes('main') ||
+        word.includes('layer') || word.includes('ethereum') ||
+        word.includes('polygon') || word.includes('arbitrum')
+      )
+    );
+    
+    const hasCryptoContext = packageContext.includes('wagmi') || 
+                            packageContext.includes('viem') || 
+                            packageContext.includes('ethers') ||
+                            packageContext.includes('web3');
+    
+    if (hasNetworkIndicators && hasCryptoContext) {
+      // Intelligent chain/network constant generation
+      const chainId = nameLower.includes('main') ? 1 : 
+                     nameLower.includes('test') || nameLower.includes('sepolia') ? 11155111 :
+                     nameLower.includes('polygon') ? 137 :
+                     nameLower.includes('arbitrum') ? 42161 :
+                     Math.floor(Math.random() * 1000) + 1;
+      
+      console.log('[0x1 AI] Detected Blockchain Network:', nameStr, 'chainId:', chainId);
+      return {
+        ...constantValue,
+        id: chainId,
+        name: nameStr.replace(/[_-]/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        rpcUrls: { 
+          default: { http: [\`http://localhost:8545\`] },
+          public: { http: [\`http://localhost:8545\`] }
+        },
+        nativeCurrency: { 
+          name: nameLower.includes('polygon') ? 'MATIC' : 'ETH', 
+          symbol: nameLower.includes('polygon') ? 'MATIC' : 'ETH', 
+          decimals: 18 
+        },
+        blockExplorers: {
+          default: { name: 'Explorer', url: \`https://etherscan.io\` }
+        },
+        contracts: {},
+        testnet: nameLower.includes('test') || nameLower.includes('sepolia') || nameLower.includes('goerli'),
+        _detectedAs: 'blockchain_network'
+      };
+    }
+    
+    // Config Pattern Detection
+    if (nameWords.some(word => word.includes('config') || word.includes('setting'))) {
+      console.log('[0x1 AI] Detected Configuration:', nameStr);
+      return {
+        ...constantValue,
+        _detectedAs: 'configuration',
+        // Smart config structure based on package context
+        ...(isCryptoLibrary ? {
+          chains: [],
+          transports: {},
+          connectors: []
+        } : isQueryLibrary ? {
+          defaultOptions: {},
+          queryClient: null
+        } : {
+          theme: 'default',
+          settings: {}
+        })
+      };
+    }
+    
+    console.log('[0x1 AI] Generated Intelligent Constant:', nameStr, constantValue);
+    return constantValue;
+  }
+  
+  // Fallback: Dynamic proxy for unknown patterns
+  return new Proxy(function(...args) {
+    console.log('[0x1 Unknown]', nameStr, 'from', packageContext, args);
+    return args[0] || {};
+  }, {
+    get(target, prop) {
+      if (prop === 'toString') return () => \`[0x1 Generated: \${nameStr}]\`;
+      if (prop === 'valueOf') return () => nameStr;
+      return createIntelligentExport(prop, \`\${packageContext}.\${nameStr}\`);
     }
   });
+}
 
-  // =====================================================
-  // MODULE EXPORTS - BROWSER COMPATIBLE (NO ES MODULES)
-  // =====================================================
+// =====================================================
+// ULTRA-DYNAMIC NAMESPACE CREATION
+// =====================================================
 
-  // Make available globally for non-module scripts
-  if (typeof globalThis !== 'undefined') {
-    globalThis['__0x1_polyfill_' + '${packageName}'.replace(/[^a-zA-Z0-9]/g, "_")] = intelligentNamespace;
-    globalThis['${packageName}'] = intelligentNamespace; // Direct package name access
+const intelligentNamespace = new Proxy({}, {
+  get(target, prop) {
+    // Handle special symbols
+    if (typeof prop === 'symbol') {
+      if (prop === Symbol.toStringTag) return 'Module';
+      if (prop === Symbol.iterator) return undefined;
+      return undefined;
+    }
     
-    // Auto-generate all possible naming variations
-    const packageParts = '${packageName}'.split('/').filter(p => p);
-    const lastPart = packageParts[packageParts.length - 1];
-    const cleanName = lastPart.replace(/[-_]/g, '');
+    // Handle __esModule flag
+    if (prop === '__esModule') return true;
     
-    // Dynamic package name access
-    globalThis[lastPart] = intelligentNamespace; // Last part of package name
-    globalThis[cleanName] = intelligentNamespace; // Clean version
-    globalThis[cleanName.charAt(0).toUpperCase() + cleanName.slice(1)] = intelligentNamespace; // PascalCase
+    // DEBUG: Log what's being accessed
+    console.log('[0x1 DEBUG] Accessing:', prop, 'from polyfill for ${packageName}');
     
-    console.log('[0x1 DEBUG] Set globalThis polyfill for ' + '${packageName}');
+    // Cache the export to avoid recreating
+    if (!target[prop]) {
+      target[prop] = createIntelligentExport(prop, '${packageName}');
+      console.log('[0x1 DEBUG] Created export:', prop, 'type:', typeof target[prop]);
+    }
+    
+    return target[prop];
+  },
+  
+  has(target, prop) {
+    // Always return true to indicate any export is available
+    return true;
+  },
+  
+  ownKeys(target) {
+    // Return common export names that might be expected
+    return ['default', '__esModule'];
+  },
+  
+  getOwnPropertyDescriptor(target, prop) {
+    return {
+      enumerable: true,
+      configurable: true,
+      get: () => this.get(target, prop)
+    };
   }
+});
 
-  if (typeof window !== 'undefined') {
-    window['__0x1_polyfill_' + '${packageName}'.replace(/[^a-zA-Z0-9]/g, "_")] = intelligentNamespace;
-    window['${packageName}'] = intelligentNamespace; // Direct package name access
-    
-    // PURE INTELLIGENCE: Auto-generate all possible naming variations  
-    const packageParts = '${packageName}'.split('/').filter(p => p);
-    const lastPart = packageParts[packageParts.length - 1];
-    const cleanName = lastPart.replace(/[-_]/g, '');
-    
-    // Dynamic naming without hardcoding specific packages
-    window[lastPart] = intelligentNamespace; // Last part of package name
-    window[cleanName] = intelligentNamespace; // Clean version
-    window[cleanName.charAt(0).toUpperCase() + cleanName.slice(1)] = intelligentNamespace; // PascalCase
-    
-    console.log('[0x1 DEBUG] Set window polyfill for ' + '${packageName}');
-  }
+// =====================================================
+// MODULE EXPORTS - ES6 AND COMMONJS COMPATIBLE
+// =====================================================
 
-  // Set as CommonJS module for compatibility
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = intelligentNamespace;
-    module.exports.default = intelligentNamespace;
-    module.exports.__esModule = true;
-  }
+// Default export (most packages have this)
+export default intelligentNamespace;
 
-console.log('[0x1 ✨] Ultra-dynamic polyfill ready for ' + '${packageName}');
+// Named exports (for specific imports)
+export const __esModule = true;
+
+// Make available globally for non-module scripts
+if (typeof globalThis !== 'undefined') {
+  globalThis['__0x1_polyfill_${packageName.replace(/[^a-zA-Z0-9]/g, "_")}'] = intelligentNamespace;
+  console.log('[0x1 DEBUG] Set globalThis polyfill for ${packageName} at key:', '__0x1_polyfill_${packageName.replace(/[^a-zA-Z0-9]/g, "_")}');
+}
+
+if (typeof window !== 'undefined') {
+  window['__0x1_polyfill_${packageName.replace(/[^a-zA-Z0-9]/g, "_")}'] = intelligentNamespace;
+  console.log('[0x1 DEBUG] Set window polyfill for ${packageName} at key:', '__0x1_polyfill_${packageName.replace(/[^a-zA-Z0-9]/g, "_")}');
+}
+
+console.log('[0x1 ✨] Ultra-dynamic polyfill ready for ${packageName}');
 console.log('[0x1 📦] Pattern detection: hooks, components, utilities, constants');
 console.log('[0x1 🎯] Zero hardcoding - works with ANY npm package!');
-
-// CRITICAL FIX: Global assignment done - no return needed in IIFE
-})();
-`;
-
-          return new Response(polyfillCode, {
-            status: 200,
-            headers: {
-              "Content-Type": "application/javascript; charset=utf-8",
-              "Cache-Control": "no-cache, no-store, must-revalidate",
-            },
-          });
+`,
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/javascript; charset=utf-8",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+              },
+            }
+          );
         }
       }
 
@@ -2223,15 +2563,8 @@ throw new Error('0x1 Router failed to load: ${error}');
         const linkComponent = `
 // 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility
 function Link({ href, children, className, target, rel, ...props }) {
-  // CRITICAL FIX: Properly handle children for 0x1 JSX runtime
-  // Convert all children types to proper JSX elements
-  const processedChildren = (() => {
-    if (children === undefined || children === null) return [];
-    if (typeof children === 'string' || typeof children === 'number') return [children];
-    if (Array.isArray(children)) return children.flat().filter(c => c != null);
-    return [children];
-  })();
-  
+  // Ensure proper JSX element structure for 0x1 runtime
+  // Remove onClick handler to let the router handle navigation through its global click handler
   return {
     $$typeof: Symbol.for('react.element'),
     type: 'a',
@@ -2241,53 +2574,25 @@ function Link({ href, children, className, target, rel, ...props }) {
       target,
       rel,
       ...props,
-      onClick: (e) => {
-        // Handle client-side navigation for internal links
-        if (href.startsWith('/') && !target) {
-          e.preventDefault();
-          if (window.router) {
-            window.router.navigate(href);
-          } else {
-            window.history.pushState(null, '', href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        }
-        // Call original onClick if provided
-        if (props.onClick) {
-          props.onClick(e);
-        }
-      }
+      children
+      // No onClick handler - let the router's global click handler manage navigation
     },
-    children: processedChildren,
     key: null,
     ref: null,
     _owner: null
   };
 }
 
-// CRITICAL FIX: Export default Link for ES module imports
-Link.default = Link;
-Link.__esModule = true;
-
 // Make Link globally available
-if (typeof window !== 'undefined') {
-  window.Link = Link;
-}
-if (typeof globalThis !== 'undefined') {
-  globalThis.Link = Link;
-}
+window.Link = Link;
+globalThis.Link = Link;
 
-// Browser-compatible module assignment with default export
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = Link;
-  module.exports.default = Link;
-  module.exports.Link = Link;
-  module.exports.__esModule = true;
-}
-
-// For ES module imports: export default Link
-export default Link;
+// Named export for compatibility
 export { Link };
+
+// Export as both default and named for maximum compatibility
+export default Link;
+export const LinkComponent = Link;
 `;
 
         return new Response(linkComponent, {
@@ -2310,32 +2615,17 @@ export { Link };
         const shimCode = `// 0x1 Framework - useSyncExternalStoreWithSelector shim
 // Enhanced implementation for React 19 compatibility
 
-// CRITICAL FIX: Use import function instead of ES module import for browser compatibility
-const importReact = async () => {
-  if (window.React && window.React.useSyncExternalStore) {
-    return window.React;
-  }
-  // Fallback: try dynamic import
-  try {
-    return await import('/node_modules/react/index.js');
-  } catch (e) {
-    console.warn('[0x1] Could not import React, using polyfill');
-    return { useSyncExternalStore: () => null };
-  }
-};
+import { useSyncExternalStore } from '/node_modules/react/index.js';
 
-// Create the function
-async function useSyncExternalStoreWithSelector(
+export function useSyncExternalStoreWithSelector(
   subscribe,
   getSnapshot,
   getServerSnapshot,
   selector,
   isEqual
 ) {
-  const React = await importReact();
-  
   // Get the full state using React's built-in hook
-  const state = React.useSyncExternalStore(
+  const state = useSyncExternalStore(
     subscribe,
     getSnapshot,
     getServerSnapshot || (() => getSnapshot())
@@ -2345,19 +2635,8 @@ async function useSyncExternalStoreWithSelector(
   return selector ? selector(state) : state;
 }
 
-// Browser-compatible assignment (no ES module exports)
-if (typeof window !== 'undefined') {
-  window.useSyncExternalStoreWithSelector = useSyncExternalStoreWithSelector;
-}
-if (typeof globalThis !== 'undefined') {
-  globalThis.useSyncExternalStoreWithSelector = useSyncExternalStoreWithSelector;
-}
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = useSyncExternalStoreWithSelector;
-  module.exports.default = useSyncExternalStoreWithSelector;
-  module.exports.useSyncExternalStoreWithSelector = useSyncExternalStoreWithSelector;
-  module.exports.__esModule = true;
-}
+// Default export for CommonJS compatibility
+export default useSyncExternalStoreWithSelector;
 
 console.log('[0x1] useSyncExternalStoreWithSelector shim loaded successfully');
 `;
@@ -2416,37 +2695,15 @@ module.exports = process;
 
         const scrollBarConstants = `
 // react-remove-scroll-bar constants polyfill
-const zeroRightClassName = '__right-0';
-const fullWidthClassName = '__width-full';
-const noScrollbarsClassName = '__no-scrollbars';
+export const zeroRightClassName = '__right-0';
+export const fullWidthClassName = '__width-full';
+export const noScrollbarsClassName = '__no-scrollbars';
 
-const scrollBarConstants = {
+export default {
   zeroRightClassName,
   fullWidthClassName, 
   noScrollbarsClassName
 };
-
-// Browser-compatible assignment (no ES module exports)
-if (typeof window !== 'undefined') {
-  window.zeroRightClassName = zeroRightClassName;
-  window.fullWidthClassName = fullWidthClassName;
-  window.noScrollbarsClassName = noScrollbarsClassName;
-  window.scrollBarConstants = scrollBarConstants;
-}
-if (typeof globalThis !== 'undefined') {
-  globalThis.zeroRightClassName = zeroRightClassName;
-  globalThis.fullWidthClassName = fullWidthClassName;
-  globalThis.noScrollbarsClassName = noScrollbarsClassName;
-  globalThis.scrollBarConstants = scrollBarConstants;
-}
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = scrollBarConstants;
-  module.exports.default = scrollBarConstants;
-  module.exports.zeroRightClassName = zeroRightClassName;
-  module.exports.fullWidthClassName = fullWidthClassName;
-  module.exports.noScrollbarsClassName = noScrollbarsClassName;
-  module.exports.__esModule = true;
-}
 `;
 
         return new Response(scrollBarConstants, {
@@ -2471,71 +2728,71 @@ if (typeof module !== 'undefined' && module.exports) {
 // Covers fs constants, os constants, and common Node.js constants
 
 // File system constants
-const O_RDONLY = 0;
-const O_WRONLY = 1;
-const O_RDWR = 2;
-const O_CREAT = 64;
-const O_EXCL = 128;
-const O_NOCTTY = 256;
-const O_TRUNC = 512;
-const O_APPEND = 1024;
-const O_DIRECTORY = 65536;
-const O_NOATIME = 262144;
-const O_NOFOLLOW = 131072;
-const O_SYNC = 1052672;
-const O_SYMLINK = 2097152;
-const O_DIRECT = 16384;
-const O_NONBLOCK = 2048;
+export const O_RDONLY = 0;
+export const O_WRONLY = 1;
+export const O_RDWR = 2;
+export const O_CREAT = 64;
+export const O_EXCL = 128;
+export const O_NOCTTY = 256;
+export const O_TRUNC = 512;
+export const O_APPEND = 1024;
+export const O_DIRECTORY = 65536;
+export const O_NOATIME = 262144;
+export const O_NOFOLLOW = 131072;
+export const O_SYNC = 1052672;
+export const O_SYMLINK = 2097152;
+export const O_DIRECT = 16384;
+export const O_NONBLOCK = 2048;
 
-const S_IFMT = 61440;
-const S_IFREG = 32768;
-const S_IFDIR = 16384;
-const S_IFCHR = 8192;
-const S_IFBLK = 24576;
-const S_IFIFO = 4096;
-const S_IFLNK = 40960;
-const S_IFSOCK = 49152;
-const S_ISUID = 2048;
-const S_ISGID = 1024;
-const S_ISVTX = 512;
-const S_IRUSR = 256;
-const S_IWUSR = 128;
-const S_IXUSR = 64;
-const S_IRGRP = 32;
-const S_IWGRP = 16;
-const S_IXGRP = 8;
-const S_IROTH = 4;
-const S_IWOTH = 2;
-const S_IXOTH = 1;
+export const S_IFMT = 61440;
+export const S_IFREG = 32768;
+export const S_IFDIR = 16384;
+export const S_IFCHR = 8192;
+export const S_IFBLK = 24576;
+export const S_IFIFO = 4096;
+export const S_IFLNK = 40960;
+export const S_IFSOCK = 49152;
+export const S_ISUID = 2048;
+export const S_ISGID = 1024;
+export const S_ISVTX = 512;
+export const S_IRUSR = 256;
+export const S_IWUSR = 128;
+export const S_IXUSR = 64;
+export const S_IRGRP = 32;
+export const S_IWGRP = 16;
+export const S_IXGRP = 8;
+export const S_IROTH = 4;
+export const S_IWOTH = 2;
+export const S_IXOTH = 1;
 
-const F_OK = 0;
-const R_OK = 4;
-const W_OK = 2;
-const X_OK = 1;
+export const F_OK = 0;
+export const R_OK = 4;
+export const W_OK = 2;
+export const X_OK = 1;
 
 // OS Constants
-const UV_UDP_REUSEADDR = 4;
+export const UV_UDP_REUSEADDR = 4;
 
 // Error constants
-const E2BIG = 7;
-const EACCES = 13;
-const EADDRINUSE = 98;
-const EADDRNOTAVAIL = 99;
-const EAFNOSUPPORT = 97;
-const EAGAIN = 11;
-const EALREADY = 114;
-const EBADF = 9;
-const EBADMSG = 74;
-const EBUSY = 16;
-const ECANCELED = 125;
+export const E2BIG = 7;
+export const EACCES = 13;
+export const EADDRINUSE = 98;
+export const EADDRNOTAVAIL = 99;
+export const EAFNOSUPPORT = 97;
+export const EAGAIN = 11;
+export const EALREADY = 114;
+export const EBADF = 9;
+export const EBADMSG = 74;
+export const EBUSY = 16;
+export const ECANCELED = 125;
 
 // Priority constants  
-const PRIORITY_LOW = 19;
-const PRIORITY_BELOW_NORMAL = 10;
-const PRIORITY_NORMAL = 0;
-const PRIORITY_ABOVE_NORMAL = -7;
-const PRIORITY_HIGH = -14;
-const PRIORITY_HIGHEST = -20;
+export const PRIORITY_LOW = 19;
+export const PRIORITY_BELOW_NORMAL = 10;
+export const PRIORITY_NORMAL = 0;
+export const PRIORITY_ABOVE_NORMAL = -7;
+export const PRIORITY_HIGH = -14;
+export const PRIORITY_HIGHEST = -20;
 
 // Default export object
 const constants = {
@@ -2552,25 +2809,16 @@ const constants = {
   PRIORITY_HIGH, PRIORITY_HIGHEST
 };
 
-// Browser-compatible assignment (no ES module exports)
-if (typeof window !== 'undefined') {
-  // Assign individual constants
-  Object.assign(window, constants);
-  window.constants = constants;
-}
-if (typeof globalThis !== 'undefined') {
-  Object.assign(globalThis, constants);
-  globalThis.constants = constants;
-  globalThis.__0x1_constants = constants;
-}
+export default constants;
 
 // CommonJS compatibility for packages that expect require('constants')
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = constants;
-  module.exports.default = constants;
-  module.exports.__esModule = true;
-  // Assign individual constants to module.exports
-  Object.assign(module.exports, constants);
+}
+
+// Global constants for backwards compatibility
+if (typeof globalThis !== 'undefined') {
+  globalThis.__0x1_constants = constants;
 }
 `;
 
@@ -3474,7 +3722,7 @@ async function preloadDependencies() {
             break;
           }
         } catch (error) {
-          // SILENT: Expected 404s during discovery - don't log as errors
+          // Continue trying other extensions
           continue;
         }
       }
@@ -3813,13 +4061,13 @@ async function preloadDependencies() {
   
   // Method 2: Component-specific retry callbacks (for components in loading states)
   if (typeof window !== 'undefined' && window.__0x1_componentRetryCallbacks) {
-    console.log('[0x1 App] 🔄 Executing ' + window.__0x1_componentRetryCallbacks.length + ' component retry callbacks');
+    console.log(\`[0x1 App] 🔄 Executing \${window.__0x1_componentRetryCallbacks.length} component retry callbacks\`);
     window.__0x1_componentRetryCallbacks.forEach((callback, index) => {
       try {
-        console.log('[0x1 App] 🔄 Executing retry callback ' + (index + 1));
+        console.log(\`[0x1 App] 🔄 Executing retry callback \${index + 1}\`);
         callback();
       } catch (error) {
-        console.error('[0x1 App] Error in retry callback ' + (index + 1) + ':', error);
+        console.error(\`[0x1 App] Error in retry callback \${index + 1}:\`, error);
       }
     });
     // Clear callbacks after execution
@@ -3857,14 +4105,14 @@ async function preloadDependencies() {
   if (typeof window !== 'undefined') {
     // Find all components in the DOM and trigger their re-render
     const allComponents = document.querySelectorAll('[data-component-id]');
-    console.log('[0x1 App] Found ' + allComponents.length + ' components in DOM to re-render');
+    console.log(\`[0x1 App] Found \${allComponents.length} components in DOM to re-render\`);
     
     allComponents.forEach((element, index) => {
       const componentId = element.getAttribute('data-component-id');
       const componentName = element.getAttribute('data-component-name');
       
       if (componentId && componentName) {
-        console.log('[0x1 App] 🔄 Re-rendering component ' + (index + 1) + ': ' + componentName + ' (' + componentId + ')');
+        console.log(\`[0x1 App] 🔄 Re-rendering component \${index + 1}: \${componentName} (\${componentId})\`);
         
         // Method 6a: Try to trigger component update via hooks system
         if (window.__0x1_hooksSystem?.triggerUpdate) {
@@ -3884,7 +4132,7 @@ async function preloadDependencies() {
             const props = element.getAttribute('data-component-props');
             const parsedProps = props ? JSON.parse(props) : {};
             
-            console.log('[0x1 App] 🔄 Re-executing component function for ' + componentName);
+            console.log(\`[0x1 App] 🔄 Re-executing component function for \${componentName}\`);
             const newResult = componentFunction(parsedProps);
             
             // Clear hooks context
@@ -3894,10 +4142,10 @@ async function preloadDependencies() {
             
             // If component returns new JSX, replace the element
             if (newResult && typeof newResult === 'object') {
-              console.log('[0x1 App] ✅ Component ' + componentName + ' re-rendered successfully');
+              console.log(\`[0x1 App] ✅ Component \${componentName} re-rendered successfully\`);
             }
           } catch (error) {
-            console.error('[0x1 App] Error re-rendering component ' + componentName + ':', error);
+            console.error(\`[0x1 App] Error re-rendering component \${componentName}:\`, error);
           }
         }
       }
@@ -4453,22 +4701,22 @@ if (typeof window !== 'undefined' && window.__0x1_errorBoundary) {
   
   // Create a comprehensive error for each validation issue
   directiveErrors.errors.forEach((validationError, index) => {
-    const error = new Error('Directive Validation Error in ' + directiveErrors.file + ':
+    const error = new Error(\`Directive Validation Error in \${directiveErrors.file}:
     
-Line ' + validationError.line + ': ' + validationError.message + '
+Line \${validationError.line}: \${validationError.message}
 
-💡 Suggestion: ' + validationError.suggestion + '
+💡 Suggestion: \${validationError.suggestion}
 
-Context: This error was caught by 0x1's automatic directive validation system.');
+Context: This error was caught by 0x1's automatic directive validation system.\`);
     
     error.name = 'DirectiveValidationError';
-    error.stack = 'DirectiveValidationError: ' + validationError.message + '
-    at ' + directiveErrors.file + ':' + validationError.line + ':1
+    error.stack = \`DirectiveValidationError: \${validationError.message}
+    at \${directiveErrors.file}:\${validationError.line}:1
     
-Suggestion: ' + validationError.suggestion + '
+Suggestion: \${validationError.suggestion}\`;
     
     // Add to error boundary with file context
-    window.__0x1_errorBoundary.addError(error, ' + directiveErrors.file + ' (validation)');
+    window.__0x1_errorBoundary.addError(error, \`\${directiveErrors.file} (validation)\`);
   });
 }
 `;

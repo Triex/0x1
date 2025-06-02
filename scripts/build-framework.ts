@@ -160,9 +160,8 @@ async function buildFramework() {
 
     console.log("📦 Building JSX runtime...");
 
-    // Build JSX runtime files
-    const jsxRuntimePath = join(srcDir, "browser", "jsx", "runtime.ts");
-    const jsxDevRuntimePath = join(srcDir, "browser", "jsx", "dev-runtime.ts");
+    // Build JSX runtime files from our ONE SOURCE OF TRUTH
+    const jsxRuntimePath = join(srcDir, "jsx", "runtime.ts");
 
     if (existsSync(jsxRuntimePath)) {
       const { success, outputs } = await Bun.build({
@@ -186,32 +185,39 @@ async function buildFramework() {
           await Bun.write(targetPath, content);
         }
       }
-      console.log("✅ JSX runtime built");
+      console.log("✅ JSX runtime built from ONE SOURCE OF TRUTH");
     }
 
-    if (existsSync(jsxDevRuntimePath)) {
+    // Create jsx-dev-runtime.js that exports the same as jsx-runtime.js
+    const jsxRuntimeContent = await Bun.file(join(distDir, "jsx-runtime.js")).text();
+    await Bun.write(join(distDir, "jsx-dev-runtime.js"), jsxRuntimeContent);
+    console.log("✅ JSX dev runtime created (same as production runtime)");
+
+    console.log("📦 Building browser scripts...");
+
+    // Build live-reload script from TypeScript source
+    const liveReloadTsPath = join(srcDir, "browser", "live-reload.ts");
+    const liveReloadJsPath = join(srcDir, "browser", "live-reload.js");
+    
+    if (existsSync(liveReloadTsPath)) {
       const { success, outputs } = await Bun.build({
-        entrypoints: [jsxDevRuntimePath],
+        entrypoints: [liveReloadTsPath],
         outdir: distDir,
         target: "browser",
         format: "esm",
         minify: true,
       });
 
-      if (!success) {
-        throw new Error("JSX dev runtime build failed");
+      if (success && outputs.length > 0) {
+        const content = await Bun.file(outputs[0].path).text();
+        await Bun.write(join(distDir, "live-reload.js"), content);
+        console.log("✅ Built live-reload.js from TypeScript source");
       }
-      
-      // Rename the output to jsx-dev-runtime.js
-      if (outputs.length > 0) {
-        const outputPath = outputs[0].path;
-        const targetPath = join(distDir, "jsx-dev-runtime.js");
-        if (outputPath !== targetPath) {
-          const content = await Bun.file(outputPath).text();
-          await Bun.write(targetPath, content);
-        }
-      }
-      console.log("✅ JSX dev runtime built");
+    } else if (existsSync(liveReloadJsPath)) {
+      // Fallback to existing JS file
+      const content = await Bun.file(liveReloadJsPath).text();
+      await Bun.write(join(distDir, "live-reload.js"), content);
+      console.log("✅ Built live-reload.js from existing source");
     }
 
     console.log("📦 Copying essential type definitions...");

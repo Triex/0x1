@@ -10,8 +10,22 @@ export function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`;
 }
 
-// Custom wallet button component for the header
+// RESTORED: Proper ConnectButton.Custom implementation for wallet functionality
 export function WalletConnectButton() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render on server to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="w-32 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse"></div>
+    );
+  }
+
+  // CRITICAL: Use ConnectButton.Custom render prop pattern - this is how RainbowKit works
   return (
     <ConnectButton.Custom>
       {({
@@ -21,11 +35,11 @@ export function WalletConnectButton() {
         openChainModal,
         openConnectModal,
         authenticationStatus,
-        mounted,
+        mounted: rainbowMounted,
       }) => {
         // Note: If your app doesn't use authentication, you
         // can remove all 'authenticationStatus' checks
-        const ready = mounted && authenticationStatus !== 'loading';
+        const ready = mounted && rainbowMounted && authenticationStatus !== 'loading';
         const connected =
           ready &&
           account &&
@@ -90,7 +104,7 @@ export function WalletConnectButton() {
                           <img
                             alt={chain.name ?? 'Chain icon'}
                             src={chain.iconUrl}
-                            style={{ width: 20, height: 20 }}
+                            style={{ width: 20, height: 20, maxHeight: "20px" }}
                           />
                         )}
                       </div>
@@ -117,11 +131,14 @@ export function WalletConnectButton() {
   );
 }
 
-// Detailed wallet info component for the dashboard
+// Enhanced wallet info component
 export function WalletInfo() {
   const { address, isConnected, chain } = useAccount();
+  const { data: balance } = useBalance({
+    address,
+  });
   const { data: ensName } = useEnsName({ address });
-  const { data: balance, isLoading: balanceLoading } = useBalance({ address });
+  // const { data: balance, isLoading: balanceLoading } = useBalance({ address });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -133,23 +150,29 @@ export function WalletInfo() {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-      <h3 className="text-lg font-semibold mb-4">Wallet Information</h3>
-      
-      <div className="space-y-3">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+        Wallet Information
+      </h3>
+
+      <div className="space-y-4">
         <div>
           <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
             Address
           </label>
-          <p className="font-mono text-sm break-all">{address}</p>
+          <p className="font-mono text-sm font-medium">
+            {ensName || shortenAddress(address)}
+          </p>
         </div>
 
-        {ensName && (
+        {balance && (
           <div>
             <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              ENS Name
+              Balance
             </label>
-            <p className="font-medium">{ensName}</p>
+            <p className="font-medium">
+              {parseFloat(balance.formatted).toFixed(4)} {balance.symbol}
+            </p>
           </div>
         )}
 
@@ -158,18 +181,17 @@ export function WalletInfo() {
             Network
           </label>
           <div className="flex items-center gap-2">
-            {chain?.iconUrl && (
+            {/* {chain?.iconUrl && (
               <img
                 src={chain.iconUrl}
                 alt={chain.name}
                 className="w-5 h-5 rounded-full"
               />
-            )}
+            )} */}
             <p className="font-medium">{chain?.name}</p>
           </div>
         </div>
-
-        <div>
+        {/* <div>
           <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
             Balance
           </label>
@@ -177,10 +199,12 @@ export function WalletInfo() {
             <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-5 w-24 rounded"></div>
           ) : (
             <p className="font-medium">
-              {balance?.formatted ? `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}` : '0.0000 ETH'}
+              {balance?.formatted
+                ? `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}`
+                : "0.0000 ETH"}
             </p>
           )}
-        </div>
+        </div> */}
       </div>
     </div>
   );

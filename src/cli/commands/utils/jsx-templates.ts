@@ -162,79 +162,17 @@ export function generateJsxRuntime(isDevRuntime = false): string {
       
       // Handle function components with enhanced tracking
       if (typeof type === 'function') {
-        console.log('[0x1 JSX] Rendering function component:', type.name || 'Anonymous');
+        console.log('[0x1 JSX] Detected function component:', type.name || 'Anonymous');
         
-        try {
-          // Set up component tracking
-          const hooks = global.__0x1_hooks;
-          const componentName = type.name || 'Anonymous';
-          const componentId = \`\${componentName}-\${Date.now()}-\${Math.random().toString(36).substr(2, 9)}\`;
-          
-          if (hooks) {
-            hooks.currentComponent = componentId;
-            hooks.stateIndex = 0;
-            hooks.effectIndex = 0;
-            hooks.memoIndex = 0;
-            hooks.refIndex = 0;
-            console.log('[0x1 JSX] Set component context:', componentId);
-          }
-
-          // Render the component
-          const result = type({
-            ...props,
-            children: props?.children
-          });
-          
-          console.log('[0x1 JSX] Component result:', result);
-
-          // Convert result to DOM element
-          const domElement = result?.nodeType ? result : createElementFromJSX(result?.type || result, result?.props || {});
-          
-          // Set up re-rendering for this component if we have hooks
-          if (hooks && domElement && hooks.registerComponent) {
-            let currentDomElement = domElement;
-            
-            hooks.registerComponent(componentId, () => {
-              console.log('[0x1 JSX] Re-rendering component:', componentName);
-              
-              // Reset hook indices for re-render
-              hooks.currentComponent = componentId;
-              hooks.stateIndex = 0;
-              hooks.effectIndex = 0;
-              hooks.memoIndex = 0;
-              hooks.refIndex = 0;
-              
-              try {
-                const newResult = type({
-                  ...props,
-                  children: props?.children
-                });
-                const newDomElement = newResult?.nodeType ? newResult : createElementFromJSX(newResult?.type || newResult, newResult?.props || {});
-                
-                if (newDomElement && currentDomElement && currentDomElement.parentNode) {
-                  console.log('[0x1 JSX] Replacing DOM element for component:', componentName);
-                  currentDomElement.parentNode.replaceChild(newDomElement, currentDomElement);
-                  currentDomElement = newDomElement; // Update reference
-                  
-                  // Re-register with the new DOM element
-                  hooks.registerComponent(componentId, arguments.callee);
-                } else {
-                  console.error('[0x1 JSX] Failed to replace DOM element - missing parent or element');
-                }
-              } catch (error) {
-                console.error('[0x1 JSX] Error during component re-render:', error);
-              } finally {
-                // Clear component context
-                hooks.currentComponent = null;
-              }
-            });
-          }
-          
-          return domElement;
-        } catch (error) {
-          console.error('[0x1 JSX] Error rendering component:', error);
-          return document.createComment(\`JSX Error: \${error.message}\`);
-        }
+        // CRITICAL FIX: Don't call the component here! 
+        // Return a JSX object that preserves the function reference
+        // so the router can handle it properly with hooks context
+        return {
+          type: type,
+          props: props || {},
+          key: key,
+          __isJSXElement: true
+        };
       }
       
       console.log('[0x1 JSX] Unknown type, returning null:', type);
@@ -245,18 +183,19 @@ export function generateJsxRuntime(isDevRuntime = false): string {
     }
   }
   
-  // Expose the JSX runtime functions to window
-  global.Fragment = Fragment;
+  // Export the JSX factory as multiple aliases for compatibility
   global.jsx = createElementFromJSX;
-  global.jsxs = createElementFromJSX; // Same impl for both
+  global.jsxs = createElementFromJSX;
   global.jsxDEV = createElementFromJSX; // For React 17+ dev runtime
-
-  // For compatibility with jsx-runtime
-  global.jsx_runtime = {
+  global.createElement = createElementFromJSX;
+  global.Fragment = Fragment;
+  
+  // Provide a global object for compatibility
+  global._jsx = {
     jsx: createElementFromJSX,
     jsxs: createElementFromJSX,
     jsxDEV: createElementFromJSX,
-    Fragment
+    Fragment: Fragment
   };
   
   // For ES module imports
@@ -496,10 +435,10 @@ export function createJsxRuntimeEndpoint(isDevRuntime = false): (req: Request) =
  * Injects the JSX runtime script tag into the HTML template
  */
 export function injectJsxRuntime(htmlTemplate: string): string {
-  // Insert our JSX runtime script before the closing </head> tag
+  // Insert our STABLE JSX runtime script before the closing </head> tag
   return htmlTemplate.replace(
     '</head>',
-    '<script type="module" src="/0x1/jsx-runtime.js"></script>\n</head>'
+    '<script type="module" src="/jsx-runtime.js"></script>\n</head>'
   );
 }
 

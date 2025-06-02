@@ -136,8 +136,19 @@ class Router {
     }
 
     if (typeof (window as any).__0x1_triggerUpdate !== "function") {
-      (window as any).__0x1_triggerUpdate = () => {
-        this.renderCurrentRoute();
+      (window as any).__0x1_triggerUpdate = (componentId?: string) => {
+        // Only trigger targeted component updates, not full route renders
+        if (componentId) {
+          // Find and update only the specific component
+          const element = document.querySelector(`[data-component-id="${componentId}"]`);
+          if (element && element.getAttribute('data-update-callback')) {
+            // If component has an update callback, use it
+            const callback = (element as any).__updateCallback;
+            if (typeof callback === 'function') {
+              callback();
+            }
+          }
+        }
       };
     }
   }
@@ -307,6 +318,14 @@ class Router {
       };
     }
 
+    // Handle wildcard routes (catch-all)
+    if (path === "*") {
+      return {
+        regex: new RegExp(".*"), // Match any path
+        keys: [],
+      };
+    }
+
     const keys: string[] = [];
     let regexStr = path.replace(/\//g, "/").replace(/:([^/]+)/g, (_, key) => {
       keys.push(key);
@@ -329,13 +348,22 @@ class Router {
   private renderCurrentRoute() {
     if (this.isServer) return;
 
+    // CRITICAL FIX: Prevent multiple simultaneous renders
+    if ((this as any)._isRendering) {
+      return;
+    }
+    (this as any)._isRendering = true;
+
     const rootElement = this.options?.rootElement;
+    
     if (!rootElement) {
       console.warn("[0x1 Router] No root element specified for rendering");
+      (this as any)._isRendering = false;
       return;
     }
 
     const match = this.matchRoute(this.currentPath);
+    
     if (match) {
       try {
         // Get the component
@@ -354,54 +382,107 @@ class Router {
         // Render the component with error handling
         const result = component({ params: match.params });
 
-        // Use requestAnimationFrame for smooth rendering
-        requestAnimationFrame(() => {
-          // Clear root element content efficiently
-          while (rootElement.firstChild) {
-            rootElement.removeChild(rootElement.firstChild);
-          }
+        // OPTIMIZED: Use View Transitions API with efficient fallback
+        const performTransition = () => {
+          try {
+            // Prepare the new content first
+            let newDomElement: HTMLElement | null = null;
 
-          // Handle different result types
-          if (
-            result &&
-            typeof result === "object" &&
-            (result.type || result.__isVNode)
-          ) {
-            // JSX object - convert to DOM
-            const domElement = this.jsxToDom(result);
-            if (domElement) {
-              rootElement.appendChild(domElement);
+            // Handle different result types and prepare new content
+            if (
+              result &&
+              typeof result === "object" &&
+              (result.type || result.__isVNode)
+            ) {
+              // JSX object - convert to DOM
+              newDomElement = this.jsxToDom(result);
+            } else if (result instanceof HTMLElement) {
+              // Already a DOM element
+              newDomElement = result;
+            } else if (typeof result === "string") {
+              // HTML string - create container
+              const container = document.createElement("div");
+              container.innerHTML = result;
+              newDomElement = container;
             }
-          } else if (result instanceof HTMLElement) {
-            // Already a DOM element
-            rootElement.appendChild(result);
-          } else if (typeof result === "string") {
-            // HTML string
-            rootElement.innerHTML = result;
+
+            if (newDomElement) {
+              // OPTIMIZED: Use modern View Transitions API with fallback
+              const updateDOM = () => {
+                // Clear old content efficiently
+                while (rootElement.firstChild) {
+                  rootElement.removeChild(rootElement.firstChild);
+                }
+                
+                // Add new content
+                rootElement.appendChild(newDomElement!);
+              };
+
+              // Use View Transitions API if available (Chrome 111+)
+              if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+                (document as any).startViewTransition(updateDOM);
+              } else {
+                // Fallback: Efficient CSS transition
+                rootElement.style.transition = 'opacity 0.15s ease-out';
+                rootElement.style.opacity = '0.7';
+                
+                // Use requestAnimationFrame for optimal timing
+                requestAnimationFrame(() => {
+                  updateDOM();
+                  
+                  requestAnimationFrame(() => {
+                    rootElement.style.opacity = '1';
+                    
+                    // Clean up transition after completion
+                    setTimeout(() => {
+                      rootElement.style.transition = '';
+                    }, 150);
+                  });
+                });
+              }
+              
+            } else {
+              // Fallback: clear and show error
+              while (rootElement.firstChild) {
+                rootElement.removeChild(rootElement.firstChild);
+              }
+              rootElement.innerHTML = `<div class="error p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg">
+                <h3 class="text-lg font-bold text-red-700 dark:text-red-300 mb-2">Render Error</h3>
+                <p class="text-red-600 dark:text-red-400 text-sm">Failed to render component result</p>
+              </div>`;
+            }
+          } finally {
+            // Always reset the rendering flag
+            (this as any)._isRendering = false;
           }
+        };
 
-          // Add smooth transition class for better UX
-          rootElement.style.opacity = "0";
-          rootElement.style.transition = "opacity 0.15s ease-in-out";
-
-          // Fade in the new content
-          setTimeout(() => {
-            rootElement.style.opacity = "1";
-          }, 10);
-        });
+        // Use requestAnimationFrame for optimal rendering
+        requestAnimationFrame(performTransition);
+        
       } catch (error: unknown) {
         console.error("[0x1 Router] Error rendering route:", error);
-        rootElement.innerHTML = `<div class="error p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg">
+        
+        // OPTIMIZED: Fast error transition
+        const errorHtml = `<div class="error p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg">
           <h3 class="text-lg font-bold text-red-700 dark:text-red-300 mb-2">Error Rendering Route</h3>
           <p class="text-red-600 dark:text-red-400 text-sm">${error instanceof Error ? error.message : String(error)}</p>
         </div>`;
+        
+        rootElement.innerHTML = errorHtml;
+        (this as any)._isRendering = false;
       }
     } else {
+      // OPTIMIZED: Fast 404 transition
       console.warn("[0x1 Router] No route found for:", this.currentPath);
-      rootElement.innerHTML = `<div class="not-found p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-600 rounded-lg">
+      
+      const notFoundHtml = `<div class="not-found p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-600 rounded-lg">
         <h3 class="text-lg font-bold text-yellow-700 dark:text-yellow-300 mb-2">404 - Page Not Found</h3>
         <p class="text-yellow-600 dark:text-yellow-400 text-sm">The requested route "${this.currentPath}" could not be found.</p>
       </div>`;
+      
+      rootElement.innerHTML = notFoundHtml;
+      (this as any)._isRendering = false;
     }
   }
 
@@ -497,6 +578,15 @@ class Router {
                 if (key === "children") {
                   // Skip children here, handle them separately
                   return;
+                } else if (
+                  // Filter out React development props that shouldn't be DOM attributes
+                  key === "__self" ||
+                  key === "__source" ||
+                  key === "ref" ||
+                  key === "key"
+                ) {
+                  // Skip these React development/internal props
+                  return;
                 } else if (key === "className") {
                   if (jsx.props[key]) {
                     // SVG elements don't have className property, use class attribute instead
@@ -547,7 +637,11 @@ class Router {
                 } else if (
                   jsx.props[key] !== null &&
                   jsx.props[key] !== undefined &&
-                  jsx.props[key] !== false
+                  jsx.props[key] !== false &&
+                  // Additional safety check: only set primitive values as attributes
+                  (typeof jsx.props[key] === "string" ||
+                   typeof jsx.props[key] === "number" ||
+                   typeof jsx.props[key] === "boolean")
                 ) {
                   // Handle SVG attributes with proper casing
                   if (
@@ -608,17 +702,21 @@ class Router {
             });
           }
 
-          // Handle children - prioritize VNode children if present
+          // Handle children - check multiple possible locations
           const children =
             jsx.__isVNode && jsx.children !== undefined
               ? Array.isArray(jsx.children)
                 ? jsx.children
                 : [jsx.children]
-              : jsx.props?.children
-                ? Array.isArray(jsx.props.children)
-                  ? jsx.props.children
-                  : [jsx.props.children]
-                : [];
+              : jsx.children !== undefined  // NEW: Check direct jsx.children first
+                ? Array.isArray(jsx.children)
+                  ? jsx.children
+                  : [jsx.children]
+                : jsx.props?.children
+                  ? Array.isArray(jsx.props.children)
+                    ? jsx.props.children
+                    : [jsx.props.children]
+                  : [];
 
           children.forEach((child: any) => {
             if (
@@ -640,6 +738,21 @@ class Router {
             }
           });
 
+          // CRITICAL FIX: Check for component metadata in props and apply to DOM element
+          if (jsx.props && element.setAttribute) {
+            const componentId = jsx.props["data-component-id"];
+            const componentName = jsx.props["data-component-name"];
+            
+            if (componentId) {
+              element.setAttribute("data-component-id", componentId);
+              console.log('[0x1 Router] Applied component metadata - ID:', componentId, 'to element:', jsx.type);
+            }
+            if (componentName) {
+              element.setAttribute("data-component-name", componentName);
+              console.log('[0x1 Router] Applied component metadata - Name:', componentName, 'to element:', jsx.type);
+            }
+          }
+
           return element;
         } else if (typeof jsx.type === "function") {
           // Component function - render with proper hook context
@@ -648,7 +761,25 @@ class Router {
               jsx.type,
               jsx.props || {}
             );
-            return this.jsxToDom(result);
+            
+            // CRITICAL FIX: Ensure the result gets properly converted to DOM with metadata
+            const domElement = this.jsxToDom(result);
+            
+            // CRITICAL FIX: Extract metadata from the result object (where renderComponentWithHookContext puts it)
+            if (domElement && domElement.setAttribute) {
+              // Get the component ID from the result props (added by renderComponentWithHookContext)
+              const componentId = result?.props?.["data-component-id"];
+              const componentName = result?.props?.["data-component-name"];
+              
+              if (componentId) {
+                domElement.setAttribute("data-component-id", componentId);
+              }
+              if (componentName) {
+                domElement.setAttribute("data-component-name", componentName);
+              }
+            }
+            
+            return domElement;
           } catch (componentError: any) {
             console.error(
               `[0x1 Router] Error rendering component:`,
@@ -685,7 +816,7 @@ class Router {
   }
 
   // Efficient component rendering inspired by React 19/Next.js 15
-  private renderComponentWithHookContext(
+  public renderComponentWithHookContext(
     component: (props?: any) => any,
     props: any
   ): any {
@@ -703,9 +834,38 @@ class Router {
     // Create stable component ID (similar to React's fiber keys)
     const componentName =
       (component.name && component.name.trim()) || "AnonymousComponent";
+      
+    // CRITICAL FIX: Clean up any existing component IDs for this component name
+    // This prevents the hooks system from trying to update old, stale component instances
+    const cleanupHookSystem = (window as any).__0x1_hooks;
+    if (cleanupHookSystem?.componentRegistry) {
+      const registry = cleanupHookSystem.componentRegistry;
+      const keysToDelete = [];
+      
+      // Find all old component IDs with the same component name
+      for (const [existingId, data] of registry.entries()) {
+        if (existingId.startsWith(`${componentName}_`) && existingId !== componentName) {
+          // Check if this component still exists in DOM
+          const element = document.querySelector(`[data-component-id="${existingId}"]`);
+          if (!element) {
+            keysToDelete.push(existingId);
+          }
+        }
+      }
+      
+      // Remove stale component IDs
+      keysToDelete.forEach(id => {
+        registry.delete(id);
+        // Also clean up update callbacks
+        if (cleanupHookSystem?.componentUpdateCallbacks) {
+          cleanupHookSystem.componentUpdateCallbacks.delete(id);
+        }
+      });
+    }
+    
     // Use a simpler, more consistent ID generation
     const componentId = `${componentName}_${Math.random().toString(36).slice(2, 8)}`;
-
+    
     // Validate componentId before proceeding
     if (
       !componentId ||
@@ -735,17 +895,16 @@ class Router {
     try {
       // Optimized update callback that uses requestAnimationFrame for smooth updates
       const updateCallback = () => {
-        // Use requestAnimationFrame to prevent blocking scrolling
+        // CRITICAL FIX: Prevent cascade renders - only update if component still exists
         requestAnimationFrame(() => {
           try {
             // Find the specific DOM element for this component
             const element = document.querySelector(
               `[data-component-id="${componentId}"]`
             );
-
+            
             if (element && element.parentNode) {
               // Re-render only this component, not the entire route
-
               // Enter component context again for re-rendering (no recursive callback)
               (window as any).__0x1_enterComponentContext(componentId);
 
@@ -759,18 +918,12 @@ class Router {
                 // Ensure the new element has the same component ID
                 if (newDomElement.setAttribute) {
                   newDomElement.setAttribute("data-component-id", componentId);
+                  newDomElement.setAttribute("data-component-name", componentName);
                 }
                 element.parentNode.replaceChild(newDomElement, element);
               }
             } else {
-              // Fallback to full route render if element not found (debounced)
-              if (!(this as any)._renderPending) {
-                (this as any)._renderPending = true;
-                requestAnimationFrame(() => {
-                  this.renderCurrentRoute();
-                  (this as any)._renderPending = false;
-                });
-              }
+              console.warn(`[0x1 Router] 🐛 Component ${componentId} not found during update - may have been unmounted`);
             }
           } catch (e) {
             console.error("[0x1 Router] Error updating component:", e);
@@ -783,10 +936,11 @@ class Router {
 
       // Execute the component with props
       const result = component(props);
-
+      
       // Add component ID as data attribute if result is a JSX object
       if (result && typeof result === "object" && result.props) {
         result.props["data-component-id"] = componentId;
+        result.props["data-component-name"] = componentName;
       }
 
       return result;
@@ -866,9 +1020,6 @@ class Router {
   }
 }
 
-// Global router instance
-const router = new Router();
-
 // Factory function to create router instances
 export function createRouter(options: RouterOptions): Router {
   const routerInstance = new Router(options);
@@ -880,10 +1031,17 @@ export function createRouter(options: RouterOptions): Router {
   return routerInstance;
 }
 
+// Helper function to get the current router instance
+function getCurrentRouter(): Router | null {
+  if (typeof window === 'undefined') return null;
+  return (window as any).__0x1_ROUTER__ || (window as any).__0x1_router || (window as any).router || null;
+}
+
 // JSX-compatible Link component with instant navigation
 export function Link({ href, className, children, prefetch }: LinkProps): any {
   // Check if prefetch is needed
-  if (prefetch && typeof router !== "undefined") {
+  const router = getCurrentRouter();
+  if (prefetch && router) {
     router.prefetch(href);
   }
 
@@ -900,7 +1058,8 @@ export function Link({ href, className, children, prefetch }: LinkProps): any {
 
         // Only handle internal links (starting with /)
         if (href.startsWith("/")) {
-          if (typeof router !== "undefined") {
+          const router = getCurrentRouter();
+          if (router) {
             // Use router for instant client-side navigation
             router.navigate(href);
           } else if (typeof window !== "undefined") {
@@ -920,7 +1079,9 @@ export function Link({ href, className, children, prefetch }: LinkProps): any {
 
 // Hook for using router in components
 export function useRouter() {
-  if (typeof router === "undefined") {
+  const router = getCurrentRouter();
+  
+  if (!router) {
     // Return a placeholder when router is not available
     return {
       navigate: (path: string) => {
@@ -947,13 +1108,16 @@ export function useRouter() {
 export function useParams<
   T extends Record<string, string> = Record<string, string>,
 >(): T {
-  const route = typeof router !== "undefined" ? router.getCurrentRoute() : null;
+  const router = getCurrentRouter();
+  const route = router ? router.getCurrentRoute() : null;
   return (route?.params || {}) as T;
 }
 
 // Hook for query params
 export function useSearchParams(): URLSearchParams {
-  if (typeof router === "undefined") {
+  const router = getCurrentRouter();
+  
+  if (!router) {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search);
     }
@@ -968,14 +1132,14 @@ export function useSearchParams(): URLSearchParams {
 // NavLink component with active class and instant navigation
 export function NavLink(props: LinkProps & { activeClass?: string }): any {
   const { href, className, children, activeClass = "active", prefetch } = props;
-  const isActive =
-    typeof router !== "undefined" ? router.currentPath === href : false;
+  const router = getCurrentRouter();
+  const isActive = router ? router.currentPath === href : false;
   const combinedClass = isActive
     ? `${className || ""} ${activeClass}`.trim()
     : className;
 
   // Prefetch route content when available
-  if (prefetch && typeof router !== "undefined") {
+  if (prefetch && router) {
     router.prefetch(href);
   }
 
@@ -991,7 +1155,8 @@ export function NavLink(props: LinkProps & { activeClass?: string }): any {
 
         // Only handle internal links (starting with /)
         if (href.startsWith("/")) {
-          if (typeof router !== "undefined") {
+          const router = getCurrentRouter();
+          if (router) {
             // Use router for instant client-side navigation
             router.navigate(href);
           } else if (typeof window !== "undefined") {
@@ -1014,7 +1179,8 @@ export function Redirect({ to }: { to: string }): any {
   if (typeof window !== "undefined") {
     // Client-side redirect
     setTimeout(() => {
-      if (typeof router !== "undefined") {
+      const router = getCurrentRouter();
+      if (router) {
         router.navigate(to);
       } else {
         window.location.href = to;
@@ -1026,4 +1192,4 @@ export function Redirect({ to }: { to: string }): any {
 }
 
 // Re-export the Router class for backward compatibility
-export { Router, router };
+export { Router };

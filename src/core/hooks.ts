@@ -75,7 +75,7 @@ const componentContextStack: ComponentContext[] = [];
 let currentComponentId: string | null = null;
 let currentHookIndex = 0;
 
-// Debug mode flag
+// Debug mode flag - REDUCED LOGGING
 const debugMode = false;
 
 // Track if we're in a component rendering context
@@ -85,8 +85,6 @@ let isRenderingComponent = false;
 // Core Hook System Functions
 // ============================================================================
 
-// Browser initialization happens at the end of the file
-
 /**
  * Set the current component context for hooks to operate within
  * This is the primary entry point for hook context management
@@ -94,9 +92,6 @@ let isRenderingComponent = false;
 export function setComponentContext(componentId: string, updateCallback?: () => void): void {
   // Validate componentId
   if (!componentId || componentId === 'undefined' || componentId === 'null') {
-    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-      console.debug(`[0x1 Hooks] Skipping context for invalid componentId: ${componentId}`);
-    }
     return;
   }
   
@@ -134,33 +129,18 @@ export function setComponentContext(componentId: string, updateCallback?: () => 
   const componentData = componentRegistry.get(componentId)!;
   componentData.isMounted = true;
   componentData.hookIndex = 0;
-  
-  // Debug info
-  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-    console.log(`[0x1 Hooks] Entering component context: ${componentId}`);
-  }
 }
 
 /**
  * Clear the current component context and restore previous context if available
  */
 export function clearComponentContext(): void {
-  // Debug info
-  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-    console.log(`[0x1 Hooks] Exiting component context: ${currentComponentId}`);
-  }
-  
   // Pop previous context from stack if available
   const previousContext = componentContextStack.pop();
   if (previousContext) {
     currentComponentId = previousContext.id;
     currentHookIndex = previousContext.hookIndex;
     isRenderingComponent = componentContextStack.length > 0;
-    
-    // Debug info for restored context
-    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-      console.log(`[0x1 Hooks] Restored component context: ${currentComponentId}`);
-    }
   } else {
     // No previous context, clear everything
     currentComponentId = null;
@@ -186,43 +166,60 @@ function getCurrentComponentData(): ComponentData {
 }
 
 /**
- * Queue a component update
+ * Queue a component update - FIXED TO ACTUALLY RE-RENDER COMPONENTS
  */
 function queueUpdate(componentId: string): void {
   // Validate componentId
   if (!componentId || componentId === 'undefined' || componentId === 'null') {
-    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-      console.debug(`[0x1 Hooks] Skipping update for invalid componentId: ${componentId}`);
-    }
+    console.warn('[0x1 Hooks] Invalid componentId for queueUpdate:', componentId);
     return;
   }
+  
+  console.log(`[0x1 Hooks] Queuing update for component: ${componentId}`);
   
   const updateCallback = componentUpdateCallbacks.get(componentId);
   if (!updateCallback) {
-    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-      console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
+    console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
+    // FALLBACK: Try to force a global re-render via router
+    if (typeof window !== 'undefined' && (window as any).__0x1_router) {
+      console.log('[0x1 Hooks] Fallback: Triggering router refresh');
+      try {
+        (window as any).__0x1_router.refresh();
+      } catch (e) {
+        console.warn('[0x1 Hooks] Router refresh failed:', e);
+      }
     }
     return;
   }
   
+  // SIMPLIFIED APPROACH: Just call the update callback directly
+  console.log(`[0x1 Hooks] Calling update callback for ${componentId}`);
+  try {
+    updateCallback();
+    console.log(`[0x1 Hooks] Update callback completed for ${componentId}`);
+  } catch (error) {
+    console.error(`[0x1 Hooks] Update error for ${componentId}:`, error);
+  }
+  
+  // ADDITIONAL: Queue for microtask processing
   updateQueue.add(updateCallback);
   
   if (!isProcessingUpdates) {
     isProcessingUpdates = true;
-    // Process updates in next microtask to batch them
     queueMicrotask(() => {
       const updates = Array.from(updateQueue);
       updateQueue.clear();
       isProcessingUpdates = false;
       
-      // Execute all updates
-              updates.forEach(update => {
-          try {
-            update();
-          } catch (error) {
-            handleError(error, 'component update');
-          }
-        });
+      console.log(`[0x1 Hooks] Processing ${updates.length} queued updates`);
+      updates.forEach((update, index) => {
+        try {
+          console.log(`[0x1 Hooks] Executing queued update ${index + 1}`);
+          update();
+        } catch (error) {
+          handleError(error, 'component update');
+        }
+      });
     });
   }
 }
@@ -268,9 +265,6 @@ export function exitComponentContext(): void {
 export function triggerComponentUpdate(componentId: string): void {
   // Validate componentId
   if (!componentId || componentId === 'undefined' || componentId === 'null') {
-    if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-      console.debug(`[0x1 Hooks] Skipping trigger for invalid componentId: ${componentId}`);
-    }
     return;
   }
   
@@ -287,6 +281,10 @@ export function initializeBrowserCompat(): void {
     (window as any).__0x1_enterComponentContext = enterComponentContext;
     (window as any).__0x1_exitComponentContext = exitComponentContext;
     (window as any).__0x1_triggerUpdate = triggerComponentUpdate;
+    
+    // CRITICAL FIX: Add mount effects system for immediate execution
+    (window as any).__0x1_markComponentMounted = markComponentMounted;
+    (window as any).__0x1_executeMountEffects = executeMountEffects;
     
     // Add debug flag for verbose logging
     (window as any).__0x1_debug = (window as any).__0x1_debug || false;
@@ -314,6 +312,57 @@ export function initializeBrowserCompat(): void {
       currentHookIndex,
       isRenderingComponent
     };
+    
+    // CRITICAL FIX: Add hooks system to be accessible from polyfill system
+    (window as any).__0x1_hooksSystem = {
+      isInitialized: true,
+      forceUpdateAll: forceUpdateAllComponents,
+      triggerUpdate: triggerComponentUpdate,
+      getAllComponents: () => Array.from(componentRegistry.keys()),
+      getComponentData: (id: string) => componentRegistry.get(id),
+      setComponentContext,
+      clearComponentContext
+    };
+  }
+}
+
+/**
+ * Force update all mounted components - CRITICAL for polyfill system
+ */
+export function forceUpdateAllComponents(): void {
+  let updatedCount = 0;
+  
+  // Update all mounted components
+  for (const [componentId, data] of componentRegistry.entries()) {
+    if (data.isMounted) {
+      queueUpdate(componentId);
+      updatedCount++;
+    }
+  }
+  
+  // CRITICAL FIX: Add polyfill-ready flag and callback for components that mount later
+  if (typeof window !== 'undefined') {
+    // Set global flag so components can check on mount
+    (window as any).__0x1_polyfillsReady = true;
+    
+    // Create a registry for late-mounting components  
+    if (!(window as any).__0x1_lateComponentCallbacks) {
+      (window as any).__0x1_lateComponentCallbacks = [];
+    }
+    
+    // Execute any waiting callbacks
+    const callbacks = (window as any).__0x1_lateComponentCallbacks || [];
+    
+    callbacks.forEach((callback: any, index: number) => {
+      try {
+        callback();
+      } catch (error) {
+        console.error(`[0x1 Hooks] Error in late callback ${index + 1}:`, error);
+      }
+    });
+    
+    // Clear the callbacks after execution
+    (window as any).__0x1_lateComponentCallbacks = [];
   }
 }
 
@@ -322,139 +371,58 @@ export function initializeBrowserCompat(): void {
 // ============================================================================
 
 /**
- * useState - Manage component state
+ * useState - Manage component state - FIXED FOR ASYNC CONTEXT
  */
 export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((prevValue: T) => T)) => void] {
-  const componentData = getCurrentComponentData();
-  const hookIndex = currentHookIndex++;
+  if (!currentComponentId) {
+    throw new Error('[0x1 Hooks] useState must be called within a component context');
+  }
+
+  const data = getCurrentComponentData();
+  const hookIndex = data.hookIndex++;
   
-  // Capture the component ID when the state is created
-  const capturedComponentId = currentComponentId;
-  
-  // Initialize state if needed
-  if (componentData.states.length <= hookIndex) {
-    const value = typeof initialValue === 'function' 
+  // CRITICAL FIX: Capture the component ID at useState creation time
+  const componentIdSnapshot = currentComponentId;
+
+  // Initialize state if it doesn't exist
+  if (hookIndex >= data.states.length) {
+    const computedInitialValue = typeof initialValue === 'function' 
       ? (initialValue as () => T)() 
       : initialValue;
-    componentData.states[hookIndex] = value;
+    data.states[hookIndex] = computedInitialValue;
   }
-  
-  const state = componentData.states[hookIndex];
-  
-  const setState = (newValue: T | ((prevValue: T) => T)) => {
-    const currentValue = componentData.states[hookIndex];
-    const nextValue = typeof newValue === 'function'
-      ? (newValue as (prevValue: T) => T)(currentValue)
-      : newValue;
-    
-    // Only update if value actually changed
-    if (!Object.is(currentValue, nextValue)) {
-      componentData.states[hookIndex] = nextValue;
-      
-      // Minimal, efficient update approach inspired by React 19/Next.js 15
-      // Instead of full re-renders, use targeted DOM updates
-      if (typeof window !== 'undefined' && capturedComponentId) {
-        // Batch updates to avoid excessive re-renders
-        if (!(window as any).__0x1_updateScheduled) {
-          (window as any).__0x1_updateScheduled = true;
-          
-          // Use scheduler-like approach (similar to React's concurrent features)
-          queueMicrotask(() => {
-            (window as any).__0x1_updateScheduled = false;
-            
-            // Find and update only the affected DOM elements
-            updateAffectedElements(capturedComponentId);
-          });
-        }
-      }
-    }
-  };
-  
-  return [state, setState];
-}
 
-/**
- * Update affected elements when component state changes - IMMEDIATE UPDATES
- */
-function updateAffectedElements(componentId: string | null): void {
-  if (typeof window === 'undefined' || !componentId) return;
+  const currentValue = data.states[hookIndex] as T;
   
-  // Use immediate synchronous update instead of requestAnimationFrame
-  // This prevents timing issues with rapid user interactions like link clicks
-  performOptimizedUpdate(componentId);
-}
-
-/**
- * Perform optimized component update with immediate DOM updates
- */
-function performOptimizedUpdate(componentId: string): void {
-  if (typeof window === 'undefined') return;
-  
-  try {
-    // Find all DOM elements for this component immediately
-    const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-    
-    if (elements.length === 0) {
-      // If no specific elements found, trigger router re-render as fallback
-      const router = (window as any).__0x1_router || (window as any).router;
-      if (router?.renderCurrentRoute) {
-        router.renderCurrentRoute();
-      }
+  const setValue = (newValue: T | ((prevValue: T) => T)) => {
+    const data = componentRegistry.get(componentIdSnapshot);
+    if (!data) {
+      console.warn(`[0x1 Hooks] No component data found for ${componentIdSnapshot}`);
       return;
     }
 
-    // Get the component data
-    const data = componentRegistry.get(componentId);
-    if (!data) return;
+    const prevValue = data.states[hookIndex] as T;
+    const nextValue = typeof newValue === 'function' 
+      ? (newValue as (prevValue: T) => T)(prevValue) 
+      : newValue;
 
-    // Re-render each element immediately (synchronous)
-    elements.forEach(element => {
-      try {
-        // Get the original component function from the element's dataset
-        const componentName = element.getAttribute('data-component-name');
-        if (!componentName) return;
-
-        // Use the global component registry to get the component function
-        const componentFunction = (window as any).__0x1_components?.[componentName];
-        if (typeof componentFunction === 'function') {
-          // Set up hooks context for re-render
-          enterComponentContext(componentId);
-          
-          // Call the component function to get updated JSX
-          const result = componentFunction(element.getAttribute('data-component-props') ? 
-            JSON.parse(element.getAttribute('data-component-props') || '{}') : {});
-          
-          // Exit hooks context
-          exitComponentContext();
-          
-          // Render new element
-          const renderToDOM = (window as any).renderToDOM || (window as any).__0x1_renderToDOM;
-          if (renderToDOM) {
-            const newElement = renderToDOM(result);
-            if (newElement && element.parentNode) {
-              // Preserve component metadata
-              if (newElement.setAttribute) {
-                newElement.setAttribute('data-component-id', componentId);
-                newElement.setAttribute('data-component-name', componentName);
-              }
-              
-              // Replace the element immediately
-              element.parentNode.replaceChild(newElement, element);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[0x1 Hooks] Error updating component element:', error);
+    // Only update if value actually changed
+    if (prevValue !== nextValue) {
+      data.states[hookIndex] = nextValue;
+      
+      // Trigger re-render by calling the update callback
+      const updateCallback = componentUpdateCallbacks.get(componentIdSnapshot);
+      if (updateCallback) {
+        updateCallback();
       }
-    });
-    
-  } catch (error) {
-    console.error('[0x1 Hooks] Error in performOptimizedUpdate:', error);
-  }
+    }
+  };
+
+  return [currentValue, setValue];
 }
 
 /**
- * useEffect - Handle side effects
+ * useEffect - Handle side effects - INSTANT EXECUTION
  */
 export function useEffect(effect: () => void | (() => void), deps?: any[]): void {
   const componentData = getCurrentComponentData();
@@ -475,23 +443,26 @@ export function useEffect(effect: () => void | (() => void), deps?: any[]): void
   if (hasChanged) {
     // Store new dependencies
     effectData.deps = deps ? [...deps] : undefined;
-    effectData.effect = effect;
     
-    // Schedule effect to run after render
-    queueMicrotask(() => {
+    // Clean up previous effect
+    if (effectData.cleanup) {
       try {
-        // Clean up previous effect
-        if (effectData.cleanup && typeof effectData.cleanup === 'function') {
-          effectData.cleanup();
-        }
-        
-        // Run new effect
-        const cleanup = effect();
-        effectData.cleanup = cleanup;
+        effectData.cleanup();
       } catch (error) {
-        handleError(error, 'useEffect');
+        console.error('[0x1 Hooks] Effect cleanup error:', error);
       }
-    });
+      effectData.cleanup = undefined;
+    }
+    
+    // Execute effects immediately - no delays!
+    try {
+      const result = effect();
+      if (typeof result === 'function') {
+        effectData.cleanup = result;
+      }
+    } catch (error) {
+      console.error('[0x1 Hooks] Effect error:', error);
+    }
   }
 }
 
@@ -626,6 +597,47 @@ export function isComponentMounted(componentId: string): boolean {
 }
 
 /**
+ * Mark component as mounted and initialize it
+ */
+export function markComponentMounted(componentId: string): void {
+  const componentData = componentRegistry.get(componentId);
+  if (componentData) {
+    componentData.isMounted = true;
+  }
+}
+
+/**
+ * Execute mount effects immediately for better UX
+ * This runs effects with empty dependency arrays right away
+ */
+export function executeMountEffects(componentId: string): void {
+  const componentData = componentRegistry.get(componentId);
+  if (!componentData) {
+    return;
+  }
+  
+  // Execute effects with empty dependency arrays immediately
+  componentData.effects.forEach((effectData, index) => {
+    // Only execute mount effects (empty deps array or no deps)
+    if (!effectData.deps || effectData.deps.length === 0) {
+      try {
+        // Clean up any previous effect
+        if (effectData.cleanup && typeof effectData.cleanup === 'function') {
+          effectData.cleanup();
+        }
+        
+        // Run the effect immediately
+        const cleanup = effectData.effect();
+        effectData.cleanup = cleanup;
+      } catch (error) {
+        console.error(`[0x1 Hooks] Error executing mount effect for ${componentId}:`, error);
+        handleError(error, `mount effect for ${componentId}`);
+      }
+    }
+  });
+}
+
+/**
  * Get component statistics (for debugging)
  */
 export function getComponentStats(componentId: string) {
@@ -658,7 +670,6 @@ export function getAllComponentStats() {
  * @deprecated Use setComponentContext instead
  */
 export function setCurrentComponent(component: any): void {
-  console.warn('[0x1 Hooks] setCurrentComponent is deprecated, use setComponentContext instead');
   if (component && component.id) {
     setComponentContext(component.id, component.update);
   }
@@ -668,7 +679,6 @@ export function setCurrentComponent(component: any): void {
  * @deprecated Use clearComponentContext instead
  */
 export function resetHookContext(): void {
-  console.warn('[0x1 Hooks] resetHookContext is deprecated, use clearComponentContext instead');
   clearComponentContext();
 }
 
@@ -843,7 +853,6 @@ export function useLocalStorage<T>(
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.warn(`[0x1 useLocalStorage] Error reading localStorage key "${key}":`, error);
       return initialValue;
     }
   });
@@ -888,15 +897,10 @@ export function useLocalStorage<T>(
 // ============================================================================
 
 /**
- * Production-safe error handler
+ * Production-safe error handler - SIMPLIFIED
  */
 function handleError(error: any, context: string): void {
-  if (typeof window !== 'undefined' && (window as any).__0x1_debug) {
-    console.error(`[0x1 Hooks] ${context}:`, error);
-  } else {
-    // In production, log minimal error info
-    console.error(`[0x1 Hooks] Error in ${context}`);
-  }
+  console.error(`[0x1 Hooks] Error in ${context}:`, error);
 }
 
 /**
@@ -905,7 +909,6 @@ function handleError(error: any, context: string): void {
 export function enableDebugMode(): void {
   if (typeof window !== 'undefined') {
     (window as any).__0x1_debug = true;
-    console.log('[0x1 Hooks] Debug mode enabled - verbose logging activated');
   }
 }
 
@@ -915,7 +918,6 @@ export function enableDebugMode(): void {
 export function disableDebugMode(): void {
   if (typeof window !== 'undefined') {
     (window as any).__0x1_debug = false;
-    console.log('[0x1 Hooks] Debug mode disabled');
   }
 }
 
@@ -966,22 +968,13 @@ export default {
 export type { RefObject };
 
 // ============================================================================
-// Auto-Initialize Browser Compatibility
+// Auto-Initialize Browser Compatibility - SIMPLIFIED
 // ============================================================================
 
 // Initialize browser compatibility automatically when module loads
 if (typeof window !== 'undefined') {
   // Use setTimeout to ensure this runs after all module code is parsed
-  // This helps prevent circular references and ensures hooks are available
   setTimeout(() => {
     initializeBrowserCompat();
-    
-    // Log initialization if debug mode is enabled
-    if ((window as any).__0x1_debug) {
-      console.log('[0x1 Hooks] Browser compatibility layer initialized');
-    }
-    
-    // Hook system initialization complete
-    // Note: We don't trigger any updates during initialization to avoid spurious warnings
   }, 0);
 }
