@@ -1,0 +1,56 @@
+{
+  "name": "0x1-templates",
+  "version": "0.0.193",
+  "description": "Official templates for the 0x1 framework",
+  "main": "dist/index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./minimal": "./minimal",
+    "./standard": "./standard",
+    "./full": "./full",
+    "./crypto-dash": "./crypto-dash",
+    "./licenses": "./licenses"
+  },
+  "files": [
+    "dist/",
+    "minimal/",
+    "standard/",
+    "full/",
+    "crypto-dash/",
+    "licenses/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "mkdir -p dist && bun build src/index.ts --outfile dist/index.js --target node --format esm && bun build src/index.ts --outfile dist/index.cjs --target node --format cjs",
+    "dev": "bun --watch src/index.ts",
+    "test": "bun test"
+  },
+  "keywords": [
+    "0x1",
+    "templates",
+    "typescript",
+    "framework",
+    "web"
+  ],
+  "author": "0x1 Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Triex/0x1.git",
+    "directory": "0x1-templates"
+  },
+  "peerDependencies": {
+    "0x1": "^0.0.193"
+  },
+  "comments": {
+    "lastVersion": "0.0.192",
+    "note": "This package contains templates for the 0x1 framework/CLI.",
+    "templateStatus": {
+      "crypto-dash": "Template exists but not yet set up or stable - not ready for release"
+    }
+  }
+}

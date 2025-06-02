@@ -569,18 +569,24 @@ export class Router {
   mount() {}
 }
 
-export function createRouter(options) {
-  return new Router(options);
+// Factory function to create router instances
+function createRouterInstance(options) {
+  const routerInstance = new Router(options);
+  // Store options for later use - CRITICAL: Ensure rootElement is preserved
+  routerInstance.options = { ...routerInstance.options, ...options };
+  return routerInstance;
 }
 
-// Initialize immediately
-try {
-  if (typeof window !== 'undefined') {
-    new Router().showError();
-  }
-} catch (e) {
-  console.error('Failed to initialize error router:', e);
-}
+// ===== MODULE EXPORTS =====
+// Completely flattened exports to prevent any duplicate declarations
+
+// Default export is the Router class
+export default Router;
+
+// Named exports - direct references without intermediate objects
+// This completely prevents duplicate declarations
+export const createRouter = createRouterInstance;
+export { Link, NavLink, Redirect };
 `;
         
         return new Response(devErrorRouterModule, {
@@ -739,53 +745,97 @@ ${cleanedRouterSource}
 // Navigation implementation with renamed components to avoid conflicts
 ${cleanedNavigationSource}
 
+// CRITICAL FIX: Override Link components to use the correct router instance
+// The global router instance doesn't have rootElement, but window.__0x1_ROUTER__ does
+function Link({ href, className, children, prefetch }) {
+  return {
+    type: "a",
+    props: {
+      href,
+      className,
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (href.startsWith("/")) {
+          // Use the correctly configured router instance from dev.html
+          const appRouter = window.__0x1_ROUTER__;
+          if (appRouter && appRouter.navigate) {
+            appRouter.navigate(href);
+          } else if (typeof window !== "undefined") {
+            window.history.pushState(null, "", href);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        } else {
+          window.location.href = href;
+        }
+      },
+      children,
+    },
+  };
+}
+
+function NavLink(props) {
+  const { href, className, children, activeClass = "active", prefetch } = props;
+  const appRouter = window.__0x1_ROUTER__;
+  const isActive = appRouter ? appRouter.currentPath === href : false;
+  const combinedClass = isActive
+    ? \`\${className || ""} \${activeClass}\`.trim()
+    : className;
+
+  return {
+    type: "a",
+    props: {
+      href,
+      className: combinedClass,
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (href.startsWith("/")) {
+          if (appRouter && appRouter.navigate) {
+            appRouter.navigate(href);
+          } else if (typeof window !== "undefined") {
+            window.history.pushState(null, "", href);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        } else {
+          window.location.href = href;
+        }
+      },
+      children,
+    },
+  };
+}
+
+function Redirect({ to }) {
+  if (typeof window !== "undefined") {
+    setTimeout(() => {
+      const appRouter = window.__0x1_ROUTER__;
+      if (appRouter && appRouter.navigate) {
+        appRouter.navigate(to);
+      } else {
+        window.location.href = to;
+      }
+    }, 0);
+  }
+  return null;
+}
+
 // Export the Router class as a proper ESM module with named export
 export { Router, createErrorBoundary, createDefaultErrorUI };
 
-// Initialize router on page load with enhanced error handling
-document.addEventListener('DOMContentLoaded', () => {
-  // Check if window.__0x1_ROUTER__ exists to prevent double initialization
-  if (window.__0x1_ROUTER__) return;
+// REMOVED: Automatic router initialization to prevent double initialization
+// The dev.html template will handle creating the router instance with proper configuration
+// This prevents the "No root element specified for rendering" error when navigating
 
-  try {
-    // Find the app root element with more robust detection
-    const appRoot = document.querySelector('#app-root') || document.querySelector('#root') || document.querySelector('#app') || document.body;
-    
-    console.log('[0x1] Running in development mode', window.location.hostname);
-    
-    // Create the router with improved configuration
-    const router = new Router({
-      rootElement: appRoot,
-      mode: 'history',
-      notFoundComponent: function() {
-        const notFound = document.createElement('div');
-        notFound.innerHTML = '<h1>404 - Page Not Found</h1><p>The requested page could not be found.</p>';
-        return notFound;
-      },
-      errorBoundary: true
-    });
-    
-    // Initialize the router with error boundary
-    window.__0x1_ROUTER__ = router;
-    router.init();
-  } catch (error) {
-    console.error('[0x1] Error initializing router:', error);
-    
-    // Display a nice error UI if router initialization fails
-    const appRoot = document.querySelector('#app-root') || document.querySelector('#root') || document.querySelector('#app') || document.body;
-    if (appRoot) {
-      appRoot.innerHTML = '';
-      appRoot.appendChild(createDefaultErrorUI(error));
-    }
-  }
-});
-  
-  // Merge options with defaults
-  const mergedOptions = { ...defaultOptions, ...options };
-  
-  // Create and return a router instance
-  return new Router(mergedOptions);
-};
+// Factory function to create router instances
+function createRouterInstance(options) {
+  const routerInstance = new Router(options);
+  // Store options for later use - CRITICAL: Ensure rootElement is preserved
+  routerInstance.options = { ...routerInstance.options, ...options };
+  return routerInstance;
+}
 
 // ===== MODULE EXPORTS =====
 // Completely flattened exports to prevent any duplicate declarations
@@ -795,10 +845,8 @@ export default Router;
 
 // Named exports - direct references without intermediate objects
 // This completely prevents duplicate declarations
-export const createRouter = _createRouter;
-export const Link = BrowserLink;
-export const NavLink = BrowserNavLink;
-export const Redirect = BrowserRedirect;
+export const createRouter = createRouterInstance;
+export { Link, NavLink, Redirect };
 `;
         }
       } catch (error) {

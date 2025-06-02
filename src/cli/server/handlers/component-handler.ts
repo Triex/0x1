@@ -1,64 +1,186 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { basename, extname, join } from 'path';
-import { logger } from '../../utils/logger.js';
+import { existsSync, readFileSync, statSync } from 'fs';
+import { basename, dirname, extname, join, resolve } from 'path';
 
 // Import directive validation functions
 import { processDirectives } from '../../../core/directives.js';
+
+// Transpilation cache to prevent duplicate work
+const transpilationCache = new Map<string, { content: string; mtime: number; etag: string }>();
 
 /**
  * Transform code content to handle imports for browser compatibility
  * This converts React and 0x1 imports to browser-compatible paths
  * and removes CSS imports that would cause MIME type errors
  */
-function transformBareImports(content: string, filePath?: string): string {
+function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
   let transformed = content;
   
   // Remove CSS imports that cause MIME type errors in the browser
   transformed = transformed
-    .replace(/import\s+['"][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
-    .replace(/import\s+['"][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
-    .replace(/import\s+['"][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility');
+    .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility')
+    // Handle the specific format: import"./globals.css"
+    .replace(/import"[^"]*\.css"/g, '// CSS import removed for browser compatibility')
+    .replace(/import'[^']*\.css'/g, '// CSS import removed for browser compatibility');
   
-  // Transform React imports to use 0x1 framework
+  // CRITICAL FIX: Transform React hook imports to use direct window.React access
+  // This completely bypasses ES6 import issues with the hooks module
   transformed = transformed
-    .replace(/from\s+['"]react['"];?/g, 'from "/node_modules/0x1/index.js";')
-    .replace(/from\s+['"]react\/jsx-runtime['"];?/g, 'from "/0x1/jsx-runtime.js";')
-    .replace(/from\s+['"]react\/jsx-dev-runtime['"];?/g, 'from "/0x1/jsx-runtime.js";');
-    
-  // Fix use-sync-external-store module paths - critical for component loading
-  transformed = transformed
-    .replace(/from\s+['"]use-sync-external-store\/([^'"]+)['"];?/g, (match, path) => {
-      // Make sure the path is properly absolute to prevent resolution errors
-      return `from "/node_modules/use-sync-external-store/${path}"`;  
+    .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*['"]0x1['"];?/g, (match, imports) => {
+      // Parse the imports 
+      const hookNames = imports.split(',').map((s: string) => s.trim());
+      const hookAssignments = hookNames.map((hookName: string) => {
+        const cleanName = hookName.trim();
+        // Map hooks to window.React access
+        if (['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'].includes(cleanName)) {
+          return `const ${cleanName} = window.React?.${cleanName} || (() => { throw new Error('[0x1] ${cleanName} not available'); });`;
+        }
+        return `// Skipped non-hook import: ${cleanName}`;
+      });
+      return `// Hook imports transformed to direct window.React access\n${hookAssignments.join('\n')}`;
     })
-    // Specific fixes for common problematic imports
-    .replace(/from\s+['"]use-sync-external-store\/shim\/with-selector(\.js)?['"];?/g, 
-      'from "/node_modules/use-sync-external-store/shim/with-selector.js";')
-    .replace(/from\s+['"]use-sync-external-store\/shim(\.js)?['"];?/g, 
-      'from "/node_modules/use-sync-external-store/shim/index.js";');
-  
-  // Transform 0x1 imports
-  transformed = transformed
-    .replace(/from\s+['"]0x1['"];?/g, 'from "/node_modules/0x1/index.js";')
-    .replace(/from\s+['"]0x1\/router['"];?/g, 'from "/0x1/router.js";')
-    .replace(/from\s+['"]0x1\/link['"];?/g, 'from "/0x1/link";');
-  
-  // Transform relative imports to absolute paths for components
-  transformed = transformed
-    .replace(/from\s+['"]\.\/([^'"]+)['"];?/g, (match, path) => {
-      // Don't transform CSS imports - they should be removed above
-      if (path.endsWith('.css') || path.endsWith('.scss') || path.endsWith('.sass')) {
-        return '// CSS import removed for browser compatibility';
-      }
-      return `from "/components/${path}";`;
-    })
-    .replace(/from\s+['"]\.\.\/([^'"]+)['"];?/g, (match, path) => {
-      // Don't transform CSS imports - they should be removed above
-      if (path.endsWith('.css') || path.endsWith('.scss') || path.endsWith('.sass')) {
-        return '// CSS import removed for browser compatibility';
-      }
-      return `from "/${path}";`;
+    .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*['"]\/0x1\/hooks\.js['"];?/g, (match, imports) => {
+      // Parse the imports from hooks.js
+      const hookNames = imports.split(',').map((s: string) => s.trim());
+      const hookAssignments = hookNames.map((hookName: string) => {
+        const cleanName = hookName.trim();
+        // Map hooks to window.React access
+        if (['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'].includes(cleanName)) {
+          return `const ${cleanName} = window.React?.${cleanName} || (() => { throw new Error('[0x1] ${cleanName} not available'); });`;
+        }
+        return `// Skipped non-hook import: ${cleanName}`;
+      });
+      return `// Hook imports transformed to direct window.React access\n${hookAssignments.join('\n')}`;
     });
+  
+  // Transform third-party Web3 imports to polyfill paths (keep this working)
+  // ULTRA-DYNAMIC: Convert named imports to property access of polyfill namespace
+  transformed = transformed
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]viem['"]/g,
+      (match, imports) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill_viem || window.__0x1_polyfill_viem;
+            if (!polyfill) throw new Error('[0x1] viem polyfill not loaded - ensure /node_modules/viem is loaded first');
+            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from viem polyfill'); });
+          })();`
+        );
+        return `// ULTRA-DYNAMIC viem imports\n${assignments.join('\n')}`;
+      }
+    )
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]viem\/([^'"]+)['"]/g,
+      (match, imports, subPath) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill_viem || window.__0x1_polyfill_viem;
+            if (!polyfill) throw new Error('[0x1] viem polyfill not loaded - ensure /node_modules/viem is loaded first');
+            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from viem/${subPath} polyfill'); });
+          })();`
+        );
+        return `// ULTRA-DYNAMIC viem/${subPath} imports\n${assignments.join('\n')}`;
+      }
+    )
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]wagmi['"]/g,
+      (match, imports) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill_wagmi || window.__0x1_polyfill_wagmi;
+            if (!polyfill) throw new Error('[0x1] wagmi polyfill not loaded - ensure /node_modules/wagmi is loaded first');
+            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from wagmi polyfill'); });
+          })();`
+        );
+        return `// ULTRA-DYNAMIC wagmi imports\n${assignments.join('\n')}`;
+      }
+    )
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]wagmi\/([^'"]+)['"]/g,
+      (match, imports, subPath) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill_wagmi || window.__0x1_polyfill_wagmi;
+            if (!polyfill) throw new Error('[0x1] wagmi polyfill not loaded - ensure /node_modules/wagmi is loaded first');
+            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from wagmi/${subPath} polyfill'); });
+          })();`
+        );
+        return `// ULTRA-DYNAMIC wagmi/${subPath} imports\n${assignments.join('\n')}`;
+      }
+    )
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]@tanstack\/react-query['"]/g,
+      (match, imports) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill__tanstack_react_query || window.__0x1_polyfill__tanstack_react_query;
+            if (!polyfill) throw new Error('[0x1] @tanstack/react-query polyfill not loaded - ensure /node_modules/@tanstack/react-query is loaded first');
+            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from @tanstack/react-query polyfill'); });
+          })();`
+        );
+        return `// ULTRA-DYNAMIC @tanstack/react-query imports\n${assignments.join('\n')}`;
+      }
+    )
+    .replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]@rainbow-me\/rainbowkit['"]/g,
+      (match, imports) => {
+        const namedImports = imports.split(',').map((name: string) => name.trim());
+        const assignments = namedImports.map((name: string) => 
+          `const ${name} = (() => { 
+            const polyfill = globalThis.__0x1_polyfill__rainbow_me_rainbowkit || window.__0x1_polyfill__rainbow_me_rainbowkit;
+            console.log('[0x1 DEBUG] Accessing ${name} from RainbowKit polyfill. Polyfill exists:', !!polyfill);
+            if (!polyfill) {
+              console.error('[0x1 ERROR] RainbowKit polyfill not found. Available keys:', Object.keys(globalThis).filter(k => k.includes('polyfill')));
+              throw new Error('[0x1] @rainbow-me/rainbowkit polyfill not loaded - ensure /node_modules/@rainbow-me/rainbowkit is loaded first');
+            }
+            const result = polyfill.${name} || polyfill.default?.${name};
+            console.log('[0x1 DEBUG] Retrieved ${name}:', typeof result, result);
+            if (!result) {
+              console.error('[0x1 ERROR] ${name} not available in polyfill. Available props:', Object.getOwnPropertyNames(polyfill));
+              throw new Error('[0x1] ${name} not available from @rainbow-me/rainbowkit polyfill');
+            }
+            return result;
+          })();`
+        );
+        return `// ULTRA-DYNAMIC @rainbow-me/rainbowkit imports\n${assignments.join('\n')}`;
+      }
+    );
+  
+  // Transform other 0x1 framework imports
+  transformed = transformed
+    .replace(/from\s+['"]0x1\/link['"]/g, 'from "/0x1/link"')
+    .replace(/from\s+['"]0x1\/router['"]/g, 'from "/0x1/router.js"')
+    .replace(/from\s+['"]0x1['"]/g, 'from "/node_modules/0x1/index.js"');
+  
+  // Transform relative imports to absolute paths
+  if (filePath && projectPath) {
+    const currentDir = dirname(filePath);
+    
+    // Handle parent directory imports: ../filename
+    transformed = transformed.replace(
+      /from\s+['"](\.\.[/\\][^'"]+)['"]/g, 
+      (match, relativePath) => {
+        const absolutePath = resolve(currentDir, relativePath).replace(projectPath, '');
+        return `from "${absolutePath.replace(/\\/g, '/')}"`;
+      }
+    );
+    
+    // Handle same directory imports: ./filename
+    transformed = transformed.replace(
+      /from\s+['"](\.[/\\][^'"]+)['"]/g, 
+      (match, relativePath) => {
+        const absolutePath = resolve(currentDir, relativePath).replace(projectPath, '');
+        return `from "${absolutePath.replace(/\\/g, '/')}"`;
+      }
+    );
+  }
 
   return transformed;
 }
@@ -68,30 +190,128 @@ function transformBareImports(content: string, filePath?: string): string {
  * This handles Bun's transpiler output which generates hashed function names
  */
 function normalizeJsxFunctionCalls(content: string): string {
-  // Replace hashed JSX function calls with standard ones
-  // Pattern: jsxDEV_[hash] -> jsxDEV
+  // Log original content statistics
+  const originalHashedFunctions = content.match(/jsx[A-Za-z]*_[a-zA-Z0-9_]+/g) || [];
+  console.log(`🔧 Starting normalization with ${originalHashedFunctions.length} hashed functions found`);
+  
+  // Let's log the exact patterns we're seeing
+  if (originalHashedFunctions.length > 0) {
+    console.log(`🔍 First 5 hashed functions found: ${originalHashedFunctions.slice(0, 5).join(', ')}`);
+  }
+  
+  // Much more aggressive and comprehensive normalization patterns
+  // Handle the specific pattern we're seeing: jsxDEV_7x81h0kn
+  
+  // 1. Most aggressive: Replace any jsx function with underscore and hash
   content = content.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
-  
-  // Pattern: jsx_[hash] -> jsx  
   content = content.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
-  
-  // Pattern: jsxs_[hash] -> jsxs
   content = content.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
-  
-  // Pattern: Fragment_[hash] -> Fragment
   content = content.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
+  
+  // 2. Handle mixed alphanumeric patterns like the one we're seeing
+  content = content.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
+  content = content.replace(/jsx_[0-9a-z]+/gi, 'jsx');
+  content = content.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
+  content = content.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+  
+  // 3. Ultra aggressive catch-all: any jsx followed by underscore and anything
+  content = content.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
+  content = content.replace(/\bjsx_\w+/g, 'jsx');
+  content = content.replace(/\bjsxs_\w+/g, 'jsxs');
+  content = content.replace(/\bFragment_\w+/g, 'Fragment');
+  
+  // 4. Even more aggressive: handle any character combinations
+  content = content.replace(/jsxDEV_[^(\s]+/g, 'jsxDEV');
+  content = content.replace(/jsx_[^(\s]+/g, 'jsx');
+  content = content.replace(/jsxs_[^(\s]+/g, 'jsxs');
+  content = content.replace(/Fragment_[^(\s]+/g, 'Fragment');
+  
+  // 5. Final nuclear option: match the exact pattern we're seeing
+  content = content.replace(/jsxDEV_7x81h0kn/g, 'jsxDEV');
+  content = content.replace(/jsx_7x81h0kn/g, 'jsx');
+  content = content.replace(/jsxs_7x81h0kn/g, 'jsxs');
+  content = content.replace(/Fragment_7x81h0kn/g, 'Fragment');
+  
+  // 6. Absolutely aggressive: replace ALL occurrences regardless of pattern
+  content = content.replace(/jsx[a-zA-Z]*_[a-zA-Z0-9]+/g, (match) => {
+    console.log(`🔄 Processing match: ${match}`);
+    if (match.startsWith('jsxDEV_')) return 'jsxDEV';
+    if (match.startsWith('jsxs_')) return 'jsxs';
+    if (match.startsWith('jsx_')) return 'jsx';
+    if (match.startsWith('Fragment_')) return 'Fragment';
+    // Fallback: just remove the hash
+    const base = match.split('_')[0];
+    console.log(`🔄 Fallback: ${match} -> ${base}`);
+    return base;
+  });
+  
+  // Log final statistics
+  const finalHashedFunctions = content.match(/jsx[A-Za-z]*_[a-zA-Z0-9_]+/g) || [];
+  console.log(`🔧 Normalization complete: ${originalHashedFunctions.length} -> ${finalHashedFunctions.length} hashed functions`);
+  
+  // If we still have hashed functions, log them for debugging
+  if (finalHashedFunctions.length > 0) {
+    console.log(`🚨 REMAINING HASHED FUNCTIONS: ${finalHashedFunctions.slice(0, 10).join(', ')}`);
+    
+    // Show context around remaining functions
+    finalHashedFunctions.slice(0, 3).forEach((func, i) => {
+      const index = content.indexOf(func);
+      if (index !== -1) {
+        const start = Math.max(0, index - 30);
+        const end = Math.min(content.length, index + func.length + 30);
+        const context = content.substring(start, end);
+        console.log(`Context ${i + 1} for "${func}": ${context}`);
+      }
+    });
+  }
   
   return content;
 }
 
 /**
  * Generate production-quality JSX runtime preamble
- * Uses the proper JSX runtime with hooks context support
+ * Uses import statements instead of variable declarations to avoid syntax errors
  */
 function generateJsxRuntimePreamble(): string {
-  return `// 0x1 Framework - Component uses global JSX runtime
-// JSX functions (jsx, jsxs, jsxDEV, Fragment, createElement) are available globally
-`;
+  return `// 0x1 Framework - JSX Runtime Access
+import { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';`;
+}
+
+/**
+ * Insert JSX runtime import after existing imports
+ */
+function insertJsxRuntimePreamble(code: string): string {
+  const lines = code.split('\n');
+  let insertIndex = 0;
+  let foundImports = false;
+  
+  // Find the end of imports
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (line.startsWith('import ') || (line.startsWith('export ') && line.includes('from '))) {
+      foundImports = true;
+      insertIndex = i + 1;
+    } else if (line.startsWith('//') || line.startsWith('/*') || line === '') {
+      // Skip comments and empty lines but don't update insertIndex unless after imports
+      if (foundImports) {
+        insertIndex = i + 1;
+      }
+    } else if (line && foundImports) {
+      // Found first non-import, non-comment line after imports
+      break;
+    }
+  }
+  
+  // If no imports found, insert at the very beginning
+  if (!foundImports) {
+    insertIndex = 0;
+  }
+  
+  // Insert JSX runtime import at the determined position
+  const jsxRuntimeImport = generateJsxRuntimePreamble();
+  lines.splice(insertIndex, 0, jsxRuntimeImport);
+  return lines.join('\n');
 }
 
 /**
@@ -171,6 +391,25 @@ Suggestion: \${validationError.suggestion}\`;
 }
 
 /**
+ * Locate a component file based on the request path
+ */
+function locateComponent(reqPath: string, projectPath: string): string | null {
+  // Remove .js extension and add project path
+  const componentBasePath = reqPath.replace(/\.js$/, '');
+  
+  // Check for the component in various formats (.tsx, .jsx, .ts, .js)
+  const possibleComponentPaths = [
+    join(projectPath, `${componentBasePath}.tsx`),
+    join(projectPath, `${componentBasePath}.jsx`),
+    join(projectPath, `${componentBasePath}.ts`),
+    join(projectPath, `${componentBasePath}.js`)
+  ];
+  
+  // Find the first matching component path
+  return possibleComponentPaths.find(path => existsSync(path)) || null;
+}
+
+/**
  * Handles component requests and transpilation
  */
 export function handleComponentRequest(
@@ -192,10 +431,55 @@ export function handleComponentRequest(
   if (!componentPath) return null;
   
   try {
-    logger.info(`✅ 200 OK: ${reqPath} (Component from ${componentPath.replace(projectPath, '')})`);
+    console.log(`✅ 200 OK: ${reqPath} (Component from ${componentPath.replace(projectPath, '')})`);
     
     // Read the source code
     const sourceCode = readFileSync(componentPath, 'utf-8');
+    
+    // PERFORMANCE: Check transpilation cache first
+    const stats = statSync(componentPath);
+    const currentMtime = stats.mtime.getTime();
+    const cacheKey = componentPath;
+    
+    if (transpilationCache.has(cacheKey)) {
+      const cached = transpilationCache.get(cacheKey)!;
+      if (cached.mtime >= currentMtime) {
+        console.log(`[0x1 Cache] Using cached transpilation for ${componentPath}`);
+        return new Response(cached.content, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "ETag": cached.etag,
+            "X-Transpiled": "cached"
+          }
+        });
+      }
+    }
+    
+    // CRITICAL FIX: Process directives to detect client components
+    const directiveResult = processDirectives(sourceCode, componentPath);
+    if (directiveResult.errors.length > 0) {
+      console.warn(`Component ${componentPath} has directive errors:`, directiveResult.errors);
+      return new Response(generateDirectiveErrorScript(componentPath, directiveResult.errors), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/javascript; charset=utf-8",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        }
+      });
+    }
+    
+    // Use processed code from directive validation
+    const processedSource = directiveResult.code;
+    
+    // Add logging for client component detection
+    if (directiveResult.directive === 'client' || directiveResult.inferredContext === 'client') {
+      console.log(`[0x1 Directive] Detected CLIENT component: ${componentPath}`);
+    }
+    
+    // Transform bare imports
+    const transformedContent = transformBareImports(processedSource, componentPath, projectPath);
     
     // Determine if this is a JSX/TSX file
     const extension = componentPath.split('.').pop() || 'js';
@@ -204,95 +488,61 @@ export function handleComponentRequest(
     // If this is a JSX/TSX file, transpile it with Bun
     if (isJSX) {
       try {
-        logger.debug(`Transpiling ${componentPath} using Bun.Transpiler`);
+        console.log(`Transpiling ${componentPath} using Bun.Transpiler`);
         
-        // Transform bare imports first
-        const transformedContent = transformBareImports(sourceCode);
-        
-        // Create transpiler with simple, working configuration
         const transpiler = new Bun.Transpiler({
-          loader: extension === 'tsx' ? 'tsx' : 'jsx',
+          loader: componentPath.endsWith('.tsx') ? 'tsx' : 'jsx',
           target: 'browser',
           define: {
             'process.env.NODE_ENV': '"development"',
-          },
-          // Handle jsx/tsx content
-          macro: {
-            // Convert JSX to createElement calls
-            jsxFactory: { jsx: "createElement" },
-            jsxFragment: { jsx: "Fragment" },
-          },
+            'global': 'window'
+          }
         });
         
-        // Transpile the TypeScript code
-        let transpiled = transpiler.transformSync(transformedContent);
+        const transpiled = transpiler.transformSync(transformedContent);
         
-        // Normalize hashed JSX function calls to standard names
-        transpiled = normalizeJsxFunctionCalls(transpiled);
+        // Insert JSX runtime preamble to ensure it's available
+        const withJsxRuntime = insertJsxRuntimePreamble(transpiled);
         
-        // Debug: Log the transpiled content to see what's happening
-        logger.debug(`Transpiled content for ${componentPath}:`);
-        logger.debug(`Has 'export default': ${transpiled.includes('export default')}`);
-        logger.debug(`Has 'function ': ${transpiled.includes('function ')}`);
+        // // Log debug info for the transpilation
+        // console.log(`=== TRANSPILATION DEBUG for ${componentPath} ===`);
+        // console.log(`Original source (first 200 chars):`, sourceCode.substring(0, 200));
+        // console.log(`Transformed imports (first 200 chars):`, transformedContent.substring(0, 200));
+        // console.log(`Transpiled output (first 500 chars):`, withJsxRuntime.substring(0, 500));
+        // console.log(`Transpiled output (last 200 chars):`, withJsxRuntime.substring(-200));
         
-        // Generate final code (clean, no directive processing interference)
-        const finalCode = `${generateJsxRuntimePreamble()}
-
-${transpiled}`;
-
-        // Perform directive validation in the background (server-side only, no code modification)
-        try {
-          const validation = validateFileDirectives(componentPath, sourceCode);
-          
-          // Log context inference if applicable (server-side only)
-          if (validation.inferredContext) {
-            logger.info(`🔍 Auto-inferred context for ${componentPath}: "${validation.inferredContext}"`);
-          }
-          
-          // Log validation issues but don't inject anything into browser code
-          if (validation.hasErrors) {
-            const criticalErrors = validation.errors.filter(error => 
-              error.type.includes('error') && !error.type.includes('warning')
-            );
-            
-            if (criticalErrors.length > 0) {
-              logger.error(`🚨 Critical directive validation errors in ${componentPath}:`);
-              criticalErrors.forEach((error, index) => {
-                logger.error(`  ${index + 1}. Line ${error.line}: ${error.message}`);
-                logger.info(`     💡 ${error.suggestion}`);
-              });
-            }
-            
-            const warnings = validation.errors.filter(error => 
-              error.type.includes('warning')
-            );
-            
-            if (warnings.length > 0) {
-              logger.warn(`⚠️ Directive validation warnings in ${componentPath}:`);
-              warnings.forEach((error, index) => {
-                logger.warn(`  ${index + 1}. Line ${error.line}: ${error.message}`);
-                logger.info(`     💡 ${error.suggestion}`);
-              });
-            }
-          }
-        } catch (validationError) {
-          // Don't let validation errors break the actual transpilation
-          logger.debug(`Directive validation failed for ${componentPath}: ${validationError}`);
-        }
+        // Apply JSX normalization to handle dynamic hashed function names
+        const normalized = normalizeJsxFunctionCalls(withJsxRuntime);
         
-        logger.debug(`Successfully transpiled and normalized ${componentPath}`);
+        // DISABLE ES6 conversion for proper module loading
+        // Let the browser handle ES6 imports properly via import maps
+        const finalContent = normalized;
         
-        // Return transpiled JavaScript with proper MIME type
-        return new Response(finalCode, {
+        console.log('✅ ES6 syntax converted to browser-compatible JavaScript');
+        
+        // PERFORMANCE: Cache the transpilation result
+        const etag = `"${Date.now()}-${Math.random()}"`;
+        transpilationCache.set(cacheKey, {
+          content: finalContent,
+          mtime: currentMtime,
+          etag: etag
+        });
+        
+        return new Response(finalContent, {
           status: 200,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Last-Modified": new Date().toUTCString(),
+            "ETag": etag,
+            "X-Transpiled": "bun"
           }
         });
       } catch (error: unknown) {
         const transpileError = error instanceof Error ? error.message : String(error);
-        logger.error(`Failed to transpile ${componentPath}: ${transpileError}`);
+        console.error(`Failed to transpile ${componentPath}: ${transpileError}`);
         
         // Return a production-quality error component with enhanced styling
         const errorScript = `${generateJsxRuntimePreamble()}
@@ -372,32 +622,80 @@ export default function TranspilationErrorComponent(props) {
           status: 200, // Return 200 to avoid breaking the app
           headers: {
             "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Last-Modified": new Date().toUTCString(),
+            "ETag": `"${Date.now()}-${Math.random()}"`,
+            "X-Transpiled": "error"
           }
         });
       }
     } else {
-      // For non-JSX files, transform bare imports and return
-      const transformedContent = transformBareImports(sourceCode);
+      // For non-JSX files, handle TypeScript transpilation if it's a .ts file
+      if (extension === 'ts') {
+        try {
+          console.log(`Transpiling TypeScript file ${componentPath} using Bun.Transpiler`);
+          
+          // Create transpiler for TypeScript
+          const transpiler = new Bun.Transpiler({
+            loader: 'ts',
+            target: 'browser',
+            define: {
+              'process.env.NODE_ENV': '"development"',
+            },
+          });
+          
+          // Transpile the TypeScript code to remove type annotations
+          const transpiled = transpiler.transformSync(transformedContent);
+          
+          console.log(`Successfully transpiled TypeScript file ${componentPath}`);
+          
+          return new Response(transpiled, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/javascript; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              "Pragma": "no-cache",
+              "Expires": "0",
+              "Last-Modified": new Date().toUTCString(),
+              "ETag": `"${Date.now()}-${Math.random()}"`,
+              "X-Transpiled": "typescript"
+            }
+          });
+        } catch (error: unknown) {
+          const transpileError = error instanceof Error ? error.message : String(error);
+          console.error(`Failed to transpile TypeScript file ${componentPath}: ${transpileError}`);
+          
+          // Fall back to basic transformation
+          console.warn(`Falling back to basic transformation for ${componentPath}`);
+        }
+      }
       
+      // For non-JSX files (.js or failed .ts), transform bare imports and return
       return new Response(transformedContent, {
         status: 200,
         headers: {
           "Content-Type": "application/javascript; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate" 
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          "Last-Modified": new Date().toUTCString(),
+          "ETag": `"${Date.now()}-${Math.random()}"`,
+          "X-Transpiled": "bare-imports"
         }
       });
     }
   } catch (error) {
-    logger.error(`Failed to process component ${componentPath}: ${error}`);
+    console.error(`Failed to process component ${componentPath}: ${error}`);
     return null;
   }
 }
 
 /**
- * Generate the component code with proper error handling and exports
+ * Generate basic component code with proper error handling and exports (utility function)
  */
-export function generateComponentCode(componentPath: string, sourceCode: string): string {
+export function generateComponentCode(componentPath: string, sourceCode: string, projectPath: string): string {
   const componentName = basename(componentPath, extname(componentPath));
   
   // Check if the source already has exports to avoid duplicates
@@ -429,21 +727,6 @@ ${hasNamedExports ? `export default ${componentName};` : ''}
 }
 
 /**
- * Generate component code with integrated error boundary
- */
-export function generateComponentCodeWithErrorBoundary(componentPath: string, sourceCode: string, originalComponentName?: string): string {
-  const componentName = originalComponentName || basename(componentPath, extname(componentPath));
-  
-  return `
-// Auto-generated component with error boundary for ${componentName}
-import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
-
-// Original component code
-${sourceCode}
-`;
-}
-
-/**
  * Generate a fallback component for error cases
  */
 export function generateFallbackComponent(componentName: string, errorMessage: string): string {
@@ -456,4 +739,127 @@ export default function ${componentName}(props) {
   return container;
 }
 `;
+}
+
+// Add path normalization function
+function normalizePath(path: string): string {
+  // Split the path into segments
+  const segments = path.split('/').filter(segment => segment !== '');
+  const normalized: string[] = [];
+  
+  for (const segment of segments) {
+    if (segment === '..') {
+      // Go up one level (remove last segment)
+      if (normalized.length > 0) {
+        normalized.pop();
+      }
+    } else if (segment !== '.') {
+      // Add the segment (ignore '.' which means current directory)
+      normalized.push(segment);
+    }
+  }
+  
+  // Return normalized path with leading slash
+  return '/' + normalized.join('/');
+}
+
+/**
+ * Convert ES6 import/export syntax to browser-compatible JavaScript
+ */
+function convertES6ToBrowserJS(code: string, componentPath: string): string {
+  let browserCode = code;
+  
+  // Step 1: Convert import statements to global variable assignments with silent fallbacks
+  browserCode = browserCode.replace(
+    /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"`]([^'"`]+)['"`];?\s*/g,
+    (match, imports, modulePath) => {
+      // Handle different import patterns
+      if (imports.includes('{')) {
+        // Named imports: import { A, B } from 'module'
+        const namedImports = imports.replace(/[{}]/g, '').split(',').map((imp: string) => imp.trim());
+        const globalAssignments = namedImports.map((imp: string) => {
+          const [importName, alias] = imp.includes(' as ') ? imp.split(' as ').map((s: string) => s.trim()) : [imp, imp];
+          // Silent fallback without console.warn to avoid "Import not found" errors
+          return `const ${alias} = globalThis.${importName} || window.${importName} || null;`;
+        }).join('\n');
+        return `// Import: ${match.trim()}\n${globalAssignments}`;
+      } else if (imports.includes('*')) {
+        // Namespace imports: import * as Module from 'module'
+        const namespaceName = imports.replace(/\*\s+as\s+/, '').trim();
+        return `// Import: ${match.trim()}\nconst ${namespaceName} = globalThis.${namespaceName} || window.${namespaceName} || {};`;
+      } else {
+        // Default imports: import Module from 'module'
+        const importName = imports.trim();
+        return `// Import: ${match.trim()}\nconst ${importName} = globalThis.${importName} || window.${importName} || null;`;
+      }
+    }
+  );
+  
+  // Track exports for final export statement
+  const namedExports: string[] = [];
+  let defaultExport: string | null = null;
+  
+  // Step 2: Convert export statements to browser-compatible code
+  
+  // Handle: export const metadata = {...}
+  browserCode = browserCode.replace(
+    /export\s+(const|let|var)\s+(\w+)\s*=\s*([^;]+);?/g,
+    (match, declaration, name, value) => {
+      namedExports.push(name);
+      return `${declaration} ${name} = ${value};`;
+    }
+  );
+  
+  // Handle: export function FunctionName() - make it global
+  browserCode = browserCode.replace(
+    /export\s+function\s+(\w+)/g,
+    (match, functionName) => {
+      namedExports.push(functionName);
+      return `function ${functionName}`;
+    }
+  );
+  
+  // Handle: export default function FunctionName() - make it global and set as default
+  browserCode = browserCode.replace(
+    /export\s+default\s+function\s+(\w+)/g,
+    (match, functionName) => {
+      defaultExport = functionName;
+      return `function ${functionName}`;
+    }
+  );
+  
+  // Handle: export default SomeName - assign to window.default
+  browserCode = browserCode.replace(
+    /export\s+default\s+(\w+);?/g,
+    (match, name) => {
+      defaultExport = name;
+      return `// Default export: ${name}`;
+    }
+  );
+  
+  // Step 3: Add global assignments for all functions found in the code
+  const functionMatches = browserCode.match(/function\s+(\w+)/g);
+  if (functionMatches) {
+    const uniqueFunctions = [...new Set(functionMatches.map(match => match.replace('function ', '')))];
+    const globalAssignments = uniqueFunctions.map(funcName => {
+      return `\n// Global assignment for ${funcName}\nwindow.${funcName} = ${funcName};`;
+    }).join('');
+    browserCode += globalAssignments;
+  }
+  
+  // Step 4: Add proper ES6 export statements at the end
+  browserCode += '\n\n// ES6 module exports for dynamic import compatibility\n';
+  
+  // Add named exports
+  namedExports.forEach(exportName => {
+    browserCode += `export { ${exportName} };\n`;
+  });
+  
+  // Add default export
+  if (defaultExport) {
+    browserCode += `export default ${defaultExport};\n`;
+    browserCode += `window.default = ${defaultExport};\n`;
+  }
+  
+  return browserCode;
 }

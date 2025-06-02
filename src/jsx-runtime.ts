@@ -1,6 +1,6 @@
 /**
- * 0x1 Framework JSX Runtime
- * Main entry point for JSX runtime
+ * JSX Runtime Export - ONE SOURCE OF TRUTH
+ * Re-exports from the main JSX runtime implementation
  */
 
-export * from './jsx/runtime';
+export * from './jsx/runtime.js';

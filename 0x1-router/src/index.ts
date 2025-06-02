@@ -69,6 +69,13 @@ class Router {
   private isServer: boolean = typeof window === "undefined";
   public options: RouterOptions;
 
+  // Cache for layout DOM to prevent re-rendering
+  private layoutCache: {
+    element?: HTMLElement;
+    layoutComponent?: any;
+    contentSlot?: HTMLElement;
+  } = {};
+
   constructor(options: RouterOptions = {}) {
     // Initialize options with defaults
     this.options = {
@@ -136,8 +143,19 @@ class Router {
     }
 
     if (typeof (window as any).__0x1_triggerUpdate !== "function") {
-      (window as any).__0x1_triggerUpdate = () => {
-        this.renderCurrentRoute();
+      (window as any).__0x1_triggerUpdate = (componentId?: string) => {
+        // Only trigger targeted component updates, not full route renders
+        if (componentId) {
+          // Find and update only the specific component
+          const element = document.querySelector(`[data-component-id="${componentId}"]`);
+          if (element && element.getAttribute('data-update-callback')) {
+            // If component has an update callback, use it
+            const callback = (element as any).__updateCallback;
+            if (typeof callback === 'function') {
+              callback();
+            }
+          }
+        }
       };
     }
   }
@@ -307,6 +325,14 @@ class Router {
       };
     }
 
+    // Handle wildcard routes (catch-all)
+    if (path === "*") {
+      return {
+        regex: new RegExp(".*"), // Match any path
+        keys: [],
+      };
+    }
+
     const keys: string[] = [];
     let regexStr = path.replace(/\//g, "/").replace(/:([^/]+)/g, (_, key) => {
       keys.push(key);
@@ -329,86 +355,339 @@ class Router {
   private renderCurrentRoute() {
     if (this.isServer) return;
 
+    // CRITICAL FIX: Prevent multiple simultaneous renders
+    if ((this as any)._isRendering) {
+      return;
+    }
+    (this as any)._isRendering = true;
+
     const rootElement = this.options?.rootElement;
+    
     if (!rootElement) {
       console.warn("[0x1 Router] No root element specified for rendering");
+      (this as any)._isRendering = false;
       return;
     }
 
     const match = this.matchRoute(this.currentPath);
+    
     if (match) {
       try {
         // Get the component
-        let component = match.route.component;
+        const component = match.route.component;
 
-        // Apply layout if specified
-        if (match.route.meta?.layout) {
-          const layout = match.route.meta.layout;
-          const originalComponent = component;
-          component = (props: any) => {
-            const pageContent = originalComponent(props);
-            return layout({ children: pageContent, ...props });
-          };
+        // Check if we have a layout
+        const layoutComponent = match.route.meta?.layout;
+        
+        if (layoutComponent) {
+          // LAYOUT PERSISTENCE: Check if layout changed or needs initialization
+          const layoutChanged = this.layoutCache.layoutComponent !== layoutComponent;
+          
+          if (layoutChanged || !this.layoutCache.element) {
+            console.log("[0x1 Router] 🏗️ Initializing/updating layout...");
+            
+            // OPTIMIZED: Render layout with error handling
+            let layoutElement: HTMLElement | null = null;
+            try {
+              layoutElement = this.jsxToDom(layoutComponent({ children: null }));
+            } catch (layoutError) {
+              console.error("[0x1 Router] Layout rendering failed:", layoutError);
+              // Clear cache and fall back to no layout
+              this.layoutCache = {};
+              const element = this.jsxToDom(component(match.params));
+              if (element) {
+                rootElement.innerHTML = '';
+                rootElement.appendChild(element);
+              }
+              (this as any)._isRendering = false;
+              return;
+            }
+            
+            if (!layoutElement) {
+              console.error("[0x1 Router] Failed to render layout component");
+              (this as any)._isRendering = false;
+              return;
+            }
+            
+            // Find the content slot (where children go)
+            const contentSlot = layoutElement.querySelector('[data-slot="children"]') || 
+                              layoutElement.querySelector('main') ||
+                              layoutElement; // Fallback to layout element itself
+            
+            // Cache the layout
+            this.layoutCache = {
+              element: layoutElement,
+              layoutComponent: layoutComponent,
+              contentSlot: contentSlot as HTMLElement
+            };
+            
+            // Only replace if layout actually changed (avoid unnecessary DOM manipulation)
+            if (layoutChanged || !rootElement.firstChild) {
+              rootElement.innerHTML = '';
+              rootElement.appendChild(layoutElement);
+              console.log("[0x1 Router] Layout rendered to DOM");
+            }
+          }
+          
+          // FAST PATH: Only update content inside the persistent layout
+          console.log("[0x1 Router] ⚡ Updating content only (layout persists)...");
+          
+          let pageElement: HTMLElement | null = null;
+          try {
+            pageElement = this.jsxToDom(component(match.params));
+          } catch (componentError) {
+            console.error("[0x1 Router] Component rendering failed:", componentError);
+            // Show error in content slot
+            if (this.layoutCache.contentSlot) {
+              this.layoutCache.contentSlot.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #ef4444;">
+                  <div style="margin-bottom: 8px;">❌</div>
+                  <div>Error loading page</div>
+                  <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">${componentError instanceof Error ? componentError.message : 'Component error'}</div>
+                </div>
+              `;
+            }
+            (this as any)._isRendering = false;
+            return;
+          }
+          
+          if (!pageElement || !this.layoutCache.contentSlot) {
+            console.error("[0x1 Router] Failed to render page component or missing content slot");
+            (this as any)._isRendering = false;
+            return;
+          }
+          
+          // OPTIMIZED: Use simpler content replacement to avoid conflicts
+          this.layoutCache.contentSlot.innerHTML = '';
+          this.layoutCache.contentSlot.appendChild(pageElement);
+          console.log("[0x1 Router] Content updated successfully");
+          
+        } else {
+          // No layout - direct rendering (clear any cached layout)
+          this.layoutCache = {};
+          const element = this.jsxToDom(component(match.params));
+          
+          if (!element) {
+            console.error("[0x1 Router] Failed to render component");
+            (this as any)._isRendering = false;
+            return;
+          }
+          
+          if ('startViewTransition' in document) {
+            (document as any).startViewTransition(() => {
+              rootElement.innerHTML = '';
+              rootElement.appendChild(element);
+            });
+          } else {
+            rootElement.innerHTML = '';
+            rootElement.appendChild(element);
+          }
         }
 
-        // Render the component with error handling
-        const result = component({ params: match.params });
+        // Update browser URL if needed
+        if (this.currentPath !== window.location.pathname) {
+          window.history.pushState({}, '', this.currentPath);
+        }
 
-        // Use requestAnimationFrame for smooth rendering
-        requestAnimationFrame(() => {
-          // Clear root element content efficiently
-          while (rootElement.firstChild) {
-            rootElement.removeChild(rootElement.firstChild);
-          }
-
-          // Handle different result types
-          if (
-            result &&
-            typeof result === "object" &&
-            (result.type || result.__isVNode)
-          ) {
-            // JSX object - convert to DOM
-            const domElement = this.jsxToDom(result);
-            if (domElement) {
-              rootElement.appendChild(domElement);
-            }
-          } else if (result instanceof HTMLElement) {
-            // Already a DOM element
-            rootElement.appendChild(result);
-          } else if (typeof result === "string") {
-            // HTML string
-            rootElement.innerHTML = result;
-          }
-
-          // Add smooth transition class for better UX
-          rootElement.style.opacity = "0";
-          rootElement.style.transition = "opacity 0.15s ease-in-out";
-
-          // Fade in the new content
-          setTimeout(() => {
-            rootElement.style.opacity = "1";
-          }, 10);
-        });
-      } catch (error: unknown) {
+        console.log(`[0x1 Router] Navigation completed to: ${this.currentPath}`);
+        (this as any)._isRendering = false;
+      } catch (error) {
         console.error("[0x1 Router] Error rendering route:", error);
-        rootElement.innerHTML = `<div class="error p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 rounded-lg">
-          <h3 class="text-lg font-bold text-red-700 dark:text-red-300 mb-2">Error Rendering Route</h3>
-          <p class="text-red-600 dark:text-red-400 text-sm">${error instanceof Error ? error.message : String(error)}</p>
-        </div>`;
+        (this as any)._isRendering = false;
       }
     } else {
-      console.warn("[0x1 Router] No route found for:", this.currentPath);
-      rootElement.innerHTML = `<div class="not-found p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-600 rounded-lg">
-        <h3 class="text-lg font-bold text-yellow-700 dark:text-yellow-300 mb-2">404 - Page Not Found</h3>
-        <p class="text-yellow-600 dark:text-yellow-400 text-sm">The requested route "${this.currentPath}" could not be found.</p>
-      </div>`;
+      // No match found - render 404 component
+      console.warn(`[0x1 Router] No route found for: ${this.currentPath}`);
+      
+      // Check if we have an active layout to preserve
+      if (this.layoutCache.element && this.layoutCache.contentSlot) {
+        console.log('[0x1 Router] 🏠 Rendering 404 inside existing layout');
+        
+        try {
+          let notFoundElement: HTMLElement | null = null;
+          
+          if (this.options.notFoundComponent) {
+            // Use custom 404 component
+            notFoundElement = this.jsxToDom(this.options.notFoundComponent({ path: this.currentPath }));
+          } else {
+            // Use fallback 404 content (but render as element, not innerHTML)
+            notFoundElement = this.createFallback404Element();
+          }
+          
+          if (notFoundElement) {
+            // Render 404 inside the existing layout's content slot
+            this.layoutCache.contentSlot.innerHTML = '';
+            this.layoutCache.contentSlot.appendChild(notFoundElement);
+            console.log('[0x1 Router] ✅ 404 rendered inside layout');
+          } else {
+            console.error('[0x1 Router] Failed to create 404 element');
+            this.layoutCache.contentSlot.innerHTML = `
+              <div style="padding: 20px; text-align: center; color: #ef4444;">
+                <div style="margin-bottom: 8px;">❌</div>
+                <div>Page not found</div>
+              </div>
+            `;
+          }
+        } catch (error) {
+          console.error('[0x1 Router] Error rendering 404 in layout:', error);
+          this.layoutCache.contentSlot.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #ef4444;">
+              <div style="margin-bottom: 8px;">❌</div>
+              <div>Page not found</div>
+            </div>
+          `;
+        }
+      } else {
+        // No layout active - render 404 as standalone page
+        console.log('[0x1 Router] 🏠 Rendering standalone 404 page');
+        
+        // Clear any existing layout cache since we're rendering standalone
+        this.layoutCache = {};
+        
+        if (this.options.notFoundComponent) {
+          try {
+            const notFoundElement = this.jsxToDom(this.options.notFoundComponent({ path: this.currentPath }));
+            
+            if (notFoundElement) {
+              if ('startViewTransition' in document) {
+                (document as any).startViewTransition(() => {
+                  rootElement.innerHTML = '';
+                  rootElement.appendChild(notFoundElement);
+                });
+              } else {
+                rootElement.innerHTML = '';
+                rootElement.appendChild(notFoundElement);
+              }
+              console.log('[0x1 Router] ✅ Custom 404 component rendered');
+            } else {
+              console.error('[0x1 Router] Failed to render custom 404 component');
+              this.renderFallback404(rootElement);
+            }
+          } catch (error) {
+            console.error('[0x1 Router] Error rendering custom 404 component:', error);
+            this.renderFallback404(rootElement);
+          }
+        } else {
+          // No custom 404 component - render basic fallback
+          this.renderFallback404(rootElement);
+        }
+      }
+      
+      (this as any)._isRendering = false;
     }
+  }
+
+  // Render fallback 404 page when no custom notFoundComponent is provided
+  private renderFallback404(rootElement: HTMLElement): void {
+    console.log('[0x1 Router] 🏠 Rendering fallback 404 page');
+    rootElement.innerHTML = '';
+    rootElement.appendChild(this.createFallback404Element());
+  }
+
+  // Create fallback 404 element for rendering inside layouts
+  private createFallback404Element(): HTMLElement {
+    const container = document.createElement('div');
+    container.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      text-align: center;
+      padding: 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+    `;
+    
+    container.innerHTML = `
+      <div style="margin-bottom: 32px;">
+        <h1 style="font-size: 6rem; font-weight: bold; color: #8b5cf6; margin-bottom: 16px; line-height: 1;">404</h1>
+      </div>
+      <div style="max-width: 28rem; margin: 0 auto;">
+        <h2 style="font-size: 1.875rem; font-weight: bold; color: #1f2937; margin-bottom: 16px;">Page Not Found</h2>
+        <p style="font-size: 1.125rem; color: #6b7280; margin-bottom: 32px;">The page you're looking for doesn't exist or has been moved.</p>
+        <div style="display: flex; flex-direction: column; gap: 16px; align-items: center;">
+          <a href="/" onclick="event.preventDefault(); window.router?.navigate('/') || (window.location.href = '/')" style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); cursor: pointer;">
+            🏠 Back to Home
+          </a>
+        </div>
+      </div>
+    `;
+    
+    return container;
   }
 
   // Convert JSX object to DOM element
   private jsxToDom(jsx: any): HTMLElement | null {
     try {
       if (!jsx) return null;
+
+      // CRITICAL FIX: Handle Promise JSX types - OPTIMIZED
+      if (jsx && typeof jsx === 'object' && typeof jsx.then === 'function') {
+        console.log('[0x1 Router] Detected Promise JSX - handling async component');
+        
+        // Create loading element with minimal styles
+        const loadingElement = document.createElement('div');
+        loadingElement.className = 'async-loading';
+        loadingElement.style.cssText = `
+          padding: 20px;
+          text-align: center;
+          min-height: 100px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 1;
+          transition: opacity 0.15s ease;
+        `;
+        loadingElement.innerHTML = `
+          <div style="color: #6b7280; font-size: 14px;">
+            <div style="margin-bottom: 4px;">⚡</div>
+            <div>Loading...</div>
+          </div>
+        `;
+        
+        // OPTIMIZED: Handle promise resolution efficiently 
+        jsx.then((resolvedJsx: any) => {
+          console.log('[0x1 Router] Promise JSX resolved, replacing content');
+          try {
+            // Check if loading element is still in DOM (user might have navigated away)
+            if (!loadingElement.parentNode) {
+              console.log('[0x1 Router] Loading element no longer in DOM, skipping update');
+              return;
+            }
+            
+            const resolvedElement = this.jsxToDom(resolvedJsx);
+            if (resolvedElement) {
+              // OPTIMIZED: Direct replacement without animations to avoid conflicts
+              loadingElement.parentNode.replaceChild(resolvedElement, loadingElement);
+              console.log('[0x1 Router] Async content rendered successfully');
+            }
+          } catch (error) {
+            console.error('[0x1 Router] Error rendering resolved JSX:', error);
+            if (loadingElement.parentNode) {
+              loadingElement.innerHTML = `
+                <div style="color: #ef4444; text-align: center; font-size: 14px;">
+                  <div style="margin-bottom: 4px;">❌</div>
+                  <div>Error loading component</div>
+                  <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">${error instanceof Error ? error.message : 'Unknown error'}</div>
+                </div>
+              `;
+            }
+          }
+        }).catch((error: any) => {
+          console.error('[0x1 Router] Promise JSX rejected:', error);
+          if (loadingElement.parentNode) {
+            loadingElement.innerHTML = `
+              <div style="color: #ef4444; text-align: center; font-size: 14px;">
+                <div style="margin-bottom: 4px;">❌</div>
+                <div>Failed to load component</div>
+                <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">${error instanceof Error ? error.message : 'Network error'}</div>
+              </div>
+            `;
+          }
+        });
+        
+        return loadingElement;
+      }
 
       // Handle primitive values
       if (typeof jsx === "string" || typeof jsx === "number") {
@@ -497,6 +776,15 @@ class Router {
                 if (key === "children") {
                   // Skip children here, handle them separately
                   return;
+                } else if (
+                  // Filter out React development props that shouldn't be DOM attributes
+                  key === "__self" ||
+                  key === "__source" ||
+                  key === "ref" ||
+                  key === "key"
+                ) {
+                  // Skip these React development/internal props
+                  return;
                 } else if (key === "className") {
                   if (jsx.props[key]) {
                     // SVG elements don't have className property, use class attribute instead
@@ -547,7 +835,11 @@ class Router {
                 } else if (
                   jsx.props[key] !== null &&
                   jsx.props[key] !== undefined &&
-                  jsx.props[key] !== false
+                  jsx.props[key] !== false &&
+                  // Additional safety check: only set primitive values as attributes
+                  (typeof jsx.props[key] === "string" ||
+                   typeof jsx.props[key] === "number" ||
+                   typeof jsx.props[key] === "boolean")
                 ) {
                   // Handle SVG attributes with proper casing
                   if (
@@ -608,17 +900,21 @@ class Router {
             });
           }
 
-          // Handle children - prioritize VNode children if present
+          // Handle children - check multiple possible locations
           const children =
             jsx.__isVNode && jsx.children !== undefined
               ? Array.isArray(jsx.children)
                 ? jsx.children
                 : [jsx.children]
-              : jsx.props?.children
-                ? Array.isArray(jsx.props.children)
-                  ? jsx.props.children
-                  : [jsx.props.children]
-                : [];
+              : jsx.children !== undefined  // NEW: Check direct jsx.children first
+                ? Array.isArray(jsx.children)
+                  ? jsx.children
+                  : [jsx.children]
+                : jsx.props?.children
+                  ? Array.isArray(jsx.props.children)
+                    ? jsx.props.children
+                    : [jsx.props.children]
+                  : [];
 
           children.forEach((child: any) => {
             if (
@@ -640,6 +936,21 @@ class Router {
             }
           });
 
+          // CRITICAL FIX: Check for component metadata in props and apply to DOM element
+          if (jsx.props && element.setAttribute) {
+            const componentId = jsx.props["data-component-id"];
+            const componentName = jsx.props["data-component-name"];
+            
+            if (componentId) {
+              element.setAttribute("data-component-id", componentId);
+              console.log('[0x1 Router] Applied component metadata - ID:', componentId, 'to element:', jsx.type);
+            }
+            if (componentName) {
+              element.setAttribute("data-component-name", componentName);
+              console.log('[0x1 Router] Applied component metadata - Name:', componentName, 'to element:', jsx.type);
+            }
+          }
+
           return element;
         } else if (typeof jsx.type === "function") {
           // Component function - render with proper hook context
@@ -648,7 +959,25 @@ class Router {
               jsx.type,
               jsx.props || {}
             );
-            return this.jsxToDom(result);
+            
+            // CRITICAL FIX: Ensure the result gets properly converted to DOM with metadata
+            const domElement = this.jsxToDom(result);
+            
+            // CRITICAL FIX: Extract metadata from the result object (where renderComponentWithHookContext puts it)
+            if (domElement && domElement.setAttribute) {
+              // Get the component ID from the result props (added by renderComponentWithHookContext)
+              const componentId = result?.props?.["data-component-id"];
+              const componentName = result?.props?.["data-component-name"];
+              
+              if (componentId) {
+                domElement.setAttribute("data-component-id", componentId);
+              }
+              if (componentName) {
+                domElement.setAttribute("data-component-name", componentName);
+              }
+            }
+            
+            return domElement;
           } catch (componentError: any) {
             console.error(
               `[0x1 Router] Error rendering component:`,
@@ -685,7 +1014,7 @@ class Router {
   }
 
   // Efficient component rendering inspired by React 19/Next.js 15
-  private renderComponentWithHookContext(
+  public renderComponentWithHookContext(
     component: (props?: any) => any,
     props: any
   ): any {
@@ -703,9 +1032,38 @@ class Router {
     // Create stable component ID (similar to React's fiber keys)
     const componentName =
       (component.name && component.name.trim()) || "AnonymousComponent";
+      
+    // CRITICAL FIX: Clean up any existing component IDs for this component name
+    // This prevents the hooks system from trying to update old, stale component instances
+    const cleanupHookSystem = (window as any).__0x1_hooks;
+    if (cleanupHookSystem?.componentRegistry) {
+      const registry = cleanupHookSystem.componentRegistry;
+      const keysToDelete = [];
+      
+      // Find all old component IDs with the same component name
+      for (const [existingId, data] of registry.entries()) {
+        if (existingId.startsWith(`${componentName}_`) && existingId !== componentName) {
+          // Check if this component still exists in DOM
+          const element = document.querySelector(`[data-component-id="${existingId}"]`);
+          if (!element) {
+            keysToDelete.push(existingId);
+          }
+        }
+      }
+      
+      // Remove stale component IDs
+      keysToDelete.forEach(id => {
+        registry.delete(id);
+        // Also clean up update callbacks
+        if (cleanupHookSystem?.componentUpdateCallbacks) {
+          cleanupHookSystem.componentUpdateCallbacks.delete(id);
+        }
+      });
+    }
+    
     // Use a simpler, more consistent ID generation
     const componentId = `${componentName}_${Math.random().toString(36).slice(2, 8)}`;
-
+    
     // Validate componentId before proceeding
     if (
       !componentId ||
@@ -735,17 +1093,16 @@ class Router {
     try {
       // Optimized update callback that uses requestAnimationFrame for smooth updates
       const updateCallback = () => {
-        // Use requestAnimationFrame to prevent blocking scrolling
+        // CRITICAL FIX: Prevent cascade renders - only update if component still exists
         requestAnimationFrame(() => {
           try {
             // Find the specific DOM element for this component
             const element = document.querySelector(
               `[data-component-id="${componentId}"]`
             );
-
+            
             if (element && element.parentNode) {
               // Re-render only this component, not the entire route
-
               // Enter component context again for re-rendering (no recursive callback)
               (window as any).__0x1_enterComponentContext(componentId);
 
@@ -759,18 +1116,12 @@ class Router {
                 // Ensure the new element has the same component ID
                 if (newDomElement.setAttribute) {
                   newDomElement.setAttribute("data-component-id", componentId);
+                  newDomElement.setAttribute("data-component-name", componentName);
                 }
                 element.parentNode.replaceChild(newDomElement, element);
               }
             } else {
-              // Fallback to full route render if element not found (debounced)
-              if (!(this as any)._renderPending) {
-                (this as any)._renderPending = true;
-                requestAnimationFrame(() => {
-                  this.renderCurrentRoute();
-                  (this as any)._renderPending = false;
-                });
-              }
+              console.warn(`[0x1 Router] 🐛 Component ${componentId} not found during update - may have been unmounted`);
             }
           } catch (e) {
             console.error("[0x1 Router] Error updating component:", e);
@@ -783,10 +1134,11 @@ class Router {
 
       // Execute the component with props
       const result = component(props);
-
+      
       // Add component ID as data attribute if result is a JSX object
       if (result && typeof result === "object" && result.props) {
         result.props["data-component-id"] = componentId;
+        result.props["data-component-name"] = componentName;
       }
 
       return result;
@@ -866,9 +1218,6 @@ class Router {
   }
 }
 
-// Global router instance
-const router = new Router();
-
 // Factory function to create router instances
 export function createRouter(options: RouterOptions): Router {
   const routerInstance = new Router(options);
@@ -880,10 +1229,17 @@ export function createRouter(options: RouterOptions): Router {
   return routerInstance;
 }
 
+// Helper function to get the current router instance
+function getCurrentRouter(): Router | null {
+  if (typeof window === 'undefined') return null;
+  return (window as any).__0x1_ROUTER__ || (window as any).__0x1_router || (window as any).router || null;
+}
+
 // JSX-compatible Link component with instant navigation
 export function Link({ href, className, children, prefetch }: LinkProps): any {
   // Check if prefetch is needed
-  if (prefetch && typeof router !== "undefined") {
+  const router = getCurrentRouter();
+  if (prefetch && router) {
     router.prefetch(href);
   }
 
@@ -900,7 +1256,8 @@ export function Link({ href, className, children, prefetch }: LinkProps): any {
 
         // Only handle internal links (starting with /)
         if (href.startsWith("/")) {
-          if (typeof router !== "undefined") {
+          const router = getCurrentRouter();
+          if (router) {
             // Use router for instant client-side navigation
             router.navigate(href);
           } else if (typeof window !== "undefined") {
@@ -920,7 +1277,9 @@ export function Link({ href, className, children, prefetch }: LinkProps): any {
 
 // Hook for using router in components
 export function useRouter() {
-  if (typeof router === "undefined") {
+  const router = getCurrentRouter();
+  
+  if (!router) {
     // Return a placeholder when router is not available
     return {
       navigate: (path: string) => {
@@ -947,13 +1306,16 @@ export function useRouter() {
 export function useParams<
   T extends Record<string, string> = Record<string, string>,
 >(): T {
-  const route = typeof router !== "undefined" ? router.getCurrentRoute() : null;
+  const router = getCurrentRouter();
+  const route = router ? router.getCurrentRoute() : null;
   return (route?.params || {}) as T;
 }
 
 // Hook for query params
 export function useSearchParams(): URLSearchParams {
-  if (typeof router === "undefined") {
+  const router = getCurrentRouter();
+  
+  if (!router) {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search);
     }
@@ -968,14 +1330,14 @@ export function useSearchParams(): URLSearchParams {
 // NavLink component with active class and instant navigation
 export function NavLink(props: LinkProps & { activeClass?: string }): any {
   const { href, className, children, activeClass = "active", prefetch } = props;
-  const isActive =
-    typeof router !== "undefined" ? router.currentPath === href : false;
+  const router = getCurrentRouter();
+  const isActive = router ? router.currentPath === href : false;
   const combinedClass = isActive
     ? `${className || ""} ${activeClass}`.trim()
     : className;
 
   // Prefetch route content when available
-  if (prefetch && typeof router !== "undefined") {
+  if (prefetch && router) {
     router.prefetch(href);
   }
 
@@ -991,7 +1353,8 @@ export function NavLink(props: LinkProps & { activeClass?: string }): any {
 
         // Only handle internal links (starting with /)
         if (href.startsWith("/")) {
-          if (typeof router !== "undefined") {
+          const router = getCurrentRouter();
+          if (router) {
             // Use router for instant client-side navigation
             router.navigate(href);
           } else if (typeof window !== "undefined") {
@@ -1014,7 +1377,8 @@ export function Redirect({ to }: { to: string }): any {
   if (typeof window !== "undefined") {
     // Client-side redirect
     setTimeout(() => {
-      if (typeof router !== "undefined") {
+      const router = getCurrentRouter();
+      if (router) {
         router.navigate(to);
       } else {
         window.location.href = to;
@@ -1026,4 +1390,4 @@ export function Redirect({ to }: { to: string }): any {
 }
 
 // Re-export the Router class for backward compatibility
-export { Router, router };
+export { Router };

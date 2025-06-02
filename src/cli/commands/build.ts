@@ -229,6 +229,11 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 }
 
 /**
+ * Alias for compatibility with CLI index
+ */
+export const buildProject = build;
+
+/**
  * Find configuration file in project directory
  */
 async function findConfigFile(projectPath: string): Promise<string | null> {

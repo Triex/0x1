@@ -13,7 +13,7 @@ export { default as Link } from './components/link.js';
 export {
     renderToDOM, renderToString,
     type ComponentFunction, type JSXAttributes, type JSXChildren, type JSXNode
-} from './browser/jsx/runtime.js';
+} from './jsx/runtime.js';
 
 // Hooks
 export {

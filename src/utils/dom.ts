@@ -237,3 +237,29 @@ export function removeClass(element: HTMLElement, ...classNames: string[]): void
 export function toggleClass(element: HTMLElement, className: string, force?: boolean): boolean {
   return element.classList.toggle(className, force);
 }
+
+/**
+ * Escape special characters in component IDs for CSS selectors
+ * Only escape characters that are actually problematic in CSS attribute selectors
+ */
+export function escapeComponentIdForSelector(componentId: string): string {
+  // For attribute selectors, we only need to escape quotes and backslashes
+  // Curly braces {} are fine in attribute values and don't need escaping
+  return componentId.replace(/['"\\]/g, '\\$&');
+}
+
+/**
+ * Find DOM elements for a component with proper ID escaping
+ */
+export function findComponentElements(componentId: string): NodeListOf<Element> {
+  const escapedId = escapeComponentIdForSelector(componentId);
+  return document.querySelectorAll(`[data-component-id="${escapedId}"]`);
+}
+
+/**
+ * Add component metadata attributes to a DOM element
+ */
+export function addComponentMetadata(element: Element, componentId: string, componentName: string): void {
+  element.setAttribute('data-component-id', componentId);
+  element.setAttribute('data-component-name', componentName);
+}

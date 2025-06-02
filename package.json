@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.191",
+  "version": "0.0.193",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -149,8 +149,7 @@
       "serve-static": "Replaced with Bun's built-in HTTP server"
     },
     "templateStatus": {
-      "crypto-dash": "FIXME: Template exists but excluded from production builds - not ready for release",
-      "note": "FIXME: When crypto-dash is production-ready, add dependencies for wallet connect, DeFi protocols, NFT APIs"
+      "crypto-dash": "Template exists but not yet set up or stable - not ready for release"
     }
   }
 }
