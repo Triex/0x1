@@ -61,83 +61,83 @@ export default function HomePage() {
       {/* Features Grid */}
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          <h2 className="text-4xl font-bold mb-4">
             Everything you need for crypto
           </h2>
-          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          <p className="text-xl max-w-2xl mx-auto opacity-80">
             Built with the 0x1 Framework for lightning-fast performance and Web3-native features.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">Token Swapping</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">Token Swapping</h3>
+            <p className="opacity-80">
               Seamlessly swap between different tokens with the best rates across multiple DEXs and bridges.
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">Portfolio Analytics</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">Portfolio Analytics</h3>
+            <p className="opacity-80">
               Advanced portfolio tracking with detailed analytics, performance metrics, and profit/loss insights.
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">Secure Wallet</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">Secure Wallet</h3>
+            <p className="opacity-80">
               Connect securely with WalletConnect v2 integration supporting 300+ wallets and hardware devices.
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">NFT Collection</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">NFT Collection</h3>
+            <p className="opacity-80">
               View and manage your NFT collection with rich metadata, floor prices, and marketplace integration.
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">DeFi Protocols</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">DeFi Protocols</h3>
+            <p className="opacity-80">
               Access popular DeFi protocols for lending, borrowing, yield farming, and liquidity provision.
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105">
+          <div className="card rounded-xl p-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
             <div className="w-14 h-14 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center mb-6">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">Lightning Fast</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <h3 className="text-xl font-semibold mb-3">Lightning Fast</h3>
+            <p className="opacity-80">
               Built with 0x1 Framework for maximum performance, sub-second loading, and minimal bundle size.
             </p>
           </div>
@@ -145,11 +145,11 @@ export default function HomePage() {
       </div>
 
       {/* CTA Section */}
-      <div className="bg-gradient-to-r from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-12 text-center text-white shadow-xl">
-        <h2 className="text-3xl md:text-4xl font-bold mb-4">
+      <div className="card container-gradient rounded-2xl p-12 text-center shadow-xl">
+        <h2 className="text-3xl md:text-4xl font-bold mb-4 gradient-text">
           Ready to take control of your crypto?
         </h2>
-        <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+        <p className="text-xl mb-8 max-w-2xl mx-auto opacity-75">
           Connect your wallet and start tracking your portfolio with the most advanced crypto dashboard.
         </p>
         <Link 

@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: any }) {
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors">
+      <body className="h-full flex flex-col transition-colors">
         <Web3Provider>
           <>
             <CryptoHeader />
@@ -58,7 +58,7 @@ export default function RootLayout({ children }: { children: any }) {
               {children}
             </main>
 
-            <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 py-8 mt-auto">
+            <footer className="border-t py-8 mt-auto">
               <div className="container mx-auto px-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {/* Brand */}
@@ -69,24 +69,24 @@ export default function RootLayout({ children }: { children: any }) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                       </div>
-                      <span className="font-bold text-xl text-gray-900 dark:text-white">0x1</span>
+                      <span className="font-bold text-xl">0x1</span>
                     </div>
-                    <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    <p className="text-sm">
                       The fastest crypto dashboard built with cutting-edge Web3 technology.
                     </p>
                   </div>
 
                   {/* Quick Links */}
                   <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Quick Links</h3>
+                    <h3 className="font-semibold mb-4">Quick Links</h3>
                     <div className="space-y-2">
-                      <Link href="/dashboard" className="block text-sm text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+                      <Link href="/dashboard" className="block text-sm hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                         Dashboard
                       </Link>
-                      <a href="https://github.com/Triex/0x1" target="_blank" rel="noopener noreferrer" className="block text-sm text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+                      <a href="https://github.com/Triex/0x1" target="_blank" rel="noopener noreferrer" className="block text-sm hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                         Documentation
                       </a>
-                      <a href="https://github.com/Triex/0x1" target="_blank" rel="noopener noreferrer" className="block text-sm text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+                      <a href="https://github.com/Triex/0x1" target="_blank" rel="noopener noreferrer" className="block text-sm hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                         GitHub
                       </a>
                     </div>
@@ -94,23 +94,23 @@ export default function RootLayout({ children }: { children: any }) {
 
                   {/* Legal */}
                   <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Legal</h3>
+                    <h3 className="font-semibold mb-4">Legal</h3>
                     <div className="space-y-2">
-                      <Link href="/privacy" className="block text-sm text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+                      <Link href="/privacy" className="block text-sm hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                         Privacy Policy
                       </Link>
-                      <Link href="/terms" className="block text-sm text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+                      <Link href="/terms" className="block text-sm hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                         Terms of Service
                       </Link>
                     </div>
                   </div>
                 </div>
 
-                <div className="border-t border-gray-200 dark:border-gray-700 mt-8 pt-8 text-center">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="border-t mt-8 pt-8 text-center">
+                  <p className="text-sm">
                     &copy; {new Date().getFullYear()} 0x1 Crypto Dashboard - Built with ⚡ and 💜
                   </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  <p className="text-sm mt-1">
                     Powered by{' '}
                     <a 
                       href="https://github.com/Triex/0x1" 

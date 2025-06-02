@@ -15,17 +15,17 @@ export function CryptoHeader() {
 
   if (!mounted) {
     return (
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 h-16">
+      <header className="card border-b h-16">
         <div className="container mx-auto px-4 h-full flex items-center justify-between">
-          <div className="w-32 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          <div className="w-32 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          <div className="w-32 h-8 bg-muted rounded animate-pulse"></div>
+          <div className="w-32 h-8 bg-muted rounded animate-pulse"></div>
         </div>
       </header>
     );
   }
 
   return (
-    <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-700">
+    <header className="sticky top-0 z-50 card/80 backdrop-blur-lg border-b">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo and Brand */}
@@ -46,10 +46,10 @@ export function CryptoHeader() {
                   />
                 </svg>
               </div>
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-gray-800"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-card"></div>
             </div>
             <div>
-              <span className="font-bold text-xl text-gray-900 dark:text-white">
+              <span className="font-bold text-xl">
                 0x1
               </span>
               <span className="ml-2 text-sm font-medium text-violet-600 dark:text-violet-400 hidden sm:inline">
@@ -62,25 +62,25 @@ export function CryptoHeader() {
           <nav className="hidden md:flex items-center space-x-8">
             <Link
               href="/dashboard"
-              className="text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
+              className="opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
             >
               Dashboard
             </Link>
             <Link
               href="/portfolio"
-              className="text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
+              className="opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
             >
               Portfolio
             </Link>
             <Link
               href="/swap"
-              className="text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
+              className="opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
             >
               Swap
             </Link>
             <Link
               href="/nft"
-              className="text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
+              className="opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 transition-colors font-medium"
             >
               NFTs
             </Link>
@@ -94,7 +94,7 @@ export function CryptoHeader() {
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="md:hidden p-2 rounded-lg opacity-60 hover:opacity-100 hover:bg-muted transition-colors"
             >
               <svg
                 className="w-6 h-6"
@@ -124,32 +124,32 @@ export function CryptoHeader() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="md:hidden py-4 border-t">
             <nav className="space-y-3">
               <Link
                 href="/"
-                className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="block px-3 py-2 opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-muted rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
               </Link>
               <Link
                 href="/portfolio"
-                className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="block px-3 py-2 opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-muted rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Portfolio
               </Link>
               <Link
                 href="/swap"
-                className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="block px-3 py-2 opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-muted rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Swap
               </Link>
               <Link
                 href="/nft"
-                className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="block px-3 py-2 opacity-75 hover:opacity-100 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-muted rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 NFTs

@@ -148,6 +148,19 @@
 /* Component styles */
 @layer components {
 
+  /* Theme-aware utility classes using CSS variables */
+  .bg-muted {
+    background-color: var(--muted);
+  }
+  
+  .bg-card {
+    background-color: var(--card);
+  }
+  
+  .border-card {
+    border-color: var(--card);
+  }
+
   /* Button base styles */
   .btn {
     display: inline-flex;
