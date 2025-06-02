@@ -92,6 +92,36 @@ async function validateBuild() {
       unexpectedFiles.push(file);
     }
   }
+
+  // // Validate 0x1-templates package build
+  // console.log('🔍 Validating 0x1-templates package...');
+  // const templatesFiles = [
+  //   '0x1-templates/dist/index.js',
+  //   '0x1-templates/package.json',
+  //   '0x1-templates/minimal/',
+  //   '0x1-templates/standard/',
+  // ];
+  
+  // const missingTemplateFiles: string[] = [];
+  // for (const file of templatesFiles) {
+  //   if (!existsSync(file)) {
+  //     missingTemplateFiles.push(file);
+  //   }
+  // }
+  
+  // if (missingTemplateFiles.length > 0) {
+  //   console.error('❌ 0x1-templates package validation failed! Missing files:');
+  //   missingTemplateFiles.forEach(file => console.error(`  - ${file}`));
+  //   process.exit(1);
+  // }
+  
+  // // Check if heavy templates exist (optional)
+  // const heavyTemplates = ['0x1-templates/full/', '0x1-templates/crypto-dash/'];
+  // const existingHeavyTemplates = heavyTemplates.filter(existsSync);
+  
+  // if (existingHeavyTemplates.length > 0) {
+  //   console.log(`📦 Heavy templates available: ${existingHeavyTemplates.map(t => t.split('/')[1]).join(', ')}`);
+  // }
   
   // Report results
   if (missingFiles.length > 0) {
@@ -144,10 +174,13 @@ async function validateBuild() {
     console.log(`  • JSX runtime: ${(jsxRuntimeSize / 1024).toFixed(1)} KB`);
     console.log(`  • JSX dev runtime: ${(jsxDevRuntimeSize / 1024).toFixed(1)} KB`);
     console.log(`  • Total core size: ${((indexSize + jsxRuntimeSize + jsxDevRuntimeSize) / 1024).toFixed(1)} KB`);
+    console.log(`  • 0x1-templates: ${templatesFiles.length - missingTemplateFiles.length}/${templatesFiles.length} essential files`);
     
     if (unexpectedFiles.length === 0) {
       console.log('🎯 Build is fully optimized - no unnecessary files found');
     }
+    
+    console.log('✅ All packages validated successfully!');
   } catch (error) {
     console.error('❌ Failed to calculate bundle sizes:', error);
     process.exit(1);
