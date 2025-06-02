@@ -149,8 +149,7 @@
       "serve-static": "Replaced with Bun's built-in HTTP server"
     },
     "templateStatus": {
-      "crypto-dash": "FIXME: Template exists but excluded from production builds - not ready for release",
-      "note": "FIXME: When crypto-dash is production-ready, add dependencies for wallet connect, DeFi protocols, NFT APIs"
+      "crypto-dash": "Template exists but not yet set up or stable - not ready for release"
     }
   }
 }

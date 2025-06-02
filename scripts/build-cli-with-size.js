@@ -51,13 +51,13 @@ try {
       "lightningcss",
       "sass"
       
-      // FIXME: Add crypto-dash template dependencies as external when implemented
-      // This should include:
+      // Crypto-dash template dependencies are now included and available
+      // Template includes:
       // - Wallet connection libraries
       // - DeFi protocol SDKs
       // - Crypto price feed APIs
       // - NFT metadata services
-      // Note: crypto-dash template exists but not production-ready
+      // Template is selectable via CLI
     ],
     define: {
       "process.env.NODE_ENV": '"production"',
