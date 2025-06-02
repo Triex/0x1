@@ -42,12 +42,14 @@ export function Counter({
   const isIncrementDisabled = count >= maxValue;
 
   return (
-    <div className="bg-card/50 backdrop-blur border border-border/40 shadow-lg rounded-xl p-6 mb-6">
+    <div className="bg-card/50 backdrop-blur border border-border/40 shadow-lg rounded-xl p-6">
       <div className="flex items-center justify-center gap-4 mb-3">
         <button
           className={`px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 dark:from-violet-600 dark:to-purple-700 hover:from-violet-600 hover:to-purple-700 dark:hover:from-violet-700 dark:hover:to-purple-800 text-white rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${isDecrementDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           aria-label="Decrement"
-          onClick={decrement}
+          onClick={(e) => {
+            decrement();
+          }}
           disabled={isDecrementDisabled}
         >
           −
@@ -55,12 +57,14 @@ export function Counter({
         <span
           className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 dark:from-violet-400 dark:to-purple-400 bg-clip-text text-transparent min-w-[3rem] text-center"
         >
-          {count}
+          {String(count)}
         </span>
         <button
           className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 dark:from-purple-600 dark:to-violet-700 hover:from-purple-600 hover:to-violet-700 dark:hover:from-purple-700 dark:hover:to-violet-800 text-white rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${isIncrementDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           aria-label="Increment"
-          onClick={increment}
+          onClick={(e) => {
+            increment();
+          }}
           disabled={isIncrementDisabled}
         >
           +

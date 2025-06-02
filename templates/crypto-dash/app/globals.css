@@ -152,11 +152,11 @@
   .bg-muted {
     background-color: var(--muted);
   }
-  
+
   .bg-card {
     background-color: var(--card);
   }
-  
+
   .border-card {
     border-color: var(--card);
   }
@@ -259,8 +259,38 @@
   }
 
   .dark .btn-ghost:hover {
-    background-color: var(--secondary);
-    border-color: var(--border);
+    background-color: var(--muted);
+  }
+
+  /* Outline button */
+  .btn-outline {
+    background: transparent;
+    color: var(--primary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-outline:hover {
+    background-color: var(--muted);
+    border-color: var(--primary);
+  }
+
+  /* Danger button */
+  .btn-danger {
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+    color: white;
+    border: none;
+    box-shadow: var(--shadow-md);
+  }
+
+  .btn-danger:hover {
+    background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .btn-danger:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
   }
 
   /* Button sizes */

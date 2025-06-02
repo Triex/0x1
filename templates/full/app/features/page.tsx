@@ -5,99 +5,217 @@
 
 export default function FeaturesPage() {
   return (
-    <div className="py-12">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-12 text-center">
-          <h1 className="text-5xl font-bold mb-4 text-primary-600 dark:text-primary-400">
-            Features
+    <div className="py-16">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="mb-20 text-center">
+          <div className="mb-8">
+            <span className="badge badge-primary mb-6 text-sm px-4 py-2">Framework Features</span>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold mb-8 gradient-text leading-tight">
+            Powerful Features
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300">
-            Explore what makes 0x1 powerful yet lightweight
+          <p className="text-xl md:text-2xl opacity-80 max-w-3xl mx-auto leading-relaxed">
+            Explore what makes 0x1 powerful yet lightweight - every feature designed with performance and developer experience in mind.
           </p>
         </div>
         
         {/* Feature sections */}
-        <div className="space-y-12">
+        <div className="space-y-16">
           {/* Performance */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h2 className="text-2xl font-bold mb-4">Blazing Fast Performance</h2>
-            <p className="mb-4 text-gray-600 dark:text-gray-300">
-              Built on Bun, 0x1 delivers exceptional performance for both development and production.
-            </p>
-            
-            <div className="bg-gray-100 dark:bg-gray-900 p-6 rounded-lg">
-              <div className="mb-4">
-                <p className="text-lg font-semibold mb-2">Performance Benchmark</p>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">Click the button below to run a performance test.</p>
-                
-                <button 
-                  id="run-benchmark-btn"
-                  className="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors"
-                >
-                  Run Benchmark
-                </button>
+          <div className="card rounded-2xl shadow-2xl p-10 border-2 border-transparent hover:border-primary/20 transition-all duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+              <div>
+                <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center mb-8 shadow-xl">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <h2 className="text-4xl font-bold mb-6 gradient-text">Blazing Fast Performance</h2>
+                <p className="text-lg opacity-80 leading-relaxed">
+                  Built on Bun, 0x1 delivers exceptional performance for both development and production. 
+                  Experience sub-second builds and lightning-fast hot reloads.
+                </p>
               </div>
               
-              <div className="mt-4">
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-2">
-                  <div 
-                    id="progress-bar"
-                    className="bg-primary-600 h-4 rounded-full" 
-                    style={{ width: '0%' }}
-                  ></div>
+              <div className="bg-muted/50 backdrop-blur border border-border/40 rounded-2xl p-8">
+                <div className="mb-6">
+                  <h3 className="text-xl font-semibold mb-4 flex items-center gap-3">
+                    <span className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center text-sm font-bold">⚡</span>
+                    Performance Benchmark
+                  </h3>
+                  <p className="opacity-75 mb-6 text-lg">Click the button below to run a performance test.</p>
+                  
+                  <button 
+                    id="run-benchmark-btn"
+                    className="btn btn-primary btn-lg"
+                  >
+                    🚀 Run Benchmark
+                  </button>
                 </div>
-                <p id="progress-text" className="text-sm text-gray-600 dark:text-gray-400">Ready to start</p>
+                
+                <div className="mt-6">
+                  <div className="w-full bg-secondary/60 rounded-full h-6 mb-3 overflow-hidden">
+                    <div 
+                      id="progress-bar"
+                      className="bg-gradient-to-r from-primary to-accent h-6 rounded-full transition-all duration-500 shadow-lg" 
+                      style={{ width: '0%' }}
+                    ></div>
+                  </div>
+                  <p id="progress-text" className="text-sm opacity-70 font-medium">Ready to start benchmark...</p>
+                </div>
               </div>
             </div>
           </div>
           
           {/* Zero Dependencies */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h2 className="text-2xl font-bold mb-4">Zero External Dependencies</h2>
-            <p className="mb-4 text-gray-600 dark:text-gray-300">
-              The core 0x1 framework has zero npm dependencies, keeping your projects lightweight.
-            </p>
+          <div className="card rounded-2xl shadow-2xl p-10 border-2 border-transparent hover:border-primary/20 transition-all duration-300">
+            <div className="text-center mb-12">
+              <div className="w-20 h-20 bg-gradient-to-br from-violet-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl">
+                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <h2 className="text-4xl font-bold mb-6 gradient-text">Zero External Dependencies</h2>
+              <p className="text-lg opacity-80 max-w-2xl mx-auto leading-relaxed">
+                The core 0x1 framework has zero npm dependencies, keeping your projects lightweight and secure.
+              </p>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg">
-                <h3 className="font-bold mb-2">Traditional Framework</h3>
-                <div className="text-sm">
-                  <p>Dependencies: 250+</p>
-                  <p>Install size: ~300MB</p>
-                  <p>Build time: 15-30s</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="bg-muted/50 backdrop-blur border border-border/40 rounded-2xl p-8 text-center">
+                <div className="mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4 text-red-500 dark:text-red-400">Traditional Framework</h3>
+                </div>
+                <div className="space-y-3 text-lg">
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Dependencies:</span>
+                    <span className="font-bold text-red-500">250+</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Install size:</span>
+                    <span className="font-bold text-red-500">~300MB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Build time:</span>
+                    <span className="font-bold text-red-500">15-30s</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg border-2 border-primary-600 dark:border-primary-400">
-                <h3 className="font-bold mb-2">0x1 Framework</h3>
-                <div className="text-sm">
-                  <p>Dependencies: 0</p>
-                  <p>Install size: ~120KB</p>
-                  <p>Build time: &lt;1s</p>
+              <div className="bg-gradient-to-br from-primary/10 to-accent/10 border-2 border-primary/30 rounded-2xl p-8 text-center shadow-xl">
+                <div className="mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4 gradient-text">0x1 Framework</h3>
+                </div>
+                <div className="space-y-3 text-lg">
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Dependencies:</span>
+                    <span className="font-bold text-green-500">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Install size:</span>
+                    <span className="font-bold text-green-500">~120KB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-80">Build time:</span>
+                    <span className="font-bold text-green-500">&lt;1s</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
           
           {/* TypeScript First */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h2 className="text-2xl font-bold mb-4">TypeScript First</h2>
-            <p className="mb-4 text-gray-600 dark:text-gray-300">
-              Enjoy full TypeScript support with zero configuration.
-            </p>
-            
-            <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg overflow-x-auto">
-              <pre><code>{`// Strongly typed components
+          <div className="card rounded-2xl shadow-2xl p-10 border-2 border-transparent hover:border-primary/20 transition-all duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+              <div className="order-2 lg:order-1">
+                <div className="bg-muted/50 backdrop-blur border border-border/40 rounded-2xl p-6 overflow-hidden">
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                      <span className="ml-4 text-sm opacity-60 font-mono">Button.tsx</span>
+                    </div>
+                  </div>
+                  <pre className="text-sm font-mono overflow-x-auto"><code>{`// Strongly typed components
 interface ButtonProps {
   onClick: () => void;
   children: string;
   variant?: 'primary' | 'secondary';
 }
 
-function Button({ onClick, children, variant = 'primary' }: ButtonProps) {
-  const className = \`btn \${variant === 'primary' ? 'btn-primary' : 'btn-secondary'}\`;
-  return <button className={className} onClick={onClick}>{children}</button>;
+function Button({ 
+  onClick, 
+  children, 
+  variant = 'primary' 
+}: ButtonProps) {
+  const className = \`btn \${
+    variant === 'primary' 
+      ? 'btn-primary' 
+      : 'btn-secondary'
+  }\`;
+  
+  return (
+    <button 
+      className={className} 
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
 }`}</code></pre>
+                </div>
+              </div>
+              
+              <div className="order-1 lg:order-2">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-3xl flex items-center justify-center mb-8 shadow-xl">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                </div>
+                <h2 className="text-4xl font-bold mb-6 gradient-text">TypeScript First</h2>
+                <p className="text-lg opacity-80 leading-relaxed mb-8">
+                  Enjoy full TypeScript support with zero configuration. Built-in type safety, 
+                  intelligent IntelliSense, and seamless developer experience from day one.
+                </p>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 text-lg">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="opacity-80">Zero configuration required</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-lg">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="opacity-80">Intelligent type inference</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-lg">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="opacity-80">Enhanced developer experience</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
