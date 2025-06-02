@@ -77,6 +77,24 @@ function applyGradient(text: string): string {
   return colored;
 }
 
+// Check if we're in a CI/build environment (like Vercel, GitHub Actions, etc.)
+const isCI = Boolean(
+  process.env.CI || 
+  process.env.VERCEL || 
+  process.env.NETLIFY || 
+  process.env.GITHUB_ACTIONS ||
+  process.env.GITLAB_CI ||
+  !process.stdout.isTTY
+);
+
+// Check if terminal control methods are available and we're not in CI
+const supportsTerminalControl = !isCI && Boolean(
+  process.stdout.clearLine &&
+  process.stdout.cursorTo &&
+  typeof process.stdout.clearLine === 'function' && 
+  typeof process.stdout.cursorTo === 'function'
+);
+
 export const logger = {
   /**
    * Display a banner with colorful text
@@ -208,12 +226,6 @@ export const logger = {
         ).join(' ')
       : message;
     
-    // Check if we're in an environment that supports terminal control
-    const supportsTerminalControl = Boolean(
-      typeof process.stdout.clearLine === 'function' && 
-      typeof process.stdout.cursorTo === 'function'
-    );
-    
     if (supportsTerminalControl) {
       process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
     } else {
@@ -324,8 +336,7 @@ export const logger = {
    * Update spinner text
    */
   update: (message: string) => {
-    // Check if we're in an environment that supports terminal control
-    if (typeof process.stdout.clearLine === 'function' && typeof process.stdout.cursorTo === 'function') {
+    if (supportsTerminalControl) {
       // Provide the direction argument to clearLine (0 = entire line)
       process.stdout.clearLine(0);
       process.stdout.write('\r');

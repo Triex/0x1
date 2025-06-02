@@ -1176,7 +1176,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.193' // Use current version with caret for compatibility
+      "0x1": '^0.0.194' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'
@@ -1690,6 +1690,25 @@ yarn-error.log*
 *.sln
 *.sw?
 .DS_Store
+`
+  );
+  
+  // Create .bunfig.toml for better deployment compatibility
+  await Bun.write(
+    join(projectPath, '.bunfig.toml'),
+    `[install]
+# Allow postinstall scripts to run (fixes deployment warnings)
+auto = "fallback"
+
+[bunfig]
+# Optimize for production builds
+production = true
+
+# Better compatibility with deployment platforms like Vercel
+[install.scopes]
+# Handle packages that might need postinstall scripts
+"@tailwindcss/*" = { auto = "force" }
+"sharp" = { auto = "force" }
 `
   );
 }

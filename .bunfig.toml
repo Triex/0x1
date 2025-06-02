@@ -1,0 +1,13 @@
+[install]
+# Allow postinstall scripts to run (fixes deployment warnings)
+auto = "fallback"
+
+[bunfig]
+# Optimize for production builds
+production = true
+
+# Better compatibility with deployment platforms like Vercel
+[install.scopes]
+# Handle packages that might need postinstall scripts
+"@tailwindcss/*" = { auto = "force" }
+"sharp" = { auto = "force" } 

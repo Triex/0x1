@@ -1,0 +1,7 @@
+[install]
+# Allow postinstall scripts to run (fixes the "Blocked 1 postinstall" warning)
+auto = "fallback"
+
+[bunfig]
+# Optimize for production builds
+production = true 
