@@ -208,20 +208,37 @@ export const logger = {
         ).join(' ')
       : message;
     
-    process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
+    // Check if we're in an environment that supports terminal control
+    const supportsTerminalControl = Boolean(
+      typeof process.stdout.clearLine === 'function' && 
+      typeof process.stdout.cursorTo === 'function'
+    );
+    
+    if (supportsTerminalControl) {
+      process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
+    } else {
+      // Fallback for environments like Vercel
+      console.log(`${colors.cyan(frames[0])} ${displayMessage}`);
+    }
     
     const interval = setInterval(() => {
       i = (i + 1) % frames.length;
-      process.stdout.clearLine(0);
-      process.stdout.cursorTo(0);
-      process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
+      if (supportsTerminalControl) {
+        process.stdout.clearLine(0);
+        process.stdout.cursorTo(0);
+        process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
+      }
+      // In non-terminal environments, we don't update the spinner
     }, 80);
     
     return {
       stop: (type: 'success' | 'error' | 'warn', endMessage?: string) => {
         clearInterval(interval);
-        process.stdout.clearLine(0);
-        process.stdout.cursorTo(0);
+        
+        if (supportsTerminalControl) {
+          process.stdout.clearLine(0);
+          process.stdout.cursorTo(0);
+        }
         
         const icon = type === 'success' 
           ? colors.green(icons.success) 
@@ -307,9 +324,15 @@ export const logger = {
    * Update spinner text
    */
   update: (message: string) => {
-    // Provide the direction argument to clearLine (0 = entire line)
-    process.stdout.clearLine(0);
-    process.stdout.write('\r');
-    process.stdout.write(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
+    // Check if we're in an environment that supports terminal control
+    if (typeof process.stdout.clearLine === 'function' && typeof process.stdout.cursorTo === 'function') {
+      // Provide the direction argument to clearLine (0 = entire line)
+      process.stdout.clearLine(0);
+      process.stdout.write('\r');
+      process.stdout.write(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
+    } else {
+      // Fallback for environments like Vercel - just log the message
+      console.log(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
+    }
   }
 };
