@@ -310,6 +310,13 @@ async function buildFramework() {
     }
     console.log("✅ Built 0x1-templates");
     
+    // Save the ESM version before building CJS (to prevent overwrite)
+    const esmOutputPath = "./0x1-templates/dist/index.js";
+    let esmContent = "";
+    if (existsSync(esmOutputPath)) {
+      esmContent = await Bun.file(esmOutputPath).text();
+    }
+    
     // Also build CJS version for broader compatibility
     const templatesCjsBuildResult = await Bun.build({
       entrypoints: ["./0x1-templates/src/index.ts"],
@@ -320,14 +327,20 @@ async function buildFramework() {
     });
     
     if (templatesCjsBuildResult.success) {
-      // Rename the output to index.cjs
+      // Rename the CJS output to index.cjs
       const cjsOutputPath = "./0x1-templates/dist/index.js";
       const cjsTargetPath = "./0x1-templates/dist/index.cjs";
       if (existsSync(cjsOutputPath)) {
-        const content = await Bun.file(cjsOutputPath).text();
-        await Bun.write(cjsTargetPath, content);
-        await Bun.$`rm ${cjsOutputPath}`; // Remove the temp file
+        const cjsContent = await Bun.file(cjsOutputPath).text();
+        await Bun.write(cjsTargetPath, cjsContent);
+        
+        // Restore the ESM version as index.js
+        if (esmContent) {
+          await Bun.write(cjsOutputPath, esmContent);
+        }
+        
         console.log("✅ Built 0x1-templates (CJS)");
+        console.log("✅ Restored 0x1-templates (ESM)");
       }
     } else {
       console.warn("⚠️ 0x1-templates CJS build failed (ESM version available)");
