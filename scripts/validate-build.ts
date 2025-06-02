@@ -174,7 +174,7 @@ async function validateBuild() {
     console.log(`  • JSX runtime: ${(jsxRuntimeSize / 1024).toFixed(1)} KB`);
     console.log(`  • JSX dev runtime: ${(jsxDevRuntimeSize / 1024).toFixed(1)} KB`);
     console.log(`  • Total core size: ${((indexSize + jsxRuntimeSize + jsxDevRuntimeSize) / 1024).toFixed(1)} KB`);
-    console.log(`  • 0x1-templates: ${templatesFiles.length - missingTemplateFiles.length}/${templatesFiles.length} essential files`);
+    // console.log(`  • 0x1-templates: ${templatesFiles.length - missingTemplateFiles.length}/${templatesFiles.length} essential files`);
     
     if (unexpectedFiles.length === 0) {
       console.log('🎯 Build is fully optimized - no unnecessary files found');

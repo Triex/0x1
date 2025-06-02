@@ -1,6 +1,6 @@
 {
   "name": "0x1-templates",
-  "version": "0.0.1",
+  "version": "0.0.193",
   "description": "Official templates for the 0x1 framework",
   "main": "dist/index.js",
   "type": "module",
@@ -10,7 +10,7 @@
       "require": "./dist/index.cjs"
     },
     "./minimal": "./minimal",
-    "./standard": "./standard", 
+    "./standard": "./standard",
     "./full": "./full",
     "./crypto-dash": "./crypto-dash",
     "./licenses": "./licenses"
@@ -44,7 +44,7 @@
     "directory": "0x1-templates"
   },
   "peerDependencies": {
-    "0x1": "^0.0.192"
+    "0x1": "^0.0.193"
   },
   "comments": {
     "lastVersion": "0.0.192",
@@ -53,4 +53,4 @@
       "crypto-dash": "Template exists but not yet set up or stable - not ready for release"
     }
   }
-} 
+}

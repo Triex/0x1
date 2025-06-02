@@ -35,41 +35,65 @@ async function getMainVersion(newVersion?: string): Promise<string> {
   return packageJson.version;
 }
 
-// Update all template package.json files
+// Update all template package.json files and 0x1-templates package
 async function updateTemplateVersions(version: string): Promise<void> {
-  const templatesDir = join(ROOT_DIR, 'templates');
+  // // Update 0x1-templates package.json
+  // const templatesPackageJsonPath = join(ROOT_DIR, '0x1-templates', 'package.json');
+  // if (existsSync(templatesPackageJsonPath)) {
+  //   console.log('📦 Updating 0x1-templates package.json');
+  //   const templatesPackageJson = JSON.parse(await Bun.file(templatesPackageJsonPath).text());
+  //   templatesPackageJson.version = version;
+    
+  //   // Update peerDependencies if they exist
+  //   if (templatesPackageJson.peerDependencies && templatesPackageJson.peerDependencies['0x1']) {
+  //     templatesPackageJson.peerDependencies['0x1'] = `^${version}`;
+  //   }
+    
+  //   await Bun.write(
+  //     templatesPackageJsonPath, 
+  //     JSON.stringify(templatesPackageJson, null, 2) + '\n'
+  //   );
+  // }
+
+  // Update individual template package.json files in 0x1-templates
+  const templatesDir = join(ROOT_DIR, '0x1-templates');
   const templateTypes = ['minimal', 'standard', 'full', 'crypto-dash'];
-  const languageTypes = ['typescript', 'javascript'];
   
-  // Update all template package.json files
   for (const type of templateTypes) {
-    // For each template type (minimal, standard, full), check for package.json
-    const directTemplatePath = join(templatesDir, type);
-    const directPackageJsonPath = join(directTemplatePath, 'package.json');
+    const templatePath = join(templatesDir, type);
+    const packageJsonPath = join(templatePath, 'package.json');
     
-    // Check for direct package.json in the template directory
-    if (existsSync(directPackageJsonPath)) {
-      console.log(`Updating ${type}/package.json (minimal structure)`);
-      await updatePackageJsonDependencies(directPackageJsonPath, version);
+    if (existsSync(packageJsonPath)) {
+      console.log(`📦 Updating 0x1-templates/${type}/package.json`);
+      await updatePackageJsonDependencies(packageJsonPath, version);
     } else {
-      console.log(`Warning: No package.json found at ${directPackageJsonPath}`);
-    }
-    
-    // For backwards compatibility, also check legacy nested structure
-    // but log it so we're aware of old structures that might need updating
-    for (const language of languageTypes) {
-      const nestedTemplatePath = join(templatesDir, type, language);
-      
-      if (existsSync(nestedTemplatePath)) {
-        const packageJsonPath = join(nestedTemplatePath, 'package.json');
-        
-        if (existsSync(packageJsonPath)) {
-          console.log(`Updating ${type}/${language}/package.json (legacy structure)`);
-          await updatePackageJsonDependencies(packageJsonPath, version);
-        }
-      }
+      console.log(`⚠️ No package.json found for template: ${type}`);
     }
   }
+
+  // // Update standalone packages (0x1-router, 0x1-store)
+  // const standalonePackages = ['0x1-router', '0x1-store'];
+  
+  // for (const packageName of standalonePackages) {
+  //   const packagePath = join(ROOT_DIR, packageName);
+  //   const packageJsonPath = join(packagePath, 'package.json');
+    
+  //   if (existsSync(packageJsonPath)) {
+  //     console.log(`📦 Updating ${packageName}/package.json`);
+  //     const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
+  //     packageJson.version = version;
+      
+  //     // Update peerDependencies if they exist
+  //     if (packageJson.peerDependencies && packageJson.peerDependencies['0x1']) {
+  //       packageJson.peerDependencies['0x1'] = `^${version}`;
+  //     }
+      
+  //     await Bun.write(
+  //       packageJsonPath, 
+  //       JSON.stringify(packageJson, null, 2) + '\n'
+  //     );
+  //   }
+  // }
 }
 
 // Helper function to update package.json dependencies
@@ -79,7 +103,7 @@ async function updatePackageJsonDependencies(packageJsonPath: string, version: s
   const packageJsonContent = await Bun.file(packageJsonPath).text();
   const packageJson = JSON.parse(packageJsonContent);
   
-  // Update 0x1 dependency version
+  // Update 0x1 framework dependency version
   if (packageJson.dependencies && packageJson.dependencies['0x1']) {
     packageJson.dependencies['0x1'] = `^${version}`;
   }
@@ -88,6 +112,16 @@ async function updatePackageJsonDependencies(packageJsonPath: string, version: s
   if (packageJson.dependencies && packageJson.dependencies['0x1-store']) {
     packageJson.dependencies['0x1-store'] = `^${version}`;
   }
+  
+  // // Update 0x1-router dependency version (if it exists)
+  // if (packageJson.dependencies && packageJson.dependencies['0x1-router']) {
+  //   packageJson.dependencies['0x1-router'] = `^${version}`;
+  // }
+  
+  // // Update 0x1-templates dependency version (if it exists)
+  // if (packageJson.dependencies && packageJson.dependencies['0x1-templates']) {
+  //   packageJson.dependencies['0x1-templates'] = `^${version}`;
+  // }
   
   // Write updated package.json
   // Use Bun's native file API for better performance
