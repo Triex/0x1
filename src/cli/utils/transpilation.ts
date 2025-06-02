@@ -5,7 +5,7 @@
  */
 
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { basename, extname, join, relative } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { logger } from "./logger";
 
 // Internal component and TypeScript processing utilities
@@ -150,10 +150,10 @@ ${processedSource}`;
   }
 
   // Check for existing React imports
-  const hasReactImport = /import\s+(?:(?:\*\s+as\s+)?React|\{\s*([\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)["'];?/g.test(processedSource);
+  const hasReactImport = /import\s+(?:(?:\*\s+as\s+)?React|\{\s*([\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)[""];?/g.test(processedSource);
 
   // Check for JSX runtime imports which might cause conflicts
-  const jsxRuntimeImportRegex = /import\s+(?:\{\s*(?:jsx|jsxs|Fragment|createElement|jsxDEV)[\w\s,]*\}\s+)?from\s+["'](react\/jsx-runtime|0x1\/jsx-runtime)["'];?/g;
+  const jsxRuntimeImportRegex = /import\s+(?:\{\s*(?:jsx|jsxs|Fragment|createElement|jsxDEV)[\w\s,]*\}\s+)?from\s+["'](react\/jsx-runtime|0x1\/jsx-runtime)[""];?/g;
   const hasJsxRuntimeImport = jsxRuntimeImportRegex.test(processedSource);
 
   // Remove any direct JSX runtime imports to avoid conflicts
@@ -167,7 +167,7 @@ ${processedSource}`;
   // If the file already imports React, we'll modify it to use our version
   if (hasReactImport) {
     processedSource = processedSource.replace(
-      /import\s+(?:(?:\*\s+as\s+)?React|\{\s*([\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)["'];?/g,
+      /import\s+(?:(?:\*\s+as\s+)?React|\{\s*([\w\s,]+)\s*\})\s+from\s+["'](react|0x1|next|preact)[""];?/g,
       '// 0x1 Framework: React compatibility layer automatically provided'
     );
   }
@@ -392,51 +392,77 @@ export async function transpileJsx(input: string, options?: TranspileOptions): P
   const { filename = 'component.jsx', minify = false, projectRoot } = options || {};
   
   try {
-    const result = await Bun.build({
-      entrypoints: ['/virtual/input.tsx'],
-      target: 'browser',
-      format: 'esm',
-      minify,
-      define: {
-        'process.env.NODE_ENV': '"development"'
-      },
-      plugins: [{
-        name: 'virtual-file',
-        setup(build) {
-          build.onResolve({ filter: /^\/virtual\/input\.tsx$/ }, () => {
-            return { path: '/virtual/input.tsx', namespace: 'virtual' };
-          });
-          build.onLoad({ filter: /.*/, namespace: 'virtual' }, () => {
-            return { 
-              contents: input, 
-              loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx' 
-            };
-          });
-        }
-      }]
-    });
-
-    if (!result.success) {
-      throw new Error('Transpilation failed');
-    }
-
-    const output = await result.outputs[0].text();
+    // Check if we're in a deployment environment (like Vercel)
+    const isDeployment = Boolean(
+      process.env.VERCEL || 
+      process.env.NETLIFY || 
+      process.env.CI ||
+      !process.stdout.isTTY
+    );
     
-    const wrappedOutput = `
+    // Create a temporary file instead of using virtual filesystem
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const { writeFileSync, unlinkSync } = await import('fs');
+    
+    const tempFile = join(tmpdir(), `0x1-jsx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.tsx`);
+    
+    try {
+      // Write the input to a temporary file
+      writeFileSync(tempFile, input);
+      
+      // Build using the temporary file
+      const result = await Bun.build({
+        entrypoints: [tempFile],
+        target: 'browser',
+        format: 'esm',
+        minify,
+        define: {
+          'process.env.NODE_ENV': '"development"'
+        },
+        external: ['0x1', '0x1/jsx-runtime', 'react', 'react-dom']
+      });
+
+      // Clean up the temporary file
+      try {
+        unlinkSync(tempFile);
+      } catch (e) {
+        // Ignore cleanup errors in deployment environments
+        if (!isDeployment) {
+          logger.warn(`Could not clean up temporary file: ${e}`);
+        }
+      }
+
+      if (!result.success) {
+        throw new Error('Transpilation failed');
+      }
+
+      const output = await result.outputs[0].text();
+      
+      const wrappedOutput = `
 import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
 
 ${output}
 `;
 
-    return {
-      code: wrappedOutput,
-      metadata: {
-        hasComponents: wrappedOutput.includes('export default') || wrappedOutput.includes('export function'),
-        components: [],
-        hasJsx: true,
-        success: true
+      return {
+        code: wrappedOutput,
+        metadata: {
+          hasComponents: wrappedOutput.includes('export default') || wrappedOutput.includes('export function'),
+          components: [],
+          hasJsx: true,
+          success: true
+        }
+      };
+    } catch (buildError) {
+      // Clean up temp file even if build fails
+      try {
+        unlinkSync(tempFile);
+      } catch (e) {
+        // Ignore cleanup errors
       }
-    };
+      throw buildError;
+    }
   } catch (error) {
     logger.error(`JSX transpilation error: ${error}`);
     return {

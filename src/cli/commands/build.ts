@@ -125,8 +125,17 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
   // Process CSS with appropriate icon
   const cssSpin = log.spinner('Processing CSS styles', 'css');
+  
+  // Check if we're in a deployment environment
+  const isDeployment = Boolean(
+    process.env.VERCEL || 
+    process.env.NETLIFY || 
+    process.env.CI ||
+    !process.stdout.isTTY
+  );
+
   try {
-    // Check for app/globals.css for Tailwind processing
+    // Handle CSS files - look for Tailwind setup
     const appGlobalsCss = join(projectPath, 'app', 'globals.css');
     if (existsSync(appGlobalsCss)) {
       log.info(`📂 Found app/globals.css - processing with Tailwind`);
@@ -156,40 +165,67 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       logger.debug(`Base directory: ${baseDir}`);
       logger.debug(`Live reload src path: ${liveReloadSrc}`);
       
+      // Skip live-reload script in deployment environments
       const liveReloadDest = join(outputBrowserDir, 'live-reload.js');
-      if (existsSync(liveReloadSrc)) {
+      if (!isDeployment && existsSync(liveReloadSrc)) {
         logger.info(`Copying live-reload script to ${liveReloadDest}`);
         await Bun.write(liveReloadDest, await Bun.file(liveReloadSrc).text());
-      } else {
+      } else if (!isDeployment) {
         logger.warn(`Could not find live-reload script at ${liveReloadSrc}`);
+      } else {
+        logger.info('Skipping live-reload script in deployment environment');
       }
 
-      // Run Tailwind CSS build on globals.css using bun x (per user rules)
-      const tailwindResult = Bun.spawnSync([
-        'bun', 'x', 'tailwindcss',
-        '-i', appGlobalsCss,
-        '-o', join(outputStylesDir, 'tailwind.css'),
-        '--postcss', // Add postcss flag to properly handle @tailwind directives
-        minify ? '--minify' : ''
-      ].filter(Boolean), { // Filter to remove empty string if minify is false
-        cwd: projectPath,
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          // Add these environment variables to fix Tailwind CSS processing
-          TAILWIND_MODE: 'build',
-          TAILWIND_DISABLE_TOUCH: '1'
-        },
-        stdout: 'pipe',
-        stderr: 'pipe'
-      });
+      // Run Tailwind CSS build on globals.css - use multiple fallback approaches
+      log.info('Processing Tailwind CSS...');
+      
+      let tailwindSuccess = false;
+      
+      // Try different Tailwind execution methods
+      const tailwindCommands = [
+        // Try npx first (most compatible)
+        ['npx', 'tailwindcss', '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean),
+        // Try bun x as fallback
+        ['bun', 'x', 'tailwindcss', '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean),
+        // Try direct node_modules path
+        ['node', join(projectPath, 'node_modules', 'tailwindcss', 'lib', 'cli.js'), '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean)
+      ];
+      
+      for (const command of tailwindCommands) {
+        try {
+          const tailwindResult = Bun.spawnSync(command, {
+            cwd: projectPath,
+            env: {
+              ...process.env,
+              NODE_ENV: 'production',
+              TAILWIND_MODE: 'build',
+              TAILWIND_DISABLE_TOUCH: '1'
+            },
+            stdout: 'pipe',
+            stderr: 'pipe'
+          });
 
-      if (tailwindResult.exitCode !== 0) {
-        const errorOutput = new TextDecoder().decode(tailwindResult.stderr);
-        log.warn(`Tailwind processing warning: ${errorOutput}`);
-        // Continue even if there's a warning - we'll handle CSS processing as a fallback
-      } else {
-        log.info('✅ Tailwind CSS processed successfully');
+          if (tailwindResult.exitCode === 0) {
+            log.info('✅ Tailwind CSS processed successfully');
+            tailwindSuccess = true;
+            break;
+          } else {
+            const errorOutput = new TextDecoder().decode(tailwindResult.stderr);
+            if (!isDeployment) {
+              logger.warn(`Tailwind command failed: ${command[0]} - ${errorOutput}`);
+            }
+          }
+        } catch (cmdError) {
+          if (!isDeployment) {
+            logger.warn(`Tailwind command error: ${command[0]} - ${cmdError}`);
+          }
+          continue;
+        }
+      }
+      
+      if (!tailwindSuccess) {
+        log.warn('⚠️ Failed to process Tailwind CSS: error: could not determine executable to run for package tailwindcss');
+        log.info('💠 Falling back to standard CSS processing');
       }
     }
 
