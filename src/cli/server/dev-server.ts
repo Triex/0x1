@@ -3718,10 +3718,10 @@ async function createAppRouter() {
   
   try {
     const routerModule = await import('/0x1/router.js');
-    const { createRouter } = routerModule;
+    const { Router } = routerModule;
     
-    if (typeof createRouter !== 'function') {
-      throw new Error('createRouter function not found in router module');
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
     }
     
     const appElement = document.getElementById('app');
@@ -3729,18 +3729,177 @@ async function createAppRouter() {
       throw new Error('App container element not found');
     }
     
-    const router = createRouter({
+    // Create beautiful 404 component for the router
+    const notFoundComponent = (props) => {
+      console.log('[0x1 Router] 🏠 Rendering beautiful 404 page for:', window.location.pathname);
+      
+      return {
+        type: 'div',
+        props: {
+          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              className: 'mb-8'
+            },
+            children: [
+              {
+                type: 'h1',
+                props: {
+                  className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4'
+                },
+                children: ['404'],
+                key: null
+              }
+            ],
+            key: null
+          },
+          {
+            type: 'div',
+            props: {
+              className: 'max-w-md mx-auto'
+            },
+            children: [
+              {
+                type: 'h2',
+                props: {
+                  className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4'
+                },
+                children: ['Page Not Found'],
+                key: null
+              },
+              {
+                type: 'p',
+                props: {
+                  className: 'text-lg text-gray-600 dark:text-gray-300 mb-8'
+                },
+                children: ['The page you\\'re looking for doesn\\'t exist or has been moved.'],
+                key: null
+              },
+              {
+                type: 'div',
+                props: {
+                  className: 'space-y-4'
+                },
+                children: [
+                  {
+                    type: 'a',
+                    props: {
+                      href: '/',
+                      className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+                      onClick: (e) => {
+                        e.preventDefault();
+                        if (window.router && typeof window.router.navigate === 'function') {
+                          window.router.navigate('/');
+                        } else {
+                          window.location.href = '/';
+                        }
+                      }
+                    },
+                    children: ['🏠 Back to Home'],
+                    key: null
+                  },
+                  {
+                    type: 'div',
+                    props: {
+                      className: 'mt-6 text-sm text-gray-500 dark:text-gray-400'
+                    },
+                    children: [
+                      {
+                        type: 'p',
+                        props: {},
+                        children: ['Try visiting one of these pages instead:'],
+                        key: null
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          className: 'flex flex-wrap justify-center gap-2 mt-2'
+                        },
+                        children: [
+                          {
+                            type: 'a',
+                            props: {
+                              href: '/dashboard',
+                              className: 'px-3 py-1 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
+                              onClick: (e) => {
+                                e.preventDefault();
+                                if (window.router && typeof window.router.navigate === 'function') {
+                                  window.router.navigate('/dashboard');
+                                } else {
+                                  window.location.href = '/dashboard';
+                                }
+                              }
+                            },
+                            children: ['Dashboard'],
+                            key: 'dashboard'
+                          },
+                          {
+                            type: 'a',
+                            props: {
+                              href: '/privacy',
+                              className: 'px-3 py-1 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
+                              onClick: (e) => {
+                                e.preventDefault();
+                                if (window.router && typeof window.router.navigate === 'function') {
+                                  window.router.navigate('/privacy');
+                                } else {
+                                  window.location.href = '/privacy';
+                                }
+                              }
+                            },
+                            children: ['Privacy'],
+                            key: 'privacy'
+                          },
+                          {
+                            type: 'a',
+                            props: {
+                              href: '/terms',
+                              className: 'px-3 py-1 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
+                              onClick: (e) => {
+                                e.preventDefault();
+                                if (window.router && typeof window.router.navigate === 'function') {
+                                  window.router.navigate('/terms');
+                                } else {
+                                  window.location.href = '/terms';
+                                }
+                              }
+                            },
+                            children: ['Terms'],
+                            key: 'terms'
+                          }
+                        ],
+                        key: null
+                      }
+                    ],
+                    key: null
+                  }
+                ],
+                key: null
+              }
+            ],
+            key: null
+          }
+        ],
+        key: null
+      };
+    };
+    
+    const router = new Router({
       rootElement: appElement,
       mode: 'history',
       debug: false,
-      base: '/'
+      base: '/',
+      notFoundComponent: notFoundComponent
     });
     
     window.__0x1_ROUTER__ = router;
     window.__0x1_router = router;
     window.router = router;
     
-    console.log('[0x1 App] ✅ Router ready');
+    console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
     return router;
     
   } catch (error) {

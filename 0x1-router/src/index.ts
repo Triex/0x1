@@ -496,10 +496,124 @@ class Router {
         (this as any)._isRendering = false;
       }
     } else {
-      // No match found - render 404 or default
+      // No match found - render 404 component
       console.warn(`[0x1 Router] No route found for: ${this.currentPath}`);
+      
+      // Check if we have an active layout to preserve
+      if (this.layoutCache.element && this.layoutCache.contentSlot) {
+        console.log('[0x1 Router] 🏠 Rendering 404 inside existing layout');
+        
+        try {
+          let notFoundElement: HTMLElement | null = null;
+          
+          if (this.options.notFoundComponent) {
+            // Use custom 404 component
+            notFoundElement = this.jsxToDom(this.options.notFoundComponent({ path: this.currentPath }));
+          } else {
+            // Use fallback 404 content (but render as element, not innerHTML)
+            notFoundElement = this.createFallback404Element();
+          }
+          
+          if (notFoundElement) {
+            // Render 404 inside the existing layout's content slot
+            this.layoutCache.contentSlot.innerHTML = '';
+            this.layoutCache.contentSlot.appendChild(notFoundElement);
+            console.log('[0x1 Router] ✅ 404 rendered inside layout');
+          } else {
+            console.error('[0x1 Router] Failed to create 404 element');
+            this.layoutCache.contentSlot.innerHTML = `
+              <div style="padding: 20px; text-align: center; color: #ef4444;">
+                <div style="margin-bottom: 8px;">❌</div>
+                <div>Page not found</div>
+              </div>
+            `;
+          }
+        } catch (error) {
+          console.error('[0x1 Router] Error rendering 404 in layout:', error);
+          this.layoutCache.contentSlot.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #ef4444;">
+              <div style="margin-bottom: 8px;">❌</div>
+              <div>Page not found</div>
+            </div>
+          `;
+        }
+      } else {
+        // No layout active - render 404 as standalone page
+        console.log('[0x1 Router] 🏠 Rendering standalone 404 page');
+        
+        // Clear any existing layout cache since we're rendering standalone
+        this.layoutCache = {};
+        
+        if (this.options.notFoundComponent) {
+          try {
+            const notFoundElement = this.jsxToDom(this.options.notFoundComponent({ path: this.currentPath }));
+            
+            if (notFoundElement) {
+              if ('startViewTransition' in document) {
+                (document as any).startViewTransition(() => {
+                  rootElement.innerHTML = '';
+                  rootElement.appendChild(notFoundElement);
+                });
+              } else {
+                rootElement.innerHTML = '';
+                rootElement.appendChild(notFoundElement);
+              }
+              console.log('[0x1 Router] ✅ Custom 404 component rendered');
+            } else {
+              console.error('[0x1 Router] Failed to render custom 404 component');
+              this.renderFallback404(rootElement);
+            }
+          } catch (error) {
+            console.error('[0x1 Router] Error rendering custom 404 component:', error);
+            this.renderFallback404(rootElement);
+          }
+        } else {
+          // No custom 404 component - render basic fallback
+          this.renderFallback404(rootElement);
+        }
+      }
+      
       (this as any)._isRendering = false;
     }
+  }
+
+  // Render fallback 404 page when no custom notFoundComponent is provided
+  private renderFallback404(rootElement: HTMLElement): void {
+    console.log('[0x1 Router] 🏠 Rendering fallback 404 page');
+    rootElement.innerHTML = '';
+    rootElement.appendChild(this.createFallback404Element());
+  }
+
+  // Create fallback 404 element for rendering inside layouts
+  private createFallback404Element(): HTMLElement {
+    const container = document.createElement('div');
+    container.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      text-align: center;
+      padding: 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+    `;
+    
+    container.innerHTML = `
+      <div style="margin-bottom: 32px;">
+        <h1 style="font-size: 6rem; font-weight: bold; color: #8b5cf6; margin-bottom: 16px; line-height: 1;">404</h1>
+      </div>
+      <div style="max-width: 28rem; margin: 0 auto;">
+        <h2 style="font-size: 1.875rem; font-weight: bold; color: #1f2937; margin-bottom: 16px;">Page Not Found</h2>
+        <p style="font-size: 1.125rem; color: #6b7280; margin-bottom: 32px;">The page you're looking for doesn't exist or has been moved.</p>
+        <div style="display: flex; flex-direction: column; gap: 16px; align-items: center;">
+          <a href="/" onclick="event.preventDefault(); window.router?.navigate('/') || (window.location.href = '/')" style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); cursor: pointer;">
+            🏠 Back to Home
+          </a>
+        </div>
+      </div>
+    `;
+    
+    return container;
   }
 
   // Convert JSX object to DOM element
