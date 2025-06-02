@@ -3,7 +3,8 @@ node_modules
 **/node_modules
 templates/**/node_modules
 
-# In Progress
+# Heavy templates
+templates/full
 templates/crypto-dash
 
 # Build artifacts

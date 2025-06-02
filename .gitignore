@@ -27,12 +27,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Heavy templates excluded from CLI bundle (use 0x1-templates package instead)
-0x1-templates/full/
-0x1-templates/crypto-dash/
-# Keep minimal and standard for CLI fallback
-!0x1-templates/minimal/
-!0x1-templates/standard/
+# # Heavy templates excluded from CLI bundle (use 0x1-templates package instead)
+# 0x1-templates/full/
+# 0x1-templates/crypto-dash/
+# # Keep minimal and standard for CLI fallback
+# !0x1-templates/minimal/
+# !0x1-templates/standard/
 
 # Temporary directories
 .0x1-temp/
