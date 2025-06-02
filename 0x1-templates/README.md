@@ -1,6 +1,6 @@
 # 0x1 Templates
 
-Official templates for the [0x1 framework](https://github.com/Triex/0x1) - the ultra-minimal TypeScript framework.
+Official templates for the [0x1 framework](https://github.com/Triex/0x1) - the ultra-minimal TypeScript⚡️Bun framework.
 
 ## 🚀 Quick Start
 
