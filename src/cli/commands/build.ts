@@ -256,39 +256,24 @@ async function createAppRouter() {
   }
 }
 
-// Component loading
-async function loadComponent(componentPath) {
-  try {
-    console.log('[0x1 App] Loading component:', componentPath);
-    const url = componentPath + '?t=' + Date.now();
-    const module = await import(url);
-    
-    if (module && (module.default || module)) {
-      console.log('[0x1 App] ✅ Component loaded:', componentPath);
-      return module;
-    }
-    return null;
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load component:', componentPath, error);
-    throw error;
-  }
-}
-
-// Layout loading
+// Simple production layout and component loading
 async function loadLayout() {
   try {
-    const layoutModule = await loadComponent('/app/layout.js');
-    if (layoutModule && layoutModule.default) {
-      return layoutModule.default;
+    // In production, try to import the compiled layout from the bundle
+    // First check if there's a layout function in the global scope
+    if (typeof window !== 'undefined' && window.LayoutComponent) {
+      return window.LayoutComponent;
     }
+    
+    // Fallback: just pass children through
+    return ({ children }) => children;
   } catch (error) {
     console.debug('[0x1 App] Layout loading failed, using fallback:', error);
+    return ({ children }) => children;
   }
-  
-  return ({ children }) => children;
 }
 
-// Route registration
+// Production route registration - use embedded component instead of dynamic loading
 async function registerRoutes(router) {
   console.log('[0x1 App] 📝 Registering routes...');
   
@@ -298,14 +283,21 @@ async function registerRoutes(router) {
     try {
       const routeComponent = async (props) => {
         try {
-          const componentModule = await loadComponent(route.componentPath);
-          if (componentModule && componentModule.default) {
-            return componentModule.default(props);
+          // In production, look for the component in the global scope first
+          if (typeof window !== 'undefined' && window.HomePage) {
+            return window.HomePage(props);
           }
+          
+          // If not in global scope, try to get it from the bundle
+          const bundleModule = await import('/app-bundle.js?t=' + Date.now());
+          if (bundleModule && bundleModule.default) {
+            return bundleModule.default(props);
+          }
+          
           return {
             type: 'div',
             props: { className: 'p-8 text-center' },
-            children: ['⚠️ Component has no default export']
+            children: ['⚠️ Component not found in production bundle']
           };
         } catch (error) {
           return {
@@ -368,6 +360,14 @@ if (document.readyState === 'loading') {
   // Write the aligned production app.js
   await Bun.write(join(outputPath, 'app.js'), productionAppScript);
   logger.info('✅ Production app.js generated (aligned with dev server)');
+  
+  // Copy the app bundle to root for direct access
+  const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
+  if (existsSync(builtBundlePath)) {
+    const bundleContent = await Bun.file(builtBundlePath).text();
+    await Bun.write(join(outputPath, 'app-bundle.js'), bundleContent);
+    logger.info('✅ App bundle copied to root for production access');
+  }
 
   // Output build info with beautiful formatting
   log.box('Build Complete');
