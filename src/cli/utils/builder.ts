@@ -267,7 +267,7 @@ if (typeof window !== 'undefined') {
     
     if (!PageComponent) {
       console.error('[0x1] No page component found to mount');
-      appRoot.innerHTML = '<div>Error: No page component found</div>';
+      appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error: No page component found</div>';
       return;
     }
 
@@ -293,7 +293,7 @@ if (typeof window !== 'undefined') {
         
         if (!hooksReady) {
           console.warn('[0x1] Hooks system not ready, using fallback');
-          appRoot.innerHTML = '<div>0x1 App loaded (hooks not ready)</div>';
+          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
           if (window.appReady) window.appReady();
           return;
         }
@@ -354,7 +354,7 @@ if (typeof window !== 'undefined') {
           
           // Fallback: basic mounting
           console.warn('[0x1] Using basic mounting fallback');
-          appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
           if (window.appReady) window.appReady();
           
         } finally {
@@ -366,7 +366,7 @@ if (typeof window !== 'undefined') {
         
       } catch (error) {
         console.error('[0x1] Error mounting component:', error);
-        appRoot.innerHTML = '<div>Error loading app</div>';
+        appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error loading app</div>';
       }
     };
 
@@ -508,7 +508,7 @@ if (typeof window !== 'undefined') {
     
     if (!PageComponent) {
       console.error('[0x1] No page component found to mount');
-      appRoot.innerHTML = '<div>Error: No page component found</div>';
+      appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error: No page component found</div>';
       return;
     }
 
@@ -534,7 +534,7 @@ if (typeof window !== 'undefined') {
         
         if (!hooksReady) {
           console.warn('[0x1] Hooks system not ready, using fallback');
-          appRoot.innerHTML = '<div>0x1 App loaded (hooks not ready)</div>';
+          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
           if (window.appReady) window.appReady();
           return;
         }
@@ -595,7 +595,7 @@ if (typeof window !== 'undefined') {
           
           // Fallback: basic mounting
           console.warn('[0x1] Using basic mounting fallback');
-          appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
           if (window.appReady) window.appReady();
           
         } finally {
@@ -607,7 +607,7 @@ if (typeof window !== 'undefined') {
         
       } catch (error) {
         console.error('[0x1] Error mounting component:', error);
-        appRoot.innerHTML = '<div>Error loading app</div>';
+        appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error loading app</div>';
       }
     };
 

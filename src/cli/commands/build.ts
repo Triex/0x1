@@ -301,28 +301,112 @@ class ProductionAppLoader {
         align-items: center;
         justify-content: center;
         min-height: 100vh;
-        background: linear-gradient(135deg, #0070f3 0%, #6219ff 100%);
+        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
         color: white;
         font-family: system-ui, sans-serif;
       ">
-        <div style="text-align: center;">
+        <div style="
+          text-align: center;
+          animation: gentle-pulse 4s ease-in-out infinite;
+        ">
           <div style="
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.3);
-            border-top: 3px solid white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 1rem;
-          "></div>
-          <h2 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Loading 0x1 App</h2>
-          <p style="opacity: 0.8; font-size: 0.9rem;" id="loading-status">Initializing framework...</p>
+            position: relative;
+            width: 60px;
+            height: 80px;
+            margin: 0 auto 2rem;
+          ">
+            <div style="
+              width: 100%;
+              height: 100%;
+              background: linear-gradient(45deg, #00d4ff 0%, #00d4ff 50%, #0070f3 100%);
+              clip-path: polygon(40% 0%, 40% 40%, 100% 40%, 60% 100%, 60% 60%, 0% 60%);
+              animation: lightning-pulse 2s ease-in-out infinite;
+              filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.4));
+            "></div>
+          </div>
+          <h2 style="
+            background: linear-gradient(45deg, #0070f3, #00d4ff, #6219ff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradient-shift 3s ease-in-out infinite;
+            font-weight: 600;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+          ">0x1 Framework</h2>
+          <div style="
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 1rem 0;
+          ">
+            <div style="
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #00d4ff;
+              animation: loading-bounce 1.4s infinite ease-in-out;
+              animation-delay: -0.32s;
+              box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+            "></div>
+            <div style="
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #00d4ff;
+              animation: loading-bounce 1.4s infinite ease-in-out;
+              animation-delay: -0.16s;
+              box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+            "></div>
+            <div style="
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #00d4ff;
+              animation: loading-bounce 1.4s infinite ease-in-out;
+              animation-delay: 0s;
+              box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+            "></div>
+          </div>
+          <p style="
+            color: #a0a0a0;
+            font-size: 0.9rem;
+            opacity: 0.8;
+          " id="loading-status">Initializing...</p>
         </div>
       </div>
       <style>
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+        @keyframes lightning-pulse {
+          0%, 100% {
+            opacity: 0.8;
+            transform: scale(1);
+            filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.4));
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.4)) drop-shadow(0 0 30px rgba(0, 212, 255, 0.4));
+          }
+        }
+        @keyframes gradient-shift {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        @keyframes loading-bounce {
+          0%, 80%, 100% {
+            transform: scale(0.8);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1.2);
+            opacity: 1;
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+          }
+        }
+        @keyframes gentle-pulse {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 1; }
         }
       </style>
     \`;
@@ -1144,17 +1228,21 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <link rel="stylesheet" href="/styles.css">
   
   <style>
-    /* Critical CSS for First Paint - Following Core Web Vitals Best Practices */
+    /* Critical CSS for First Paint - 0x1 Lightning Brand Theme */
     :root {
       --primary: #0070f3;
       --primary-dark: #0051cc;
       --secondary: #6219ff;
       --secondary-dark: #4d0cc7;
+      --accent: #00d4ff;
+      --accent-dark: #0099cc;
       --background: #0a0a0a;
       --background-secondary: #1a1a1a;
       --text: #ffffff;
       --text-secondary: #a0a0a0;
       --border: #333333;
+      --lightning: #00d4ff;
+      --lightning-glow: rgba(0, 212, 255, 0.4);
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
     }
@@ -1166,9 +1254,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     }
     
     html {
-      /* Improved scrolling behavior */
       scroll-behavior: smooth;
-      /* Better font rendering */
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
@@ -1180,14 +1266,11 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       color: var(--text);
       line-height: 1.6;
       min-height: 100vh;
-      /* Prevent horizontal scroll on mobile */
       overflow-x: hidden;
-      /* Better font rendering */
       font-feature-settings: "kern" 1, "liga" 1;
       font-variant-ligatures: common-ligatures;
     }
     
-    /* Focus management for accessibility */
     :focus {
       outline: 2px solid var(--primary);
       outline-offset: 2px;
@@ -1197,15 +1280,12 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       outline: none;
     }
     
-    /* App container optimizations */
     #app {
       min-height: 100vh;
       position: relative;
-      /* Prevent layout shift */
       contain: layout style paint;
     }
     
-    /* Reduced motion for accessibility */
     @media (prefers-reduced-motion: reduce) {
       *,
       *::before,
@@ -1217,7 +1297,6 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       }
     }
     
-    /* Dark mode support */
     @media (prefers-color-scheme: light) {
       :root {
         --background: #ffffff;
@@ -1225,19 +1304,21 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
         --text: #000000;
         --text-secondary: #666666;
         --border: #e1e5e9;
+        --lightning: #0070f3;
+        --lightning-glow: rgba(0, 112, 243, 0.3);
       }
     }
     
-    /* High contrast mode support */
     @media (prefers-contrast: high) {
       :root {
         --primary: #0000ff;
         --secondary: #8b00ff;
         --border: #000000;
+        --lightning: #0000ff;
       }
     }
     
-    /* Loading states following React 19 Suspense patterns */
+    /* 0x1 Lightning Themed Loading States */
     .app-loading {
       display: flex;
       justify-content: center;
@@ -1247,9 +1328,9 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       position: fixed;
       top: 0;
       left: 0;
-      background: var(--background);
+      background: linear-gradient(135deg, var(--background) 0%, var(--background-secondary) 100%);
       z-index: 1000;
-      transition: opacity 0.3s ease, visibility 0.3s ease;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
     }
     
     .app-loading.loaded {
@@ -1257,23 +1338,96 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       visibility: hidden;
     }
     
-    /* Enhanced loading animations */
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(255,255,255,0.1);
-      border-top: 3px solid var(--primary);
+    /* Lightning Bolt Loading Animation */
+    .lightning-loader {
+      position: relative;
+      width: 60px;
+      height: 80px;
+      margin: 0 auto 2rem;
+    }
+    
+    .lightning-bolt {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(45deg, var(--lightning) 0%, var(--accent) 50%, var(--primary) 100%);
+      clip-path: polygon(40% 0%, 40% 40%, 100% 40%, 60% 100%, 60% 60%, 0% 60%);
+      animation: lightning-pulse 2s ease-in-out infinite;
+      filter: drop-shadow(0 0 10px var(--lightning-glow));
+    }
+    
+    @keyframes lightning-pulse {
+      0%, 100% {
+        opacity: 0.8;
+        transform: scale(1);
+        filter: drop-shadow(0 0 10px var(--lightning-glow));
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.1);
+        filter: drop-shadow(0 0 20px var(--lightning-glow)) drop-shadow(0 0 30px var(--lightning-glow));
+      }
+    }
+    
+    /* Enhanced Loading Dots with Lightning Theme */
+    .loading-dots {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin: 1rem 0;
+    }
+    
+    .loading-dot {
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1rem;
+      background: var(--lightning);
+      animation: loading-bounce 1.4s infinite ease-in-out;
+      box-shadow: 0 0 8px var(--lightning-glow);
     }
     
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+    .loading-dot:nth-child(3) { animation-delay: 0s; }
+    
+    @keyframes loading-bounce {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1.2);
+        opacity: 1;
+        box-shadow: 0 0 15px var(--lightning-glow);
+      }
     }
     
-    /* Error boundary styles */
+    /* Loading Text with Gradient */
+    .loading-text {
+      background: linear-gradient(45deg, var(--primary), var(--lightning), var(--secondary));
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradient-shift 3s ease-in-out infinite;
+      font-weight: 600;
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    @keyframes gradient-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    
+    .loading-status {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      opacity: 0.8;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    
+    /* Error boundary with lightning theme */
     .error-boundary {
       display: flex;
       align-items: center;
@@ -1290,34 +1444,57 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       max-width: 500px;
       background: rgba(255,255,255,0.1);
       padding: 2rem;
-      border-radius: 12px;
-      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
       box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .error-content::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(45deg, var(--lightning), var(--primary), var(--secondary), var(--accent));
+      background-size: 400% 400%;
+      animation: gradient-border 4s ease infinite;
+      border-radius: 16px;
+      z-index: -1;
+    }
+    
+    @keyframes gradient-border {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
     
     .error-button {
-      background: white;
-      color: var(--primary);
+      background: linear-gradient(45deg, var(--lightning), var(--primary));
+      color: white;
       border: none;
       padding: 0.75rem 1.5rem;
-      border-radius: 6px;
+      border-radius: 8px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: all 0.3s ease;
       font-family: inherit;
+      box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
     }
     
     .error-button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4);
+      background: linear-gradient(45deg, var(--accent), var(--primary-dark));
     }
     
     .error-button:active {
       transform: translateY(0);
     }
     
-    /* Skip to content for accessibility */
+    /* Skip to content with lightning accent */
     .skip-to-content {
       position: absolute;
       left: -10000px;
@@ -1325,12 +1502,13 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       width: 1px;
       height: 1px;
       overflow: hidden;
-      background: var(--primary);
+      background: linear-gradient(45deg, var(--lightning), var(--primary));
       color: white;
       padding: 8px 16px;
       text-decoration: none;
-      border-radius: 4px;
+      border-radius: 6px;
       font-weight: 600;
+      box-shadow: 0 4px 15px var(--lightning-glow);
     }
     
     .skip-to-content:focus {
@@ -1342,6 +1520,17 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       overflow: visible;
       z-index: 10000;
     }
+    
+    /* Pulse animation for loading container */
+    .loading-container {
+      text-align: center;
+      animation: gentle-pulse 4s ease-in-out infinite;
+    }
+    
+    @keyframes gentle-pulse {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -1351,23 +1540,33 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <!-- Main application container -->
   <div id="app" role="main" aria-label="Application"></div>
   
-  <!-- Loading overlay with improved accessibility -->
+  <!-- Enhanced Lightning-themed Loading overlay -->
   <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-label="Loading application">
-    <div style="text-align: center;">
-      <div class="loading-spinner" aria-hidden="true"></div>
-      <h2 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Loading 0x1 App</h2>
-      <p style="opacity: 0.8; font-size: 0.9rem;" id="loading-status">Initializing framework...</p>
+    <div class="loading-container">
+      <div class="lightning-loader">
+        <div class="lightning-bolt"></div>
+      </div>
+      <h2 class="loading-text">0x1 Framework</h2>
+      <div class="loading-dots">
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+      </div>
+      <p class="loading-status" id="loading-status">Initializing lightning-fast framework...</p>
     </div>
   </div>
   
-  <!-- Error container with accessibility -->
+  <!-- Error container with lightning theme -->
   <div class="error-container" id="error-container" style="display: none;" role="alert" aria-live="assertive">
     <div class="error-content">
+      <div class="lightning-loader" style="margin-bottom: 1rem;">
+        <div class="lightning-bolt" style="opacity: 0.5; animation: none;"></div>
+      </div>
       <h1 style="margin-bottom: 1rem; font-size: 1.5rem;">Application Error</h1>
-      <p style="margin-bottom: 1rem; opacity: 0.9;">Failed to load the application.</p>
+      <p style="margin-bottom: 1rem; opacity: 0.9;">Failed to load the lightning-fast application.</p>
       <p class="error-details" id="error-details" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Check browser console for more details.</p>
       <button class="error-button" onclick="window.location.reload()" type="button">
-        Reload Application
+        ⚡ Reload Application
       </button>
     </div>
   </div>
