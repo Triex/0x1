@@ -307,6 +307,36 @@ if (typeof window !== 'undefined') {
         }
         
         try {
+          // CRITICAL FIX: Override JSX function to auto-handle component context for hook-using components
+          const originalJsx = window.jsx;
+          if (originalJsx) {
+            window.jsx = function(type, props, key) {
+              // If type is a function (component), set up context
+              if (typeof type === 'function') {
+                const componentName = type.name || type.displayName || 'Component';
+                
+                // Set up component context
+                if (window.__0x1_enterComponentContext) {
+                  window.__0x1_enterComponentContext(componentName);
+                }
+                
+                try {
+                  // Call the original jsx function
+                  const result = originalJsx(type, props, key);
+                  return result;
+                } finally {
+                  // Clean up component context
+                  if (window.__0x1_exitComponentContext) {
+                    window.__0x1_exitComponentContext();
+                  }
+                }
+              } else {
+                // For non-function types (DOM elements), call original
+                return originalJsx(type, props, key);
+              }
+            };
+          }
+          
           // Create component element with proper context
           const element = jsx(PageComponent, {});
           
@@ -518,6 +548,36 @@ if (typeof window !== 'undefined') {
         }
         
         try {
+          // CRITICAL FIX: Override JSX function to auto-handle component context for hook-using components
+          const originalJsx = window.jsx;
+          if (originalJsx) {
+            window.jsx = function(type, props, key) {
+              // If type is a function (component), set up context
+              if (typeof type === 'function') {
+                const componentName = type.name || type.displayName || 'Component';
+                
+                // Set up component context
+                if (window.__0x1_enterComponentContext) {
+                  window.__0x1_enterComponentContext(componentName);
+                }
+                
+                try {
+                  // Call the original jsx function
+                  const result = originalJsx(type, props, key);
+                  return result;
+                } finally {
+                  // Clean up component context
+                  if (window.__0x1_exitComponentContext) {
+                    window.__0x1_exitComponentContext();
+                  }
+                }
+              } else {
+                // For non-function types (DOM elements), call original
+                return originalJsx(type, props, key);
+              }
+            };
+          }
+          
           // Create component element with proper context
           const element = jsx(PageComponent, {});
           
