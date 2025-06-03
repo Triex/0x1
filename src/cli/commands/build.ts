@@ -471,7 +471,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <title>0x1 App</title>
   <link rel="stylesheet" href="/styles.css">
   <style>
-    /* FIXME: Minimise/reduce this */
+    /* FIXME: Minimise/reduce this, but keep pretty & probably dark mode only */
     /* Modern base styles for the 0x1 app */
     :root {
       --primary: #0070f3;
@@ -485,8 +485,8 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     }
     body {
       font-family: var(--font);
-      background: #fafafa;
-      color: #333;
+      background: #18181b;
+      color: #f3f3f3;
     }
     /* Loading styles */
     .app-loading {
@@ -498,7 +498,7 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       position: fixed;
       top: 0;
       left: 0;
-      background: #fafafa;
+      background: #18181b;
       z-index: 1000;
       transition: opacity 0.3s ease, visibility 0.3s ease;
     }
