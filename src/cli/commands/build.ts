@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readdir } from 'node:fs/promises'; // For directory operations
 // We'll use Bun.file() instead of readFile/writeFile for better performance
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { buildAppBundle, buildComponents } from '../utils/builder'; // Import component builder utilities
 import { logger } from '../utils/logger';
 import { transpileJSX } from './jsx-transpiler';
@@ -115,131 +115,259 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     return;
   }
 
-  // Bundle JavaScript/TypeScript with appropriate icons
-  const bundleSpin = log.spinner('Bundling JavaScript/TypeScript modules', 'typescript');
-  try {
-    await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
-    bundleSpin.stop('success', 'JavaScript/TypeScript: bundled successfully');
-  } catch (error) {
-    bundleSpin.stop('error', 'Failed to bundle JavaScript/TypeScript');
-    log.error(`${error}`);
-    if (!options.silent) process.exit(1);
-    return;
-  }
-
-  // Process CSS with appropriate icon
-  const cssSpin = log.spinner('Processing CSS styles', 'css');
+  // Bundle JavaScript/TypeScript with enhanced Bun APIs
+  // Optimized for app router structure
+  await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
   
-  // Check if we're in a deployment environment
-  const isDeployment = Boolean(
-    process.env.VERCEL || 
-    process.env.NETLIFY || 
-    process.env.CI ||
-    !process.stdout.isTTY
-  );
-
-  try {
-    // Handle CSS files - look for Tailwind setup
-    let tailwindSuccess = false;
-    const appGlobalsCss = join(projectPath, 'app', 'globals.css');
-    if (existsSync(appGlobalsCss)) {
-      log.info(`📂 Found app/globals.css - processing with Tailwind`);
-      // Make sure the public/styles directory exists for TailwindCSS output
-      const outputStylesDir = join(outputPath, 'styles');
-      if (!existsSync(outputStylesDir)) {
-        await mkdir(outputStylesDir, { recursive: true });
-      }
-
-      // Create the browser directory structure for live-reload script
-      const outputBrowserDir = join(outputPath, 'browser');
-      if (!existsSync(outputBrowserDir)) {
-        await mkdir(outputBrowserDir, { recursive: true });
-      }
-
-      // Copy the live-reload script to dist/browser for use in projects
-      // Check if __dirname already includes 'src' to avoid src/src duplication
-      const baseDir = join(__dirname, '..', '..');
-      const dirnameEndsWithSrc = baseDir.endsWith('/src') || baseDir.endsWith('\\src');
-      
-      // Create the path based on whether we already have 'src' in the path
-      const liveReloadSrc = dirnameEndsWithSrc
-        ? join(baseDir, 'browser', 'live-reload.js')
-        : join(baseDir, 'src', 'browser', 'live-reload.js');
-      
-      // Add debug logging
-      logger.debug(`Base directory: ${baseDir}`);
-      logger.debug(`Live reload src path: ${liveReloadSrc}`);
-      
-      // Skip live-reload script in deployment environments
-      const liveReloadDest = join(outputBrowserDir, 'live-reload.js');
-      if (!isDeployment && existsSync(liveReloadSrc)) {
-        logger.info(`Copying live-reload script to ${liveReloadDest}`);
-        await Bun.write(liveReloadDest, await Bun.file(liveReloadSrc).text());
-      } else if (!isDeployment) {
-        logger.warn(`Could not find live-reload script at ${liveReloadSrc}`);
-      } else {
-        logger.info('Skipping live-reload script in deployment environment');
-      }
-
-      // Run Tailwind CSS build on globals.css - use multiple fallback approaches
-      log.info('Processing Tailwind CSS...');
-      
-      // Try different Tailwind execution methods
-      const tailwindCommands = [
-        // Try npx first (most compatible)
-        ['npx', 'tailwindcss', '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean),
-        // Try bun x as fallback
-        ['bun', 'x', 'tailwindcss', '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean),
-        // Try direct node_modules path
-        ['node', join(projectPath, 'node_modules', 'tailwindcss', 'lib', 'cli.js'), '-i', appGlobalsCss, '-o', join(outputStylesDir, 'tailwind.css'), minify ? '--minify' : ''].filter(Boolean)
-      ];
-      
-      for (const command of tailwindCommands) {
-        try {
-          const tailwindResult = Bun.spawnSync(command, {
-            cwd: projectPath,
-            env: {
-              ...process.env,
-              NODE_ENV: 'production',
-              TAILWIND_MODE: 'build',
-              TAILWIND_DISABLE_TOUCH: '1'
-            },
-            stdout: 'pipe',
-            stderr: 'pipe'
-          });
-
-          if (tailwindResult.exitCode === 0) {
-            log.info('✅ Tailwind CSS processed successfully');
-            tailwindSuccess = true;
+  // CRITICAL FIX: Override app.js with dev-server aligned version
+  logger.info('🔧 Generating production app.js aligned with dev server...');
+  
+  // Simple route discovery for production build
+  function discoverProductionRoutes(projectPath: string) {
+    const routes: Array<{ path: string; componentPath: string }> = [];
+    
+    try {
+      const appDir = join(projectPath, 'app');
+      if (existsSync(appDir)) {
+        // Add root route
+        const pageFiles = ['page.tsx', 'page.jsx', 'page.js', 'page.ts'];
+        for (const pageFile of pageFiles) {
+          if (existsSync(join(appDir, pageFile))) {
+            routes.push({ 
+              path: '/', 
+              componentPath: `/app/${pageFile.replace(/\.(tsx|ts)$/, '.js')}` 
+            });
             break;
-          } else {
-            const errorOutput = new TextDecoder().decode(tailwindResult.stderr);
-            if (!isDeployment) {
-              logger.warn(`Tailwind command failed: ${command[0]} - ${errorOutput}`);
-            }
           }
-        } catch (cmdError) {
-          if (!isDeployment) {
-            logger.warn(`Tailwind command error: ${command[0]} - ${cmdError}`);
-          }
-          continue;
         }
       }
-      
-      if (!tailwindSuccess) {
-        log.warn('⚠️ Failed to process Tailwind CSS: error: could not determine executable to run for package tailwindcss');
-        log.info('💠 Falling back to standard CSS processing');
-      }
+    } catch (error) {
+      logger.debug(`Route discovery error: ${error}`);
     }
-
-    // Process CSS files (will handle fallback internally if Tailwind failed)
-    await processCssFiles(projectPath, outputPath, { minify, ignorePatterns, tailwindFailed: !tailwindSuccess });
-    cssSpin.stop('success', 'CSS styles: processed and optimized');
-  } catch (error) {
-    // CSS processing is optional, so just show a warning
-    cssSpin.stop('warn', 'CSS processing skipped (not configured)');
-    log.warn(`CSS processing error: ${error}`);
+    
+    return routes;
   }
+  
+  const discoveredRoutes = discoverProductionRoutes(projectPath);
+  const routesJson = JSON.stringify(discoveredRoutes, null, 2);
+  
+  // Generate production app.js that matches dev server behavior
+  const productionAppScript = `// 0x1 Framework App Bundle - PRODUCTION BUILD (aligned with dev server)
+console.log('[0x1 App] Starting production app aligned with dev server...');
+
+// Server-discovered routes
+const serverRoutes = ${routesJson};
+
+// Essential hooks loading
+async function loadEssentialDependencies() {
+  console.log('[0x1 App] 🎯 Loading essential dependencies...');
+  
+  try {
+    const hooksScript = document.createElement('script');
+    hooksScript.type = 'module';
+    hooksScript.src = '/0x1/hooks.js?t=' + Date.now();
+    
+    await new Promise((resolve, reject) => {
+      hooksScript.onload = () => {
+        console.log('[0x1 App] ✅ Hooks ready');
+        resolve();
+      };
+      hooksScript.onerror = reject;
+      document.head.appendChild(hooksScript);
+    });
+    
+    if (typeof window !== 'undefined' && window.React && window.React.useState) {
+      console.log('[0x1 App] ✅ React hooks verified');
+    }
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to load hooks:', error);
+  }
+}
+
+// Router creation
+async function createAppRouter() {
+  console.log('[0x1 App] Creating router...');
+  
+  try {
+    const routerModule = await import('/0x1/router.js');
+    const { Router } = routerModule;
+    
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
+    }
+    
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    const router = new Router({
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/',
+      notFoundComponent: () => ({
+        type: 'div',
+        props: { 
+          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+        },
+        children: [
+          {
+            type: 'h1',
+            props: { className: 'text-9xl font-bold text-violet-600 mb-4' },
+            children: ['404'],
+            key: null
+          },
+          {
+            type: 'h2',
+            props: { className: 'text-3xl font-bold mb-4' },
+            children: ['Page Not Found'],
+            key: null
+          },
+          {
+            type: 'a',
+            props: {
+              href: '/',
+              className: 'px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700',
+              onClick: (e) => {
+                e.preventDefault();
+                if (window.router && typeof window.router.navigate === 'function') {
+                  window.router.navigate('/');
+                } else {
+                  window.location.href = '/';
+                }
+              }
+            },
+            children: ['🏠 Back to Home'],
+            key: null
+          }
+        ],
+        key: null
+      })
+    });
+    
+    window.router = router;
+    console.log('[0x1 App] ✅ Router ready');
+    return router;
+    
+  } catch (error) {
+    console.error('[0x1 App] ❌ Router creation failed:', error);
+    throw error;
+  }
+}
+
+// Component loading
+async function loadComponent(componentPath) {
+  try {
+    console.log('[0x1 App] Loading component:', componentPath);
+    const url = componentPath + '?t=' + Date.now();
+    const module = await import(url);
+    
+    if (module && (module.default || module)) {
+      console.log('[0x1 App] ✅ Component loaded:', componentPath);
+      return module;
+    }
+    return null;
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to load component:', componentPath, error);
+    throw error;
+  }
+}
+
+// Layout loading
+async function loadLayout() {
+  try {
+    const layoutModule = await loadComponent('/app/layout.js');
+    if (layoutModule && layoutModule.default) {
+      return layoutModule.default;
+    }
+  } catch (error) {
+    console.debug('[0x1 App] Layout loading failed, using fallback:', error);
+  }
+  
+  return ({ children }) => children;
+}
+
+// Route registration
+async function registerRoutes(router) {
+  console.log('[0x1 App] 📝 Registering routes...');
+  
+  const sharedLayout = await loadLayout();
+  
+  for (const route of serverRoutes) {
+    try {
+      const routeComponent = async (props) => {
+        try {
+          const componentModule = await loadComponent(route.componentPath);
+          if (componentModule && componentModule.default) {
+            return componentModule.default(props);
+          }
+          return {
+            type: 'div',
+            props: { className: 'p-8 text-center' },
+            children: ['⚠️ Component has no default export']
+          };
+        } catch (error) {
+          return {
+            type: 'div',
+            props: { className: 'p-8 text-center text-red-500' },
+            children: ['❌ Error loading component: ' + error.message]
+          };
+        }
+      };
+      
+      router.addRoute(route.path, routeComponent, { 
+        layout: sharedLayout,
+        componentPath: route.componentPath 
+      });
+      
+      console.log('[0x1 App] ✅ Route registered:', route.path);
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+    }
+  }
+}
+
+// Main initialization
+async function initApp() {
+  try {
+    console.log('[0x1 App] 🚀 Starting production app...');
+    
+    await loadEssentialDependencies();
+    const router = await createAppRouter();
+    await registerRoutes(router);
+    
+    router.init();
+    router.navigate(window.location.pathname, false);
+    
+    console.log('[0x1 App] ✅ Production app initialized!');
+    
+    // Hide loading indicator
+    if (typeof window !== 'undefined' && window.appReady) {
+      window.appReady();
+    }
+    
+  } catch (error) {
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center;"><h2 style="color: #ef4444;">Application Error</h2><p>' + error.message + '</p></div>';
+    }
+  }
+}
+
+// Start app
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+`;
+
+  // Write the aligned production app.js
+  await Bun.write(join(outputPath, 'app.js'), productionAppScript);
+  logger.info('✅ Production app.js generated (aligned with dev server)');
 
   // Output build info with beautiful formatting
   log.box('Build Complete');
@@ -446,201 +574,23 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     const hasAppDir = existsSync(appDir);
 
     if (hasAppDir) {
-      // Using modern app router structure with proper app loading
-      const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
-  <link rel="stylesheet" href="/styles.css">
-  <style>
-    /* FIXME: Minimise/reduce this, but keep pretty & probably dark mode only */
-    /* Modern base styles for the 0x1 app */
-    :root {
-      --primary: #0070f3;
-      --secondary: #6219ff;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      font-family: var(--font);
-      background: #18181b;
-      color: #f3f3f3;
-    }
-    /* Loading styles */
-    .app-loading {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      width: 100vw;
-      position: fixed;
-      top: 0;
-      left: 0;
-      background: #18181b;
-      z-index: 1000;
-      transition: opacity 0.3s ease, visibility 0.3s ease;
-    }
-    .app-loading.loaded {
-      opacity: 0;
-      visibility: hidden;
-    }
-    .dots-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-    .loading-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background-color: var(--primary);
-      animation: dot-pulse 1.5s infinite ease-in-out;
-    }
-    .loading-dot:nth-child(2) {
-      animation-delay: 0.2s;
-      background-color: var(--secondary);
-    }
-    .loading-dot:nth-child(3) {
-      animation-delay: 0.4s;
-      background-color: var(--primary);
-    }
-    @keyframes dot-pulse {
-      0%, 100% { transform: scale(0.8); opacity: 0.5; }
-      50% { transform: scale(1.2); opacity: 1; }
-    }
-    .error-container {
-      display: none;
-      color: red;
-      padding: 20px;
-      text-align: center;
-      background: rgba(255, 235, 235, 0.9);
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      max-width: 80%;
-    }
-    .error-title {
-      font-size: 1.4rem;
-      margin-bottom: 10px;
-      font-weight: 600;
-    }
-    .error-message {
-      font-size: 1rem;
-      margin-bottom: 15px;
-    }
-    .error-details {
-      font-family: monospace;
-      background: rgba(0, 0, 0, 0.05);
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 0.9rem;
-      white-space: pre-wrap;
-      overflow-x: auto;
-      text-align: left;
-    }
-  </style>
-</head>
-<body>
-  <div id="app"></div>
-  
-  <!-- Loading overlay that will be removed once app loads -->
-  <div class="app-loading" id="app-loading">
-    <div class="dots-container">
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-    </div>
-  </div>
-  
-  <!-- Error container shown only if there's an error -->
-  <div class="error-container" id="error-container">
-    <div class="error-title">Application Error</div>
-    <div class="error-message">Failed to load the application.</div>
-    <div class="error-details" id="error-details">Check browser console for more details.</div>
-  </div>
-  
-  <script>
-    // Enhanced error handling
-    window.addEventListener('error', function(e) {
-      console.error('App Error:', e.error);
-      const errorContainer = document.getElementById('error-container');
-      const errorDetails = document.getElementById('error-details');
-      const appLoading = document.getElementById('app-loading');
+      // CRITICAL FIX: Use the SAME template as dev server for consistency
+      // Import the exact same template functions from dev-server
+      const { composeHtmlTemplate } = await import('../commands/utils/server/templates');
+      const { injectJsxRuntime } = await import('../commands/utils/jsx-templates');
       
-      // Hide loading indicator
-      if (appLoading) {
-        appLoading.style.display = 'none';
-      }
-      
-      // Show error with details
-      if (errorContainer && errorDetails) {
-        errorContainer.style.display = 'block';
-        errorDetails.textContent = e.error ? e.error.toString() : 'Unknown error';
-      }
-    });
-    
-    // Hide loading overlay when app is ready
-    // This will be called by the app.js when it finishes loading the app
-    window.appReady = function() {
-      const loadingEl = document.getElementById('app-loading');
-      if (loadingEl) {
-        loadingEl.classList.add('loaded');
-        // Remove from DOM after animation completes
-        setTimeout(() => {
-          loadingEl.remove();
-        }, 500);
-      }
-    };
-    
-    // Fallback: If app doesn't call appReady within 3 seconds, remove loading overlay anyway
-    setTimeout(() => {
-      const loadingEl = document.getElementById('app-loading');
-      if (loadingEl && !loadingEl.classList.contains('loaded')) {
-        loadingEl.classList.add('loaded');
-      }
-    }, 3000);
-  </script>
-  
-  <!-- Process polyfill for browser compatibility -->
-  <script>
-    // Define process global for browser compatibility with 0x1 framework
-    if (typeof process === 'undefined') {
-      window.process = {
-        env: {
-          NODE_ENV: 'production',
-          CI: false,
-          VERCEL: false,
-          NETLIFY: false,
-          GITHUB_ACTIONS: false,
-          GITLAB_CI: false,
-          DEBUG: false
-        },
-        stdout: {
-          isTTY: false,
-          clearLine: undefined,
-          cursorTo: undefined
-        },
-        version: 'v16.0.0',
-        versions: { node: '16.0.0' },
-        platform: 'browser',
-        arch: 'x64'
-      };
-    }
-  </script>
-  
-  <!-- Load the actual application -->  
-  <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
-</body>
-</html>`;
+      // Create index.html using the EXACT SAME approach as dev server
+      const indexHtml = injectJsxRuntime(
+        composeHtmlTemplate({
+          title: "0x1 App",
+          includeImportMap: true,
+          includeAppScript: true,
+          projectPath: projectPath,
+        })
+      );
 
       await Bun.write(join(outputPath, 'index.html'), indexHtml);
-      logger.info('✅ Created proper index.html that loads the application');
+      logger.info('✅ Created index.html using dev server template (production build)');
     }
   }
 }
@@ -1137,14 +1087,12 @@ export default {
         console.error('\n===============================================');
         throw new Error(`Bundle failed: ${result.logs?.join('\n') || 'Unknown error'}`);
       }
-    } catch (e) {
-      // Type assertion for better error handling
-      const error = e as Error;
-      logger.error(`Error during bundling of ${entryFile}: ${error.message || String(error)}`);
+    } catch (error: any) {
+      logger.error(`Error during bundling of ${entryFile}: ${error.message || error}`);
       if (error.stack) {
         logger.debug(`Stack trace: ${error.stack}`);
       }
-      throw new Error(`Failed to bundle ${entryFile}: ${error.message || String(error)}`);
+      throw new Error(`Failed to bundle ${entryFile}: ${error.message || error}`);
     }
 
     logger.debug(`Bundle generated: ${outputFile}`);
@@ -1155,6 +1103,22 @@ export default {
     }
     throw new Error(`Failed to bundle ${entryFile}: ${error.message || error}`);
   }
+}
+
+/**
+ * Helper function to minify CSS with a simple, reliable implementation
+ */
+async function minifyCss(css: string): Promise<string> {
+  // Simple, reliable CSS minification without complex Bun.spawn execution
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
+    .replace(/[\r\n\t]+/g, '') // Remove newlines and tabs
+    .replace(/ {2,}/g, ' ') // Replace multiple spaces with single space
+    .replace(/([{:;,}]) /g, '$1') // Remove space after punctuation
+    .replace(/ ([{:;,}])/g, '$1') // Remove space before punctuation
+    .replace(/; }/g, '}') // Remove trailing semicolons before closing braces
+    .replace(/;\}/g, '}') // Remove trailing semicolons before closing braces (no space)
+    .trim();
 }
 
 /**
@@ -1332,30 +1296,6 @@ async function processCssFiles(
 }
 
 /**
- * Helper function to minify CSS with a simple, reliable implementation
- */
-async function minifyCss(css: string): Promise<string> {
-  // Simple, reliable CSS minification without complex Bun.spawn execution
-  return css
-    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
-    .replace(/[\r\n\t]+/g, '') // Remove newlines and tabs
-    .replace(/ {2,}/g, ' ') // Replace multiple spaces with single space
-    .replace(/([{:;,}]) /g, '$1') // Remove space after punctuation
-    .replace(/ ([{:;,}])/g, '$1') // Remove space before punctuation
-    .replace(/; }/g, '}') // Remove trailing semicolons before closing braces
-    .replace(/;\}/g, '}') // Remove trailing semicolons before closing braces (no space)
-    .trim();
-}
-
-/**
- * Helper function to find files with specific extensions
- */
-async function _findFilesByExtension(dir: string, extensions: string[], ignorePatterns: string[] = ['node_modules', '.git', 'dist']): Promise<string[]> {
-  // Directly use the comprehensive findFiles function below
-  return findFiles(dir, extensions, ignorePatterns);
-}
-
-/**
  * Helper function to copy a directory recursively
  * Using Bun's optimized implementation for better performance
  */
@@ -1448,12 +1388,4 @@ async function findFiles(dir: string, extensions: string | string[], ignorePatte
 
   await searchDir(dir);
   return result;
-}
-
-/**
- * Helper function to get filename without extension
- */
-function basename(path: string): string {
-  const parts = path.split('/');
-  return parts[parts.length - 1];
 }
