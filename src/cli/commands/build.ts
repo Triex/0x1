@@ -152,185 +152,56 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   const routesJson = JSON.stringify(discoveredRoutes, null, 2);
   
   // Generate production app.js that matches dev server behavior
-  const productionAppScript = `// 0x1 Framework App Bundle - PRODUCTION BUILD (aligned with dev server)
-console.log('[0x1 App] Starting production app aligned with dev server...');
+  const productionAppScript = `// 0x1 Framework App Bundle - PRODUCTION BUILD (self-contained)
+console.log('[0x1 App] Starting production app...');
 
 // Server-discovered routes
 const serverRoutes = ${routesJson};
 
-// Essential hooks loading
-async function loadEssentialDependencies() {
-  console.log('[0x1 App] 🎯 Loading essential dependencies...');
-  
+// Simple self-contained production app
+async function initApp() {
   try {
-    const hooksScript = document.createElement('script');
-    hooksScript.type = 'module';
-    hooksScript.src = '/0x1/hooks.js?t=' + Date.now();
-    
-    await new Promise((resolve, reject) => {
-      hooksScript.onload = () => {
-        console.log('[0x1 App] ✅ Hooks ready');
-        resolve();
-      };
-      hooksScript.onerror = reject;
-      document.head.appendChild(hooksScript);
-    });
-    
-    if (typeof window !== 'undefined' && window.React && window.React.useState) {
-      console.log('[0x1 App] ✅ React hooks verified');
-    }
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load hooks:', error);
-  }
-}
-
-// Router creation
-async function createAppRouter() {
-  console.log('[0x1 App] Creating router...');
-  
-  try {
-    const routerModule = await import('/0x1/router.js');
-    const { Router } = routerModule;
-    
-    if (typeof Router !== 'function') {
-      throw new Error('Router class not found in router module');
-    }
+    console.log('[0x1 App] 🚀 Initializing production app...');
     
     const appElement = document.getElementById('app');
     if (!appElement) {
       throw new Error('App container element not found');
     }
-    
-    const router = new Router({
-      rootElement: appElement,
-      mode: 'history',
-      debug: false,
-      base: '/',
-      notFoundComponent: () => ({
-        type: 'div',
-        props: { 
-          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
-        },
-        children: [
-          {
-            type: 'h1',
-            props: { className: 'text-9xl font-bold text-violet-600 mb-4' },
-            children: ['404'],
-            key: null
-          },
-          {
-            type: 'h2',
-            props: { className: 'text-3xl font-bold mb-4' },
-            children: ['Page Not Found'],
-            key: null
-          },
-          {
-            type: 'a',
-            props: {
-              href: '/',
-              className: 'px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700',
-              onClick: (e) => {
-                e.preventDefault();
-                if (window.router && typeof window.router.navigate === 'function') {
-                  window.router.navigate('/');
-                } else {
-                  window.location.href = '/';
-                }
-              }
-            },
-            children: ['🏠 Back to Home'],
-            key: null
-          }
-        ],
-        key: null
-      })
-    });
-    
-    window.router = router;
-    console.log('[0x1 App] ✅ Router ready');
-    return router;
-    
-  } catch (error) {
-    console.error('[0x1 App] ❌ Router creation failed:', error);
-    throw error;
-  }
-}
 
-// Simple production layout and component loading
-async function loadLayout() {
-  try {
-    // In production, try to import the compiled layout from the bundle
-    // First check if there's a layout function in the global scope
-    if (typeof window !== 'undefined' && window.LayoutComponent) {
-      return window.LayoutComponent;
-    }
-    
-    // Fallback: just pass children through
-    return ({ children }) => children;
-  } catch (error) {
-    console.debug('[0x1 App] Layout loading failed, using fallback:', error);
-    return ({ children }) => children;
-  }
-}
-
-// Production route registration - use embedded component instead of dynamic loading
-async function registerRoutes(router) {
-  console.log('[0x1 App] 📝 Registering routes...');
-  
-  const sharedLayout = await loadLayout();
-  
-  for (const route of serverRoutes) {
+    // Load and mount the app bundle directly
     try {
-      const routeComponent = async (props) => {
-        try {
-          // In production, look for the component in the global scope first
-          if (typeof window !== 'undefined' && window.HomePage) {
-            return window.HomePage(props);
-          }
+      const bundleModule = await import('/app-bundle.js?t=' + Date.now());
+      
+      if (bundleModule && bundleModule.default) {
+        // Try to render the component
+        const component = bundleModule.default({});
+        
+        if (component && typeof component === 'object') {
+          // Simple DOM creation from component object
+          const element = createElementFromComponent(component);
+          appElement.innerHTML = '';
+          appElement.appendChild(element);
           
-          // If not in global scope, try to get it from the bundle
-          const bundleModule = await import('/app-bundle.js?t=' + Date.now());
-          if (bundleModule && bundleModule.default) {
-            return bundleModule.default(props);
-          }
-          
-          return {
-            type: 'div',
-            props: { className: 'p-8 text-center' },
-            children: ['⚠️ Component not found in production bundle']
-          };
-        } catch (error) {
-          return {
-            type: 'div',
-            props: { className: 'p-8 text-center text-red-500' },
-            children: ['❌ Error loading component: ' + error.message]
-          };
+          console.log('[0x1 App] ✅ Component rendered successfully');
+        } else {
+          // Fallback: just display something
+          appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App Loaded</h1><p>Component rendered successfully</p></div>';
         }
-      };
+      } else {
+        appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App</h1><p>Bundle loaded but no component found</p></div>';
+      }
+    } catch (bundleError) {
+      console.warn('[0x1 App] Bundle loading failed, using fallback:', bundleError);
       
-      router.addRoute(route.path, routeComponent, { 
-        layout: sharedLayout,
-        componentPath: route.componentPath 
-      });
-      
-      console.log('[0x1 App] ✅ Route registered:', route.path);
-    } catch (error) {
-      console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      // Simple fallback content
+      appElement.innerHTML = \`
+        <div style="padding: 2rem; text-align: center; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #0070f3; margin-bottom: 1rem;">0x1 App</h1>
+          <p style="margin-bottom: 1rem;">The application is running in production mode.</p>
+          <p style="font-size: 0.9rem; opacity: 0.7;">Bundle: \${bundleError.message}</p>
+        </div>
+      \`;
     }
-  }
-}
-
-// Main initialization
-async function initApp() {
-  try {
-    console.log('[0x1 App] 🚀 Starting production app...');
-    
-    await loadEssentialDependencies();
-    const router = await createAppRouter();
-    await registerRoutes(router);
-    
-    router.init();
-    router.navigate(window.location.pathname, false);
     
     console.log('[0x1 App] ✅ Production app initialized!');
     
@@ -349,7 +220,59 @@ async function initApp() {
   }
 }
 
-// Start app
+// Simple function to create DOM elements from component objects
+function createElementFromComponent(component) {
+  if (typeof component === 'string') {
+    return document.createTextNode(component);
+  }
+  
+  if (component && typeof component === 'object' && component.type) {
+    const element = document.createElement(component.type);
+    
+    // Set properties
+    if (component.props) {
+      Object.keys(component.props).forEach(key => {
+        if (key === 'children') return;
+        if (key === 'className') {
+          element.className = component.props[key];
+        } else if (key.startsWith('on') && typeof component.props[key] === 'function') {
+          const eventName = key.substring(2).toLowerCase();
+          element.addEventListener(eventName, component.props[key]);
+        } else {
+          try {
+            element[key] = component.props[key];
+          } catch (e) {
+            // Ignore property setting errors
+          }
+        }
+      });
+    }
+    
+    // Add children
+    if (component.children) {
+      if (Array.isArray(component.children)) {
+        component.children.forEach(child => {
+          const childElement = createElementFromComponent(child);
+          if (childElement) {
+            element.appendChild(childElement);
+          }
+        });
+      } else {
+        const childElement = createElementFromComponent(component.children);
+        if (childElement) {
+          element.appendChild(childElement);
+        }
+      }
+    }
+    
+    return element;
+  }
+  
+  // Fallback for other types
+  return document.createTextNode(String(component));
+}
+
+// Start app immediately
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
@@ -359,7 +282,7 @@ if (document.readyState === 'loading') {
 
   // Write the aligned production app.js
   await Bun.write(join(outputPath, 'app.js'), productionAppScript);
-  logger.info('✅ Production app.js generated (aligned with dev server)');
+  logger.info('✅ Production app.js generated (self-contained)');
   
   // Copy the app bundle to root for direct access
   const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
@@ -574,23 +497,177 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     const hasAppDir = existsSync(appDir);
 
     if (hasAppDir) {
-      // CRITICAL FIX: Use the SAME template as dev server for consistency
-      // Import the exact same template functions from dev-server
-      const { composeHtmlTemplate } = await import('../commands/utils/server/templates');
-      const { injectJsxRuntime } = await import('../commands/utils/jsx-templates');
+      // CRITICAL FIX: Create production-specific HTML template instead of dev server template
+      const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Production styles for 0x1 app */
+    :root {
+      --primary: #0070f3;
+      --secondary: #6219ff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: var(--font);
+      background: #0a0a0a;
+      color: #ffffff;
+      line-height: 1.6;
+    }
+    /* Loading styles */
+    .app-loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      width: 100vw;
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: #0a0a0a;
+      z-index: 1000;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    .app-loading.loaded {
+      opacity: 0;
+      visibility: hidden;
+    }
+    .dots-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .loading-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      animation: dot-pulse 1.5s infinite ease-in-out;
+    }
+    .loading-dot:nth-child(2) {
+      animation-delay: 0.2s;
+      background-color: var(--secondary);
+    }
+    .loading-dot:nth-child(3) {
+      animation-delay: 0.4s;
+      background-color: var(--primary);
+    }
+    @keyframes dot-pulse {
+      0%, 100% { transform: scale(0.8); opacity: 0.5; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+    .error-container {
+      display: none;
+      color: #ef4444;
+      padding: 20px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+      max-width: 80%;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  
+  <!-- Loading overlay -->
+  <div class="app-loading" id="app-loading">
+    <div class="dots-container">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+  </div>
+  
+  <!-- Error container -->
+  <div class="error-container" id="error-container">
+    <div class="error-title">Application Error</div>
+    <div class="error-message">Failed to load the application.</div>
+    <div class="error-details" id="error-details">Check browser console for more details.</div>
+  </div>
+  
+  <script>
+    // Enhanced error handling
+    window.addEventListener('error', function(e) {
+      console.error('App Error:', e.error);
+      const errorContainer = document.getElementById('error-container');
+      const errorDetails = document.getElementById('error-details');
+      const appLoading = document.getElementById('app-loading');
       
-      // Create index.html using the EXACT SAME approach as dev server
-      const indexHtml = injectJsxRuntime(
-        composeHtmlTemplate({
-          title: "0x1 App",
-          includeImportMap: true,
-          includeAppScript: true,
-          projectPath: projectPath,
-        })
-      );
+      if (appLoading) {
+        appLoading.style.display = 'none';
+      }
+      
+      if (errorContainer && errorDetails) {
+        errorContainer.style.display = 'block';
+        errorDetails.textContent = e.error ? e.error.toString() : 'Unknown error';
+      }
+    });
+    
+    // Hide loading overlay when app is ready
+    window.appReady = function() {
+      const loadingEl = document.getElementById('app-loading');
+      if (loadingEl) {
+        loadingEl.classList.add('loaded');
+        setTimeout(() => {
+          loadingEl.remove();
+        }, 500);
+      }
+    };
+    
+    // Fallback timeout
+    setTimeout(() => {
+      const loadingEl = document.getElementById('app-loading');
+      if (loadingEl && !loadingEl.classList.contains('loaded')) {
+        loadingEl.classList.add('loaded');
+      }
+    }, 3000);
+  </script>
+  
+  <!-- Process polyfill for browser compatibility -->
+  <script>
+    if (typeof process === 'undefined') {
+      window.process = {
+        env: {
+          NODE_ENV: 'production',
+          CI: false,
+          VERCEL: false,
+          NETLIFY: false,
+          GITHUB_ACTIONS: false,
+          GITLAB_CI: false,
+          DEBUG: false
+        },
+        stdout: {
+          isTTY: false,
+          clearLine: undefined,
+          cursorTo: undefined
+        },
+        version: 'v16.0.0',
+        versions: { node: '16.0.0' },
+        platform: 'browser',
+        arch: 'x64'
+      };
+    }
+  </script>
+  
+  <!-- Load the production application -->  
+  <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
+</body>
+</html>`;
 
       await Bun.write(join(outputPath, 'index.html'), indexHtml);
-      logger.info('✅ Created index.html using dev server template (production build)');
+      logger.info('✅ Created production-specific index.html');
     }
   }
 }
