@@ -175,6 +175,8 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
     }
   }
   
+  // CRITICAL FIX: Set context for this component and DO NOT clear it immediately
+  // This allows nested components to inherit the context
   setContext(componentId, updateCallback);
   
   try {
@@ -200,9 +202,9 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
       children: [`Error in ${componentName}: ${error.message}`],
       key: null
     };
-  } finally {
-    clearContext();
   }
+  // REMOVED: Don't clear context here - let the hooks system manage context lifecycle
+  // This allows nested components to access the parent's context
 }
 
 /**
@@ -274,13 +276,79 @@ export function jsx(type: string | ComponentFunction | symbol, props: any, key?:
     };
   }
   
-  // Handle function components
+  // CRITICAL FIX: Handle function components with automatic context setup
   if (typeof type === 'function') {
     const componentProps = { ...otherProps };
     if (children !== undefined) {
       componentProps.children = children;
     }
-    return callComponentWithContext(type, componentProps);
+    
+    // Check if hooks context functions are available
+    const setContext = (globalThis as any)[HOOKS_CONTEXT_ENTER];
+    const clearContext = (globalThis as any)[HOOKS_CONTEXT_EXIT];
+    
+    if (setContext && clearContext) {
+      // Generate stable component ID for this specific component call
+      const componentName = type.name || 'Anonymous';
+      const propsString = JSON.stringify(componentProps || {});
+      let hash = 0;
+      for (let i = 0; i < propsString.length; i++) {
+        const char = propsString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      const componentId = `${componentName}_${Math.abs(hash).toString(36)}`;
+      
+      // Create a minimal update callback for this component
+      const updateCallback = () => {
+        console.debug(`[0x1 Hooks] Component ${componentId} state changed`);
+        // Basic re-render logic here if needed
+      };
+      
+      // Set context for this component
+      setContext(componentId, updateCallback);
+      
+      try {
+        // Call the component with proper context
+        const result = type(componentProps);
+        
+        // Ensure metadata is applied
+        return ensureComponentMetadata(result, componentId, componentName);
+        
+      } catch (error: any) {
+        console.error(`[0x1 JSX] Component error in ${componentName}:`, error);
+        
+        // Return error boundary fallback
+        return {
+          type: 'div',
+          props: { 
+            className: 'error-boundary',
+            style: { color: 'red', padding: '10px', border: '1px solid red' },
+            'data-component-id': componentId,
+            'data-component-name': componentName
+          },
+          children: [`Error in ${componentName}: ${error.message}`],
+          key: null
+        };
+      } finally {
+        // Clean up context after this component is done
+        clearContext();
+      }
+    } else {
+      // Fallback: No hooks context available, call component directly
+      console.warn(`[0x1 JSX] No hooks context for ${type.name || 'Anonymous'}, calling without hooks`);
+      try {
+        return type(componentProps);
+      } catch (error: any) {
+        console.error(`[0x1 JSX] Component error (no hooks):`, error);
+        return {
+          type: 'div',
+          props: { className: 'error-boundary' },
+          children: [`Error: ${error.message}`],
+          key: null
+        };
+      }
+    }
   }
   
   // Handle DOM elements
