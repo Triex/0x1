@@ -17,6 +17,10 @@
       "dest": "/app.js"
     },
     {
+      "src": "/app-bundle.js",
+      "dest": "/app-bundle.js"
+    },
+    {
       "src": "/public/(.*)",
       "dest": "/public/$1"
     },
@@ -29,7 +33,7 @@
       "dest": "/manifest.json"
     },
     {
-      "src": "/service-worker.js", 
+      "src": "/service-worker.js",
       "dest": "/service-worker.js"
     },
     {
@@ -37,4 +41,4 @@
       "dest": "/index.html"
     }
   ]
-} 
+}

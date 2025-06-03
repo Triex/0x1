@@ -17,6 +17,10 @@
       "dest": "/app.js"
     },
     {
+      "src": "/app-bundle.js",
+      "dest": "/app-bundle.js"
+    },
+    {
       "src": "/public/(.*)",
       "dest": "/public/$1"
     },
@@ -25,8 +29,16 @@
       "dest": "/favicon.ico"
     },
     {
+      "src": "/manifest.json",
+      "dest": "/manifest.json"
+    },
+    {
+      "src": "/service-worker.js",
+      "dest": "/service-worker.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
   ]
-} 
+}
