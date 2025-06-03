@@ -229,16 +229,70 @@ const Counter = ({ initialCount = 0 }) => {
 
 ${transpiledContent}
 
-// Make component available globally
+// Make component available globally and mount to DOM
 if (typeof window !== 'undefined') {
-  const component = (typeof module !== 'undefined' && module.exports?.default) || 
-                   (typeof exports !== 'undefined' && exports.default) ||
-                   HomePage ||
-                   window.PageComponent;
-  
-  if (component) {
-    window.PageComponent = component;
-    console.log('[0x1] Fallback page component loaded');
+  // Wait for DOM and framework to be ready
+  const initializeApp = () => {
+    const appRoot = document.getElementById('app');
+    if (!appRoot) {
+      console.error('[0x1] App root element (#app) not found');
+      return;
+    }
+
+    // Get the default export (the page component)
+    const PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
+                         (typeof exports !== 'undefined' && exports.default) ||
+                         window.PageComponent;
+    
+    if (!PageComponent) {
+      console.error('[0x1] No page component found to mount');
+      appRoot.innerHTML = '<div>Error: No page component found</div>';
+      return;
+    }
+
+    console.log('[0x1] Fallback page component found, mounting...');
+    
+    // Use framework's render function when available
+    const tryRender = async () => {
+      try {
+        // Import jsx runtime
+        const { jsx } = await import('/0x1/jsx-runtime.js');
+        
+        // Create component element
+        const element = jsx(PageComponent, {});
+        
+        // Use framework's renderToDOM if available
+        if (window.__0x1_renderToDOM) {
+          const rendered = window.__0x1_renderToDOM(element);
+          if (rendered) {
+            appRoot.innerHTML = '';
+            appRoot.appendChild(rendered);
+            console.log('[0x1] Fallback component mounted successfully');
+            if (window.appReady) window.appReady();
+            return;
+          }
+        }
+        
+        // Fallback: basic mounting
+        console.warn('[0x1] Using basic mounting fallback');
+        appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+        if (window.appReady) window.appReady();
+        
+      } catch (error) {
+        console.error('[0x1] Error mounting component:', error);
+        appRoot.innerHTML = '<div>Error loading app</div>';
+      }
+    };
+
+    // Start rendering
+    tryRender();
+  };
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+  } else {
+    initializeApp();
   }
 }
 
@@ -331,16 +385,70 @@ if (typeof process === 'undefined') {
 
 ${bundledContent}
 
-// Make component available globally
+// Make component available globally and mount to DOM
 if (typeof window !== 'undefined') {
-  // Auto-detect the default export
-  const component = (typeof module !== 'undefined' && module.exports?.default) || 
-                   (typeof exports !== 'undefined' && exports.default) ||
-                   window.PageComponent;
-  
-  if (component) {
-    window.PageComponent = component;
-    console.log('[0x1] Bundled page component loaded successfully');
+  // Wait for DOM and framework to be ready
+  const initializeApp = () => {
+    const appRoot = document.getElementById('app');
+    if (!appRoot) {
+      console.error('[0x1] App root element (#app) not found');
+      return;
+    }
+
+    // Get the default export (the page component)
+    const PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
+                         (typeof exports !== 'undefined' && exports.default) ||
+                         window.PageComponent;
+    
+    if (!PageComponent) {
+      console.error('[0x1] No page component found to mount');
+      appRoot.innerHTML = '<div>Error: No page component found</div>';
+      return;
+    }
+
+    console.log('[0x1] Page component found, mounting...');
+    
+    // Use framework's render function when available
+    const tryRender = async () => {
+      try {
+        // Import jsx runtime
+        const { jsx } = await import('/0x1/jsx-runtime.js');
+        
+        // Create component element
+        const element = jsx(PageComponent, {});
+        
+        // Use framework's renderToDOM if available
+        if (window.__0x1_renderToDOM) {
+          const rendered = window.__0x1_renderToDOM(element);
+          if (rendered) {
+            appRoot.innerHTML = '';
+            appRoot.appendChild(rendered);
+            console.log('[0x1] Component mounted successfully');
+            if (window.appReady) window.appReady();
+            return;
+          }
+        }
+        
+        // Fallback: basic mounting
+        console.warn('[0x1] Using basic mounting fallback');
+        appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+        if (window.appReady) window.appReady();
+        
+      } catch (error) {
+        console.error('[0x1] Error mounting component:', error);
+        appRoot.innerHTML = '<div>Error loading app</div>';
+      }
+    };
+
+    // Start rendering
+    tryRender();
+  };
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+  } else {
+    initializeApp();
   }
 }
 
