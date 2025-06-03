@@ -412,14 +412,14 @@ export async function transpileJsx(input: string, options?: TranspileOptions): P
       writeFileSync(tempFile, input);
       
       // Build using the temporary file
-      const result = await Bun.build({
+    const result = await Bun.build({
         entrypoints: [tempFile],
-        target: 'browser',
-        format: 'esm',
-        minify,
-        define: {
-          'process.env.NODE_ENV': '"development"'
-        },
+      target: 'browser',
+      format: 'esm',
+      minify,
+      define: {
+        'process.env.NODE_ENV': '"development"'
+      },
         external: ['0x1', '0x1/jsx-runtime', 'react', 'react-dom']
       });
 
@@ -433,27 +433,27 @@ export async function transpileJsx(input: string, options?: TranspileOptions): P
         }
       }
 
-      if (!result.success) {
-        throw new Error('Transpilation failed');
-      }
+    if (!result.success) {
+      throw new Error('Transpilation failed');
+    }
 
-      const output = await result.outputs[0].text();
-      
-      const wrappedOutput = `
+    const output = await result.outputs[0].text();
+    
+    const wrappedOutput = `
 import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
 
 ${output}
 `;
 
-      return {
-        code: wrappedOutput,
-        metadata: {
-          hasComponents: wrappedOutput.includes('export default') || wrappedOutput.includes('export function'),
-          components: [],
-          hasJsx: true,
-          success: true
-        }
-      };
+    return {
+      code: wrappedOutput,
+      metadata: {
+        hasComponents: wrappedOutput.includes('export default') || wrappedOutput.includes('export function'),
+        components: [],
+        hasJsx: true,
+        success: true
+      }
+    };
     } catch (buildError) {
       // Clean up temp file even if build fails
       try {

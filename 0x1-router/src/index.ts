@@ -398,7 +398,7 @@ class Router {
               if (element) {
                 rootElement.innerHTML = '';
                 rootElement.appendChild(element);
-              }
+            }
               (this as any)._isRendering = false;
               return;
             }
@@ -427,8 +427,8 @@ class Router {
               rootElement.appendChild(layoutElement);
               console.log("[0x1 Router] Layout rendered to DOM");
             }
-          }
-          
+            }
+
           // FAST PATH: Only update content inside the persistent layout
           console.log("[0x1 Router] ⚡ Updating content only (layout persists)...");
           

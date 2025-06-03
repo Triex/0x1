@@ -227,7 +227,7 @@ export const logger = {
       : message;
     
     if (supportsTerminalControl) {
-      process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
+    process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
     } else {
       // Fallback for environments like Vercel
       console.log(`${colors.cyan(frames[0])} ${displayMessage}`);
@@ -236,9 +236,9 @@ export const logger = {
     const interval = setInterval(() => {
       i = (i + 1) % frames.length;
       if (supportsTerminalControl) {
-        process.stdout.clearLine(0);
-        process.stdout.cursorTo(0);
-        process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
+      process.stdout.clearLine(0);
+      process.stdout.cursorTo(0);
+      process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
       }
       // In non-terminal environments, we don't update the spinner
     }, 80);
@@ -248,8 +248,8 @@ export const logger = {
         clearInterval(interval);
         
         if (supportsTerminalControl) {
-          process.stdout.clearLine(0);
-          process.stdout.cursorTo(0);
+        process.stdout.clearLine(0);
+        process.stdout.cursorTo(0);
         }
         
         const icon = type === 'success' 
@@ -337,10 +337,10 @@ export const logger = {
    */
   update: (message: string) => {
     if (supportsTerminalControl) {
-      // Provide the direction argument to clearLine (0 = entire line)
-      process.stdout.clearLine(0);
-      process.stdout.write('\r');
-      process.stdout.write(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
+    // Provide the direction argument to clearLine (0 = entire line)
+    process.stdout.clearLine(0);
+    process.stdout.write('\r');
+    process.stdout.write(`${colors.cyan('⠋')} ${colors.cyan(message)}`);
     } else {
       // Fallback for environments like Vercel - just log the message
       console.log(`${colors.cyan('⠋')} ${colors.cyan(message)}`);

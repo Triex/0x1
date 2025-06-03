@@ -1332,74 +1332,18 @@ async function processCssFiles(
 }
 
 /**
- * Helper function to minify CSS with a Bun-optimized implementation
- * This avoids external dependencies that might cause issues
+ * Helper function to minify CSS with a simple, reliable implementation
  */
 async function minifyCss(css: string): Promise<string> {
-  try {
-    // First attempt: Use Bun's temporary file approach for better performance
-    const tempFile = join('/tmp', `temp-css-${Date.now()}.css`);
-    await Bun.write(tempFile, css);
-
-    // Use Bun to process the CSS
-    const minifyScript = `
-      const fs = require('fs');
-      const css = fs.readFileSync('${tempFile}', 'utf8');
-
-      // Manual string-based CSS minification to avoid regex escaping issues
-      let minified = '';
-      let inComment = false;
-
-      // Manual parsing to remove comments and whitespace
-      for (let i = 0; i < css.length; i++) {
-        // Handle comments
-        if (i < css.length - 1 && css[i] === '/' && css[i+1] === '*') {
-          inComment = true;
-          i++; // Skip the * character
-          continue;
-        }
-        if (inComment && i < css.length - 1 && css[i] === '*' && css[i+1] === '/') {
-          inComment = false;
-          i++; // Skip the / character
-          continue;
-        }
-        if (inComment) continue;
-
-        // Skip newlines and excessive whitespace
-        if (css[i] === '\n') continue;
-        if (css[i] === ' ' && (minified.endsWith(' ') || minified.endsWith('{') || minified.endsWith(':') || minified.endsWith(';'))) continue;
-
-        // Add current character
-        minified += css[i];
-      }
-
-      // Final fixes
-      minified = minified.replace(/;}/g, '}');
-        .trim();
-      process.stdout.write(minified);
-    `;
-
-    const result = await Bun.spawn(['bun', 'run', '-e', minifyScript]);
-    const minified = await new Response(result.stdout).text();
-
-    // Clean up temp file
-    await Bun.spawn(['rm', tempFile]);
-
-    if (minified && minified.length > 0) {
-      return minified;
-    }
-  } catch (error) {
-    logger.debug(`Error using Bun minification: ${error}. Falling back to basic minification.`);
-  }
-
-  // Fallback: Basic CSS minification implementation if Bun approach fails
+  // Simple, reliable CSS minification without complex Bun.spawn execution
   return css
     .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
-    .replace(/[\r\n\t]+/g, '') // Remove whitespace
+    .replace(/[\r\n\t]+/g, '') // Remove newlines and tabs
     .replace(/ {2,}/g, ' ') // Replace multiple spaces with single space
-    .replace(/([{:;,}]) /g, '$1')
-    .replace(/ ([{:;,}])/g, '$1')
-    .replace(/;}/, '}') // Remove trailing semicolons
+    .replace(/([{:;,}]) /g, '$1') // Remove space after punctuation
+    .replace(/ ([{:;,}])/g, '$1') // Remove space before punctuation
+    .replace(/; }/g, '}') // Remove trailing semicolons before closing braces
+    .replace(/;\}/g, '}') // Remove trailing semicolons before closing braces (no space)
     .trim();
 }
 

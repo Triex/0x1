@@ -11,20 +11,20 @@
 
 import { serve, type Server, type ServerWebSocket } from "bun";
 import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  watch,
+    existsSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    statSync,
+    watch,
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tailwindV4Handler } from "../commands/utils/server/tailwind-v4";
 import { logger } from "../utils/logger";
 import {
-  processTailwindCss,
-  stopTailwindProcess,
+    processTailwindCss,
+    stopTailwindProcess,
 } from "./handlers/tailwind-handler";
 
 // Import handlers and middleware
@@ -35,8 +35,8 @@ import { serveStaticFile } from "./middleware/static-files";
 // Import template functions for proper app initialization
 import { injectJsxRuntime } from "../commands/utils/jsx-templates";
 import {
-  composeHtmlTemplate,
-  generateLandingPage,
+    composeHtmlTemplate,
+    generateLandingPage,
 } from "../commands/utils/server/templates";
 
 // Import directives and error boundary utilities
@@ -3428,10 +3428,10 @@ async function loadPolyfillOnDemand(polyfillName) {
       }
       
       return true;
-    } catch (error) {
+  } catch (error) {
       console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
-      throw error;
-    }
+    throw error;
+  }
   })();
   
   polyfillQueue.set(polyfillName, promise);
@@ -3624,7 +3624,7 @@ async function analyzeComponentDependencies(componentPath) {
       } catch (analysisError) {
         console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
       }
-    } catch (error) {
+  } catch (error) {
       console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
     }
   }
@@ -3658,7 +3658,7 @@ async function loadPolyfillsSequentially(packageNames) {
     try {
       await loadPolyfillOnDemand(polyfill);
       console.log('[0x1 App] ✅ Loaded polyfill:', polyfill);
-    } catch (error) {
+  } catch (error) {
       console.error('[0x1 App] ❌ Failed to load polyfill:', polyfill, error);
     }
   }
@@ -3707,7 +3707,7 @@ async function loadEssentialDependencies() {
     if (typeof window !== 'undefined' && window.React && window.React.useState) {
       console.log('[0x1 App] ✅ React hooks verified');
     }
-  } catch (error) {
+    } catch (error) {
     console.error('[0x1 App] ❌ Failed to load hooks:', error);
   }
 }
@@ -3734,13 +3734,13 @@ async function createAppRouter() {
       console.log('[0x1 Router] 🏠 Rendering beautiful 404 page for:', window.location.pathname);
       
       return {
-        type: 'div',
-        props: {
+              type: 'div',
+              props: { 
           className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
-        },
-        children: [
-          {
-            type: 'div',
+              },
+              children: [
+                {
+                  type: 'div',
             props: {
               className: 'mb-8'
             },
@@ -3757,7 +3757,7 @@ async function createAppRouter() {
             key: null
           },
           {
-            type: 'div',
+                  type: 'div',
             props: {
               className: 'max-w-md mx-auto'
             },
@@ -3827,7 +3827,7 @@ async function createAppRouter() {
     console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
     return router;
     
-  } catch (error) {
+        } catch (error) {
     console.error('[0x1 App] ❌ Router creation failed:', error);
     throw error;
   }
@@ -3871,7 +3871,7 @@ async function loadLayoutWithDependencies() {
       console.log('[0x1 App] ✅ Layout loaded with dependencies');
       return layoutModule.default;
     }
-  } catch (error) {
+    } catch (error) {
     console.error('[0x1 App] ❌ Layout loading failed:', error);
   }
   
