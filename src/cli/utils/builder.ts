@@ -189,7 +189,7 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
       );
       
       // Create a fallback bundle with inline placeholder components
-      const fallbackBundle = `// 0x1 Framework - Fallback Bundle
+      const fallbackBundle = `// 0x1 Framework - Fallback Bundle (FALLBACK TEMPLATE v2)
 // Entry point: ${basename(entryPoint as string)}
 // Component imports replaced with placeholders
 
@@ -239,10 +239,27 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // Get the default export (the page component)
-    const PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
-                         (typeof exports !== 'undefined' && exports.default) ||
-                         window.PageComponent;
+    // In the bundle, HomePage is directly available in scope
+    // Try multiple ways to get the component
+    let PageComponent = null;
+    
+    // Method 1: Direct reference (most reliable since it's in the same bundle)
+    try {
+      PageComponent = HomePage; // Direct reference
+    } catch (e) {
+      console.debug('[0x1] Direct HomePage reference not available:', e);
+    }
+    
+    // Method 2: Check module exports (fallback)
+    if (!PageComponent) {
+      try {
+        PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
+                       (typeof exports !== 'undefined' && exports.default) ||
+                       window.PageComponent;
+      } catch (e) {
+        console.debug('[0x1] Module exports not available:', e);
+      }
+    }
     
     if (!PageComponent) {
       console.error('[0x1] No page component found to mount');
@@ -250,7 +267,7 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    console.log('[0x1] Fallback page component found, mounting...');
+    console.log('[0x1] Page component found, mounting...');
     
     // Use framework's render function when available
     const tryRender = async () => {
@@ -267,7 +284,7 @@ if (typeof window !== 'undefined') {
           if (rendered) {
             appRoot.innerHTML = '';
             appRoot.appendChild(rendered);
-            console.log('[0x1] Fallback component mounted successfully');
+            console.log('[0x1] Component mounted successfully');
             if (window.appReady) window.appReady();
             return;
           }
@@ -359,7 +376,7 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
         );
         
         // Create the final bundle
-        const finalBundle = `// 0x1 Framework - Bundled App
+        const finalBundle = `// 0x1 Framework - Bundled App (MAIN TEMPLATE v2)
 // Entry point: ${basename(entryPoint)}
 // All components bundled inline
 
@@ -385,6 +402,9 @@ if (typeof process === 'undefined') {
 
 ${bundledContent}
 
+// BUILDER.TS TEST: This line should appear if builder.ts is working
+console.log('[BUILDER.TS] This message proves builder.ts changes are working!');
+
 // Make component available globally and mount to DOM
 if (typeof window !== 'undefined') {
   // Wait for DOM and framework to be ready
@@ -395,10 +415,31 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // Get the default export (the page component)
-    const PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
-                         (typeof exports !== 'undefined' && exports.default) ||
-                         window.PageComponent;
+    // In the bundle, HomePage is directly available in scope
+    // Try multiple ways to get the component
+    let PageComponent = null;
+    
+    // Method 1: Direct reference (most reliable since it's in the same bundle)
+    try {
+      PageComponent = HomePage; // Direct reference
+      console.log('[0x1] Found HomePage via direct reference');
+    } catch (e) {
+      console.debug('[0x1] Direct HomePage reference not available:', e);
+    }
+    
+    // Method 2: Check module exports (fallback)
+    if (!PageComponent) {
+      try {
+        PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
+                       (typeof exports !== 'undefined' && exports.default) ||
+                       window.PageComponent;
+        if (PageComponent) {
+          console.log('[0x1] Found PageComponent via exports');
+        }
+      } catch (e) {
+        console.debug('[0x1] Module exports not available:', e);
+      }
+    }
     
     if (!PageComponent) {
       console.error('[0x1] No page component found to mount');
