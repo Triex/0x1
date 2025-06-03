@@ -193,6 +193,26 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
 // Entry point: ${basename(entryPoint as string)}
 // Component imports replaced with placeholders
 
+// Browser polyfills for Node.js globals
+if (typeof process === 'undefined') {
+  window.process = {
+    env: {
+      NODE_ENV: 'production',
+      CI: false,
+      VERCEL: false,
+      NETLIFY: false,
+      GITHUB_ACTIONS: false,
+      GITLAB_CI: false,
+      DEBUG: false
+    },
+    stdout: {
+      isTTY: false,
+      clearLine: undefined,
+      cursorTo: undefined
+    }
+  };
+}
+
 // Placeholder components for missing imports
 const Button = ({ children, ...props }) => {
   const button = document.createElement('button');
@@ -245,7 +265,16 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
         minify: false,
         external: ['0x1*', '/0x1/*'], // Only externalize 0x1 framework imports
         define: {
-          'process.env.NODE_ENV': '"production"'
+          'process.env.NODE_ENV': '"production"',
+          'process.env.CI': 'false',
+          'process.env.VERCEL': 'false',
+          'process.env.NETLIFY': 'false',
+          'process.env.GITHUB_ACTIONS': 'false',
+          'process.env.GITLAB_CI': 'false',
+          'process.stdout.isTTY': 'false',
+          'process.stdout.clearLine': 'undefined',
+          'process.stdout.cursorTo': 'undefined',
+          'process.env.DEBUG': 'false'
         }
       });
       
@@ -279,6 +308,26 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
         const finalBundle = `// 0x1 Framework - Bundled App
 // Entry point: ${basename(entryPoint)}
 // All components bundled inline
+
+// Browser polyfills for Node.js globals
+if (typeof process === 'undefined') {
+  window.process = {
+    env: {
+      NODE_ENV: 'production',
+      CI: false,
+      VERCEL: false,
+      NETLIFY: false,
+      GITHUB_ACTIONS: false,
+      GITLAB_CI: false,
+      DEBUG: false
+    },
+    stdout: {
+      isTTY: false,
+      clearLine: undefined,
+      cursorTo: undefined
+    }
+  };
+}
 
 ${bundledContent}
 
