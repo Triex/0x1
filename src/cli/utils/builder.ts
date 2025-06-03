@@ -160,7 +160,7 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
       
       let transpiledContent = transpiler.transformSync(content);
       
-      // Fix the import paths to work in the browser
+      // Fix the import paths to work in the browser (keep framework imports)
       transpiledContent = transpiledContent.replace(
         /import\s+([^;]+)\s+from\s+["']0x1\/jsx-runtime["'];?/g,
         'import $1 from "/0x1/jsx-runtime.js";'
@@ -176,8 +176,8 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
         'import $1 from "/0x1$2.js";'
       );
       
-      // Create a simple wrapper with proper imports
-      const simpleBundle = `// 0x1 Framework - Transpiled Bundle
+      // Create a simple bundle with proper framework imports
+      const simpleBundle = `// 0x1 Framework - Simple Bundle
 // Entry point: ${basename(entryPoint)}
 
 ${transpiledContent}

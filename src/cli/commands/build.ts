@@ -91,6 +91,10 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   const assetsSpin = log.spinner('Copying static assets', 'file');
   try {
     await copyStaticAssets(projectPath, outputPath);
+    
+    // Copy 0x1 framework files to build output
+    await copy0x1FrameworkFiles(outputPath);
+    
     assetsSpin.stop('success', 'Static assets: copied successfully');
   } catch (error) {
     assetsSpin.stop('error', 'Failed to copy static assets');
@@ -350,6 +354,58 @@ async function copyStaticAssets(projectPath: string, outputPath: string): Promis
 
   if (existsSync(publicDir)) {
     await copyDir(publicDir, outputPath);
+  }
+}
+
+/**
+ * Copy 0x1 framework files to build output
+ */
+async function copy0x1FrameworkFiles(outputPath: string): Promise<void> {
+  try {
+    // Create the 0x1 directory in the output
+    const framework0x1Dir = join(outputPath, '0x1');
+    await mkdir(framework0x1Dir, { recursive: true });
+    
+    // Get the path to the framework dist directory more reliably
+    // From the CLI commands directory, go up to the project root and then to dist
+    const currentFile = new URL(import.meta.url).pathname;
+    const cliCommandsDir = dirname(currentFile);
+    const frameworkRoot = resolve(cliCommandsDir, '..', '..');
+    const frameworkDistPath = join(frameworkRoot, 'dist');
+    
+    logger.debug(`Looking for framework files in: ${frameworkDistPath}`);
+    
+    // Copy essential framework files
+    const frameworkFiles = [
+      { src: 'jsx-runtime.js', dest: 'jsx-runtime.js' },
+      { src: 'jsx-dev-runtime.js', dest: 'jsx-dev-runtime.js' },
+      { src: 'core/router.js', dest: 'router.js' },
+      { src: 'core/hooks.js', dest: 'hooks.js' },
+      { src: 'index.js', dest: 'index.js' }
+    ];
+    
+    let copiedCount = 0;
+    for (const { src, dest } of frameworkFiles) {
+      const srcPath = join(frameworkDistPath, src);
+      const destPath = join(framework0x1Dir, dest);
+      
+      if (existsSync(srcPath)) {
+        const content = await Bun.file(srcPath).text();
+        await Bun.write(destPath, content);
+        logger.debug(`Copied framework file: ${src} -> ${dest}`);
+        copiedCount++;
+      } else {
+        logger.warn(`Framework file not found: ${srcPath}`);
+      }
+    }
+    
+    if (copiedCount > 0) {
+      logger.info(`✅ Copied ${copiedCount} 0x1 framework files to build output`);
+    } else {
+      logger.warn('⚠️ No 0x1 framework files were copied - build may not work in production');
+    }
+  } catch (error) {
+    logger.warn(`Failed to copy 0x1 framework files: ${error}`);
   }
 }
 
