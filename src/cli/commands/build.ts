@@ -117,7 +117,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
   // Bundle JavaScript/TypeScript with enhanced Bun APIs
   // Optimized for app router structure
-  await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
+    await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
   
   // CRITICAL FIX: Add CSS processing that was missing!
   const cssProcessingSpin = log.spinner('Processing CSS files', 'css');
@@ -300,7 +300,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') {
     return;
   }
-  
+
   // Skip chrome-extension and other protocols
   if (!url.protocol.startsWith('http')) {
     return;
@@ -344,8 +344,8 @@ async function cacheFirst(request) {
   
   if (cached) {
     return cached;
-  }
-  
+      }
+
   const response = await fetch(request);
   
   if (response.status === 200) {
@@ -411,8 +411,8 @@ async function getOfflineFallback(request) {
     if (offlinePage) {
       return offlinePage;
     }
-  }
-  
+      }
+
   // Return a basic offline response
   return new Response(
     'Offline - Content not available',
@@ -1381,7 +1381,7 @@ function DiagnosticApp() {
       jsx('p', { className: 'text-sm opacity-75', children: 'Check your app/page.tsx file and build process.' })
     ]
   });
-}
+  }
 
 // Mount the diagnostic app
 if (typeof window !== 'undefined') {

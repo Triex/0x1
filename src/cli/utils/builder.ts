@@ -80,9 +80,9 @@ export async function buildComponents(projectPath: string): Promise<boolean> {
     
     // Simple component mapping without complex transpilation that breaks CSS
     const processedFiles = componentFiles.map(file => {
-      const relativePath = file.replace(projectPath, '').replace(/^[/\\]+/, '');
-      const id = basename(file).replace(/\.[jt]sx?$/, '');
-      
+        const relativePath = file.replace(projectPath, '').replace(/^[/\\]+/, '');
+        const id = basename(file).replace(/\.[jt]sx?$/, '');
+        
       return { 
         file, 
         relativePath, 
@@ -541,7 +541,7 @@ if (typeof window !== 'undefined') {
         
         // Import jsx runtime
         const { jsx } = await import('/0x1/jsx-runtime.js');
-        
+
         // CRITICAL FIX: Set up component context for hooks (same as production app.js)
         if (window.__0x1_enterComponentContext) {
           window.__0x1_enterComponentContext('HomePage');
@@ -559,8 +559,8 @@ if (typeof window !== 'undefined') {
                 // Set up component context
                 if (window.__0x1_enterComponentContext) {
                   window.__0x1_enterComponentContext(componentName);
-                }
-                
+}
+
                 try {
                   // Call the original jsx function
                   const result = originalJsx(type, props, key);
@@ -620,7 +620,7 @@ if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', initializeApp);
   } else {
     initializeApp();
-  }
+    }
 }
 
 // Module export support
@@ -628,10 +628,10 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
   module.exports = exports;
 }
 `;
-        
+      
         writeFileSync(bundlePath, finalBundle);
         logger.info(`✅ Bundled app created at ${bundlePath} (${finalBundle.length} bytes)`);
-        return true;
+      return true;
         
       } else {
         logger.warn('Bun.build failed, falling back to simple transpilation');
