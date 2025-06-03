@@ -153,17 +153,41 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
     try {
       const content = readFileSync(entryPoint, 'utf-8');
       
-      // Create a simple wrapper without complex transpilation
-      const simpleBundle = `// 0x1 Framework - Simple Bundle
+      // Use Bun's transpiler to convert JSX to JavaScript first
+      const transpiler = new Bun.Transpiler({
+        loader: entryPoint.endsWith('.tsx') || entryPoint.endsWith('.ts') ? 'tsx' : 'jsx'
+      });
+      
+      let transpiledContent = transpiler.transformSync(content);
+      
+      // Fix the import paths to work in the browser
+      transpiledContent = transpiledContent.replace(
+        /import\s+([^;]+)\s+from\s+["']0x1\/jsx-runtime["'];?/g,
+        'import $1 from "/0x1/jsx-runtime.js";'
+      );
+      
+      transpiledContent = transpiledContent.replace(
+        /import\s+([^;]+)\s+from\s+["']0x1\/link["'];?/g,
+        'import $1 from "/0x1/router.js";'
+      );
+      
+      transpiledContent = transpiledContent.replace(
+        /import\s+([^;]+)\s+from\s+["']0x1(\/[^"']*)?["'];?/g,
+        'import $1 from "/0x1$2.js";'
+      );
+      
+      // Create a simple wrapper with proper imports
+      const simpleBundle = `// 0x1 Framework - Transpiled Bundle
 // Entry point: ${basename(entryPoint)}
 
-${content}
+${transpiledContent}
 
 // Make component available globally
 if (typeof window !== 'undefined') {
   // Auto-detect the default export
   const component = (typeof module !== 'undefined' && module.exports?.default) || 
                    (typeof exports !== 'undefined' && exports.default) ||
+                   HomePage || // Try the actual function name
                    window.PageComponent;
   
   if (component) {
