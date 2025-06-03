@@ -312,9 +312,8 @@ export function jsx(type: string | ComponentFunction | symbol, props: any, key?:
         // Call the component with proper context
         const result = type(componentProps);
         
-        // CRITICAL: Schedule context cleanup AFTER render is complete
-        // This allows nested components to inherit the context
-        setTimeout(() => clearContext(), 0);
+        // CRITICAL FIX: Don't clear context automatically - let component lifecycle handle it
+        // This allows nested components to inherit and use the context properly
         
         // Ensure metadata is applied
         return ensureComponentMetadata(result, componentId, componentName);
@@ -322,7 +321,7 @@ export function jsx(type: string | ComponentFunction | symbol, props: any, key?:
       } catch (error: any) {
         console.error(`[0x1 JSX] Component error in ${componentName}:`, error);
         
-        // Clear context on error
+        // Clear context only on error to prevent contamination
         clearContext();
         
         // Return error boundary fallback
@@ -338,7 +337,6 @@ export function jsx(type: string | ComponentFunction | symbol, props: any, key?:
           key: null
         };
       }
-      // REMOVED: Don't clear context immediately - let nested components use it
     } else {
       // Fallback: No hooks context available, call component directly
       console.warn(`[0x1 JSX] No hooks context for ${type.name || 'Anonymous'}, calling without hooks`);
