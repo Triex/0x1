@@ -177,6 +177,12 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
         'import $1 from "/0x1/router.js";'
       );
       
+      // Handle bare 0x1 imports (like useState, useEffect, etc.)
+      transpiledContent = transpiledContent.replace(
+        /import\s+([^;]+)\s+from\s+["']0x1["'];?/g,
+        'import $1 from "/0x1/index.js";'
+      );
+      
       transpiledContent = transpiledContent.replace(
         /import\s+([^;]+)\s+from\s+["']0x1(\/[^"']*)?["'];?/g,
         'import $1 from "/0x1$2.js";'
@@ -256,6 +262,12 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
         bundledContent = bundledContent.replace(
           /from\s+["']0x1\/link["']/g,
           'from "/0x1/router.js"'
+        );
+        
+        // Handle bare 0x1 imports (like useState, useEffect, etc.)
+        bundledContent = bundledContent.replace(
+          /from\s+["']0x1["']/g,
+          'from "/0x1/index.js"'
         );
         
         bundledContent = bundledContent.replace(
