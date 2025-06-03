@@ -5,6 +5,10 @@
   "framework": null,
   "routes": [
     {
+      "src": "/0x1/(.*)",
+      "dest": "/0x1/$1"
+    },
+    {
       "src": "/styles.css",
       "dest": "/styles.css"
     },
