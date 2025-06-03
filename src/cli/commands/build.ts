@@ -708,90 +708,14 @@ async function bundleJavaScript(
   } else {
     logger.info('✅ App bundle built successfully using modern structure');
     
-    // Copy the built bundle to the output directory and make it the main app.js
+    // Copy the built bundle to the output directory directly
     const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
     if (existsSync(builtBundlePath)) {
       const bundleContent = await Bun.file(builtBundlePath).text();
       
-      // Create a wrapper that loads the bundle and provides JSX runtime
-      const enhancedBundleContent = `// 0x1 App Entry Point - Clean Bundle Wrapper
-import { Router } from '/0x1/router.js';
-import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime.js';
-
-// Load the bundled component (externals will be resolved at runtime)
-${bundleContent}
-
-// Get the page component (it should be the default export)
-const PageComponent = (typeof exports !== 'undefined' && exports.default) || 
-                     (typeof module !== 'undefined' && module.exports && module.exports.default) ||
-                     window.PageComponent;
-
-// Create router and mount the app
-const loadApp = async () => {
-  try {
-    if (!PageComponent) {
-      throw new Error('No page component found in bundle');
-    }
-    
-    // Create router instance with the actual page component
-    const router = new Router({
-      routes: [
-        { path: '/', component: PageComponent },
-        { path: '*', component: () => createElement('div', { className: 'p-8 text-center' }, 'Page not found') }
-      ]
-    });
-    
-    // Mount the router to the app element
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      router.mount(appRoot);
-      console.log('✅ 0x1 App with user components rendered successfully');
-      
-      // Call appReady if it exists (for loading overlay)
-      if (window.appReady) {
-        window.appReady();
-      }
-    } else {
-      console.error('❌ App root element not found');
-    }
-  } catch (error) {
-    console.error('❌ App Load Error:', error);
-    
-    // Show error in app root
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      appRoot.innerHTML = '<div class="error p-8 text-center"><h1>App Error</h1><p>Failed to load: ' + error.message + '</p></div>';
-    }
-    
-    // Show error overlay if available
-    if (window.showError) {
-      window.showError('App Load Error', error.message, error.stack);
-    }
-    
-    // Still call appReady to hide loading
-    if (window.appReady) {
-      window.appReady();
-    }
-  }
-};
-
-// App initialization
-if (typeof window !== 'undefined') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadApp);
-  } else {
-    loadApp();
-  }
-}
-
-// Export for module compatibility
-export { PageComponent, loadApp };
-`;
-      
-      // Copy enhanced bundle to both locations
-      await Bun.write(join(jsOutputPath, 'app-bundle.js'), enhancedBundleContent);
-      await Bun.write(join(outputPath, 'app.js'), enhancedBundleContent); // Main app.js for HTML
-      logger.info('✅ Enhanced app bundle deployed as app.js');
+      // Use the bundle content directly - it should already have proper imports and component handling
+      await Bun.write(join(outputPath, 'app.js'), bundleContent);
+      logger.info('✅ App bundle deployed successfully');
     } else {
       // Bundle build reported success but no file created - create a diagnostic bundle
       logger.warn('Bundle build succeeded but no file found - creating diagnostic bundle');
