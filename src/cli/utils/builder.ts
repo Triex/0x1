@@ -246,6 +246,7 @@ if (typeof window !== 'undefined') {
     // Method 1: Direct reference (most reliable since it's in the same bundle)
     try {
       PageComponent = HomePage; // Direct reference
+      console.log('[0x1] Found HomePage via direct reference');
     } catch (e) {
       console.debug('[0x1] Direct HomePage reference not available:', e);
     }
@@ -256,6 +257,9 @@ if (typeof window !== 'undefined') {
         PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
                        (typeof exports !== 'undefined' && exports.default) ||
                        window.PageComponent;
+        if (PageComponent) {
+          console.log('[0x1] Found PageComponent via exports');
+        }
       } catch (e) {
         console.debug('[0x1] Module exports not available:', e);
       }
@@ -269,31 +273,66 @@ if (typeof window !== 'undefined') {
 
     console.log('[0x1] Page component found, mounting...');
     
-    // Use framework's render function when available
+    // CRITICAL FIX: Proper hooks context and JSX rendering (matches dev server)
     const tryRender = async () => {
       try {
+        // Wait for hooks system to be ready
+        let hooksReady = false;
+        let retries = 0;
+        const maxRetries = 20;
+        
+        while (!hooksReady && retries < maxRetries) {
+          if (typeof window !== 'undefined' && window.React && window.React.useState) {
+            hooksReady = true;
+            break;
+          }
+          
+          retries++;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        if (!hooksReady) {
+          console.warn('[0x1] Hooks system not ready, using fallback');
+          appRoot.innerHTML = '<div>0x1 App loaded (hooks not ready)</div>';
+          if (window.appReady) window.appReady();
+          return;
+        }
+        
         // Import jsx runtime
         const { jsx } = await import('/0x1/jsx-runtime.js');
         
-        // Create component element
-        const element = jsx(PageComponent, {});
-        
-        // Use framework's renderToDOM if available
-        if (window.__0x1_renderToDOM) {
-          const rendered = window.__0x1_renderToDOM(element);
-          if (rendered) {
-            appRoot.innerHTML = '';
-            appRoot.appendChild(rendered);
-            console.log('[0x1] Component mounted successfully');
-            if (window.appReady) window.appReady();
-            return;
-          }
+        // CRITICAL FIX: Set up component context for hooks (same as production app.js)
+        if (window.__0x1_enterComponentContext) {
+          window.__0x1_enterComponentContext('HomePage');
         }
         
-        // Fallback: basic mounting
-        console.warn('[0x1] Using basic mounting fallback');
-        appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
-        if (window.appReady) window.appReady();
+        try {
+          // Create component element with proper context
+          const element = jsx(PageComponent, {});
+          
+          // Use framework's renderToDOM if available
+          if (window.__0x1_renderToDOM) {
+            const rendered = window.__0x1_renderToDOM(element);
+            if (rendered) {
+              appRoot.innerHTML = '';
+              appRoot.appendChild(rendered);
+              console.log('[0x1] Component mounted successfully');
+              if (window.appReady) window.appReady();
+              return;
+            }
+          }
+          
+          // Fallback: basic mounting
+          console.warn('[0x1] Using basic mounting fallback');
+          appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+          if (window.appReady) window.appReady();
+          
+        } finally {
+          // Always clean up component context
+          if (window.__0x1_exitComponentContext) {
+            window.__0x1_exitComponentContext();
+          }
+        }
         
       } catch (error) {
         console.error('[0x1] Error mounting component:', error);
@@ -405,9 +444,8 @@ ${bundledContent}
 // BUILDER.TS TEST: This line should appear if builder.ts is working
 console.log('[BUILDER.TS] This message proves builder.ts changes are working!');
 
-// Make component available globally and mount to DOM
+// CRITICAL FIX: Production-ready component mounting with proper hooks context
 if (typeof window !== 'undefined') {
-  // Wait for DOM and framework to be ready
   const initializeApp = () => {
     const appRoot = document.getElementById('app');
     if (!appRoot) {
@@ -415,11 +453,9 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // In the bundle, HomePage is directly available in scope
-    // Try multiple ways to get the component
+    // Try multiple ways to get the component (same as dev server)
     let PageComponent = null;
     
-    // Method 1: Direct reference (most reliable since it's in the same bundle)
     try {
       PageComponent = HomePage; // Direct reference
       console.log('[0x1] Found HomePage via direct reference');
@@ -427,7 +463,6 @@ if (typeof window !== 'undefined') {
       console.debug('[0x1] Direct HomePage reference not available:', e);
     }
     
-    // Method 2: Check module exports (fallback)
     if (!PageComponent) {
       try {
         PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
@@ -449,31 +484,66 @@ if (typeof window !== 'undefined') {
 
     console.log('[0x1] Page component found, mounting...');
     
-    // Use framework's render function when available
+    // CRITICAL FIX: Proper hooks context and JSX rendering (matches dev server)
     const tryRender = async () => {
       try {
+        // Wait for hooks system to be ready
+        let hooksReady = false;
+        let retries = 0;
+        const maxRetries = 20;
+        
+        while (!hooksReady && retries < maxRetries) {
+          if (typeof window !== 'undefined' && window.React && window.React.useState) {
+            hooksReady = true;
+            break;
+          }
+          
+          retries++;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        if (!hooksReady) {
+          console.warn('[0x1] Hooks system not ready, using fallback');
+          appRoot.innerHTML = '<div>0x1 App loaded (hooks not ready)</div>';
+          if (window.appReady) window.appReady();
+          return;
+        }
+        
         // Import jsx runtime
         const { jsx } = await import('/0x1/jsx-runtime.js');
         
-        // Create component element
-        const element = jsx(PageComponent, {});
-        
-        // Use framework's renderToDOM if available
-        if (window.__0x1_renderToDOM) {
-          const rendered = window.__0x1_renderToDOM(element);
-          if (rendered) {
-            appRoot.innerHTML = '';
-            appRoot.appendChild(rendered);
-            console.log('[0x1] Component mounted successfully');
-            if (window.appReady) window.appReady();
-            return;
-          }
+        // CRITICAL FIX: Set up component context for hooks (same as production app.js)
+        if (window.__0x1_enterComponentContext) {
+          window.__0x1_enterComponentContext('HomePage');
         }
         
-        // Fallback: basic mounting
-        console.warn('[0x1] Using basic mounting fallback');
-        appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
-        if (window.appReady) window.appReady();
+        try {
+          // Create component element with proper context
+          const element = jsx(PageComponent, {});
+          
+          // Use framework's renderToDOM if available
+          if (window.__0x1_renderToDOM) {
+            const rendered = window.__0x1_renderToDOM(element);
+            if (rendered) {
+              appRoot.innerHTML = '';
+              appRoot.appendChild(rendered);
+              console.log('[0x1] Component mounted successfully');
+              if (window.appReady) window.appReady();
+              return;
+            }
+          }
+          
+          // Fallback: basic mounting
+          console.warn('[0x1] Using basic mounting fallback');
+          appRoot.innerHTML = '<div>0x1 App loaded (fallback mode)</div>';
+          if (window.appReady) window.appReady();
+          
+        } finally {
+          // Always clean up component context
+          if (window.__0x1_exitComponentContext) {
+            window.__0x1_exitComponentContext();
+          }
+        }
         
       } catch (error) {
         console.error('[0x1] Error mounting component:', error);

@@ -119,6 +119,22 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   // Optimized for app router structure
   await bundleJavaScript(projectPath, outputPath, { minify, ignorePatterns });
   
+  // CRITICAL FIX: Add CSS processing that was missing!
+  const cssProcessingSpin = log.spinner('Processing CSS files', 'css');
+  try {
+    await processCssFiles(projectPath, outputPath, { 
+      minify, 
+      ignorePatterns, 
+      tailwindFailed: false // Let CSS processor handle Tailwind detection
+    });
+    cssProcessingSpin.stop('success', 'CSS files: processed successfully');
+  } catch (error) {
+    cssProcessingSpin.stop('error', 'Failed to process CSS files');
+    log.error(`${error}`);
+    // Don't exit - CSS failure shouldn't kill the build
+    log.warn('Continuing build without CSS processing');
+  }
+  
   // CRITICAL FIX: Override app.js with dev-server aligned version
   logger.info('🔧 Generating production app.js aligned with dev server...');
   
@@ -158,6 +174,69 @@ console.log('[0x1 App] Starting production app...');
 // Server-discovered routes
 const serverRoutes = ${routesJson};
 
+// CRITICAL FIX: Hooks context initialization for production
+let hooksSystemReady = false;
+let frameworkReady = false;
+
+// Initialize hooks system before any component mounting
+async function initializeHooksSystem() {
+  if (hooksSystemReady) return true;
+  
+  try {
+    console.log('[0x1 App] Initializing hooks system...');
+    
+    // Load the hooks module first
+    const hooksModule = await import('/0x1/hooks.js?t=' + Date.now());
+    
+    // Verify hooks are available
+    if (typeof window !== 'undefined' && window.React && window.React.useState) {
+      console.log('[0x1 App] ✅ Hooks system verified');
+      hooksSystemReady = true;
+      return true;
+    } else {
+      console.warn('[0x1 App] ⚠️ Hooks system not fully loaded, retrying...');
+      
+      // Wait a bit and try again
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (typeof window !== 'undefined' && window.React && window.React.useState) {
+        console.log('[0x1 App] ✅ Hooks system verified (retry)');
+        hooksSystemReady = true;
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to initialize hooks system:', error);
+    return false;
+  }
+}
+
+// Initialize JSX runtime system
+async function initializeJSXRuntime() {
+  if (frameworkReady) return true;
+  
+  try {
+    console.log('[0x1 App] Initializing JSX runtime...');
+    
+    // Load JSX runtime
+    const jsxModule = await import('/0x1/jsx-runtime.js?t=' + Date.now());
+    
+    // Verify JSX functions are available
+    if (typeof window !== 'undefined' && window.jsx && window.renderToDOM) {
+      console.log('[0x1 App] ✅ JSX runtime verified');
+      frameworkReady = true;
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to initialize JSX runtime:', error);
+    return false;
+  }
+}
+
 // Simple self-contained production app
 async function initApp() {
   try {
@@ -168,24 +247,61 @@ async function initApp() {
       throw new Error('App container element not found');
     }
 
+    // CRITICAL FIX: Initialize framework systems before mounting components
+    console.log('[0x1 App] 🔧 Initializing framework systems...');
+    
+    const hooksReady = await initializeHooksSystem();
+    const jsxReady = await initializeJSXRuntime();
+    
+    if (!hooksReady || !jsxReady) {
+      console.warn('[0x1 App] ⚠️ Framework systems not ready, using fallback');
+      
+      // Simple fallback content
+      appElement.innerHTML = \`
+        <div style="padding: 2rem; text-align: center; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #0070f3; margin-bottom: 1rem;">0x1 App</h1>
+          <p style="margin-bottom: 1rem;">The application is running in production mode.</p>
+          <p style="font-size: 0.9rem; opacity: 0.7;">Framework systems still loading...</p>
+        </div>
+      \`;
+      
+      if (window.appReady) window.appReady();
+      return;
+    }
+
     // Load and mount the app bundle directly
     try {
+      console.log('[0x1 App] 📦 Loading app bundle...');
       const bundleModule = await import('/app-bundle.js?t=' + Date.now());
       
       if (bundleModule && bundleModule.default) {
-        // Try to render the component
-        const component = bundleModule.default({});
+        console.log('[0x1 App] 🔧 Creating component with hooks context...');
         
-        if (component && typeof component === 'object') {
-          // Simple DOM creation from component object
-          const element = createElementFromComponent(component);
-          appElement.innerHTML = '';
-          appElement.appendChild(element);
+        // CRITICAL FIX: Set up component context for hooks before rendering
+        if (window.__0x1_enterComponentContext) {
+          window.__0x1_enterComponentContext('HomePage');
+        }
+        
+        try {
+          // Try to render the component with proper context
+          const component = bundleModule.default({});
           
-          console.log('[0x1 App] ✅ Component rendered successfully');
-        } else {
-          // Fallback: just display something
-          appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App Loaded</h1><p>Component rendered successfully</p></div>';
+          if (component && typeof component === 'object') {
+            // Simple DOM creation from component object
+            const element = createElementFromComponent(component);
+            appElement.innerHTML = '';
+            appElement.appendChild(element);
+            
+            console.log('[0x1 App] ✅ Component rendered successfully');
+          } else {
+            // Fallback: just display something
+            appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App Loaded</h1><p>Component rendered successfully</p></div>';
+          }
+        } finally {
+          // Always clean up component context
+          if (window.__0x1_exitComponentContext) {
+            window.__0x1_exitComponentContext();
+          }
         }
       } else {
         appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App</h1><p>Bundle loaded but no component found</p></div>';
