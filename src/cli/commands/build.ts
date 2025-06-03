@@ -607,6 +607,33 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     }, 3000);
   </script>
   
+  <!-- Process polyfill for browser compatibility -->
+  <script>
+    // Define process global for browser compatibility with 0x1 framework
+    if (typeof process === 'undefined') {
+      window.process = {
+        env: {
+          NODE_ENV: 'production',
+          CI: false,
+          VERCEL: false,
+          NETLIFY: false,
+          GITHUB_ACTIONS: false,
+          GITLAB_CI: false,
+          DEBUG: false
+        },
+        stdout: {
+          isTTY: false,
+          clearLine: undefined,
+          cursorTo: undefined
+        },
+        version: 'v16.0.0',
+        versions: { node: '16.0.0' },
+        platform: 'browser',
+        arch: 'x64'
+      };
+    }
+  </script>
+  
   <!-- Load the actual application -->  
   <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
 </body>
