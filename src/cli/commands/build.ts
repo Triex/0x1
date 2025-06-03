@@ -657,12 +657,12 @@ async function bundleJavaScript(
     if (existsSync(builtBundlePath)) {
       const bundleContent = await Bun.file(builtBundlePath).text();
       
-      // Enhance the bundle content to work with our router
-      const enhancedBundleContent = `// 0x1 App Entry Point - Enhanced Bundle
+      // Create a wrapper that loads the bundle and provides JSX runtime
+      const enhancedBundleContent = `// 0x1 App Entry Point - Clean Bundle Wrapper
 import { Router } from '/0x1/router.js';
 import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime.js';
 
-// Import the bundled page component
+// Load the bundled component (externals will be resolved at runtime)
 ${bundleContent}
 
 // Get the page component (it should be the default export)
