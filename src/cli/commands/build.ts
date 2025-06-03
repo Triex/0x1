@@ -261,78 +261,6 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     // Implementation of watch mode would go here
     // For now, this is a placeholder
   }
-
-  // Add a client-side entry point if using app directory
-  if (existsSync(join(projectPath, 'app'))) {
-    // Create a functional app entry that actually renders the page component
-    const clientEntry = `// 0x1 App Entry Point
-console.log('🚀 0x1 App Starting...');
-
-// Simple JSX runtime for browser
-function jsx(type, props, ...children) {
-  if (typeof type === 'string') {
-    const element = document.createElement(type);
-    if (props) {
-      Object.keys(props).forEach(key => {
-        if (key === 'className') {
-          element.className = props[key];
-        } else if (key.startsWith('on') && typeof props[key] === 'function') {
-          element.addEventListener(key.toLowerCase().substr(2), props[key]);
-        } else if (key !== 'children') {
-          element.setAttribute(key, props[key]);
-        }
-      });
-    }
-    children.flat().forEach(child => {
-      if (typeof child === 'string') {
-        element.appendChild(document.createTextNode(child));
-      } else if (child) {
-        element.appendChild(child);
-      }
-    });
-    return element;
-  }
-  return type({ ...props, children });
-}
-
-// App initialization
-document.addEventListener('DOMContentLoaded', () => {
-  const appRoot = document.getElementById('app');
-  if (appRoot) {
-    try {
-      // Clear loading content
-      appRoot.innerHTML = '';
-      
-      // Create a simple app content
-      const appContent = jsx('div', { className: 'app-container' },
-        jsx('h1', {}, '🎉 0x1 App Loaded Successfully!'),
-        jsx('p', {}, 'Your 0x1 application is running.'),
-        jsx('div', { className: 'status' },
-          jsx('p', {}, '✅ Build: Success'),
-          jsx('p', {}, '✅ Routing: Active'),
-          jsx('p', {}, '✅ Deployment: Live')
-        )
-      );
-      
-      appRoot.appendChild(appContent);
-      console.log('✅ 0x1 App Rendered Successfully');
-    } catch (error) {
-      console.error('❌ App Render Error:', error);
-      appRoot.innerHTML = '<div class="error">App failed to render: ' + error.message + '</div>';
-    }
-  } else {
-    console.error('❌ App root element not found');
-  }
-});
-
-// Export for module compatibility
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { jsx };
-}`;
-
-    await Bun.write(join(outputPath, 'app.js'), clientEntry);
-    logger.info('✅ Created functional app.js entry point');
-  }
 }
 
 /**
@@ -716,7 +644,7 @@ async function bundleJavaScript(
     }
 
     if (!mainEntryFile) {
-      throw new Error('No entry point found. Please create app/_app.tsx or src/index.js');
+      throw new Error('No entry point found. Please create app/page.tsx or src/index.js');
     }
 
     // Process bundle
@@ -724,100 +652,124 @@ async function bundleJavaScript(
   } else {
     logger.info('✅ App bundle built successfully using modern structure');
     
-    // Copy the built bundle to the output directory
+    // Copy the built bundle to the output directory and make it the main app.js
     const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
     if (existsSync(builtBundlePath)) {
       const bundleContent = await Bun.file(builtBundlePath).text();
-      // Copy to both locations for flexibility
-      await Bun.write(join(jsOutputPath, 'app-bundle.js'), bundleContent);
-      await Bun.write(join(outputPath, 'app.js'), bundleContent); // Main app.js for HTML
+      
+      // Enhance the bundle content to work with our router
+      const enhancedBundleContent = `// 0x1 App Entry Point - Enhanced Bundle
+import { Router } from '/0x1/router.js';
+import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime.js';
+
+// Import the bundled page component
+${bundleContent}
+
+// Get the page component (it should be the default export)
+const PageComponent = (typeof exports !== 'undefined' && exports.default) || 
+                     (typeof module !== 'undefined' && module.exports && module.exports.default) ||
+                     window.PageComponent;
+
+// Create router and mount the app
+const loadApp = async () => {
+  try {
+    if (!PageComponent) {
+      throw new Error('No page component found in bundle');
+    }
+    
+    // Create router instance with the actual page component
+    const router = new Router({
+      routes: [
+        { path: '/', component: PageComponent },
+        { path: '*', component: () => createElement('div', { className: 'p-8 text-center' }, 'Page not found') }
+      ]
+    });
+    
+    // Mount the router to the app element
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      router.mount(appRoot);
+      console.log('✅ 0x1 App with user components rendered successfully');
+      
+      // Call appReady if it exists (for loading overlay)
+      if (window.appReady) {
+        window.appReady();
+      }
+    } else {
+      console.error('❌ App root element not found');
+    }
+  } catch (error) {
+    console.error('❌ App Load Error:', error);
+    
+    // Show error in app root
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      appRoot.innerHTML = '<div class="error p-8 text-center"><h1>App Error</h1><p>Failed to load: ' + error.message + '</p></div>';
+    }
+    
+    // Show error overlay if available
+    if (window.showError) {
+      window.showError('App Load Error', error.message, error.stack);
+    }
+    
+    // Still call appReady to hide loading
+    if (window.appReady) {
+      window.appReady();
     }
   }
+};
 
-  // Modern app router structure component discovery
-  async function findAppComponents(appDir: string): Promise<string[]> {
-    const components: string[] = [];
-    
-    const searchInDirectory = async (dir: string): Promise<void> => {
-      const items = await readdir(dir, { withFileTypes: true });
-      
-      for (const item of items) {
-        const path = join(dir, item.name);
-
-        // Skip ignored directories
-        if (item.isDirectory() && !ignorePatterns.includes(item.name)) {
-          // Recursively search subdirectories
-          await searchInDirectory(path);
-        } else if (item.isFile()) {
-          // Check for special app router components
-          for (const ext of fileExtensions) {
-            // Support for all app router special files
-            if (item.name === `page${ext}` ||
-                item.name === `layout${ext}` ||
-                item.name === `loading${ext}` ||
-                item.name === `error${ext}` ||
-                item.name === `not-found${ext}`) {
-              components.push(path);
-              break;
-            }
-          }
-        }
-      }
-    };
-
-    await searchInDirectory(appDir);
-    return components;
-  }
-
-  // App directory processing - modern app router structure is required
-  const appDir = join(projectPath, 'app');
-  if (!existsSync(appDir)) {
-    logger.warn('No app directory found. App router structure is required for 0x1 framework.');
-    logger.info('Create an app directory with page.tsx and other components.');
+// App initialization
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadApp);
   } else {
-    // Find and process app router components
-    const appComponents = await findAppComponents(appDir);
+    loadApp();
+  }
+}
 
-    if (appComponents.length === 0) {
-      logger.warn('No app router components found in app directory.');
-      logger.info('Create page.tsx, layout.tsx, and other components in the app directory.');
+// Export for module compatibility
+export { PageComponent, loadApp };
+`;
+      
+      // Copy enhanced bundle to both locations
+      await Bun.write(join(jsOutputPath, 'app-bundle.js'), enhancedBundleContent);
+      await Bun.write(join(outputPath, 'app.js'), enhancedBundleContent); // Main app.js for HTML
+      logger.info('✅ Enhanced app bundle deployed as app.js');
     } else {
-      logger.info(`Found ${appComponents.length} app router components.`);
+      // Bundle build reported success but no file created - create a diagnostic bundle
+      logger.warn('Bundle build succeeded but no file found - creating diagnostic bundle');
+      const diagnosticBundle = `// 0x1 Diagnostic Bundle
+import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime.js';
 
-      // Process each app router component
-      for (const component of appComponents) {
-        await processJSBundle(component, projectPath, { minify });
-      }
+function DiagnosticApp() {
+  return jsx('div', { 
+    className: 'p-8 text-center',
+    children: [
+      jsx('h1', { className: 'text-2xl font-bold mb-4', children: '0x1 Diagnostic' }),
+      jsx('p', { className: 'mb-2', children: 'App bundle build succeeded but no bundle file was found.' }),
+      jsx('p', { className: 'text-sm opacity-75', children: 'Check your app/page.tsx file and build process.' })
+    ]
+  });
+}
 
-      // Generate component registry for autoDiscovery
-      logger.info('Generating component registry for auto-discovery...');
+// Mount the diagnostic app
+if (typeof window !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      appRoot.innerHTML = '';
+      appRoot.appendChild(DiagnosticApp());
+      console.log('✅ Diagnostic app rendered');
+      if (window.appReady) window.appReady();
+    }
+  });
+}
 
-      // Create a component registry map for runtime auto-discovery
-      const componentsMapPath = join(outputPath, 'components-map.js');
-      let componentsMapCode = '// Auto-generated component registry for 0x1 router\n';
-      componentsMapCode += '// This file is auto-generated by the build process\n\n';
-      componentsMapCode += 'window.__0x1_components = {\n';
-
-      for (const component of appComponents) {
-        // Get the relative path from project root to the component
-        const relativePath = relative(projectPath, component);
-
-        // Create the component key - remove file extension and map to router path
-        const componentKey = relativePath
-          .replace(/\.\w+$/, '') // Remove extension
-          .replace(/\\/g, '/'); // Normalize path separators for Windows
-
-        // Import path relative to the output directory
-        const importPath = `./${relativePath.replace(/\.\w+$/, '')}`;
-        componentsMapCode += `  '${componentKey}': () => import('${importPath}'),\n`;
-      }
-
-      // Close the components map object
-      componentsMapCode += `};\n`;
-
-      // Write the component registry file
-      await Bun.write(componentsMapPath, componentsMapCode);
-      logger.info(`Component registry written to ${componentsMapPath}`);
+export default DiagnosticApp;
+`;
+      await Bun.write(join(outputPath, 'app.js'), diagnosticBundle);
+      logger.warn('Created diagnostic bundle as fallback');
     }
   }
 }

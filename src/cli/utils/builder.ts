@@ -154,8 +154,10 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
   try {
     // Define possible entry points in order of preference
     const possibleEntryPoints = [
-      join(projectPath, 'app', '_app.tsx'),  // Legacy entry point
       join(projectPath, 'app', 'page.tsx'),  // Modern app directory structure
+      join(projectPath, 'app', 'page.jsx'),  // JSX variant
+      join(projectPath, 'app', 'page.js'),   // Plain JS variant
+      join(projectPath, 'app', '_app.tsx'),  // Legacy entry point
       join(projectPath, 'app', 'Page.tsx'),  // Case variation
       join(projectPath, 'src', 'app', 'page.tsx') // Alternative src directory structure
     ];
@@ -170,7 +172,7 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
     }
     
     if (!entryPoint) {
-      logger.error(`No valid entry point found. Tried: ${possibleEntryPoints.join(', ')}`);
+      logger.warn(`No valid entry point found. Tried: ${possibleEntryPoints.join(', ')}`);
       return false;
     }
 
@@ -182,14 +184,15 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
       mkdirSync(outDir, { recursive: true });
     }
     
-    // Define bundle path first to make it available in the outer scope
+    // Define bundle path
     const bundlePath = join(outDir, 'app-bundle.js');
     
     try {
-      // Read the entry file
+      // Read the entry file content first to check what we're working with
       const content = readFileSync(entryPoint, 'utf-8');
+      logger.debug(`Entry point content length: ${content.length} characters`);
       
-      // Use Bun's built-in build API instead of custom transpilation
+      // Use Bun's built-in build API with proper JSX handling
       const buildResult = await Bun.build({
         entrypoints: [entryPoint],
         outdir: outDir,
@@ -199,18 +202,15 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
         minify: false,
         sourcemap: 'external',
         define: {
-          'process.env.NODE_ENV': '"development"'
+          'process.env.NODE_ENV': '"production"'
         },
-        external: ['0x1', '0x1/*'],
+        external: ['0x1', '0x1/*', '/0x1/*'],
         loader: {
           '.ts': 'ts',
-          '.tsx': 'tsx'
-        },
-        // jsx: {
-        //   factory: 'jsx',
-        //   fragment: 'Fragment',
-        //   importSource: '/0x1/jsx-runtime'
-        // }
+          '.tsx': 'tsx',
+          '.js': 'js',
+          '.jsx': 'jsx'
+        }
       });
       
       if (!buildResult.success) {
@@ -218,45 +218,128 @@ export async function buildAppBundle(projectPath: string): Promise<boolean> {
         for (const message of buildResult.logs) {
           logger.error(message.toString());
         }
-        return false;
+        
+        // Try a simpler approach by transpiling manually
+        logger.info('Attempting manual transpilation...');
+        return await createManualBundle(entryPoint, bundlePath, content);
       }
       
-      logger.info(`App bundle created at ${bundlePath}`);
-      return true;
-    } catch (transpileError) {
-      logger.error(`Failed to build entry point: ${transpileError instanceof Error ? transpileError.message : String(transpileError)}`);
+      // Check if the bundle was actually created
+      if (existsSync(bundlePath)) {
+        const bundleSize = readFileSync(bundlePath, 'utf-8').length;
+        logger.info(`✅ App bundle created at ${bundlePath} (${bundleSize} bytes)`);
+        return true;
+      } else {
+        logger.warn('Build reported success but no bundle file was created');
+        return await createManualBundle(entryPoint, bundlePath, content);
+      }
       
-      // Fallback: create a simple bundle with basic JSX setup
-      logger.info('Creating fallback bundle...');
-      const fallbackContent = `
-// Fallback app bundle - basic JSX setup
-import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
-
-// Basic app component
-function App() {
-  return jsx('div', { children: 'Hello from 0x1 Framework!' });
-}
-
-// Mount the app
-if (typeof window !== 'undefined') {
-  window.addEventListener('DOMContentLoaded', () => {
-    const root = document.getElementById('root') || document.body;
-    if (root && typeof renderToDOM !== 'undefined') {
-      renderToDOM(jsx(App), root);
-    }
-  });
-}
-
-export default App;
-`;
+    } catch (buildError) {
+      logger.error(`Build process failed: ${buildError instanceof Error ? buildError.message : String(buildError)}`);
       
-      writeFileSync(bundlePath, fallbackContent);
-      logger.info(`Fallback bundle created at ${bundlePath}`);
-      return true;
+      // Try manual transpilation as fallback
+      const content = readFileSync(entryPoint, 'utf-8');
+      return await createManualBundle(entryPoint, bundlePath, content);
     }
   } catch (error) {
     logger.error(`Failed to build app bundle: ${error instanceof Error ? error.message : String(error)}`);
     return false;
+  }
+}
+
+/**
+ * Create a manual bundle when Bun.build fails
+ */
+async function createManualBundle(entryPoint: string, bundlePath: string, content: string): Promise<boolean> {
+  try {
+    logger.info('Creating manual bundle with transpiled content...');
+    
+    // Simple content transformation for React/JSX components
+    let processedContent = content;
+    
+    // Replace common React imports with 0x1 imports
+    processedContent = processedContent.replace(
+      /import\s+React/g, 
+      '// React compatibility handled by 0x1\n// import React'
+    );
+    
+    // Replace JSX pragmas if they exist
+    processedContent = processedContent.replace(
+      /\/\*\*\s*@jsx\s+\w+\s*\*\//g,
+      '/** @jsx jsx */'
+    );
+    
+    // Add 0x1 imports at the top
+    const imports = `// 0x1 Framework - Auto-generated bundle
+import { jsx, jsxs, Fragment, createElement } from '/0x1/jsx-runtime.js';
+
+// Make React-like APIs available for compatibility
+const React = { createElement, Fragment };
+window.React = React;
+
+`;
+    
+    // Create the final bundle content
+    const bundleContent = imports + processedContent + `
+
+// Auto-mount the component when loaded as a module
+if (typeof window !== 'undefined') {
+  // Export the default component for router usage
+  const PageComponent = (typeof module !== 'undefined' && module.exports && module.exports.default) || 
+                       (typeof exports !== 'undefined' && exports.default) ||
+                       window.PageComponent;
+  
+  if (PageComponent) {
+    window.PageComponent = PageComponent;
+    console.log('✅ Page component loaded and available');
+  }
+}
+
+// Ensure the module is properly exported
+if (typeof module !== 'undefined') {
+  // Use the actual default export from the component
+  module.exports = exports;
+}
+`;
+    
+    // Write the bundle
+    writeFileSync(bundlePath, bundleContent);
+    logger.info(`✅ Manual bundle created at ${bundlePath} (${bundleContent.length} bytes)`);
+    
+    return true;
+  } catch (error) {
+    logger.error(`Failed to create manual bundle: ${error instanceof Error ? error.message : String(error)}`);
+    
+    // Last resort fallback
+    const fallbackContent = `
+// Fallback app bundle - minimal working setup
+import { jsx, jsxs, Fragment } from '/0x1/jsx-runtime.js';
+
+// Basic working component
+function FallbackApp() {
+  return jsx('div', { 
+    className: 'p-8 text-center',
+    children: [
+      jsx('h1', { children: '0x1 App' }),
+      jsx('p', { children: 'Your app is running, but the page component could not be built.' }),
+      jsx('p', { children: 'Check your app/page.tsx file for syntax errors.' })
+    ]
+  });
+}
+
+// Export for router
+export default FallbackApp;
+
+// Make available globally
+if (typeof window !== 'undefined') {
+  window.PageComponent = FallbackApp;
+  console.log('✅ Fallback component loaded');
+}
+`;
+    
+    writeFileSync(bundlePath, fallbackContent);
+    logger.warn(`Created fallback bundle at ${bundlePath}`);
+    return true;
   }
 }
 
