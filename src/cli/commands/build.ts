@@ -168,283 +168,710 @@ export async function build(options: BuildOptions = {}): Promise<void> {
   const routesJson = JSON.stringify(discoveredRoutes, null, 2);
   
   // Generate production app.js that matches dev server behavior
-  const productionAppScript = `// 0x1 Framework App Bundle - PRODUCTION BUILD (self-contained)
+  const productionAppScript = `// 0x1 Framework App Bundle - PRODUCTION BUILD v2.0 (React 19 Compatible)
+// Following Next.js 15 production best practices
 console.log('[0x1 App] Starting production app...');
 
 // Server-discovered routes
 const serverRoutes = ${routesJson};
 
-// CRITICAL FIX: Hooks context initialization for production
-let hooksSystemReady = false;
-let frameworkReady = false;
-
-// Initialize hooks system before any component mounting
-async function initializeHooksSystem() {
-  if (hooksSystemReady) return true;
-  
-  try {
-    console.log('[0x1 App] Initializing hooks system...');
-    
-    // Load the hooks module first
-    const hooksModule = await import('/0x1/hooks.js?t=' + Date.now());
-    
-    // Verify hooks are available
-    if (typeof window !== 'undefined' && window.React && window.React.useState) {
-      console.log('[0x1 App] ✅ Hooks system verified');
-      hooksSystemReady = true;
-      return true;
-    } else {
-      console.warn('[0x1 App] ⚠️ Hooks system not fully loaded, retrying...');
-      
-      // Wait a bit and try again
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      if (typeof window !== 'undefined' && window.React && window.React.useState) {
-        console.log('[0x1 App] ✅ Hooks system verified (retry)');
-        hooksSystemReady = true;
-        return true;
-      }
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to initialize hooks system:', error);
-    return false;
+// PRODUCTION-READY INITIALIZATION SYSTEM
+// Following modern React 19 and Next.js 15 patterns
+class ProductionAppLoader {
+  constructor() {
+    this.hooksReady = false;
+    this.jsxReady = false;
+    this.componentsReady = false;
+    this.retryCount = 0;
+    this.maxRetries = 30; // Increased for slower connections
+    this.errorBoundary = this.createErrorBoundary();
   }
-}
 
-// Initialize JSX runtime system
-async function initializeJSXRuntime() {
-  if (frameworkReady) return true;
-  
-  try {
-    console.log('[0x1 App] Initializing JSX runtime...');
-    
-    // Load JSX runtime
-    const jsxModule = await import('/0x1/jsx-runtime.js?t=' + Date.now());
-    
-    // CRITICAL FIX: Wait for JSX functions to be available globally (with retries)
-    let jsxReady = false;
-    let retries = 0;
-    const maxRetries = 20;
-    
-    while (!jsxReady && retries < maxRetries) {
-      if (typeof window !== 'undefined' && window.jsx && window.renderToDOM) {
-        jsxReady = true;
-        break;
+  // Error Boundary following React 19 patterns
+  createErrorBoundary() {
+    return {
+      hasError: false,
+      error: null,
+      componentStack: null,
+      
+      getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      },
+      
+      componentDidCatch(error, errorInfo) {
+        console.error('[0x1 Error Boundary] Component error:', error);
+        console.error('[0x1 Error Boundary] Error info:', errorInfo);
+        
+        // Send to analytics if available
+        if (typeof gtag !== 'undefined') {
+          gtag('event', 'exception', {
+            description: error.toString(),
+            fatal: false,
+          });
+        }
+      },
+      
+      render(error) {
+        if (this.hasError) {
+          return \`
+            <div style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              padding: 2rem;
+              background: linear-gradient(135deg, #0070f3 0%, #6219ff 100%);
+              color: white;
+              font-family: system-ui, sans-serif;
+            ">
+              <div style="
+                text-align: center;
+                max-width: 500px;
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+              ">
+                <h1 style="margin-bottom: 1rem; font-size: 1.5rem;">Application Error</h1>
+                <p style="margin-bottom: 1rem; opacity: 0.9;">\${error.message || 'Something went wrong'}</p>
+                <button 
+                  onclick="window.location.reload()" 
+                  style="
+                    background: white;
+                    color: #0070f3;
+                    border: none;
+                    padding: 0.75rem 1.5rem;
+                    border-radius: 6px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: transform 0.2s;
+                  "
+                  onmouseover="this.style.transform='scale(1.05)'"
+                  onmouseout="this.style.transform='scale(1)'"
+                >
+                  Reload Application
+                </button>
+              </div>
+            </div>
+          \`;
+        }
+        return null;
       }
-      
-      retries++;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    if (jsxReady) {
-      console.log('[0x1 App] ✅ JSX runtime verified');
-      frameworkReady = true;
-      return true;
-    } else {
-      console.warn('[0x1 App] ⚠️ JSX runtime verification timeout');
-      return false;
-    }
-    
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to initialize JSX runtime:', error);
-    return false;
+    };
   }
-}
 
-// Simple self-contained production app
-async function initApp() {
-  try {
-    console.log('[0x1 App] 🚀 Initializing production app...');
-    
-    const appElement = document.getElementById('app');
-    if (!appElement) {
-      throw new Error('App container element not found');
-    }
-
-    // CRITICAL FIX: Initialize framework systems before mounting components
-    console.log('[0x1 App] 🔧 Initializing framework systems...');
-    
-    const hooksReady = await initializeHooksSystem();
-    const jsxReady = await initializeJSXRuntime();
-    
-    if (!hooksReady || !jsxReady) {
-      console.warn('[0x1 App] ⚠️ Framework systems not ready, using fallback');
-      
-      // Simple fallback content
-      appElement.innerHTML = \`
-        <div style="padding: 2rem; text-align: center; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #0070f3; margin-bottom: 1rem;">0x1 App</h1>
-          <p style="margin-bottom: 1rem;">The application is running in production mode.</p>
-          <p style="font-size: 0.9rem; opacity: 0.7;">Framework systems still loading...</p>
-        </div>
-      \`;
-      
-      if (window.appReady) window.appReady();
-      return;
-    }
-
-    // Load and mount the app bundle directly
+  // Modern async initialization with proper error handling
+  async initialize() {
     try {
-      console.log('[0x1 App] 📦 Loading app bundle...');
+      console.log('[0x1 App] 🚀 Initializing production app (v2.0)...');
+      
+      const appElement = document.getElementById('app');
+      if (!appElement) {
+        throw new Error('App container element not found');
+      }
+
+      // Show loading state with improved UX
+      this.showLoadingState(appElement);
+      
+      // CRITICAL FIX: Sequential initialization following React 19 best practices
+      console.log('[0x1 App] 📋 Phase 1: Framework Systems...');
+      await this.initializeFrameworkSystems();
+      
+      console.log('[0x1 App] 🧩 Phase 2: Component Bundle...');
+      await this.initializeComponentBundle();
+      
+      console.log('[0x1 App] 🎨 Phase 3: Application Mount...');
+      await this.mountApplication(appElement);
+      
+      console.log('[0x1 App] ✅ Production app initialized successfully!');
+      this.hideLoadingIndicator();
+      
+    } catch (error) {
+      console.error('[0x1 App] ❌ Initialization failed:', error);
+      this.handleInitializationError(error);
+    }
+  }
+
+  // Enhanced loading state following modern UX patterns
+  showLoadingState(appElement) {
+    appElement.innerHTML = \`
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #0070f3 0%, #6219ff 100%);
+        color: white;
+        font-family: system-ui, sans-serif;
+      ">
+        <div style="text-align: center;">
+          <div style="
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+          "></div>
+          <h2 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Loading 0x1 App</h2>
+          <p style="opacity: 0.8; font-size: 0.9rem;" id="loading-status">Initializing framework...</p>
+        </div>
+      </div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    \`;
+  }
+
+  updateLoadingStatus(message) {
+    const statusEl = document.getElementById('loading-status');
+    if (statusEl) {
+      statusEl.textContent = message;
+    }
+  }
+
+  // CRITICAL FIX: Proper sequential framework initialization
+  async initializeFrameworkSystems() {
+    this.updateLoadingStatus('Loading hooks system...');
+    
+    // Phase 1A: Load hooks module and wait for globals
+    await this.loadHooksSystem();
+    
+    this.updateLoadingStatus('Loading JSX runtime...');
+    
+    // Phase 1B: Load JSX runtime and wait for globals  
+    await this.loadJSXRuntime();
+    
+    console.log('[0x1 App] ✅ Framework systems ready');
+  }
+
+  async loadHooksSystem() {
+    try {
+      // Import the hooks module
+      await import('/0x1/hooks.js?t=' + Date.now());
+      
+      // CRITICAL: Wait for globals to be available with retries
+      let retries = 0;
+      while (retries < this.maxRetries) {
+        if (typeof window !== 'undefined' && 
+            window.__0x1_enterComponentContext && 
+            window.__0x1_exitComponentContext &&
+            window.React && 
+            window.React.useState) {
+          console.log('[0x1 App] ✅ Hooks system verified');
+          this.hooksReady = true;
+          return true;
+        }
+        
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      throw new Error('Hooks system failed to initialize after ' + this.maxRetries + ' attempts');
+      
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to initialize hooks system:', error);
+      throw error;
+    }
+  }
+
+  async loadJSXRuntime() {
+    try {
+      // Import JSX runtime
+      await import('/0x1/jsx-runtime.js?t=' + Date.now());
+      
+      // CRITICAL: Wait for JSX globals with retries
+      let retries = 0;
+      while (retries < this.maxRetries) {
+        if (typeof window !== 'undefined' && 
+            window.jsx && 
+            window.jsxs && 
+            window.createElement && 
+            window.renderToDOM) {
+          console.log('[0x1 App] ✅ JSX runtime verified');
+          this.jsxReady = true;
+          return true;
+        }
+        
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      throw new Error('JSX runtime failed to initialize after ' + this.maxRetries + ' attempts');
+      
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to initialize JSX runtime:', error);
+      throw error;
+    }
+  }
+
+  async initializeComponentBundle() {
+    this.updateLoadingStatus('Loading components...');
+    
+    try {
+      // Import app bundle with cache busting
       const bundleModule = await import('/app-bundle.js?t=' + Date.now());
       
-      if (bundleModule && bundleModule.default) {
-        console.log('[0x1 App] 🔧 Creating component with hooks context...');
-        
-        // CRITICAL FIX: Set up component context for hooks before rendering
-        if (window.__0x1_enterComponentContext) {
-          window.__0x1_enterComponentContext('HomePage');
-        }
-        
-        try {
-          // CRITICAL FIX: Override JSX function to auto-handle component context for hook-using components
-          const originalJsx = window.jsx;
-          if (originalJsx) {
-            window.jsx = function(type, props, key) {
-              // If type is a function (component), set up context
-              if (typeof type === 'function') {
-                const componentName = type.name || type.displayName || 'Component';
-                
-                // Set up component context
-                if (window.__0x1_enterComponentContext) {
-                  window.__0x1_enterComponentContext(componentName);
-                }
-                
-                try {
-                  // Call the original jsx function
-                  const result = originalJsx(type, props, key);
-                  return result;
-                } finally {
-                  // Clean up component context
-                  if (window.__0x1_exitComponentContext) {
-                    window.__0x1_exitComponentContext();
-                  }
-                }
-              } else {
-                // For non-function types (DOM elements), call original
-                return originalJsx(type, props, key);
-              }
-            };
-          }
-          
-          // Try to render the component with proper context
-          const component = bundleModule.default({});
-          
-          if (component && typeof component === 'object') {
-            // Simple DOM creation from component object
-            const element = createElementFromComponent(component);
-            appElement.innerHTML = '';
-            appElement.appendChild(element);
-            
-            console.log('[0x1 App] ✅ Component rendered successfully');
-          } else {
-            // Fallback: just display something
-            appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App Loaded</h1><p>Component rendered successfully</p></div>';
-          }
-        } finally {
-          // Always clean up main component context
-          if (window.__0x1_exitComponentContext) {
-            window.__0x1_exitComponentContext();
-          }
-        }
-      } else {
-        appElement.innerHTML = '<div style="padding: 2rem; text-align: center;"><h1>0x1 App</h1><p>Bundle loaded but no component found</p></div>';
+      if (!bundleModule || !bundleModule.default) {
+        throw new Error('App bundle did not export a default component');
       }
-    } catch (bundleError) {
-      console.warn('[0x1 App] Bundle loading failed, using fallback:', bundleError);
       
-      // Simple fallback content
-      appElement.innerHTML = \`
-        <div style="padding: 2rem; text-align: center; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #0070f3; margin-bottom: 1rem;">0x1 App</h1>
-          <p style="margin-bottom: 1rem;">The application is running in production mode.</p>
-          <p style="font-size: 0.9rem; opacity: 0.7;">Bundle: \${bundleError.message}</p>
-        </div>
-      \`;
+      console.log('[0x1 App] ✅ Component bundle loaded');
+      this.componentsReady = true;
+      this.appComponent = bundleModule.default;
+      
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load component bundle:', error);
+      throw error;
+    }
+  }
+
+  async mountApplication(appElement) {
+    this.updateLoadingStatus('Mounting application...');
+    
+    if (!this.hooksReady || !this.jsxReady || !this.componentsReady) {
+      throw new Error('Framework systems not ready for mounting');
     }
     
-    console.log('[0x1 App] ✅ Production app initialized!');
+    try {
+      // Clear loading state
+      appElement.innerHTML = '';
+      
+      // CRITICAL: Proper component context setup for React 19 compatibility
+      if (window.__0x1_enterComponentContext) {
+        window.__0x1_enterComponentContext('App');
+      }
+      
+      try {
+        // Use the framework's JSX system to create component
+        const component = window.jsx(this.appComponent, {});
+        
+        // Render using the framework's renderToDOM
+        const rendered = window.renderToDOM(component);
+        
+        if (rendered) {
+          appElement.appendChild(rendered);
+          console.log('[0x1 App] ✅ Component mounted successfully');
+        } else {
+          throw new Error('Component rendering returned null');
+        }
+        
+      } finally {
+        // Always clean up component context
+        if (window.__0x1_exitComponentContext) {
+          window.__0x1_exitComponentContext();
+        }
+      }
+      
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to mount application:', error);
+      throw error;
+    }
+  }
+
+  handleInitializationError(error) {
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = this.errorBoundary.render(error);
+    }
     
     // Hide loading indicator
+    this.hideLoadingIndicator();
+  }
+
+  hideLoadingIndicator() {
     if (typeof window !== 'undefined' && window.appReady) {
       window.appReady();
     }
-    
-  } catch (error) {
-    console.error('[0x1 App] ❌ Initialization failed:', error);
-    
-    const appElement = document.getElementById('app');
-    if (appElement) {
-      appElement.innerHTML = '<div style="padding: 40px; text-align: center;"><h2 style="color: #ef4444;">Application Error</h2><p>' + error.message + '</p></div>';
-    }
   }
 }
 
-// Simple function to create DOM elements from component objects
-function createElementFromComponent(component) {
-  if (typeof component === 'string') {
-    return document.createTextNode(component);
-  }
-  
-  if (component && typeof component === 'object' && component.type) {
-    const element = document.createElement(component.type);
-    
-    // Set properties
-    if (component.props) {
-      Object.keys(component.props).forEach(key => {
-        if (key === 'children') return;
-        if (key === 'className') {
-          element.className = component.props[key];
-        } else if (key.startsWith('on') && typeof component.props[key] === 'function') {
-          const eventName = key.substring(2).toLowerCase();
-          element.addEventListener(eventName, component.props[key]);
-        } else {
-          try {
-            element[key] = component.props[key];
-          } catch (e) {
-            // Ignore property setting errors
-          }
-        }
-      });
-    }
-    
-    // Add children
-    if (component.children) {
-      if (Array.isArray(component.children)) {
-        component.children.forEach(child => {
-          const childElement = createElementFromComponent(child);
-          if (childElement) {
-            element.appendChild(childElement);
-          }
-        });
-      } else {
-        const childElement = createElementFromComponent(component.children);
-        if (childElement) {
-          element.appendChild(childElement);
-        }
-      }
-    }
-    
-    return element;
-  }
-  
-  // Fallback for other types
-  return document.createTextNode(String(component));
-}
+// Production-ready error handling
+window.addEventListener('error', (event) => {
+  console.error('[0x1 Global] Unhandled error:', event.error);
+});
 
-// Start app immediately
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[0x1 Global] Unhandled promise rejection:', event.reason);
+  event.preventDefault(); // Prevent the default browser behavior
+});
+
+// Initialize app with proper timing
+const appLoader = new ProductionAppLoader();
+
+// Start app immediately or when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
+  document.addEventListener('DOMContentLoaded', () => appLoader.initialize());
 } else {
-  initApp();
+  // Use setTimeout to ensure all scripts have loaded
+  setTimeout(() => appLoader.initialize(), 10);
 }
 `;
 
   // Write the aligned production app.js
   await Bun.write(join(outputPath, 'app.js'), productionAppScript);
   logger.info('✅ Production app.js generated (self-contained)');
+  
+  // Generate PWA manifest following modern standards
+  const manifest = {
+    name: "0x1 Framework App",
+    short_name: "0x1 App", 
+    description: "Fast, modern web applications built with 0x1 framework",
+    start_url: "/",
+    display: "standalone",
+    background_color: "#0a0a0a",
+    theme_color: "#0070f3",
+    orientation: "portrait-primary",
+    scope: "/",
+    categories: ["productivity", "developer"],
+    lang: "en",
+    dir: "ltr",
+    icons: [
+      {
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any maskable"
+      },
+      {
+        src: "/icon-512.png", 
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any maskable"
+      }
+    ],
+    screenshots: [
+      {
+        src: "/screenshot-wide.png",
+        sizes: "1280x720",
+        type: "image/png",
+        form_factor: "wide"
+      },
+      {
+        src: "/screenshot-narrow.png", 
+        sizes: "640x1136",
+        type: "image/png",
+        form_factor: "narrow"
+      }
+    ],
+    shortcuts: [
+      {
+        name: "Dashboard",
+        short_name: "Dashboard",
+        description: "Go to app dashboard",
+        url: "/dashboard",
+        icons: [{ src: "/shortcut-dashboard.png", sizes: "96x96" }]
+      }
+    ],
+    prefer_related_applications: false,
+    edge_side_panel: {
+      preferred_width: 400
+    }
+  };
+  
+  await Bun.write(join(outputPath, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  logger.info('✅ PWA manifest generated');
+  
+  // Generate Service Worker for production caching
+  const serviceWorker = `// 0x1 Framework Service Worker - Production Caching Strategy
+// Following modern PWA and Next.js caching patterns
+
+const CACHE_NAME = '0x1-app-v1.0.0';
+const RUNTIME_CACHE = '0x1-runtime-v1.0.0';
+
+// Assets to cache immediately
+const PRECACHE_ASSETS = [
+  '/',
+  '/styles.css',
+  '/app.js',
+  '/app-bundle.js',
+  '/0x1/hooks.js',
+  '/0x1/jsx-runtime.js',
+  '/0x1/index.js',
+  '/manifest.json'
+];
+
+// Cache-first strategy for static assets
+const CACHE_FIRST_PATTERNS = [
+  /\\.(?:js|css|woff2?|eot|ttf|otf)$/,
+  /\\/0x1\\//
+];
+
+// Network-first strategy for API calls
+const NETWORK_FIRST_PATTERNS = [
+  /\\/api\\//,
+  /\\/graphql/
+];
+
+// Install event - precache critical assets
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing service worker...');
+  
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[SW] Precaching assets...');
+        return cache.addAll(PRECACHE_ASSETS);
+      })
+      .then(() => {
+        console.log('[SW] Assets precached successfully');
+        return self.skipWaiting();
+      })
+      .catch((error) => {
+        console.error('[SW] Precaching failed:', error);
+      })
+  );
+});
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating service worker...');
+  
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((cacheName) => {
+              return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
+            })
+            .map((cacheName) => {
+              console.log('[SW] Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+        );
+      })
+      .then(() => {
+        console.log('[SW] Service worker activated');
+        return self.clients.claim();
+      })
+  );
+});
+
+// Fetch event - intelligent caching strategy
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  
+  // Skip non-GET requests
+  if (request.method !== 'GET') {
+    return;
+  }
+  
+  // Skip chrome-extension and other protocols
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+  
+  event.respondWith(
+    handleRequest(request)
+  );
+});
+
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  
+  try {
+    // Cache-first for static assets
+    if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(pathname))) {
+      return await cacheFirst(request);
+    }
+    
+    // Network-first for API calls
+    if (NETWORK_FIRST_PATTERNS.some(pattern => pattern.test(pathname))) {
+      return await networkFirst(request);
+    }
+    
+    // Stale-while-revalidate for pages
+    return await staleWhileRevalidate(request);
+    
+  } catch (error) {
+    console.error('[SW] Request handling error:', error);
+    
+    // Return offline fallback if available
+    return await getOfflineFallback(request);
+  }
+}
+
+// Cache-first strategy
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  
+  if (cached) {
+    return cached;
+  }
+  
+  const response = await fetch(request);
+  
+  if (response.status === 200) {
+    cache.put(request, response.clone());
+  }
+  
+  return response;
+}
+
+// Network-first strategy
+async function networkFirst(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  
+  try {
+    const response = await fetch(request);
+    
+    if (response.status === 200) {
+      cache.put(request, response.clone());
+    }
+    
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    
+    if (cached) {
+      return cached;
+    }
+    
+    throw error;
+  }
+}
+
+// Stale-while-revalidate strategy
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  const cached = await cache.match(request);
+  
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response.status === 200) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => cached); // Return cached on network error
+  
+  return cached || await fetchPromise;
+}
+
+// Offline fallback
+async function getOfflineFallback(request) {
+  const cache = await caches.open(CACHE_NAME);
+  
+  // Return cached version if available
+  const cached = await cache.match(request);
+  if (cached) {
+    return cached;
+  }
+  
+  // Return offline page for navigation requests
+  if (request.mode === 'navigate') {
+    const offlinePage = await cache.match('/');
+    if (offlinePage) {
+      return offlinePage;
+    }
+  }
+  
+  // Return a basic offline response
+  return new Response(
+    'Offline - Content not available',
+    {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    }
+  );
+}
+
+// Background sync for failed requests
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'background-sync') {
+    console.log('[SW] Background sync triggered');
+    event.waitUntil(doBackgroundSync());
+  }
+});
+
+async function doBackgroundSync() {
+  // Handle failed requests when connection is restored
+  console.log('[SW] Performing background sync...');
+}
+
+// Push notifications support
+self.addEventListener('push', (event) => {
+  if (!event.data) {
+    return;
+  }
+  
+  const options = {
+    body: event.data.text(),
+    icon: '/icon-192.png',
+    badge: '/badge-72.png',
+    vibrate: [200, 100, 200],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: 1
+    },
+    actions: [
+      {
+        action: 'explore',
+        title: 'Open App',
+        icon: '/action-explore.png'
+      },
+      {
+        action: 'close',
+        title: 'Close',
+        icon: '/action-close.png'
+      }
+    ]
+  };
+  
+  event.waitUntil(
+    self.registration.showNotification('0x1 App', options)
+  );
+});
+
+// Notification click handler
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  if (event.action === 'explore') {
+    event.waitUntil(
+      clients.openWindow('/')
+    );
+  }
+});
+`;
+
+  await Bun.write(join(outputPath, 'sw.js'), serviceWorker);
+  logger.info('✅ Service Worker generated for offline support');
+  
+  // Generate sitemap.xml for SEO
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://0x1f.vercel.app/</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+
+  await Bun.write(join(outputPath, 'sitemap.xml'), sitemap);
+  logger.info('✅ SEO sitemap generated');
+  
+  // Generate robots.txt
+  const robotsTxt = `User-agent: *
+Allow: /
+
+Sitemap: https://0x1f.vercel.app/sitemap.xml`;
+
+  await Bun.write(join(outputPath, 'robots.txt'), robotsTxt);
+  logger.info('✅ Robots.txt generated');
   
   // Copy the app bundle to root for direct access
   const builtBundlePath = join(projectPath, '.0x1', 'public', 'app-bundle.js');
@@ -664,28 +1091,153 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  
+  <!-- SEO and Performance Following Next.js 15 Best Practices -->
   <title>0x1 App</title>
+  <meta name="description" content="Fast, modern web applications built with 0x1 framework">
+  <meta name="keywords" content="0x1, framework, react, performance, modern">
+  <meta name="author" content="0x1 Framework">
+  <meta name="robots" content="index, follow">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://0x1f.vercel.app/">
+  <meta property="og:title" content="0x1 App">
+  <meta property="og:description" content="Fast, modern web applications built with 0x1 framework">
+  <meta property="og:site_name" content="0x1 Framework">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://0x1f.vercel.app/">
+  <meta property="twitter:title" content="0x1 App">
+  <meta property="twitter:description" content="Fast, modern web applications built with 0x1 framework">
+  
+  <!-- Performance Optimizations -->
+  <meta name="theme-color" content="#0070f3">
+  <meta name="color-scheme" content="dark light">
+  <meta name="format-detection" content="telephone=no">
+  
+  <!-- Preload Critical Resources -->
+  <link rel="preload" href="/styles.css" as="style">
+  <link rel="preload" href="/0x1/hooks.js" as="script" crossorigin>
+  <link rel="preload" href="/0x1/jsx-runtime.js" as="script" crossorigin>
+  <link rel="preload" href="/app-bundle.js" as="script" crossorigin>
+  
+  <!-- DNS Prefetch for External Resources -->
+  <link rel="dns-prefetch" href="//fonts.googleapis.com">
+  <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+  
+  <!-- Security Headers -->
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+  
+  <!-- Favicons and App Icons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  
+  <!-- Main Stylesheet -->
   <link rel="stylesheet" href="/styles.css">
+  
   <style>
-    /* Production styles for 0x1 app */
+    /* Critical CSS for First Paint - Following Core Web Vitals Best Practices */
     :root {
       --primary: #0070f3;
+      --primary-dark: #0051cc;
       --secondary: #6219ff;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --secondary-dark: #4d0cc7;
+      --background: #0a0a0a;
+      --background-secondary: #1a1a1a;
+      --text: #ffffff;
+      --text-secondary: #a0a0a0;
+      --border: #333333;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
     }
+    
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
+    
+    html {
+      /* Improved scrolling behavior */
+      scroll-behavior: smooth;
+      /* Better font rendering */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    
     body {
       font-family: var(--font);
-      background: #0a0a0a;
-      color: #ffffff;
+      background: var(--background);
+      color: var(--text);
       line-height: 1.6;
+      min-height: 100vh;
+      /* Prevent horizontal scroll on mobile */
+      overflow-x: hidden;
+      /* Better font rendering */
+      font-feature-settings: "kern" 1, "liga" 1;
+      font-variant-ligatures: common-ligatures;
     }
-    /* Loading styles */
+    
+    /* Focus management for accessibility */
+    :focus {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+    
+    :focus:not(:focus-visible) {
+      outline: none;
+    }
+    
+    /* App container optimizations */
+    #app {
+      min-height: 100vh;
+      position: relative;
+      /* Prevent layout shift */
+      contain: layout style paint;
+    }
+    
+    /* Reduced motion for accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+    
+    /* Dark mode support */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --background: #ffffff;
+        --background-secondary: #f8f9fa;
+        --text: #000000;
+        --text-secondary: #666666;
+        --border: #e1e5e9;
+      }
+    }
+    
+    /* High contrast mode support */
+    @media (prefers-contrast: high) {
+      :root {
+        --primary: #0000ff;
+        --secondary: #8b00ff;
+        --border: #000000;
+      }
+    }
+    
+    /* Loading states following React 19 Suspense patterns */
     .app-loading {
       display: flex;
       justify-content: center;
@@ -695,74 +1247,179 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       position: fixed;
       top: 0;
       left: 0;
-      background: #0a0a0a;
+      background: var(--background);
       z-index: 1000;
       transition: opacity 0.3s ease, visibility 0.3s ease;
     }
+    
     .app-loading.loaded {
       opacity: 0;
       visibility: hidden;
     }
-    .dots-container {
+    
+    /* Enhanced loading animations */
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* Error boundary styles */
+    .error-boundary {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      min-height: 100vh;
+      padding: 2rem;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: white;
+      font-family: var(--font);
     }
-    .loading-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background-color: var(--primary);
-      animation: dot-pulse 1.5s infinite ease-in-out;
-    }
-    .loading-dot:nth-child(2) {
-      animation-delay: 0.2s;
-      background-color: var(--secondary);
-    }
-    .loading-dot:nth-child(3) {
-      animation-delay: 0.4s;
-      background-color: var(--primary);
-    }
-    @keyframes dot-pulse {
-      0%, 100% { transform: scale(0.8); opacity: 0.5; }
-      50% { transform: scale(1.2); opacity: 1; }
-    }
-    .error-container {
-      display: none;
-      color: #ef4444;
-      padding: 20px;
+    
+    .error-content {
       text-align: center;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
+      max-width: 500px;
+      background: rgba(255,255,255,0.1);
+      padding: 2rem;
+      border-radius: 12px;
       backdrop-filter: blur(10px);
-      max-width: 80%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .error-button {
+      background: white;
+      color: var(--primary);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+    
+    .error-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    .error-button:active {
+      transform: translateY(0);
+    }
+    
+    /* Skip to content for accessibility */
+    .skip-to-content {
+      position: absolute;
+      left: -10000px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      background: var(--primary);
+      color: white;
+      padding: 8px 16px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    
+    .skip-to-content:focus {
+      position: absolute;
+      left: 6px;
+      top: 6px;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      z-index: 10000;
     }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <!-- Skip to content for screen readers -->
+  <a href="#main-content" class="skip-to-content">Skip to main content</a>
   
-  <!-- Loading overlay -->
-  <div class="app-loading" id="app-loading">
-    <div class="dots-container">
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
+  <!-- Main application container -->
+  <div id="app" role="main" aria-label="Application"></div>
+  
+  <!-- Loading overlay with improved accessibility -->
+  <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-label="Loading application">
+    <div style="text-align: center;">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <h2 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Loading 0x1 App</h2>
+      <p style="opacity: 0.8; font-size: 0.9rem;" id="loading-status">Initializing framework...</p>
     </div>
   </div>
   
-  <!-- Error container -->
-  <div class="error-container" id="error-container">
-    <div class="error-title">Application Error</div>
-    <div class="error-message">Failed to load the application.</div>
-    <div class="error-details" id="error-details">Check browser console for more details.</div>
+  <!-- Error container with accessibility -->
+  <div class="error-container" id="error-container" style="display: none;" role="alert" aria-live="assertive">
+    <div class="error-content">
+      <h1 style="margin-bottom: 1rem; font-size: 1.5rem;">Application Error</h1>
+      <p style="margin-bottom: 1rem; opacity: 0.9;">Failed to load the application.</p>
+      <p class="error-details" id="error-details" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Check browser console for more details.</p>
+      <button class="error-button" onclick="window.location.reload()" type="button">
+        Reload Application
+      </button>
+    </div>
   </div>
   
+  <!-- Service Worker Registration -->
   <script>
-    // Enhanced error handling
+    // Service worker for caching (PWA support)
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(registration => {
+            console.log('[SW] Registered:', registration);
+          })
+          .catch(registrationError => {
+            console.log('[SW] Registration failed:', registrationError);
+          });
+      });
+    }
+  </script>
+  
+  <!-- Performance monitoring -->
+  <script>
+    // Core Web Vitals tracking following Next.js patterns
+    function sendToAnalytics(metric) {
+      if (typeof gtag !== 'undefined') {
+        gtag('event', metric.name, {
+          value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
+          event_category: 'Web Vitals',
+          event_label: metric.id,
+          non_interaction: true,
+        });
+      }
+      
+      console.log('[Performance]', metric.name, Math.round(metric.value), metric.rating);
+    }
+    
+    // Import Web Vitals library if available
+    if (typeof webVitals !== 'undefined') {
+      webVitals.getCLS(sendToAnalytics);
+      webVitals.getFID(sendToAnalytics);
+      webVitals.getFCP(sendToAnalytics);
+      webVitals.getLCP(sendToAnalytics);
+      webVitals.getTTFB(sendToAnalytics);
+    }
+  </script>
+  
+  <!-- Enhanced error handling -->
+  <script>
+    // Global error handling with better UX
     window.addEventListener('error', function(e) {
-      console.error('App Error:', e.error);
+      console.error('[Global Error]:', e.error);
+      
       const errorContainer = document.getElementById('error-container');
       const errorDetails = document.getElementById('error-details');
       const appLoading = document.getElementById('app-loading');
@@ -772,9 +1429,14 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       }
       
       if (errorContainer && errorDetails) {
-        errorContainer.style.display = 'block';
-        errorDetails.textContent = e.error ? e.error.toString() : 'Unknown error';
+        errorContainer.style.display = 'flex';
+        errorDetails.textContent = e.error ? e.error.toString() : 'Unknown error occurred';
       }
+    });
+    
+    window.addEventListener('unhandledrejection', function(e) {
+      console.error('[Unhandled Promise Rejection]:', e.reason);
+      e.preventDefault();
     });
     
     // Hide loading overlay when app is ready
@@ -788,23 +1450,25 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
       }
     };
     
-    // Fallback timeout
+    // Fallback timeout with better messaging
     setTimeout(() => {
       const loadingEl = document.getElementById('app-loading');
       if (loadingEl && !loadingEl.classList.contains('loaded')) {
+        console.warn('[App] Loading timeout reached');
         loadingEl.classList.add('loaded');
       }
-    }, 3000);
+    }, 10000); // Increased timeout for slower connections
   </script>
   
   <!-- Process polyfill for browser compatibility -->
   <script>
+    // Enhanced process polyfill for Node.js compatibility
     if (typeof process === 'undefined') {
       window.process = {
         env: {
           NODE_ENV: 'production',
           CI: false,
-          VERCEL: false,
+          VERCEL: typeof window !== 'undefined' && window.location.hostname.includes('vercel'),
           NETLIFY: false,
           GITHUB_ACTIONS: false,
           GITLAB_CI: false,
@@ -815,16 +1479,33 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
           clearLine: undefined,
           cursorTo: undefined
         },
-        version: 'v16.0.0',
-        versions: { node: '16.0.0' },
+        version: 'v18.0.0',
+        versions: { 
+          node: '18.0.0',
+          v8: '10.0.0',
+          uv: '1.43.0',
+          zlib: '1.2.11',
+          brotli: '1.0.9',
+          ares: '1.18.1',
+          modules: '108',
+          nghttp2: '1.47.0',
+          napi: '8',
+          llhttp: '6.0.4',
+          openssl: '3.0.2'
+        },
         platform: 'browser',
-        arch: 'x64'
+        arch: 'x64',
+        browser: true,
+        cwd: () => '/',
+        chdir: () => {},
+        exit: () => {},
+        nextTick: (fn) => Promise.resolve().then(fn)
       };
     }
   </script>
   
-  <!-- Load the production application -->  
-  <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
+  <!-- Load the production application with proper error handling -->  
+  <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')" async></script>
 </body>
 </html>`;
 
@@ -1490,7 +2171,7 @@ async function processCssFiles(
         body {
           min-height: 100vh;
           text-rendering: optimizeSpeed;
-          line-height: 1.5;
+          line-height: 1.6;
           font-family: system-ui, sans-serif;
         }
 
