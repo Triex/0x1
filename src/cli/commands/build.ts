@@ -455,14 +455,14 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
     await Bun.write(outputFile, processedContent);
   }
 
-  // If no HTML files found, create a basic index.html
+  // If no HTML files found, create a proper index.html that loads the application
   if (htmlFiles.length === 0) {
     // Check for app entry point (app/page.tsx, app/page.jsx, app/page.js, etc.)
     const appDir = join(projectPath, 'app');
     const hasAppDir = existsSync(appDir);
 
     if (hasAppDir) {
-      // Using modern app router structure
+      // Using modern app router structure with proper app loading
       const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -471,28 +471,165 @@ async function processHtmlFiles(projectPath: string, outputPath: string): Promis
   <title>0x1 App</title>
   <link rel="stylesheet" href="/styles.css">
   <style>
-    /* Loading fallback styles */
-    .loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
-    .error { color: red; padding: 20px; text-align: center; }
+    /* FIXME: Minimise/reduce this */
+    /* Modern base styles for the 0x1 app */
+    :root {
+      --primary: #0070f3;
+      --secondary: #6219ff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: var(--font);
+      background: #fafafa;
+      color: #333;
+    }
+    /* Loading styles */
+    .app-loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      width: 100vw;
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: #fafafa;
+      z-index: 1000;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    .app-loading.loaded {
+      opacity: 0;
+      visibility: hidden;
+    }
+    .dots-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .loading-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      animation: dot-pulse 1.5s infinite ease-in-out;
+    }
+    .loading-dot:nth-child(2) {
+      animation-delay: 0.2s;
+      background-color: var(--secondary);
+    }
+    .loading-dot:nth-child(3) {
+      animation-delay: 0.4s;
+      background-color: var(--primary);
+    }
+    @keyframes dot-pulse {
+      0%, 100% { transform: scale(0.8); opacity: 0.5; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+    .error-container {
+      display: none;
+      color: red;
+      padding: 20px;
+      text-align: center;
+      background: rgba(255, 235, 235, 0.9);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      max-width: 80%;
+    }
+    .error-title {
+      font-size: 1.4rem;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    .error-message {
+      font-size: 1rem;
+      margin-bottom: 15px;
+    }
+    .error-details {
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      text-align: left;
+    }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div class="loading">Loading...</div>
+  <div id="app"></div>
+  
+  <!-- Loading overlay that will be removed once app loads -->
+  <div class="app-loading" id="app-loading">
+    <div class="dots-container">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
   </div>
+  
+  <!-- Error container shown only if there's an error -->
+  <div class="error-container" id="error-container">
+    <div class="error-title">Application Error</div>
+    <div class="error-message">Failed to load the application.</div>
+    <div class="error-details" id="error-details">Check browser console for more details.</div>
+  </div>
+  
   <script>
-    // Basic error handling
+    // Enhanced error handling
     window.addEventListener('error', function(e) {
       console.error('App Error:', e.error);
-      document.getElementById('app').innerHTML = '<div class="error">App failed to load. Check console for details.</div>';
+      const errorContainer = document.getElementById('error-container');
+      const errorDetails = document.getElementById('error-details');
+      const appLoading = document.getElementById('app-loading');
+      
+      // Hide loading indicator
+      if (appLoading) {
+        appLoading.style.display = 'none';
+      }
+      
+      // Show error with details
+      if (errorContainer && errorDetails) {
+        errorContainer.style.display = 'block';
+        errorDetails.textContent = e.error ? e.error.toString() : 'Unknown error';
+      }
     });
+    
+    // Hide loading overlay when app is ready
+    // This will be called by the app.js when it finishes loading the app
+    window.appReady = function() {
+      const loadingEl = document.getElementById('app-loading');
+      if (loadingEl) {
+        loadingEl.classList.add('loaded');
+        // Remove from DOM after animation completes
+        setTimeout(() => {
+          loadingEl.remove();
+        }, 500);
+      }
+    };
+    
+    // Fallback: If app doesn't call appReady within 3 seconds, remove loading overlay anyway
+    setTimeout(() => {
+      const loadingEl = document.getElementById('app-loading');
+      if (loadingEl && !loadingEl.classList.contains('loaded')) {
+        loadingEl.classList.add('loaded');
+      }
+    }, 3000);
   </script>
+  
+  <!-- Load the actual application -->  
   <script src="/app.js" type="module" onerror="console.error('Failed to load app.js')"></script>
 </body>
 </html>`;
 
       await Bun.write(join(outputPath, 'index.html'), indexHtml);
-      logger.info('✅ Created index.html for app directory structure');
+      logger.info('✅ Created proper index.html that loads the application');
     }
   }
 }
