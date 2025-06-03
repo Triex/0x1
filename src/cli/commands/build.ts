@@ -223,14 +223,30 @@ async function initializeJSXRuntime() {
     // Load JSX runtime
     const jsxModule = await import('/0x1/jsx-runtime.js?t=' + Date.now());
     
-    // Verify JSX functions are available
-    if (typeof window !== 'undefined' && window.jsx && window.renderToDOM) {
+    // CRITICAL FIX: Wait for JSX functions to be available globally (with retries)
+    let jsxReady = false;
+    let retries = 0;
+    const maxRetries = 20;
+    
+    while (!jsxReady && retries < maxRetries) {
+      if (typeof window !== 'undefined' && window.jsx && window.renderToDOM) {
+        jsxReady = true;
+        break;
+      }
+      
+      retries++;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    if (jsxReady) {
       console.log('[0x1 App] ✅ JSX runtime verified');
       frameworkReady = true;
       return true;
+    } else {
+      console.warn('[0x1 App] ⚠️ JSX runtime verification timeout');
+      return false;
     }
     
-    return false;
   } catch (error) {
     console.error('[0x1 App] ❌ Failed to initialize JSX runtime:', error);
     return false;
