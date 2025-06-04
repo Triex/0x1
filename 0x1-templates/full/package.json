@@ -13,7 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "0x1": "^0.0.240"
+    "0x1": "^0.0.241"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {
