@@ -21,10 +21,9 @@ export const HTML_START = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
-  <link rel="icon" href="/favicon.ico">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="icon" type="image/png" href="/favicon.png">`;
+  <title>0x1 App</title>`;
+  
+// Favicon links will be added dynamically
 
 export const CSS_MODULE_HANDLER = `
   <!-- CSS Module Handling -->
@@ -451,6 +450,7 @@ export function composeHtmlTemplate(options: {
   bodyContent?: string;
   importMap?: Record<string, string>;
   projectPath?: string;
+  detectedFavicon?: { path: string; format: string; location: string } | null;
 } = {}): string {
   const {
     title = "0x1 App",
@@ -459,9 +459,38 @@ export function composeHtmlTemplate(options: {
     bodyContent = "",
     importMap = {},
     projectPath = process.cwd(),
+    detectedFavicon = null,
   } = options;
 
   let template = HTML_START.replace("<title>0x1 App</title>", `<title>${title}</title>`);
+
+  // Add favicon links dynamically based on detection
+  if (detectedFavicon) {
+    const { format } = detectedFavicon;
+    
+    // Add the detected favicon
+    if (format === 'ico') {
+      template += `\n  <link rel="icon" href="/favicon.ico">`;
+    } else if (format === 'svg') {
+      template += `\n  <link rel="icon" type="image/svg+xml" href="/favicon.svg">`;
+    } else if (format === 'png') {
+      template += `\n  <link rel="icon" type="image/png" href="/favicon.png">`;
+    } else if (format === 'jpg' || format === 'jpeg') {
+      template += `\n  <link rel="icon" type="image/jpeg" href="/favicon.${format}">`;
+    } else if (format === 'gif') {
+      template += `\n  <link rel="icon" type="image/gif" href="/favicon.gif">`;
+    }
+    
+    // Also add a generic fallback for .ico if the detected format isn't .ico
+    if (format !== 'ico') {
+      template += `\n  <link rel="icon" href="/favicon.ico">`;
+    }
+  } else {
+    // No favicon detected - add fallback links that may work
+    template += `\n  <link rel="icon" href="/favicon.ico">`;
+    template += `\n  <link rel="icon" type="image/svg+xml" href="/favicon.svg">`;
+    template += `\n  <link rel="icon" type="image/png" href="/favicon.png">`;
+  }
 
   // Add CSS module handler
   template += CSS_MODULE_HANDLER;

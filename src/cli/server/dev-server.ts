@@ -223,7 +223,7 @@ function broadcastReload(
 /**
  * Generate HTML template for index page with proper app initialization
  */
-function generateIndexHtml(projectPath: string): string {
+function generateIndexHtml(projectPath: string, detectedFavicon?: { path: string; format: string; location: string } | null): string {
   // Check if we have an app/page.tsx or similar
   const possibleAppDirPaths = [
     join(projectPath, "app/page.tsx"),
@@ -242,6 +242,7 @@ function generateIndexHtml(projectPath: string): string {
         includeImportMap: true,
         includeAppScript: true,
         projectPath: projectPath,
+        detectedFavicon: detectedFavicon,
       })
     );
   } else {
@@ -2947,7 +2948,7 @@ export default function ComponentErrorFallback(props) {
       // Handle index.html requests (root route)
       if (reqPath === "/" || reqPath === "/index.html") {
         logRequestStatus(200, reqPath, "Serving index.html");
-        const html = generateIndexHtml(projectPath);
+        const html = generateIndexHtml(projectPath, detectedFavicon);
 
         return new Response(html, {
           status: 200,
@@ -2995,7 +2996,7 @@ export default function ComponentErrorFallback(props) {
             reqPath,
             "Serving app page route (initial load)"
           );
-          const html = generateIndexHtml(projectPath);
+          const html = generateIndexHtml(projectPath, detectedFavicon);
 
           return new Response(html, {
             status: 200,

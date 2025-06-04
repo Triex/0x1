@@ -8,6 +8,8 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
 
+// Import favicon detection function from dev-server
+
 export interface BuildOptions {
   outDir?: string;
   minify?: boolean;
@@ -89,7 +91,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     }
     log.info('✅ CSS processed');
 
-    // Step 6: Generate HTML (same structure as dev server index.html)
+    // Step 6: Generate HTML (simple production-specific template)
     log.info('📄 Generating HTML...');
     await generateProductionHtml(projectPath, outputPath);
     log.info('✅ HTML generated');
@@ -448,6 +450,7 @@ export default {
  * Copy static assets
  */
 async function copyStaticAssets(projectPath: string, outputPath: string): Promise<void> {
+  // Copy from public directory
   const publicDir = join(projectPath, 'public');
   if (existsSync(publicDir)) {
     const result = Bun.spawnSync(['cp', '-r', `${publicDir}/.`, outputPath], {
@@ -461,6 +464,20 @@ async function copyStaticAssets(projectPath: string, outputPath: string): Promis
     if (result.exitCode !== 0) {
       const error = new TextDecoder().decode(result.stderr);
       throw new Error(`Failed to copy static assets: ${error}`);
+    }
+  }
+  
+  // CRITICAL FIX: Also copy favicon files from app directory
+  const appDir = join(projectPath, 'app');
+  const faviconFormats = ['favicon.ico', 'favicon.svg', 'favicon.png', 'favicon.jpg', 'favicon.jpeg', 'favicon.gif'];
+  
+  for (const faviconFile of faviconFormats) {
+    const faviconPath = join(appDir, faviconFile);
+    if (existsSync(faviconPath)) {
+      const targetPath = join(outputPath, faviconFile);
+      const content = await Bun.file(faviconPath).arrayBuffer();
+      await Bun.write(targetPath, content);
+      logger.info(`📄 Copied favicon: ${faviconFile} from app/ directory`);
     }
   }
 }
@@ -593,7 +610,7 @@ body { line-height: 1.6; font-family: system-ui, sans-serif; }
 }
 
 /**
- * Generate production HTML (same structure as dev server index.html)
+ * Generate production HTML (simple production-specific template)
  */
 async function generateProductionHtml(projectPath: string, outputPath: string): Promise<void> {
   const isAppDirStructure = existsSync(join(projectPath, 'app'));
@@ -602,176 +619,165 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
     return; // Skip HTML generation if no app structure
   }
 
+  // Detect favicon for production
+  const detectedFavicon = detectFavicon(projectPath);
+  if (detectedFavicon) {
+    logger.info(`🔍 Detected favicon: ${detectedFavicon.location}/favicon.${detectedFavicon.format}`);
+  }
+
+  // Generate favicon HTML links
+  let faviconLinks = '';
+  if (detectedFavicon) {
+    const { format } = detectedFavicon;
+    if (format === 'ico') {
+      faviconLinks = `<link rel="icon" href="/favicon.ico">`;
+    } else if (format === 'svg') {
+      faviconLinks = `<link rel="icon" type="image/svg+xml" href="/favicon.svg">`;
+    } else if (format === 'png') {
+      faviconLinks = `<link rel="icon" type="image/png" href="/favicon.png">`;
+    } else {
+      faviconLinks = `<link rel="icon" type="image/${format}" href="/favicon.${format}">`;
+    }
+  } else {
+    // Fallback favicon links
+    faviconLinks = `<link rel="icon" href="/favicon.ico">`;
+  }
+
+  // Simple production HTML template
   const indexHtml = `<!DOCTYPE html>
- <html lang="en" class="dark">
- <head>
-   <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>0x1 App</title>
-   <meta name="description" content="Fast, modern web applications built with 0x1 framework">
-   <link rel="stylesheet" href="/styles.css">
-   
-   <!-- Import map for 0x1 framework module resolution (same as dev server) -->
-   <script type="importmap">
-   {
-     "imports": {
-       "0x1": "/node_modules/0x1/index.js",
-       "0x1/router": "/0x1/router.js",
-       "0x1/": "/0x1/"
-     }
-   }
-   </script>
-   
-   <style>
-     /* Minimal loading styles that work with Tailwind */
-     #app { min-height: 100vh; }
-     
-     /* Ultra-minimal top-right loading indicator */
-     .app-loading {
-       position: fixed;
-       top: 20px;
-       right: 20px;
-       z-index: 9999;
-       width: 24px;
-       height: 24px;
-       opacity: 0.6;
-       transform: translateY(0);
-       transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-       pointer-events: none;
-     }
-     
-     .app-loading.loaded {
-       opacity: 0;
-       transform: translateY(-4px) scale(0.8);
-     }
-     
-     /* Lightning bolt icon */
-     .loading-icon {
-       width: 24px;
-       height: 24px;
-       animation: lightning-pulse 2s ease-in-out infinite;
-     }
-     
-     .lightning-bolt {
-       fill: #fbbf24;
-       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
-     }
-     
-     html:not(.dark) .lightning-bolt {
-       fill: #f59e0b;
-       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
-     }
-     
-     @keyframes lightning-pulse {
-       0%, 100% { 
-         opacity: 0.4;
-         transform: scale(1);
-       }
-       50% { 
-         opacity: 0.8;
-         transform: scale(1.05);
-       }
-     }
-     
-     /* Even more minimal on mobile */
-     @media (max-width: 640px) {
-       .app-loading {
-         top: 16px;
-         right: 16px;
-         width: 20px;
-         height: 20px;
-         opacity: 0.5;
-       }
-       .loading-icon {
-         width: 20px;
-         height: 20px;
-       }
-     }
-   </style>
- </head>
- <body class="bg-slate-900 dark:bg-slate-900 text-white dark:text-white">
-   <div id="app"></div>
-   <div class="app-loading" id="app-loading">
-     <div class="loading-icon">
-       <svg class="lightning-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor"/>
-       </svg>
-     </div>
-   </div>
-   
-   <script>
-     // IMMEDIATE theme detection before any rendering
-     (function() {
-       try {
-         const savedTheme = localStorage.getItem('0x1-dark-mode');
-         if (savedTheme === 'light') {
-           document.documentElement.classList.remove('dark');
-           document.body.className = 'bg-white text-gray-900';
-         }
-       } catch (e) {
-         // Default to dark mode if anything fails
-         console.log('Theme detection error, defaulting to dark');
-       }
-     })();
-     
-     if (typeof process === 'undefined') {
-       window.process = { env: { NODE_ENV: 'production' } };
-     }
-     
-     let appReadyCalled = false;
-     let loadingTimeout;
-     
-     // Auto-hide loading after 10 seconds if stuck
-     loadingTimeout = setTimeout(() => {
-       if (!appReadyCalled) {
-         console.warn('[0x1] App seems stuck, forcing hide loading screen');
-         const loading = document.getElementById('app-loading');
-         if (loading) {
-           loading.classList.add('loaded');
-         }
-       }
-     }, 10000);
-     
-     window.addEventListener('error', function(e) {
-       console.error('[0x1] Error:', e.error);
-       clearTimeout(loadingTimeout);
-       const loading = document.getElementById('app-loading');
-       if (loading && !appReadyCalled) {
-         loading.classList.add('loaded');
-       }
-     });
-     
-     window.appReady = function() {
-       if (appReadyCalled) return; // Prevent multiple calls
-       appReadyCalled = true;
-       clearTimeout(loadingTimeout);
-       
-       const loading = document.getElementById('app-loading');
-       if (loading) {
-         loading.classList.add('loaded');
-       }
-     };
-     
-     // Preload critical resources
-     const preloadLinks = [
-       { href: '/0x1/hooks.js', as: 'script' },
-       { href: '/0x1/router.js', as: 'script' }
-     ];
-     
-     preloadLinks.forEach(({ href, as }) => {
-       const link = document.createElement('link');
-       link.rel = 'preload';
-       link.href = href;
-       link.as = as;
-       document.head.appendChild(link);
-     });
-   </script>
-   
-   <script src="/app.js" type="module"></script>
- </body>
- </html>`;
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <meta name="description" content="Fast, modern web applications built with 0x1 framework">
+  ${faviconLinks}
+  <link rel="stylesheet" href="/styles.css">
+  
+  <!-- Import map for 0x1 framework module resolution -->
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/router": "/0x1/router.js",
+      "0x1/": "/0x1/"
+    }
+  }
+  </script>
+  
+  <style>
+    /* Production loading styles */
+    #app { min-height: 100vh; }
+    
+    .app-loading {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      width: 24px;
+      height: 24px;
+      opacity: 0.6;
+      transform: translateY(0);
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+    }
+    
+    .app-loading.loaded {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.8);
+    }
+    
+    .loading-icon {
+      width: 24px;
+      height: 24px;
+      animation: lightning-pulse 2s ease-in-out infinite;
+    }
+    
+    .lightning-bolt {
+      fill: #fbbf24;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+    }
+    
+    html:not(.dark) .lightning-bolt {
+      fill: #f59e0b;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+    }
+    
+    @keyframes lightning-pulse {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+    
+    @media (max-width: 640px) {
+      .app-loading { top: 16px; right: 16px; width: 20px; height: 20px; opacity: 0.5; }
+      .loading-icon { width: 20px; height: 20px; }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 dark:bg-slate-900 text-white dark:text-white">
+  <div id="app"></div>
+  <div class="app-loading" id="app-loading">
+    <div class="loading-icon">
+      <svg class="lightning-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor"/>
+      </svg>
+    </div>
+  </div>
+  
+  <script>
+    // Production theme detection
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('0x1-dark-mode');
+        if (savedTheme === 'light') {
+          document.documentElement.classList.remove('dark');
+          document.body.className = 'bg-white text-gray-900';
+        } else {
+          document.documentElement.classList.add('dark');
+          document.body.className = 'bg-slate-900 dark:bg-slate-900 text-white dark:text-white';
+        }
+      } catch (e) {
+        console.log('Theme detection error, defaulting to dark');
+        document.documentElement.classList.add('dark');
+        document.body.className = 'bg-slate-900 dark:bg-slate-900 text-white dark:text-white';
+      }
+    })();
+    
+    if (typeof process === 'undefined') {
+      window.process = { env: { NODE_ENV: 'production' } };
+    }
+    
+    let appReadyCalled = false;
+    let loadingTimeout = setTimeout(() => {
+      if (!appReadyCalled) {
+        console.warn('[0x1] App seems stuck, forcing hide loading screen');
+        const loading = document.getElementById('app-loading');
+        if (loading) loading.classList.add('loaded');
+      }
+    }, 10000);
+    
+    window.addEventListener('error', function(e) {
+      console.error('[0x1] Error:', e.error);
+      clearTimeout(loadingTimeout);
+      const loading = document.getElementById('app-loading');
+      if (loading && !appReadyCalled) loading.classList.add('loaded');
+    });
+    
+    window.appReady = function() {
+      if (appReadyCalled) return;
+      appReadyCalled = true;
+      clearTimeout(loadingTimeout);
+      const loading = document.getElementById('app-loading');
+      if (loading) loading.classList.add('loaded');
+    };
+  </script>
+  
+  <script src="/app.js" type="module"></script>
+</body>
+</html>`;
 
   await Bun.write(join(outputPath, 'index.html'), indexHtml);
+  logger.info(`📄 Production HTML generated with ${detectedFavicon ? 'detected' : 'fallback'} favicon`);
 }
 
 /**
@@ -898,7 +904,7 @@ async function initApp() {
       console.log('[0x1 App] 🧹 Cleaning up existing router state...');
       try {
         window.__0x1_ROUTER__.destroy?.();
-      } catch (e) {
+    } catch (e) {
         console.warn('[0x1 App] Router cleanup warning:', e);
       }
       delete window.__0x1_ROUTER__;
@@ -1027,7 +1033,7 @@ async function initApp() {
               e.preventDefault();
               if (window.router && typeof window.router.navigate === 'function') {
                 window.router.navigate('/');
-              } else {
+        } else {
                 window.location.href = '/';
               }
             }
@@ -1072,7 +1078,7 @@ async function initApp() {
               componentModule = await import(importPath);
               break; // Exit loop on success
               
-            } catch (error) {
+    } catch (error) {
               loadRetryCount++;
               console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
               
@@ -1097,7 +1103,7 @@ async function initApp() {
             console.log('[0x1 App] ✅ Route component resolved:', route.path);
             // NO EXTRA DELAYS - let router handle timing
             return componentModule.default(props);
-          } else {
+  } else {
             console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
@@ -1316,8 +1322,8 @@ export default function LayoutWrapped${pageComponentName}(props) {
         } catch (transpileError) {
           console.warn(`[Build] ⚠️ Transpilation failed for ${route.componentPath}:`, transpileError);
         }
-      }
-    } catch (error) {
+    }
+  } catch (error) {
       console.warn(`[Build] ⚠️ Failed to generate component ${route.componentPath}:`, error);
     }
   }
@@ -1398,4 +1404,57 @@ export default function LayoutWrapped${pageComponentName}(props) {
   }
   
   console.log(`[Build] 📦 Generated ${generatedCount} component files for static serving`);
+}
+
+/**
+ * Detect favicon in multiple locations and formats (same logic as dev server)
+ */
+function detectFavicon(
+  projectPath: string
+): { path: string; format: string; location: string } | null {
+  // Define formats and locations to check
+  const formats = [".ico", ".svg", ".png"];
+  const locations = ["public", "app"];
+
+  // Track all found favicons
+  const foundFavicons: Array<{
+    path: string;
+    format: string;
+    location: string;
+  }> = [];
+
+  // Check all combinations
+  for (const location of locations) {
+    for (const format of formats) {
+      const faviconName =
+        format === ".ico" ? "favicon.ico" : `favicon${format}`;
+      const faviconPath = join(projectPath, location, faviconName);
+
+      if (existsSync(faviconPath)) {
+        foundFavicons.push({
+          path: faviconPath,
+          format: format.substring(1), // Remove the dot
+          location,
+        });
+      }
+    }
+  }
+
+  if (foundFavicons.length === 0) {
+    return null;
+  }
+
+  // If multiple favicons found, log a warning
+  if (foundFavicons.length > 1) {
+    logger.warn(
+      `Multiple favicons detected: ${foundFavicons.map((f) => `${f.location}/${f.format}`).join(", ")}. Using ${foundFavicons[0].location}/favicon.${foundFavicons[0].format}`
+    );
+  } else {
+    logger.info(
+      `Using favicon from ${foundFavicons[0].location}/favicon.${foundFavicons[0].format}`
+    );
+  }
+
+  // Return the first one found (priority is defined by the order in locations and formats arrays)
+  return foundFavicons[0];
 }

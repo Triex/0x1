@@ -194,18 +194,14 @@ class Router {
       e.preventDefault();
       
       // Navigate immediately - no delays
-      console.log('[0x1 Router] Navigating to:', href);
       this.navigate(href, true);
     });
 
     // Initialize popstate handler for browser back/forward
     window.addEventListener('popstate', () => {
       const path = window.location.pathname;
-      console.log('[0x1 Router] Popstate navigation to:', path);
       this.navigate(path, false);
     });
-
-    console.log('[0x1 Router] Initialized with enhanced click handling');
   }
 
   // Add route with optional middleware - support both signatures
@@ -233,8 +229,6 @@ class Router {
   public async navigate(path: string, pushState: boolean = true): Promise<void> {
     if (this.isServer) return;
 
-    console.log('[0x1 Router] Navigating to path:', path, 'pushState:', pushState);
-
     // Update URL immediately if needed
     if (pushState && path !== this.currentPath) {
       window.history.pushState({}, '', path);
@@ -257,8 +251,6 @@ class Router {
         console.error('[0x1 Router] Error in route change listener:', error);
       }
     });
-
-    console.log('[0x1 Router] Navigation completed to:', path);
   }
 
   // Execute middleware chain
@@ -357,14 +349,12 @@ class Router {
 
     // CRITICAL FIX: Prevent multiple simultaneous renders with timeout safety
     if ((this as any)._isRendering) {
-      console.log('[0x1 Router] Already rendering, skipping...');
       return;
     }
     (this as any)._isRendering = true;
 
     // CRITICAL FIX: Cancel any pending Promise JSX operations from previous routes
     if ((this as any)._currentRouteId) {
-      console.log('[0x1 Router] Cancelling pending operations for previous route');
       // Mark previous route as cancelled
       (this as any)[`_cancelled_${(this as any)._currentRouteId}`] = true;
     }
@@ -405,8 +395,6 @@ class Router {
           const layoutChanged = this.layoutCache.layoutComponent !== layoutComponent;
           
           if (layoutChanged || !this.layoutCache.element || !this.layoutCache.contentSlot) {
-            console.log("[0x1 Router] 🏗️ Building new layout...");
-            
             // Clear old layout cache
             this.layoutCache = {};
             
@@ -449,12 +437,9 @@ class Router {
             // Replace entire root content with new layout
             rootElement.innerHTML = '';
             rootElement.appendChild(layoutElement);
-            console.log("[0x1 Router] New layout rendered to DOM");
           }
 
           // FAST PATH: Only update content inside the persistent layout
-          console.log("[0x1 Router] ⚡ Updating content only (layout persists)...");
-          
           if (!this.layoutCache.contentSlot) {
             console.error("[0x1 Router] Content slot not found in cached layout");
             clearTimeout(renderTimeout);
@@ -468,8 +453,6 @@ class Router {
             
             // CRITICAL FIX: Handle Promise JSX components properly
             if (componentResult && typeof componentResult === 'object' && typeof componentResult.then === 'function') {
-              console.log('[0x1 Router] Component returned Promise, waiting for resolution...');
-              
               // Show corner loading indicator
               const loadingIndicator = document.getElementById('app-loading');
               if (loadingIndicator) {
@@ -532,7 +515,6 @@ class Router {
           // CRITICAL: Replace content without touching the layout
           this.layoutCache.contentSlot.innerHTML = '';
           this.layoutCache.contentSlot.appendChild(pageElement);
-          console.log("[0x1 Router] Content updated successfully");
           
         } else {
           // No layout - direct rendering (clear any cached layout)
@@ -544,8 +526,6 @@ class Router {
             
             // CRITICAL FIX: Handle Promise JSX components properly
             if (componentResult && typeof componentResult === 'object' && typeof componentResult.then === 'function') {
-              console.log('[0x1 Router] Component returned Promise, waiting for resolution...');
-              
               // Show corner loading indicator
               const loadingIndicator = document.getElementById('app-loading');
               if (loadingIndicator) {
@@ -616,14 +596,12 @@ class Router {
             rootElement.appendChild(element);
           }
         }
-
-        console.log(`[0x1 Router] Navigation completed to: ${this.currentPath}`);
         
       } catch (error) {
         console.error("[0x1 Router] Error rendering route:", error);
       }
     } else {
-      // No match found - render 404 component (simplified to prevent issues)
+      // No match found - render 404 component
       console.warn(`[0x1 Router] No route found for: ${this.currentPath}`);
       
       // Always render 404 in content slot if layout exists, otherwise replace everything
@@ -701,7 +679,6 @@ class Router {
 
       // NOTE: Promise JSX is now handled at the route level, so this shouldn't receive Promises
       if (jsx && typeof jsx === 'object' && typeof jsx.then === 'function') {
-        console.warn('[0x1 Router] jsxToDom received Promise JSX - this should be handled at route level');
         // Return a simple placeholder
         const placeholder = document.createElement('div');
         placeholder.innerHTML = '<span style="color: #f59e0b;">⚠️ Promise JSX not resolved</span>';
@@ -962,11 +939,9 @@ class Router {
             
             if (componentId) {
               element.setAttribute("data-component-id", componentId);
-              console.log('[0x1 Router] Applied component metadata - ID:', componentId, 'to element:', jsx.type);
             }
             if (componentName) {
               element.setAttribute("data-component-name", componentName);
-              console.log('[0x1 Router] Applied component metadata - Name:', componentName, 'to element:', jsx.type);
             }
           }
 
@@ -1139,8 +1114,6 @@ class Router {
                 }
                 element.parentNode.replaceChild(newDomElement, element);
               }
-            } else {
-              console.warn(`[0x1 Router] 🐛 Component ${componentId} not found during update - may have been unmounted`);
             }
           } catch (e) {
             console.error("[0x1 Router] Error updating component:", e);

@@ -317,7 +317,7 @@ async function initApp() {
               componentModule = await import(importPath);
               break; // Success, exit retry loop
               
-            } catch (error) {
+  } catch (error) {
               loadRetryCount++;
               console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
               
