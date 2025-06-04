@@ -21,6 +21,20 @@
       "dest": "/app-bundle.js"
     },
     {
+      "src": "/app/(.*)\\.js",
+      "dest": "/app/$1.js",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
+    },
+    {
+      "src": "/components/(.*)\\.js",
+      "dest": "/components/$1.js",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
+    },
+    {
       "src": "/public/(.*)",
       "dest": "/public/$1"
     },
