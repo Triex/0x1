@@ -1176,7 +1176,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.235' // Use current version with caret for compatibility
+      "0x1": '^0.0.236' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

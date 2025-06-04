@@ -1054,8 +1054,8 @@ async function initApp() {
                 },
                 children: ['⚠️ Component loaded but has no default export']
               };
-        }
-      } catch (error) {
+      }
+    } catch (error) {
             console.error('[0x1 App] ❌ Route component error:', route.path, error);
             return {
               type: 'div',
@@ -1142,19 +1142,15 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
     'querystring', 'readline', 'repl', 'string_decoder', 'timers', 'tty', 'vm', 'zlib'
   ];
   
-  // Custom plugin to redirect 0x1 imports to browser-compatible version
-  const redirect0x1Plugin = {
-    name: '0x1-redirect',
-    setup(build: any) {
-      build.onResolve({ filter: /^0x1$/ }, (args: any) => {
-        // Redirect 0x1 imports to our browser-compatible entry point
-        return {
-          path: join(outputPath, 'node_modules', '0x1', 'index.js'),
-          external: true
-        };
-      });
-    }
-  };
+  // Check if layout file exists for auto-wrapping
+  const layoutPath = join(projectPath, 'app', 'layout.tsx');
+  const hasLayout = existsSync(layoutPath);
+  let layoutContent = '';
+  
+  if (hasLayout) {
+    layoutContent = await Bun.file(layoutPath).text();
+    console.log(`[Build] 📋 Found layout.tsx - will auto-wrap all pages with RootLayout`);
+  }
   
   // Generate component files for each route
   for (const route of routes) {
@@ -1167,6 +1163,40 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
       if (existsSync(sourcePath)) {
         // Read source code and transform 0x1 imports for browser compatibility
         let sourceCode = await Bun.file(sourcePath).text();
+        
+        // Check if this is a page component (in app directory) and has layout
+        const isPageComponent = sourceFile.startsWith('app/') && sourceFile.endsWith('/page.tsx');
+        
+        if (isPageComponent && hasLayout) {
+          // Auto-wrap page component with layout like Next.js does
+          console.log(`[Build] 🎯 Auto-wrapping page with layout: ${sourceFile}`);
+          
+          // Extract the page component function name
+          const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
+          const pageComponentName = defaultExportMatch ? defaultExportMatch[1] : 'PageComponent';
+          
+          // Create a new component that combines layout + page
+          // FIXED: Remove the export default from layout and page to avoid conflicts
+          // ALSO FIX: Remove CSS imports since they're handled separately
+          const layoutWithoutExport = layoutContent
+            .replace(/export\s+default\s+function\s+RootLayout/, 'function RootLayout')
+            .replace(/import\s+["']\.\/globals\.css["'];?\s*\n?/g, '') // Remove CSS imports
+            .replace(/import\s+["'][^"']*\.css["'];?\s*\n?/g, ''); // Remove any CSS imports
+          const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
+          
+          sourceCode = `// AUTO-GENERATED: Layout-wrapped page component
+${layoutWithoutExport}
+
+// Original page component
+${pageWithoutExport}
+
+// Export layout-wrapped version as default
+export default function LayoutWrapped${pageComponentName}(props) {
+  return RootLayout({ 
+    children: ${pageComponentName}(props) 
+  });
+}`;
+        }
         
         // ROBUST FIX: Transform "0x1" imports to browser-compatible paths
         sourceCode = sourceCode.replace(
@@ -1207,9 +1237,21 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
             .replace(/^/, () => {
               // Find JSX function name (like jsxDEV_7x81h0kn)
               const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
+              // Find Fragment function name (like Fragment_8vg9x3sq)
+              const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
+              
+              let imports = '';
               if (jsxMatch) {
                 const jsxFuncName = jsxMatch[0];
-                return `import { jsxDEV as ${jsxFuncName} } from "/0x1/jsx-runtime.js";\n`;
+                imports += `import { jsxDEV as ${jsxFuncName}`;
+                
+                if (fragmentMatch) {
+                  const fragmentFuncName = fragmentMatch[0];
+                  imports += `, Fragment as ${fragmentFuncName}`;
+                }
+                
+                imports += ' } from "/0x1/jsx-runtime.js";\n';
+                return imports;
               }
               return '';
             });
@@ -1229,7 +1271,7 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
           await Bun.write(outputComponentPath, cleanedContent);
           
           generatedCount++;
-          console.log(`[Build] ✅ Generated component: ${componentPath}`);
+          console.log(`[Build] ✅ Generated component: ${componentPath} ${isPageComponent && hasLayout ? '(with layout)' : ''}`);
         } finally {
     // Clean up temp file
           if (existsSync(tempPath)) {
@@ -1246,7 +1288,7 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
     }
   }
   
-  // Also handle commonly imported components
+  // Also handle commonly imported components (but don't wrap these with layout)
   const commonComponents = [
     'components/Button.tsx',
     'components/Counter.tsx', 
@@ -1300,9 +1342,21 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
             .replace(/^/, () => {
               // Find JSX function name (like jsxDEV_7x81h0kn)
               const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
+              // Find Fragment function name (like Fragment_8vg9x3sq)
+              const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
+              
+              let imports = '';
               if (jsxMatch) {
                 const jsxFuncName = jsxMatch[0];
-                return `import { jsxDEV as ${jsxFuncName} } from "/0x1/jsx-runtime.js";\n`;
+                imports += `import { jsxDEV as ${jsxFuncName}`;
+                
+                if (fragmentMatch) {
+                  const fragmentFuncName = fragmentMatch[0];
+                  imports += `, Fragment as ${fragmentFuncName}`;
+                }
+                
+                imports += ' } from "/0x1/jsx-runtime.js";\n';
+                return imports;
               }
               return '';
             });

@@ -3517,8 +3517,8 @@ async function analyzeComponentDependencies(componentPath) {
                   const endQuote = afterFrom.indexOf(quote, 1);
                   if (endQuote > 0) {
                     return afterFrom.substring(1, endQuote);
-                  }
-                }
+  }
+}
               }
               
               // Handle: import('package')
@@ -3530,7 +3530,7 @@ async function analyzeComponentDependencies(componentPath) {
                   const endQuote = afterParen.indexOf(quote, 1);
                   if (endQuote > 0) {
                     return afterParen.substring(1, endQuote);
-                  }
+  }
                 }
               }
               
@@ -3602,15 +3602,15 @@ async function analyzeComponentDependencies(componentPath) {
           if (trimmedLine.includes('<QueryClient') || trimmedLine.includes('QueryClient')) {
             packageNames.add('@tanstack/react-query');
             console.log('[0x1 App] 📦 Detected QueryClient usage -> @tanstack/react-query');
-          }
+    }
           if (trimmedLine.includes('<WagmiConfig') || trimmedLine.includes('WagmiConfig')) {
             packageNames.add('wagmi');
             console.log('[0x1 App] 📦 Detected WagmiConfig usage -> wagmi');
-          }
+    }
           if (trimmedLine.includes('<RainbowKitProvider') || trimmedLine.includes('RainbowKitProvider')) {
             packageNames.add('@rainbow-me/rainbowkit');
             console.log('[0x1 App] 📦 Detected RainbowKitProvider usage -> @rainbow-me/rainbowkit');
-          }
+    }
           
           // Detect hook usage patterns
           if (trimmedLine.includes('useAccount') || trimmedLine.includes('useConnect') || trimmedLine.includes('useDisconnect')) {
@@ -3620,7 +3620,7 @@ async function analyzeComponentDependencies(componentPath) {
           if (trimmedLine.includes('useQuery') || trimmedLine.includes('useMutation')) {
             packageNames.add('@tanstack/react-query');
             console.log('[0x1 App] 📦 Detected react-query hook usage -> @tanstack/react-query');
-          }
+    }
           if (trimmedLine.includes('useConnectModal')) {
             packageNames.add('@rainbow-me/rainbowkit');
             console.log('[0x1 App] 📦 Detected RainbowKit hook usage -> @rainbow-me/rainbowkit');
@@ -3635,7 +3635,7 @@ async function analyzeComponentDependencies(componentPath) {
         
       } catch (analysisError) {
         console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
-      }
+    }
   } catch (error) {
       console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
     }
@@ -3658,7 +3658,7 @@ async function loadPolyfillsSequentially(packageNames) {
   }
   
   console.log('[0x1 App] 🔍 Loading polyfills sequentially:', polyfillsNeeded);
-  
+    
   // Load critical polyfills first (order matters!)
   const criticalFirst = ['@tanstack/react-query', 'wagmi', 'viem', '@rainbow-me/rainbowkit'];
   const orderedPolyfills = [
@@ -3672,7 +3672,7 @@ async function loadPolyfillsSequentially(packageNames) {
       console.log('[0x1 App] ✅ Loaded polyfill:', polyfill);
   } catch (error) {
       console.error('[0x1 App] ❌ Failed to load polyfill:', polyfill, error);
-    }
+  }
   }
   
   console.log('[0x1 App] ✅ All polyfills loaded');
@@ -3714,7 +3714,7 @@ async function loadEssentialDependencies() {
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
-    
+      
     // Verify hooks are available
     if (typeof window !== 'undefined' && window.React && window.React.useState) {
       console.log('[0x1 App] ✅ React hooks verified');
@@ -3869,7 +3869,7 @@ async function loadComponent(componentPath) {
 async function loadLayoutWithDependencies() {
   try {
     console.log('[0x1 App] 🏗️ Loading layout with dependencies...');
-    
+  
     // Analyze layout dependencies first
     const layoutDeps = await analyzeComponentDependencies('/app/layout.js');
     console.log('[0x1 App] 📋 Layout dependencies:', Array.from(layoutDeps));
@@ -3885,7 +3885,7 @@ async function loadLayoutWithDependencies() {
     }
     } catch (error) {
     console.error('[0x1 App] ❌ Layout loading failed:', error);
-  }
+    }
   
   // Enhanced fallback
   console.log('[0x1 App] 📦 Using layout fallback');
@@ -3962,7 +3962,7 @@ async function loadComponentWithDependencies(componentPath) {
       console.log('[0x1 App] 📦 Component cached:', componentPath);
       return window.__0x1_componentCache.get(cacheKey);
     }
-    
+  
     console.log('[0x1 App] 🔄 Loading component with dependencies:', componentPath);
     
     // Analyze and load dependencies
