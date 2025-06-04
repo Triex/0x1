@@ -1391,3 +1391,6 @@ export function Redirect({ to }: { to: string }): any {
 
 // Re-export the Router class for backward compatibility
 export { Router };
+
+// Default export for Router class - CRITICAL FOR 0x1 FRAMEWORK
+export default Router;

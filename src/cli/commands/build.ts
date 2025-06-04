@@ -3,7 +3,7 @@
  * Builds the application for production - simplified to match dev server approach
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
@@ -78,7 +78,15 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
     // Step 5: Process CSS (with proper Tailwind v4 support like dev server)
     log.info('🎨 Processing CSS...');
-    await processCss(projectPath, outputPath, { minify });
+    const outputCssPath = join(outputPath, 'styles.css');
+    
+    // Try to process with proper Tailwind v4 PostCSS first
+    const tailwindSuccess = await processTailwindCss(projectPath, outputCssPath);
+    
+    if (!tailwindSuccess) {
+      logger.warn('⚠️ Tailwind processing failed, creating fallback...');
+      await createFallbackCss(outputCssPath, minify);
+    }
     log.info('✅ CSS processed');
 
     // Step 6: Generate HTML (same structure as dev server index.html)
@@ -435,115 +443,110 @@ async function copyStaticAssets(projectPath: string, outputPath: string): Promis
 }
 
 /**
- * Process CSS files (with proper Tailwind v4 support like dev server)
+ * Process CSS using PostCSS with Tailwind v4
  */
-async function processCss(
-  projectPath: string,
-  outputPath: string,
-  options: { minify: boolean }
-): Promise<void> {
-  const { minify } = options;
-
-  // Check for Tailwind config
-  const hasTailwind = existsSync(join(projectPath, 'tailwind.config.js')) ||
-    existsSync(join(projectPath, 'tailwind.config.ts'));
-
-  if (hasTailwind) {
-    // Import the same v4 handler used by dev server
-    const { tailwindV4Handler } = await import('../commands/utils/server/tailwind-v4.js');
+async function processCssWithPostCSS(inputPath: string, outputPath: string, projectPath: string): Promise<boolean> {
+  try {
+    logger.info('🎨 Processing CSS with Tailwind CSS v4 (PostCSS)...');
     
+    // Read input CSS
+    const inputCss = await Bun.file(inputPath).text();
+    
+    // PostCSS with Tailwind v4 processing
+    const postcss = await import('postcss');
+    
+    // Try to load the PostCSS plugin dynamically
+    let tailwindPlugin;
     try {
-      // Check if v4 is available
-      const isV4Available = await tailwindV4Handler.isAvailable(projectPath);
-      
-      if (isV4Available) {
-        logger.info("🌈 Using Tailwind CSS v4 for build");
-        
-        // Find the input file (same logic as dev server)
-        const inputFile = tailwindV4Handler.findInputFile(projectPath);
-        
-        if (inputFile && existsSync(inputFile)) {
-          // Use the actual input file content (app/globals.css)
-          const inputContent = readFileSync(inputFile, 'utf-8');
-          
-          // Process with Tailwind v4
-          const args = [
-            'bun', 'x', 'tailwindcss',
-            '-i', inputFile,
-            '-o', join(outputPath, 'styles.css')
-          ];
-
-          if (minify) {
-            args.push('--minify');
-          }
-
-          const result = Bun.spawnSync(args, {
-            cwd: projectPath,
-            env: process.env,
-            stdout: 'pipe',
-            stderr: 'pipe'
-          });
-
-          if (result.exitCode !== 0) {
-            const error = new TextDecoder().decode(result.stderr);
-            logger.warn(`Tailwind v4 processing failed: ${error}`);
-            
-            // Generate fallback with user's custom styles
-            const fallbackCss = tailwindV4Handler.generateMinimalFallback(inputContent);
-            await Bun.write(join(outputPath, 'styles.css'), fallbackCss);
-            logger.info("Generated fallback CSS with custom styles");
-  } else {
-            logger.info("✅ Tailwind CSS v4 processed successfully");
-          }
-          return;
-        }
-      }
-
-      // Fallback to v3 processing if v4 not available
-      logger.info("Using Tailwind CSS v3 fallback");
-      
-      // Process with Tailwind v3 (original logic)
-      const tempCssPath = join(projectPath, '.temp-tailwind-input.css');
-      const tailwindInput = `@tailwind base;\n@tailwind components;\n@tailwind utilities;`;
-      
-      await Bun.write(tempCssPath, tailwindInput);
-      
-      const args = [
-        'bun', 'x', 'tailwindcss',
-        '-i', tempCssPath,
-        '-o', join(outputPath, 'styles.css')
-      ];
-
-      if (minify) {
-        args.push('--minify');
-      }
-
-      const result = Bun.spawnSync(args, {
-        cwd: projectPath,
-        env: process.env,
-        stdout: 'pipe',
-        stderr: 'pipe'
-      });
-
-      // Clean up temp file
-      if (existsSync(tempCssPath)) {
-        try {
-          await unlink(tempCssPath);
-        } catch (error) {
-          // Ignore cleanup errors
-        }
-      }
-
-      if (result.exitCode !== 0) {
-        const error = new TextDecoder().decode(result.stderr);
-        throw new Error(`Tailwind processing failed: ${error}`);
-      }
+      const tailwindPostcss = await import('@tailwindcss/postcss');
+      tailwindPlugin = tailwindPostcss.default || tailwindPostcss;
     } catch (error) {
-      logger.warn(`Tailwind processing failed: ${error}`);
-      await createFallbackCss(outputPath, minify);
+      logger.error('❌ @tailwindcss/postcss plugin not found. Install it with: bun add @tailwindcss/postcss');
+      return false;
     }
-  } else {
-    await createFallbackCss(outputPath, minify);
+    
+    // Configure PostCSS processor
+    const processor = postcss.default([
+      tailwindPlugin()
+    ]);
+    
+    // Process the CSS
+    const result = await processor.process(inputCss, {
+      from: inputPath,
+      to: outputPath
+    });
+    
+    // Write the processed CSS
+    await Bun.write(outputPath, result.css);
+    
+    logger.success(`✅ CSS processed successfully: ${outputPath}`);
+    return true;
+    
+  } catch (error) {
+    logger.error(`❌ PostCSS processing failed: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Process Tailwind CSS for production builds
+ */
+async function processTailwindCss(projectPath: string, outputPath: string): Promise<boolean> {
+  try {
+    logger.info('🌈 Processing Tailwind CSS v4...');
+    
+    // Find the CSS input file (similar to dev server logic)
+    const possibleInputs = [
+      join(projectPath, 'app/globals.css'),
+      join(projectPath, 'src/globals.css'), 
+      join(projectPath, 'src/input.css'),
+      join(projectPath, 'src/index.css'),
+      join(projectPath, 'app.css'),
+      join(projectPath, 'styles.css')
+    ];
+    
+    let inputFile = null;
+    for (const file of possibleInputs) {
+      if (existsSync(file)) {
+        inputFile = file;
+        break;
+      }
+    }
+    
+    if (!inputFile) {
+      logger.warn('⚠️ No CSS input file found. Expected app/globals.css or similar.');
+      logger.info('Creating minimal CSS fallback...');
+      
+      const minimalCss = `@import "tailwindcss";
+
+/* Add your custom styles here */
+`;
+      await Bun.write(outputPath, minimalCss);
+      return true;
+    }
+    
+    logger.info(`📄 Found CSS input: ${inputFile.replace(projectPath, '.')}`);
+    
+    // Process CSS with PostCSS + Tailwind v4
+    const success = await processCssWithPostCSS(inputFile, outputPath, projectPath);
+    
+    if (success) {
+      // Verify the output contains actual Tailwind CSS
+      const outputContent = await Bun.file(outputPath).text();
+      if (outputContent.includes('@layer') || outputContent.includes('--color-') || outputContent.length > 1000) {
+        logger.success('✅ Tailwind CSS v4 processed successfully');
+        return true;
+      } else {
+        logger.warn('⚠️ Processed CSS seems minimal, this might indicate an issue');
+        return true; // Still return true as the processing didn't fail
+      }
+    }
+    
+    return false;
+    
+  } catch (error) {
+    logger.error(`❌ Tailwind CSS processing failed: ${error}`);
+    return false;
   }
 }
 
@@ -551,17 +554,19 @@ async function processCss(
  * Create fallback CSS file
  */
 async function createFallbackCss(outputPath: string, minify: boolean): Promise<void> {
-  const css = `/* 0x1 Framework - Default Styles */
- *, *::before, *::after { box-sizing: border-box; }
- body, h1, h2, h3, h4, p, figure, blockquote, dl, dd { margin: 0; }
- html:focus-within { scroll-behavior: smooth; }
- body { min-height: 100vh; text-rendering: optimizeSpeed; line-height: 1.6; font-family: system-ui, sans-serif; }
- img, picture { max-width: 100%; display: block; }
- input, button, textarea, select { font: inherit; }
- #app { padding: 1rem; max-width: 1200px; margin: 0 auto; }`;
+  // SIMPLIFIED: Just create a basic Tailwind import
+  const css = `@import "tailwindcss";
 
-  const finalCss = minify ? css.replace(/\s+/g, ' ').replace(/;\s/g, ';').trim() : css;
-  await Bun.write(join(outputPath, 'styles.css'), finalCss);
+/* Essential base styles */
+*, *::before, *::after { box-sizing: border-box; }
+body { line-height: 1.6; font-family: system-ui, sans-serif; }
+
+/* Add your custom styles here */
+`;
+
+  const finalCss = minify ? css.replace(/\s+/g, ' ').trim() : css;
+  await Bun.write(outputPath, finalCss);
+  logger.info(`📝 Created fallback CSS: ${outputPath}`);
 }
 
 /**
@@ -854,7 +859,7 @@ async function analyzeComponentDependencies(componentPath) {
                   // Remove the leading slash if present and add .js extension if needed
                   componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
                   console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
-                } else {
+        } else {
                   // Handle absolute component paths
                   componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
                 }
@@ -1160,55 +1165,73 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
       const sourcePath = join(projectPath, sourceFile);
       
       if (existsSync(sourcePath)) {
-        // Read source code and check for 0x1 imports
-        const sourceCode = await Bun.file(sourcePath).text();
+        // Read source code and transform 0x1 imports for browser compatibility
+        let sourceCode = await Bun.file(sourcePath).text();
         
-        // CRITICAL DECISION: If component imports from "0x1", skip build-time transpilation
-        // Let it load dynamically at runtime (same as dev server approach)
-        if (sourceCode.includes('from "0x1"') || sourceCode.includes("from '0x1'")) {
-          console.log(`[Build] ⏭️ Skipping component with 0x1 imports (will load at runtime): ${componentPath}`);
-          continue;
-        }
+        // ROBUST FIX: Transform "0x1" imports to browser-compatible paths
+        sourceCode = sourceCode.replace(
+          /from\s+["']0x1["']/g,
+          'from "/node_modules/0x1/index.js"'
+        );
         
-        // Create a temporary file with source
+        // Create a temporary file with transformed source
         const tempPath = sourcePath + '.temp';
         await Bun.write(tempPath, sourceCode);
         
         try {
-          // Transpile using Bun with browser-safe configuration and custom plugin
-          const transpiled = await Bun.build({
-            entrypoints: [tempPath],
-            format: 'esm',
+          // Use Bun's transpiler instead of Bun.build for proper JSX transformation
+          const transpiler = new Bun.Transpiler({
+            loader: 'tsx',
             target: 'browser',
-            minify: false,
-            splitting: false,
-            sourcemap: 'none',
             define: {
-              'process.env.NODE_ENV': JSON.stringify('production'),
+              'process.env.NODE_ENV': '"production"',
               'global': 'globalThis'
             },
-            external: browserExternals,
-            plugins: [redirect0x1Plugin], // Use our custom plugin
+            tsconfig: {
+              compilerOptions: {
+                jsx: 'react-jsx',
+                jsxImportSource: '/0x1/jsx-runtime.js'
+              }
+            }
           });
           
-          if (transpiled.success && transpiled.outputs.length > 0) {
-            // Get the transpiled content
-            let transpiledContent = '';
-            for (const output of transpiled.outputs) {
-              transpiledContent += await output.text();
-            }
-            
-            // Write the component file manually
-            const outputComponentPath = join(outputPath, componentPath);
-            const outputComponentDir = dirname(outputComponentPath);
-            await mkdir(outputComponentDir, { recursive: true });
-            await Bun.write(outputComponentPath, transpiledContent);
-            
-            generatedCount++;
-            console.log(`[Build] ✅ Generated component: ${componentPath}`);
-          }
+          // Transform JSX to JavaScript function calls
+          const transpiledContent = await transpiler.transform(sourceCode);
+          
+          // CRITICAL FIX: Post-process the transpiled content
+          const processedContent = transpiledContent
+            // Fix import paths - add .js extensions for local components
+            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "../components/$1.js"')
+            .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "./$1.js"')
+            // Extract JSX function name and add runtime import
+            .replace(/^/, () => {
+              // Find JSX function name (like jsxDEV_7x81h0kn)
+              const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
+              if (jsxMatch) {
+                const jsxFuncName = jsxMatch[0];
+                return `import { jsxDEV as ${jsxFuncName} } from "/0x1/jsx-runtime.js";\n`;
+              }
+              return '';
+            });
+          
+          // Clean up temp file references and malformed exports
+          const cleanedContent = processedContent
+            .replace(/\/\/[^\n]*\.temp[^\n]*\n/g, '') // Remove temp file comments
+            .replace(/var\s+[^=]+=\s*["'][^"']*\.temp["'];?\s*\n/g, '') // Remove temp variable declarations
+            .replace(/export\s*{\s*[^}]*_default[^}]*};?\s*\n/g, '') // Remove malformed exports
+            .replace(/["'][^"']*\.temp["']/g, '""') // Replace temp file references with empty strings
+            .replace(/\n\n+/g, '\n'); // Clean up extra newlines
+          
+          // Write the component file
+          const outputComponentPath = join(outputPath, componentPath);
+          const outputComponentDir = dirname(outputComponentPath);
+          await mkdir(outputComponentDir, { recursive: true });
+          await Bun.write(outputComponentPath, cleanedContent);
+          
+          generatedCount++;
+          console.log(`[Build] ✅ Generated component: ${componentPath}`);
         } finally {
-          // Clean up temp file
+    // Clean up temp file
           if (existsSync(tempPath)) {
             try {
               await unlink(tempPath);
@@ -1217,8 +1240,8 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
             }
           }
         }
-      }
-    } catch (error) {
+    }
+  } catch (error) {
       console.warn(`[Build] ⚠️ Failed to generate component ${route.componentPath}:`, error);
     }
   }
@@ -1235,52 +1258,71 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
     const sourcePath = join(projectPath, componentFile);
     if (existsSync(sourcePath)) {
       try {
-        // Read source code and check for 0x1 imports
-        const sourceCode = await Bun.file(sourcePath).text();
+        // Read source code and transform 0x1 imports for browser compatibility  
+        let sourceCode = await Bun.file(sourcePath).text();
         
-        // CRITICAL DECISION: If component imports from "0x1", skip build-time transpilation
-        // Let it load dynamically at runtime (same as dev server approach)
-        if (sourceCode.includes('from "0x1"') || sourceCode.includes("from '0x1'")) {
-          console.log(`[Build] ⏭️ Skipping component with 0x1 imports (will load at runtime): ${componentFile}`);
-          continue;
-        }
+        // ROBUST FIX: Transform "0x1" imports to browser-compatible paths
+        sourceCode = sourceCode.replace(
+          /from\s+["']0x1["']/g,
+          'from "/node_modules/0x1/index.js"'
+        );
         
-        // Create a temporary file with source
+        // Create a temporary file with transformed source
         const tempPath = sourcePath + '.temp';
         await Bun.write(tempPath, sourceCode);
         
         try {
-          const transpiled = await Bun.build({
-            entrypoints: [tempPath],
-            format: 'esm', 
+          // Use Bun's transpiler instead of Bun.build for proper JSX transformation
+          const transpiler = new Bun.Transpiler({
+            loader: 'tsx',
             target: 'browser',
-            minify: false,
-            splitting: false,
-            sourcemap: 'none',
             define: {
-              'process.env.NODE_ENV': JSON.stringify('production'),
+              'process.env.NODE_ENV': '"production"',
               'global': 'globalThis'
             },
-            external: browserExternals,
-            plugins: [redirect0x1Plugin], // Use our custom plugin
+            tsconfig: {
+              compilerOptions: {
+                jsx: 'react-jsx',
+                jsxImportSource: '/0x1/jsx-runtime.js'
+              }
+            }
           });
           
-          if (transpiled.success && transpiled.outputs.length > 0) {
-            // Get the transpiled content
-            let transpiledContent = '';
-            for (const output of transpiled.outputs) {
-              transpiledContent += await output.text();
-            }
-            
-            // Write the component file manually
-            const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
-            const outputComponentDir = dirname(outputComponentPath);
-            await mkdir(outputComponentDir, { recursive: true });
-            await Bun.write(outputComponentPath, transpiledContent);
-            
-            generatedCount++;
-            console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
-          }
+          // Transform JSX to JavaScript function calls
+          const transpiledContent = await transpiler.transform(sourceCode);
+          
+          // CRITICAL FIX: Post-process the transpiled content
+          const processedContent = transpiledContent
+            // Fix import paths - add .js extensions for local components
+            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "../components/$1.js"')
+            .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "./$1.js"')
+            // Extract JSX function name and add runtime import
+            .replace(/^/, () => {
+              // Find JSX function name (like jsxDEV_7x81h0kn)
+              const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
+              if (jsxMatch) {
+                const jsxFuncName = jsxMatch[0];
+                return `import { jsxDEV as ${jsxFuncName} } from "/0x1/jsx-runtime.js";\n`;
+              }
+              return '';
+            });
+          
+          // Clean up temp file references and malformed exports
+          const cleanedContent = processedContent
+            .replace(/\/\/[^\n]*\.temp[^\n]*\n/g, '') // Remove temp file comments
+            .replace(/var\s+[^=]+=\s*["'][^"']*\.temp["'];?\s*\n/g, '') // Remove temp variable declarations
+            .replace(/export\s*{\s*[^}]*_default[^}]*};?\s*\n/g, '') // Remove malformed exports
+            .replace(/["'][^"']*\.temp["']/g, '""') // Replace temp file references with empty strings
+            .replace(/\n\n+/g, '\n'); // Clean up extra newlines
+          
+          // Write the component file
+          const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
+          const outputComponentDir = dirname(outputComponentPath);
+          await mkdir(outputComponentDir, { recursive: true });
+          await Bun.write(outputComponentPath, cleanedContent);
+          
+          generatedCount++;
+          console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
         } finally {
           // Clean up temp file
           if (existsSync(tempPath)) {
