@@ -197,15 +197,19 @@ async function copy0x1FrameworkFiles(outputPath: string): Promise<void> {
   const frameworkRoot = resolve(dirname(currentFile), '..', '..');
   const frameworkDistPath = join(frameworkRoot, 'dist');
   
+  // CRITICAL FIX: Use the updated 0x1-router as single source of truth
+  const routerSourcePath = join(frameworkRoot, '0x1-router', 'dist', 'index.js');
+  
   const frameworkFiles = [
     { src: 'jsx-runtime.js', dest: 'jsx-runtime.js' },
     { src: 'jsx-dev-runtime.js', dest: 'jsx-dev-runtime.js' },
-    { src: 'core/router.js', dest: 'router.js' },
     { src: 'core/hooks.js', dest: 'hooks.js' },
     { src: 'index.js', dest: 'index.js' }
   ];
   
   let copiedCount = 0;
+  
+  // Copy standard framework files
   for (const { src, dest } of frameworkFiles) {
     const srcPath = join(frameworkDistPath, src);
     const destPath = join(framework0x1Dir, dest);
@@ -214,6 +218,25 @@ async function copy0x1FrameworkFiles(outputPath: string): Promise<void> {
       const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
       copiedCount++;
+    }
+  }
+  
+  // CRITICAL: Copy the updated router from 0x1-router package
+  if (existsSync(routerSourcePath)) {
+    const routerContent = await Bun.file(routerSourcePath).text();
+    const routerDestPath = join(framework0x1Dir, 'router.js');
+    await Bun.write(routerDestPath, routerContent);
+    copiedCount++;
+    logger.info('✅ Using updated 0x1-router as single source of truth');
+  } else {
+    logger.error(`❌ Updated 0x1-router not found at: ${routerSourcePath}`);
+    // Fallback to old router if new one doesn't exist
+    const fallbackRouterPath = join(frameworkDistPath, 'core/router.js');
+    if (existsSync(fallbackRouterPath)) {
+      const content = await Bun.file(fallbackRouterPath).text();
+      await Bun.write(join(framework0x1Dir, 'router.js'), content);
+      copiedCount++;
+      logger.warn('⚠️ Using fallback router - rebuild 0x1-router for latest fixes');
     }
   }
   
@@ -1047,6 +1070,7 @@ async function initApp() {
               // Use cache-busting query parameter for retries only
               const importPath = route.componentPath + (loadRetryCount > 0 ? '?retry=' + loadRetryCount : '');
               componentModule = await import(importPath);
+              break; // Exit loop on success
               
             } catch (error) {
               loadRetryCount++;
@@ -1060,36 +1084,20 @@ async function initApp() {
                     className: 'p-8 text-center',
                     style: 'color: #ef4444;' 
                   },
-                  children: ['❌ Failed to load component after retries: ' + error.message]
+                  children: ['❌ Failed to load component: ' + route.path]
                 };
               }
               
-              // Wait before retrying
-              await new Promise(resolve => setTimeout(resolve, 500 * loadRetryCount));
+              // Short retry delay
+              await new Promise(resolve => setTimeout(resolve, 100 * loadRetryCount));
             }
           }
           
           if (componentModule && componentModule.default) {
             console.log('[0x1 App] ✅ Route component resolved:', route.path);
-            
-            // CRITICAL: Ensure DOM is ready before rendering new component
-            await new Promise(resolve => {
-              if (document.readyState === 'complete') {
-                resolve();
-              } else {
-                const onReady = () => {
-                  document.removeEventListener('readystatechange', onReady);
-                  resolve();
-                };
-                document.addEventListener('readystatechange', onReady);
-              }
-            });
-            
-            // Additional small delay to ensure DOM is fully stable
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
+            // NO EXTRA DELAYS - let router handle timing
             return componentModule.default(props);
-        } else {
+          } else {
             console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
@@ -1097,7 +1105,7 @@ async function initApp() {
                 className: 'p-8 text-center',
                 style: 'color: #f59e0b;' 
               },
-              children: ['⚠️ Component loaded but has no default export']
+              children: ['⚠️ Component loaded but has no default export: ' + route.path]
             };
           }
         };
@@ -1118,23 +1126,16 @@ async function initApp() {
     // Step 4: Start router with proper DOM synchronization
     console.log('[0x1 App] 🎯 Starting router...');
     
-    // Ensure DOM is completely ready before starting router
-    await new Promise(resolve => {
-      if (document.readyState === 'complete') {
-        resolve();
-  } else {
-        const onReady = () => {
-          document.removeEventListener('readystatechange', onReady);
-          resolve();
-        };
-        document.addEventListener('readystatechange', onReady);
-      }
-    });
+    // Simple DOM readiness check
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => {
+        document.addEventListener('DOMContentLoaded', resolve, { once: true });
+      });
+    }
     
     router.init();
     
-    // Step 5: Navigate to current path with additional delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Navigate to current path immediately
     router.navigate(window.location.pathname, false);
     
     // Setup cleanup function for future use
@@ -1144,7 +1145,7 @@ async function initApp() {
       }
     };
     
-    // Hide loading indicator
+    // Hide loading indicator immediately
     if (typeof window.appReady === 'function') {
       window.appReady();
     }
@@ -1159,7 +1160,7 @@ async function initApp() {
       appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
     }
     
-    // Hide loading indicator even on error
+    // Hide loading indicator immediately
     if (typeof window.appReady === 'function') {
       window.appReady();
     }
