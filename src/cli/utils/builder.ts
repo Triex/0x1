@@ -81,7 +81,7 @@ export async function generateSophisticatedAppJs(projectPath: string, outputPath
     }
 
     // Generate the EXACT SAME sophisticated app.js as dev server
-    const appScript = `// 0x1 Framework App Bundle - PRODUCTION-READY with SEQUENCED LOADING
+    const appScript = `// 0x1 Framework App Bundle - PRODUCTION-READY with ENHANCED STABILITY
 console.log('[0x1 App] Starting production-ready app with proper sequencing...');
 
 // Server-discovered routes  
@@ -89,14 +89,13 @@ const serverRoutes = ${routesJson};
 
 // ===== PRODUCTION-READY POLYFILL SYSTEM =====
 const polyfillCache = new Map();
-const polyfillQueue = new Map(); // Prevent duplicate loading
+const polyfillQueue = new Map();
 
 async function loadPolyfillOnDemand(polyfillName) {
   if (polyfillCache.has(polyfillName)) {
     return polyfillCache.get(polyfillName);
   }
   
-  // Check if already being loaded
   if (polyfillQueue.has(polyfillName)) {
     return polyfillQueue.get(polyfillName);
   }
@@ -107,7 +106,7 @@ async function loadPolyfillOnDemand(polyfillName) {
     try {
       const polyfillScript = document.createElement('script');
       polyfillScript.type = 'module';
-      polyfillScript.src = '/node_modules/' + polyfillName + '?t=' + Date.now();
+      polyfillScript.src = '/node_modules/' + polyfillName;
       
       await new Promise((resolve, reject) => {
         polyfillScript.onload = resolve;
@@ -115,29 +114,11 @@ async function loadPolyfillOnDemand(polyfillName) {
         document.head.appendChild(polyfillScript);
       });
       
-      // Wait for polyfill to be available globally
-      let retries = 0;
-      const maxRetries = 20;
-      
-      while (retries < maxRetries) {
-        const isAvailable = checkPolyfillAvailability(polyfillName);
-        if (isAvailable) {
-          console.log('[0x1 App] ✅ Polyfill verified:', polyfillName);
-          break;
-        }
-        
-        retries++;
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-      if (retries >= maxRetries) {
-        console.warn('[0x1 App] ⚠️ Polyfill verification timeout:', polyfillName);
-      }
-      
+      console.log('[0x1 App] ✅ Polyfill loaded:', polyfillName);
       return true;
     } catch (error) {
       console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
-      throw error;
+      return false;
     }
   })();
   
@@ -152,253 +133,156 @@ async function loadPolyfillOnDemand(polyfillName) {
   }
 }
 
-function checkPolyfillAvailability(polyfillName) {
-  const checks = {
-    '@rainbow-me/rainbowkit': () => 
-      window.rainbowkit || window.RainbowKit || window['@rainbow-me/rainbowkit'] ||
-      (window.ConnectButton && typeof window.ConnectButton === 'function'),
-    'wagmi': () => 
-      window.wagmi || window.WAGMI || window.useAccount,
-    'viem': () => 
-      window.viem || window.createPublicClient,
-    '@tanstack/react-query': () => 
-      window.ReactQuery || window.useQuery || window['@tanstack/react-query'],
-    'zustand': () => 
-      window.zustand || window.create
-  };
-  
-  const checker = checks[polyfillName];
-  return checker ? checker() : true; // Assume available if no specific check
-}
-
-// ===== PRODUCTION-READY DEPENDENCY ANALYSIS =====
-async function analyzeComponentDependencies(componentPath) {
-  const packageNames = new Set();
-  const analyzedFiles = new Set(); // Prevent infinite recursion
-  
-  async function analyzeFile(filePath, depth = 0) {
-    // Prevent infinite recursion and limit depth
-    if (analyzedFiles.has(filePath) || depth > 3) {
-      return;
-    }
-    analyzedFiles.add(filePath);
-    
-    try {
-      console.log('[0x1 App] 🔍 Analyzing dependencies for:', filePath, 'depth:', depth);
-      
-      const response = await fetch(filePath + '?source=true&t=' + Date.now());
-      if (!response.ok) return;
-      
-      const sourceCode = await response.text();
-      const localComponentPaths = [];
-      
-      try {
-        // ULTIMATE STRING-BASED DETECTION - No regex, just string operations
-        const lines = sourceCode.split('\\n');
-        
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          
-          // Detect import statements
-          if (trimmedLine.startsWith('import ') && (trimmedLine.includes(' from ') || trimmedLine.includes('import('))) {
-            // Extract package name from import statements
-            const extractPackageFromImport = (importLine) => {
-              // Handle: import ... from 'package'
-              if (importLine.includes(' from ')) {
-                const fromIndex = importLine.lastIndexOf(' from ');
-                const afterFrom = importLine.substring(fromIndex + 6).trim();
-                const quote = afterFrom.charAt(0);
-                if (quote === '"' || quote === "'") {
-                  const endQuote = afterFrom.indexOf(quote, 1);
-                  if (endQuote > 0) {
-                    return afterFrom.substring(1, endQuote);
-                  }
-                }
-              }
-              
-              // Handle: import('package')
-              const importParenIndex = importLine.indexOf('import(');
-              if (importParenIndex >= 0) {
-                const afterParen = importLine.substring(importParenIndex + 7);
-                const quote = afterParen.trim().charAt(0);
-                if (quote === '"' || quote === "'") {
-                  const endQuote = afterParen.indexOf(quote, 1);
-                  if (endQuote > 0) {
-                    return afterParen.substring(1, endQuote);
-                  }
-                }
-              }
-              
-              return null;
-            };
-            
-            const packageName = extractPackageFromImport(trimmedLine);
-            if (packageName) {
-              // Check if it's a local component (starts with ./ or ../ or absolute path)
-              if (packageName.startsWith('./') || packageName.startsWith('../') || packageName.startsWith('/')) {
-                // Convert relative path to absolute component path for analysis
-                let componentPath;
-                if (packageName.startsWith('./') || packageName.startsWith('../')) {
-                  // TRULY DYNAMIC: Resolve relative path based on current file location
-                  const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
-                  const resolvedPath = new URL(packageName, 'file://' + currentDir + '/').pathname;
-                  // Remove the leading slash if present and add .js extension if needed
-                  componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
-                  console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
-                } else {
-                  // Handle absolute component paths
-                  componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
-                }
-                
-                localComponentPaths.push(componentPath);
-                console.log('[0x1 App] 📄 Found local component import:', packageName, '->', componentPath);
-              } else if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
-                // It's an external package
-                const rootPackage = packageName.startsWith('@') 
-                  ? packageName.split('/').slice(0, 2).join('/')
-                  : packageName.split('/')[0];
-                
-                if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
-                  packageNames.add(rootPackage);
-                  console.log('[0x1 App] 📦 Detected import:', rootPackage);
-                }
-              }
-            }
-          }
-          
-          // Detect component usage patterns for better dependency detection
-          if (trimmedLine.includes('<ConnectButton')) {
-            packageNames.add('@rainbow-me/rainbowkit');
-            console.log('[0x1 App] 📦 Detected ConnectButton usage -> @rainbow-me/rainbowkit');
-          }
-          if (trimmedLine.includes('useAccount') || trimmedLine.includes('useConnect')) {
-            packageNames.add('wagmi');
-            console.log('[0x1 App] 📦 Detected wagmi hook usage -> wagmi');
-          }
-        }
-        
-        // RECURSIVE ANALYSIS: Analyze imported local components
-        for (const localPath of localComponentPaths) {
-          console.log('[0x1 App] 🔄 Recursively analyzing:', localPath);
-          await analyzeFile(localPath, depth + 1);
-        }
-        
-      } catch (analysisError) {
-        console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
-      }
-    } catch (error) {
-      console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
-    }
-  }
-  
-  // Start analysis with the main component
-  await analyzeFile(componentPath, 0);
-  
-  console.log('[0x1 App] 🔍 RECURSIVE Total dependencies found:', Array.from(packageNames));
-  return packageNames;
-}
-
-// ===== MAIN INITIALIZATION (SAME AS DEV SERVER) =====
+// ===== MAIN INITIALIZATION WITH ENHANCED STABILITY =====
 async function initApp() {
   try {
     console.log('[0x1 App] 🚀 Starting production-ready initialization...');
     
-    // Step 1: Show minimal loading indicator
-    console.log('[0x1 App] 🚀 INSTANT: Minimal loading indicator');
+    // CRITICAL: Clear any existing router state and timers
+    if (window.__0x1_ROUTER__) {
+      console.log('[0x1 App] 🧹 Cleaning up existing router state...');
+      try {
+        window.__0x1_ROUTER__.destroy?.();
+      } catch (e) {
+        console.warn('[0x1 App] Router cleanup warning:', e);
+      }
+      delete window.__0x1_ROUTER__;
+      delete window.__0x1_router;
+      delete window.router;
+    }
     
-    // Step 2: Load essential dependencies
+    // Clear any existing timers and callbacks
+    if (window.__0x1_cleanup) {
+      console.log('[0x1 App] 🧹 Running existing cleanup...');
+      try {
+        window.__0x1_cleanup();
+      } catch (e) {
+        console.warn('[0x1 App] Cleanup warning:', e);
+      }
+    }
+    
+    // Clear any existing app content and ensure clean state
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '';
+      // Force a DOM flush
+      appElement.offsetHeight;
+    }
+    
+    // Step 1: Load essential dependencies with retry logic
     console.log('[0x1 App] 🎯 Loading essential dependencies...');
     
-    // Import JSX runtime first
-    const { jsx } = await import('/0x1/jsx-runtime.js');
-    if (!jsx) {
-      throw new Error('JSX runtime not available');
+    let hooksLoaded = false;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (!hooksLoaded && retryCount < maxRetries) {
+      try {
+        const hooksScript = document.createElement('script');
+        hooksScript.type = 'module';
+        hooksScript.src = '/0x1/hooks.js' + (retryCount > 0 ? '?retry=' + retryCount : '');
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Hooks loading timeout'));
+          }, 5000);
+          
+          hooksScript.onload = () => {
+            clearTimeout(timeout);
+            console.log('[0x1 App] ✅ Hooks ready');
+            hooksLoaded = true;
+            resolve();
+          };
+          hooksScript.onerror = (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          };
+          document.head.appendChild(hooksScript);
+        });
+      } catch (error) {
+        retryCount++;
+        console.warn('[0x1 App] ⚠️ Hooks loading attempt ' + retryCount + ' failed:', error);
+        if (retryCount >= maxRetries) {
+          throw new Error('Failed to load hooks after ' + maxRetries + ' attempts: ' + error.message);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
     }
     
-    // Import hooks system
-    const hooksModule = await import('/0x1/hooks.js');
-    if (!hooksModule) {
-      throw new Error('Hooks system not available');
-    }
-    
-    console.log('[0x1 App] ✅ Hooks ready');
-    
-    // Verify React hooks are available
-    if (!window.React || !window.React.useState) {
-      throw new Error('React hooks not available');
-    }
-    console.log('[0x1 App] ✅ React hooks verified');
-    
-    // Step 3: Create router
+    // Step 2: Create router with enhanced error handling
     console.log('[0x1 App] Creating router...');
     
-    const routerModule = await import('/0x1/router.js');
+    let routerModule;
+    retryCount = 0;
+    
+    while (!routerModule && retryCount < maxRetries) {
+      try {
+        routerModule = await import('/0x1/router.js' + (retryCount > 0 ? '?retry=' + retryCount : ''));
+      } catch (error) {
+        retryCount++;
+        console.warn('[0x1 App] ⚠️ Router loading attempt ' + retryCount + ' failed:', error);
+        if (retryCount >= maxRetries) {
+          throw new Error('Failed to load router after ' + maxRetries + ' attempts: ' + error.message);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
+    
     const { Router } = routerModule;
     
     if (typeof Router !== 'function') {
       throw new Error('Router class not found in router module');
     }
     
-    const appElement = document.getElementById('app');
     if (!appElement) {
       throw new Error('App container element not found');
     }
     
     // Create beautiful 404 component
-    const notFoundComponent = (props) => {
-      console.log('[0x1 Router] 🏠 Rendering beautiful 404 page for:', window.location.pathname);
-      
-      return {
-        type: 'div',
-        props: { 
-          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+    const notFoundComponent = () => ({
+      type: 'div',
+      props: { 
+        className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+      },
+      children: [
+        {
+          type: 'h1',
+          props: { className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4' },
+          children: ['404'],
+          key: null
         },
-        children: [
-          {
-            type: 'h1',
-            props: {
-              className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4'
-            },
-            children: ['404'],
-            key: null
-          },
-          {
-            type: 'h2',
-            props: {
-              className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4'
-            },
-            children: ['Page Not Found'],
-            key: null
-          },
-          {
-            type: 'p',
-            props: {
-              className: 'text-lg text-gray-600 dark:text-gray-300 mb-8'
-            },
-            children: ["The page you're looking for doesn't exist or has been moved."],
-            key: null
-          },
-          {
-            type: 'a',
-            props: {
-              href: '/',
-              className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
-              onClick: (e) => {
-                e.preventDefault();
-                if (window.router && typeof window.router.navigate === 'function') {
-                  window.router.navigate('/');
-                } else {
-                  window.location.href = '/';
-                }
+        {
+          type: 'h2',
+          props: { className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4' },
+          children: ['Page Not Found'],
+          key: null
+        },
+        {
+          type: 'p',
+          props: { className: 'text-lg text-gray-600 dark:text-gray-300 mb-8' },
+          children: ['The page you are looking for does not exist.'],
+          key: null
+        },
+        {
+          type: 'a',
+          props: {
+            href: '/',
+            className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+            onClick: (e) => {
+              e.preventDefault();
+              if (window.router && typeof window.router.navigate === 'function') {
+                window.router.navigate('/');
+              } else {
+                window.location.href = '/';
               }
-            },
-            children: ['🏠 Back to Home'],
-            key: null
-          }
-        ],
-        key: null
-      };
-    };
+            }
+          },
+          children: ['🏠 Back to Home'],
+          key: null
+        }
+      ],
+      key: null
+    });
     
     const router = new Router({
       rootElement: appElement,
@@ -414,69 +298,74 @@ async function initApp() {
     
     console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
     
-    // Step 4: Register routes with proper sequencing
-    console.log('[0x1 App] 📝 Registering routes with proper sequencing...');
+    // Step 3: Register routes with enhanced error handling and DOM mounting sync
+    console.log('[0x1 App] 📝 Registering routes...');
     
-    // Load layout with dependencies first
-    console.log('[0x1 App] 🏗️ Loading layout with dependencies...');
-    const layoutDeps = await analyzeComponentDependencies('/app/layout.js');
-    console.log('[0x1 App] 📋 Layout dependencies:', Array.from(layoutDeps));
-    
-    // Load polyfills sequentially
-    console.log('[0x1 App] 🔍 Loading polyfills sequentially:', Array.from(layoutDeps));
-    for (const dep of layoutDeps) {
-      console.log('[0x1 App] Loading polyfill:', dep);
-      try {
-        await loadPolyfillOnDemand(dep);
-      } catch (error) {
-        console.warn('[0x1 App] ⚠️ Polyfill loading failed:', dep, error);
-      }
-    }
-    
-    // Now register each route
     for (const route of serverRoutes) {
       try {
         const routeComponent = async (props) => {
           console.log('[0x1 App] 🔍 Route component called for:', route.path);
           
-          try {
-            // Analyze and load dependencies
-            const componentDeps = await analyzeComponentDependencies(route.componentPath);
-            
-            if (componentDeps.size > 0) {
-              console.log('[0x1 App] 📦 Loading dependencies for', route.path, ':', Array.from(componentDeps));
+          let componentModule;
+          let loadRetryCount = 0;
+          const maxLoadRetries = 3;
+          
+          while (!componentModule && loadRetryCount < maxLoadRetries) {
+            try {
+              // Use cache-busting query parameter for retries only
+              const importPath = route.componentPath + (loadRetryCount > 0 ? '?retry=' + loadRetryCount : '');
+              componentModule = await import(importPath);
               
-              for (const dep of componentDeps) {
-                await loadPolyfillOnDemand(dep);
+            } catch (error) {
+              loadRetryCount++;
+              console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
+              
+              if (loadRetryCount >= maxLoadRetries) {
+                console.error('[0x1 App] ❌ Route component error after all retries:', route.path, error);
+                return {
+                  type: 'div',
+                  props: { 
+                    className: 'p-8 text-center',
+                    style: 'color: #ef4444;' 
+                  },
+                  children: ['❌ Failed to load component after retries: ' + error.message]
+                };
               }
+              
+              // Wait before retrying
+              await new Promise(resolve => setTimeout(resolve, 500 * loadRetryCount));
             }
+          }
+          
+          if (componentModule && componentModule.default) {
+            console.log('[0x1 App] ✅ Route component resolved:', route.path);
             
-            // Load the component
-            const componentModule = await import(route.componentPath + '?t=' + Date.now());
+            // CRITICAL: Ensure DOM is ready before rendering new component
+            await new Promise(resolve => {
+              if (document.readyState === 'complete') {
+                resolve();
+              } else {
+                const onReady = () => {
+                  document.removeEventListener('readystatechange', onReady);
+                  resolve();
+                };
+                document.addEventListener('readystatechange', onReady);
+              }
+            });
             
-            if (componentModule && componentModule.default) {
-              console.log('[0x1 App] ✅ Route component resolved:', route.path);
-              return componentModule.default(props);
-            } else {
-              console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
-              return {
-                type: 'div',
-                props: { 
-                  className: 'p-8 text-center',
-                  style: 'color: #f59e0b;' 
-                },
-                children: ['⚠️ Component loaded but has no default export']
-              };
-            }
-          } catch (error) {
-            console.error('[0x1 App] ❌ Route component error:', route.path, error);
+            // Additional small delay to ensure DOM is fully stable
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            return componentModule.default(props);
+          } else {
+            console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
               props: { 
                 className: 'p-8 text-center',
-                style: 'color: #ef4444;' 
+                style: 'color: #f59e0b;' 
               },
-              children: ['❌ Error loading component: ' + error.message]
+              children: ['⚠️ Component loaded but has no default export']
             };
           }
         };
@@ -494,12 +383,39 @@ async function initApp() {
     
     console.log('[0x1 App] 📊 All routes registered successfully');
     
-    // Step 5: Start router
+    // Step 4: Start router with proper DOM synchronization
     console.log('[0x1 App] 🎯 Starting router...');
+    
+    // Ensure DOM is completely ready before starting router
+    await new Promise(resolve => {
+      if (document.readyState === 'complete') {
+        resolve();
+      } else {
+        const onReady = () => {
+          document.removeEventListener('readystatechange', onReady);
+          resolve();
+        };
+        document.addEventListener('readystatechange', onReady);
+      }
+    });
+    
     router.init();
     
-    // Step 6: Navigate to current path
+    // Step 5: Navigate to current path with additional delay
+    await new Promise(resolve => setTimeout(resolve, 100));
     router.navigate(window.location.pathname, false);
+    
+    // Setup cleanup function for future use
+    window.__0x1_cleanup = () => {
+      if (router && router.destroy) {
+        router.destroy();
+      }
+    };
+    
+    // Hide loading indicator
+    if (typeof window.appReady === 'function') {
+      window.appReady();
+    }
     
     console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
     
@@ -508,7 +424,12 @@ async function initApp() {
     
     const appElement = document.getElementById('app');
     if (appElement) {
-      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details></div>';
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
+    }
+    
+    // Hide loading indicator even on error
+    if (typeof window.appReady === 'function') {
+      window.appReady();
     }
   }
 }
