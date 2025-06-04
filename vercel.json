@@ -3,11 +3,6 @@
   "outputDirectory": "dist",
   "installCommand": "bun install",
   "framework": null,
-  "functions": {
-    "api/component.js": {
-      "runtime": "@vercel/node"
-    }
-  },
   "routes": [
     {
       "src": "/node_modules/0x1",
