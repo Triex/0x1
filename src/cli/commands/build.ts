@@ -5,7 +5,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
 
 export interface BuildOptions {
@@ -61,27 +61,32 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     await generateSophisticatedAppJs(projectPath, outputPath);
     log.info('✅ Production app.js generated');
 
-    // Step 2: Copy 0x1 framework files (same structure as dev server)
+    // Step 2: Generate component files as static assets (CRITICAL FOR VERCEL)
+    log.info('🧩 Pre-building component files for static serving...');
+    await generateStaticComponentFiles(projectPath, outputPath);
+    log.info('✅ Component files pre-built');
+
+    // Step 3: Copy 0x1 framework files (same structure as dev server)
     log.info('📋 Copying framework files...');
     await copy0x1FrameworkFiles(outputPath);
     log.info('✅ Framework files copied');
 
-    // Step 3: Copy static assets
+    // Step 4: Copy static assets
     log.info('📁 Copying static assets...');
     await copyStaticAssets(projectPath, outputPath);
     log.info('✅ Static assets copied');
 
-    // Step 4: Process CSS (with proper Tailwind v4 support like dev server)
+    // Step 5: Process CSS (with proper Tailwind v4 support like dev server)
     log.info('🎨 Processing CSS...');
     await processCss(projectPath, outputPath, { minify });
     log.info('✅ CSS processed');
 
-    // Step 5: Generate HTML (same structure as dev server index.html)
+    // Step 6: Generate HTML (same structure as dev server index.html)
     log.info('📄 Generating HTML...');
     await generateProductionHtml(projectPath, outputPath);
     log.info('✅ HTML generated');
 
-    // Step 6: Generate PWA files
+    // Step 7: Generate PWA files
     log.info('📱 Generating PWA files...');
     await generatePwaFiles(outputPath);
     log.info('✅ PWA files generated');
@@ -882,4 +887,101 @@ if (document.readyState === 'loading') {
   await Bun.write(appJsPath, appScript);
   
   logger.info(`🚀 Production app.js generated: ${(new TextEncoder().encode(appScript).length / 1024).toFixed(1)}KB`);
+}
+
+/**
+ * Generate static component files - CRITICAL FOR VERCEL DEPLOYMENT
+ * Pre-builds all component files so they exist as static assets instead of dynamic imports
+ */
+async function generateStaticComponentFiles(projectPath: string, outputPath: string): Promise<void> {
+  // Import the route discovery function from dev-server (SINGLE SOURCE OF TRUTH)
+  const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
+  
+  // Discover all routes using the same logic as dev server
+  const routes = await discoverRoutesFromFileSystem(projectPath);
+  
+  // Create app directory structure in build output
+  const appDir = join(outputPath, 'app');
+  const componentsDir = join(outputPath, 'components');
+  await mkdir(appDir, { recursive: true });
+  await mkdir(componentsDir, { recursive: true });
+  
+  let generatedCount = 0;
+  
+  // Generate component files for each route
+  for (const route of routes) {
+    try {
+      // Convert component path to source file path
+      const componentPath = route.componentPath.replace(/^\//, ''); // Remove leading slash
+      const sourceFile = componentPath.replace(/\.js$/, '.tsx'); // Convert .js to .tsx
+      const sourcePath = join(projectPath, sourceFile);
+      
+      if (existsSync(sourcePath)) {
+        // Read and transpile the component
+        const sourceCode = await Bun.file(sourcePath).text();
+        
+        // Transpile using Bun (same as dev server)
+        const transpiled = await Bun.build({
+          entrypoints: [sourcePath],
+          format: 'esm',
+          target: 'browser',
+          minify: false,
+          splitting: false,
+          outdir: outputPath,
+          naming: {
+            entry: componentPath // Use the exact path from route discovery
+          },
+          external: ['node:*', 'path', 'url', 'fs', '0x1'] // Exclude Node.js modules and 0x1 framework
+        });
+        
+        if (transpiled.success) {
+          generatedCount++;
+          console.log(`[Build] ✅ Generated component: ${componentPath}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`[Build] ⚠️ Failed to generate component ${route.componentPath}:`, error);
+    }
+  }
+  
+  // Also handle commonly imported components
+  const commonComponents = [
+    'components/Button.tsx',
+    'components/Counter.tsx', 
+    'components/ThemeToggle.tsx',
+    'components/Card.tsx'
+  ];
+  
+  for (const componentFile of commonComponents) {
+    const sourcePath = join(projectPath, componentFile);
+    if (existsSync(sourcePath)) {
+      try {
+        const outputPath_component = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
+        const outputDir = dirname(outputPath_component);
+        await mkdir(outputDir, { recursive: true });
+        
+        const transpiled = await Bun.build({
+          entrypoints: [sourcePath],
+          format: 'esm', 
+          target: 'browser',
+          minify: false,
+          splitting: false,
+          outdir: outputDir,
+          naming: {
+            entry: basename(outputPath_component)
+          },
+          external: ['node:*', 'path', 'url', 'fs', '0x1'] // Exclude Node.js modules and 0x1 framework
+        });
+        
+        if (transpiled.success) {
+          generatedCount++;
+          console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
+        }
+      } catch (error) {
+        console.warn(`[Build] ⚠️ Failed to generate component ${componentFile}:`, error);
+      }
+    }
+  }
+  
+  console.log(`[Build] 📦 Generated ${generatedCount} component files for static serving`);
 }

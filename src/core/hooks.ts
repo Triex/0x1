@@ -411,7 +411,7 @@ export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((p
       if (updateCallback) {
         try {
           // Call the updateCallback which should trigger JSX runtime's executeReRender
-          updateCallback();
+        updateCallback();
           console.debug(`[0x1 Hooks] Update callback executed for ${componentIdSnapshot}`);
         } catch (error) {
           console.error(`[0x1 Hooks] Update callback failed for ${componentIdSnapshot}:`, error);
@@ -981,7 +981,7 @@ export type { RefObject };
 // Initialize browser compatibility IMMEDIATELY when module loads (no setTimeout)
 if (typeof window !== 'undefined') {
   // IMMEDIATE initialization - no setTimeout to avoid timing issues
-  initializeBrowserCompat();
+    initializeBrowserCompat();
   
   // DOUBLE ENSURE: Set up window.React hooks immediately as backup
   if (!(window as any).React) {
