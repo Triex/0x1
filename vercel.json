@@ -44,70 +44,58 @@
       ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
-      "src": "/node_modules/0x1",
-      "dest": "/0x1/index.js",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "source": "/node_modules/0x1",
+      "destination": "/0x1/index.js"
     },
     {
-      "src": "/0x1/(.*)",
-      "dest": "/0x1/$1",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "source": "/0x1/(.*)",
+      "destination": "/0x1/$1"
     },
     {
-      "src": "/styles.css",
-      "dest": "/styles.css"
+      "source": "/styles.css",
+      "destination": "/styles.css"
     },
     {
-      "src": "/app.js",
-      "dest": "/app.js"
+      "source": "/app.js",
+      "destination": "/app.js"
     },
     {
-      "src": "/app-bundle.js",
-      "dest": "/app-bundle.js"
+      "source": "/app-bundle.js",
+      "destination": "/app-bundle.js"
     },
     {
-      "src": "/app/(.*)\\.js",
-      "dest": "/app/$1.js",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "source": "/app/(.*)\\.js",
+      "destination": "/app/$1.js"
     },
     {
-      "src": "/components/(.*)\\.js",
-      "dest": "/components/$1.js",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "source": "/components/(.*)\\.js",
+      "destination": "/components/$1.js"
     },
     {
-      "src": "/public/(.*)",
-      "dest": "/public/$1"
+      "source": "/public/(.*)",
+      "destination": "/public/$1"
     },
     {
-      "src": "/favicon.ico",
-      "dest": "/favicon.ico"
+      "source": "/favicon.ico",
+      "destination": "/favicon.ico"
     },
     {
-      "src": "/manifest.json",
-      "dest": "/manifest.json"
+      "source": "/manifest.json",
+      "destination": "/manifest.json"
     },
     {
-      "src": "/service-worker.js",
-      "dest": "/service-worker.js"
+      "source": "/service-worker.js",
+      "destination": "/service-worker.js"
     },
     {
-      "src": "^/(?!api/).*",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 } 

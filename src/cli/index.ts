@@ -8,7 +8,7 @@ import { logger } from './utils/logger';
 import { parseArgs } from './utils/parse-args';
 
 // Version info
-const CLI_VERSION = process.env.npm_package_version || '0.0.241';
+const CLI_VERSION = process.env.npm_package_version || '0.0.242';
 
 // Command definitions with lazy loading
 const COMMANDS = {
