@@ -22,8 +22,6 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "0x1": ["../dist/index"],
-      "0x1/*": ["../dist/*"],
       "components/*": ["./components/*"],
       "app/*": ["./app/*"]
     }

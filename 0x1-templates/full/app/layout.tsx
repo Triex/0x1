@@ -2,7 +2,7 @@
  * 0x1 Full App - Root Layout
  * Using app directory structure with beautiful light & dark theme
  */
-import { ThemeToggle } from "../components/ThemeToggle";
+import { Header } from "../components/Header";
 import "./globals.css";
 
 // Ensure our code is compatible with client-side execution
@@ -22,18 +22,6 @@ if (typeof window !== 'undefined') {
       } catch (e) {
         console.error('Error setting initial theme:', e);
       }
-      
-      // Mobile menu functionality
-      document.addEventListener('DOMContentLoaded', function() {
-        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-        const mobileMenu = document.getElementById('mobile-menu');
-        
-        if (mobileMenuToggle && mobileMenu) {
-          mobileMenuToggle.addEventListener('click', function() {
-            mobileMenu.classList.toggle('hidden');
-          });
-        }
-      });
     })();
   `;
 }
@@ -57,49 +45,7 @@ export default function RootLayout({ children }: { children: any }) {
       </head>
       <body className="h-full flex flex-col">
         <div id="app" className="min-h-screen flex flex-col">
-          <header className="sticky top-0 z-40 w-full glass-panel border-b border-border/40">
-            <nav className="container mx-auto px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <a href="/" className="flex items-center space-x-2">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="11" fill="url(#gradient)" />
-                    <path d="M13.2 3H9.5l-3.1 9.4h4.2L8.2 21l9.1-11.3h-5.5L13.2 3z"
-                      fill="#fef08a" stroke="#fef08a" strokeWidth="0.3" strokeLinejoin="round" />
-                    <defs>
-                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#7c3aed" />
-                        <stop offset="100%" stopColor="#a78bf6" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <span className="font-bold text-xl gradient-text">0x1</span>
-                  <span className="text-sm text-muted-foreground hidden sm:inline">Full</span>
-                </a>
-                <div className="hidden md:flex space-x-6">
-                  <a href="/" className="text-foreground hover:text-primary transition-colors font-medium">Home</a>
-                  <a href="/features" className="text-muted-foreground hover:text-primary transition-colors">Features</a>
-                  <a href="/about" className="text-muted-foreground hover:text-primary transition-colors">About</a>
-                  <a href="/contact" className="text-muted-foreground hover:text-primary transition-colors">Contact</a>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <ThemeToggle iconOnly />
-                <button id="mobile-menu-toggle" className="md:hidden btn btn-ghost btn-sm">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-              </div>
-            </nav>
-            <div id="mobile-menu" className="hidden md:hidden glass-panel border-t border-border/40">
-              <div className="px-4 py-3 space-y-3">
-                <a href="/" className="block text-foreground hover:text-primary transition-colors">Home</a>
-                <a href="/features" className="block text-muted-foreground hover:text-primary transition-colors">Features</a>
-                <a href="/about" className="block text-muted-foreground hover:text-primary transition-colors">About</a>
-                <a href="/contact" className="block text-muted-foreground hover:text-primary transition-colors">Contact</a>
-              </div>
-            </div>
-          </header>
+          <Header />
 
           <main className="flex-grow">
             {children}
