@@ -5,6 +5,10 @@
   "framework": null,
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
       "src": "/node_modules/0x1",
       "dest": "/0x1/index.js",
       "headers": {
@@ -31,11 +35,27 @@
       "dest": "/app-bundle.js"
     },
     {
-      "src": "/app/(.+)\\.js",
-      "dest": "/api/component?path=app/$1.tsx"
+      "src": "/app/page.js",
+      "dest": "/api/component?path=app/page.tsx"
     },
     {
-      "src": "/components/(.+)\\.js",
+      "src": "/app/dashboard/page.js",
+      "dest": "/api/component?path=app/dashboard/page.tsx"
+    },
+    {
+      "src": "/app/features/page.js",
+      "dest": "/api/component?path=app/features/page.tsx"
+    },
+    {
+      "src": "/app/contact/page.js",
+      "dest": "/api/component?path=app/contact/page.tsx"
+    },
+    {
+      "src": "/app/about/page.js",
+      "dest": "/api/component?path=app/about/page.tsx"
+    },
+    {
+      "src": "/components/(.*)\\.js",
       "dest": "/api/component?path=components/$1.tsx"
     },
     {
@@ -55,7 +75,7 @@
       "dest": "/service-worker.js"
     },
     {
-      "src": "/(.*)",
+      "src": "^/(?!api/).*",
       "dest": "/index.html"
     }
   ]
