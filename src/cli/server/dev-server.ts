@@ -11,20 +11,20 @@
 
 import { serve, type Server, type ServerWebSocket } from "bun";
 import {
-    existsSync,
-    mkdirSync,
-    readdirSync,
-    readFileSync,
-    statSync,
-    watch,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  watch,
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tailwindV4Handler } from "../commands/utils/server/tailwind-v4";
 import { logger } from "../utils/logger";
 import {
-    processTailwindCss,
-    stopTailwindProcess,
+  processTailwindCss,
+  stopTailwindProcess,
 } from "./handlers/tailwind-handler";
 
 // Import handlers and middleware
@@ -35,8 +35,8 @@ import { serveStaticFile } from "./middleware/static-files";
 // Import template functions for proper app initialization
 import { injectJsxRuntime } from "../commands/utils/jsx-templates";
 import {
-    composeHtmlTemplate,
-    generateLandingPage,
+  composeHtmlTemplate,
+  generateLandingPage,
 } from "../commands/utils/server/templates";
 
 // Import directives and error boundary utilities
@@ -527,7 +527,7 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
 /**
  * Server-side route discovery - scans the actual file system
  */
-function discoverRoutesFromFileSystem(
+export function discoverRoutesFromFileSystem(
   projectPath: string
 ): Array<{ path: string; componentPath: string }> {
   const routes: Array<{ path: string; componentPath: string }> = [];
@@ -1277,6 +1277,7 @@ console.log('[0x1] Framework module loaded - dynamic runtime version');
 // =====================================================
 
 // Create dynamic getters that resolve hooks at import time, not module load time
+if (!globalThis.hasOwnProperty('__0x1_hooks_getter')) {
 Object.defineProperty(globalThis, '__0x1_hooks_getter', {
   value: function(hookName) {
     // Check window.React first (set by hooks module)
@@ -1310,8 +1311,10 @@ Object.defineProperty(globalThis, '__0x1_hooks_getter', {
   writable: false,
   enumerable: false
 });
+}
 
 // Create runtime hook getters - these resolve the actual hooks when first accessed
+if (!globalThis.hasOwnProperty('__0x1_useState')) {
 Object.defineProperty(globalThis, '__0x1_useState', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useState');
@@ -1321,7 +1324,9 @@ Object.defineProperty(globalThis, '__0x1_useState', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useEffect')) {
 Object.defineProperty(globalThis, '__0x1_useEffect', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useEffect');
@@ -1330,7 +1335,9 @@ Object.defineProperty(globalThis, '__0x1_useEffect', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useCallback')) {
 Object.defineProperty(globalThis, '__0x1_useCallback', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useCallback');
@@ -1339,7 +1346,9 @@ Object.defineProperty(globalThis, '__0x1_useCallback', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useMemo')) {
 Object.defineProperty(globalThis, '__0x1_useMemo', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useMemo');
@@ -1348,7 +1357,9 @@ Object.defineProperty(globalThis, '__0x1_useMemo', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useRef')) {
 Object.defineProperty(globalThis, '__0x1_useRef', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useRef');
@@ -1357,6 +1368,7 @@ Object.defineProperty(globalThis, '__0x1_useRef', {
   },
   configurable: true
 });
+}
 
 // Export the dynamic hooks - CRITICAL FIX: Add useEffect export
 export const useState = (...args) => globalThis.__0x1_useState(...args);
@@ -4195,12 +4207,13 @@ function generatePossiblePaths(projectPath: string, basePath: string, extensions
 
 function generateCssPaths(projectPath: string, fileName: string): string[] {
   return [
+    // PRIORITY: Build/dist directories where processed CSS is stored
+    join(projectPath, ".0x1", "public", fileName),
+    join(projectPath, "dist", fileName),
     // Direct path in project
     join(projectPath, fileName.replace(/^\//, "")),
     // Standard directories
     ...STANDARD_DIRECTORIES.map(dir => join(projectPath, dir, fileName)),
-    // Build/dist directories
-    join(projectPath, ".0x1", "public", fileName),
   ];
 }
 

@@ -1,19 +1,19 @@
 /**
  * 0x1 Framework Component Builder
- * Handles component discovery, processing, and bundle creation
+ * NOW ALIGNED WITH DEV-SERVER - SINGLE SOURCE OF TRUTH
+ * Uses same route discovery and sophisticated app generation as dev-server
  */
 
 import { glob } from 'glob';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { logger } from './logger';
 
 /**
- * Find all component files in the given directory
+ * Find all component files in the given directory (kept for compatibility)
  */
 export async function findComponentFiles(directory: string): Promise<string[]> {
   try {
-    // Look for component files in multiple locations
     const patterns = [
       'app/**/*.{jsx,tsx}',
       'src/app/**/*.{jsx,tsx}',
@@ -35,15 +35,12 @@ export async function findComponentFiles(directory: string): Promise<string[]> {
         
         allPaths.push(...componentPaths);
       } catch (error) {
-        // Continue with other patterns if one fails
         logger.debug(`Pattern ${pattern} failed: ${error}`);
       }
     }
     
-    // Remove duplicates
     const uniquePaths = [...new Set(allPaths)];
-    
-    logger.debug(`Found ${uniquePaths.length} component files across all patterns`);
+    logger.debug(`Found ${uniquePaths.length} component files`);
     return uniquePaths;
   } catch (error) {
     logger.error(`Failed to find component files: ${error instanceof Error ? error.message : String(error)}`);
@@ -52,604 +49,493 @@ export async function findComponentFiles(directory: string): Promise<string[]> {
 }
 
 /**
- * Process all component files and generate component map
+ * REMOVED: buildComponents - no longer needed, route discovery handles this
+ * The sophisticated system discovers components automatically during route discovery
  */
-export async function buildComponents(projectPath: string): Promise<boolean> {
+
+/**
+ * Generate sophisticated app.js using dev server logic (SINGLE SOURCE OF TRUTH)
+ */
+export async function generateSophisticatedAppJs(projectPath: string, outputPath: string): Promise<void> {
   try {
-    // Make sure componentFiles is a valid array
-    const componentFiles = await findComponentFiles(projectPath);
+    logger.info('Generating sophisticated app.js using dev-server logic...');
     
-    // Log what we found
-    if (!componentFiles || !Array.isArray(componentFiles)) {
-      logger.debug('No component files found or invalid result from findComponentFiles');
-      return true; // Return true to allow server to continue
+    // Import the route discovery from dev server (SINGLE SOURCE OF TRUTH)
+    const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
+    
+    // Discover routes using same logic as dev server
+    const discoveredRoutes = discoverRoutesFromFileSystem(projectPath);
+    logger.info(`Discovered ${discoveredRoutes.length} routes for build: ${discoveredRoutes.map(r => r.path).join(', ')}`);
+    
+    // Safely serialize routes data
+    let routesJson;
+    try {
+      const sanitizedRoutes = discoveredRoutes.map(route => ({
+        path: route.path,
+        componentPath: route.componentPath
+      }));
+      routesJson = JSON.stringify(sanitizedRoutes, null, 2);
+    } catch (jsonError) {
+      logger.error(`Error serializing routes: ${jsonError}`);
+      routesJson = '[]';
     }
-    
-    if (componentFiles.length === 0) {
-      logger.debug('No component files found - this is okay for simple projects');
-      return true; // Return true to allow server to continue
-    }
-    
-    logger.info(`Found ${componentFiles.length} component file(s)`);
-    
-    // Create temp directory if it doesn't exist
-    const tempDir = join(projectPath, '.0x1', 'temp');
-    if (!existsSync(tempDir)) {
-      mkdirSync(tempDir, { recursive: true });
-    }
-    
-    // Simple component mapping without complex transpilation that breaks CSS
-    const processedFiles = componentFiles.map(file => {
-        const relativePath = file.replace(projectPath, '').replace(/^[/\\]+/, '');
-        const id = basename(file).replace(/\.[jt]sx?$/, '');
+
+    // Generate the EXACT SAME sophisticated app.js as dev server
+    const appScript = `// 0x1 Framework App Bundle - PRODUCTION-READY with SEQUENCED LOADING
+console.log('[0x1 App] Starting production-ready app with proper sequencing...');
+
+// Server-discovered routes  
+const serverRoutes = ${routesJson};
+
+// ===== PRODUCTION-READY POLYFILL SYSTEM =====
+const polyfillCache = new Map();
+const polyfillQueue = new Map(); // Prevent duplicate loading
+
+async function loadPolyfillOnDemand(polyfillName) {
+  if (polyfillCache.has(polyfillName)) {
+    return polyfillCache.get(polyfillName);
+  }
+  
+  // Check if already being loaded
+  if (polyfillQueue.has(polyfillName)) {
+    return polyfillQueue.get(polyfillName);
+  }
+  
+  console.log('[0x1 App] Loading polyfill:', polyfillName);
+  
+  const promise = (async () => {
+    try {
+      const polyfillScript = document.createElement('script');
+      polyfillScript.type = 'module';
+      polyfillScript.src = '/node_modules/' + polyfillName + '?t=' + Date.now();
+      
+      await new Promise((resolve, reject) => {
+        polyfillScript.onload = resolve;
+        polyfillScript.onerror = reject;
+        document.head.appendChild(polyfillScript);
+      });
+      
+      // Wait for polyfill to be available globally
+      let retries = 0;
+      const maxRetries = 20;
+      
+      while (retries < maxRetries) {
+        const isAvailable = checkPolyfillAvailability(polyfillName);
+        if (isAvailable) {
+          console.log('[0x1 App] ✅ Polyfill verified:', polyfillName);
+          break;
+        }
         
-      return { 
-        file, 
-        relativePath, 
-        id
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (retries >= maxRetries) {
+        console.warn('[0x1 App] ⚠️ Polyfill verification timeout:', polyfillName);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
+      throw error;
+    }
+  })();
+  
+  polyfillQueue.set(polyfillName, promise);
+  polyfillCache.set(polyfillName, promise);
+  
+  try {
+    await promise;
+    return promise;
+  } finally {
+    polyfillQueue.delete(polyfillName);
+  }
+}
+
+function checkPolyfillAvailability(polyfillName) {
+  const checks = {
+    '@rainbow-me/rainbowkit': () => 
+      window.rainbowkit || window.RainbowKit || window['@rainbow-me/rainbowkit'] ||
+      (window.ConnectButton && typeof window.ConnectButton === 'function'),
+    'wagmi': () => 
+      window.wagmi || window.WAGMI || window.useAccount,
+    'viem': () => 
+      window.viem || window.createPublicClient,
+    '@tanstack/react-query': () => 
+      window.ReactQuery || window.useQuery || window['@tanstack/react-query'],
+    'zustand': () => 
+      window.zustand || window.create
+  };
+  
+  const checker = checks[polyfillName];
+  return checker ? checker() : true; // Assume available if no specific check
+}
+
+// ===== PRODUCTION-READY DEPENDENCY ANALYSIS =====
+async function analyzeComponentDependencies(componentPath) {
+  const packageNames = new Set();
+  const analyzedFiles = new Set(); // Prevent infinite recursion
+  
+  async function analyzeFile(filePath, depth = 0) {
+    // Prevent infinite recursion and limit depth
+    if (analyzedFiles.has(filePath) || depth > 3) {
+      return;
+    }
+    analyzedFiles.add(filePath);
+    
+    try {
+      console.log('[0x1 App] 🔍 Analyzing dependencies for:', filePath, 'depth:', depth);
+      
+      const response = await fetch(filePath + '?source=true&t=' + Date.now());
+      if (!response.ok) return;
+      
+      const sourceCode = await response.text();
+      const localComponentPaths = [];
+      
+      try {
+        // ULTIMATE STRING-BASED DETECTION - No regex, just string operations
+        const lines = sourceCode.split('\\n');
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          
+          // Detect import statements
+          if (trimmedLine.startsWith('import ') && (trimmedLine.includes(' from ') || trimmedLine.includes('import('))) {
+            // Extract package name from import statements
+            const extractPackageFromImport = (importLine) => {
+              // Handle: import ... from 'package'
+              if (importLine.includes(' from ')) {
+                const fromIndex = importLine.lastIndexOf(' from ');
+                const afterFrom = importLine.substring(fromIndex + 6).trim();
+                const quote = afterFrom.charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterFrom.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterFrom.substring(1, endQuote);
+                  }
+                }
+              }
+              
+              // Handle: import('package')
+              const importParenIndex = importLine.indexOf('import(');
+              if (importParenIndex >= 0) {
+                const afterParen = importLine.substring(importParenIndex + 7);
+                const quote = afterParen.trim().charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterParen.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterParen.substring(1, endQuote);
+                  }
+                }
+              }
+              
+              return null;
+            };
+            
+            const packageName = extractPackageFromImport(trimmedLine);
+            if (packageName) {
+              // Check if it's a local component (starts with ./ or ../ or absolute path)
+              if (packageName.startsWith('./') || packageName.startsWith('../') || packageName.startsWith('/')) {
+                // Convert relative path to absolute component path for analysis
+                let componentPath;
+                if (packageName.startsWith('./') || packageName.startsWith('../')) {
+                  // TRULY DYNAMIC: Resolve relative path based on current file location
+                  const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
+                  const resolvedPath = new URL(packageName, 'file://' + currentDir + '/').pathname;
+                  // Remove the leading slash if present and add .js extension if needed
+                  componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
+                  console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
+                } else {
+                  // Handle absolute component paths
+                  componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
+                }
+                
+                localComponentPaths.push(componentPath);
+                console.log('[0x1 App] 📄 Found local component import:', packageName, '->', componentPath);
+              } else if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
+                // It's an external package
+                const rootPackage = packageName.startsWith('@') 
+                  ? packageName.split('/').slice(0, 2).join('/')
+                  : packageName.split('/')[0];
+                
+                if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
+                  packageNames.add(rootPackage);
+                  console.log('[0x1 App] 📦 Detected import:', rootPackage);
+                }
+              }
+            }
+          }
+          
+          // Detect component usage patterns for better dependency detection
+          if (trimmedLine.includes('<ConnectButton')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected ConnectButton usage -> @rainbow-me/rainbowkit');
+          }
+          if (trimmedLine.includes('useAccount') || trimmedLine.includes('useConnect')) {
+            packageNames.add('wagmi');
+            console.log('[0x1 App] 📦 Detected wagmi hook usage -> wagmi');
+          }
+        }
+        
+        // RECURSIVE ANALYSIS: Analyze imported local components
+        for (const localPath of localComponentPaths) {
+          console.log('[0x1 App] 🔄 Recursively analyzing:', localPath);
+          await analyzeFile(localPath, depth + 1);
+        }
+        
+      } catch (analysisError) {
+        console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
+      }
+    } catch (error) {
+      console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
+    }
+  }
+  
+  // Start analysis with the main component
+  await analyzeFile(componentPath, 0);
+  
+  console.log('[0x1 App] 🔍 RECURSIVE Total dependencies found:', Array.from(packageNames));
+  return packageNames;
+}
+
+// ===== MAIN INITIALIZATION (SAME AS DEV SERVER) =====
+async function initApp() {
+  try {
+    console.log('[0x1 App] 🚀 Starting production-ready initialization...');
+    
+    // Step 1: Show minimal loading indicator
+    console.log('[0x1 App] 🚀 INSTANT: Minimal loading indicator');
+    
+    // Step 2: Load essential dependencies
+    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    
+    // Import JSX runtime first
+    const { jsx } = await import('/0x1/jsx-runtime.js');
+    if (!jsx) {
+      throw new Error('JSX runtime not available');
+    }
+    
+    // Import hooks system
+    const hooksModule = await import('/0x1/hooks.js');
+    if (!hooksModule) {
+      throw new Error('Hooks system not available');
+    }
+    
+    console.log('[0x1 App] ✅ Hooks ready');
+    
+    // Verify React hooks are available
+    if (!window.React || !window.React.useState) {
+      throw new Error('React hooks not available');
+    }
+    console.log('[0x1 App] ✅ React hooks verified');
+    
+    // Step 3: Create router
+    console.log('[0x1 App] Creating router...');
+    
+    const routerModule = await import('/0x1/router.js');
+    const { Router } = routerModule;
+    
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
+    }
+    
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    // Create beautiful 404 component
+    const notFoundComponent = (props) => {
+      console.log('[0x1 Router] 🏠 Rendering beautiful 404 page for:', window.location.pathname);
+      
+      return {
+        type: 'div',
+        props: { 
+          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+        },
+        children: [
+          {
+            type: 'h1',
+            props: {
+              className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4'
+            },
+            children: ['404'],
+            key: null
+          },
+          {
+            type: 'h2',
+            props: {
+              className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4'
+            },
+            children: ['Page Not Found'],
+            key: null
+          },
+          {
+            type: 'p',
+            props: {
+              className: 'text-lg text-gray-600 dark:text-gray-300 mb-8'
+            },
+            children: ["The page you're looking for doesn't exist or has been moved."],
+            key: null
+          },
+          {
+            type: 'a',
+            props: {
+              href: '/',
+              className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+              onClick: (e) => {
+                e.preventDefault();
+                if (window.router && typeof window.router.navigate === 'function') {
+                  window.router.navigate('/');
+                } else {
+                  window.location.href = '/';
+                }
+              }
+            },
+            children: ['🏠 Back to Home'],
+            key: null
+          }
+        ],
+        key: null
       };
+    };
+    
+    const router = new Router({
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/',
+      notFoundComponent: notFoundComponent
     });
     
-    // Generate and write component map
-    const componentsMapPath = join(tempDir, 'components-map.json');
-    const componentsMap = processedFiles.reduce((map, { relativePath, id }) => {
-      if (relativePath && id) {
-        map[relativePath] = { id };
+    window.__0x1_ROUTER__ = router;
+    window.__0x1_router = router;
+    window.router = router;
+    
+    console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
+    
+    // Step 4: Register routes with proper sequencing
+    console.log('[0x1 App] 📝 Registering routes with proper sequencing...');
+    
+    // Load layout with dependencies first
+    console.log('[0x1 App] 🏗️ Loading layout with dependencies...');
+    const layoutDeps = await analyzeComponentDependencies('/app/layout.js');
+    console.log('[0x1 App] 📋 Layout dependencies:', Array.from(layoutDeps));
+    
+    // Load polyfills sequentially
+    console.log('[0x1 App] 🔍 Loading polyfills sequentially:', Array.from(layoutDeps));
+    for (const dep of layoutDeps) {
+      console.log('[0x1 App] Loading polyfill:', dep);
+      try {
+        await loadPolyfillOnDemand(dep);
+      } catch (error) {
+        console.warn('[0x1 App] ⚠️ Polyfill loading failed:', dep, error);
       }
-      return map;
-    }, {} as Record<string, { id: string }>);
+    }
     
-    writeFileSync(componentsMapPath, JSON.stringify(componentsMap, null, 2));
-    logger.info(`✅ Mapped ${processedFiles.length} components successfully`);
+    // Now register each route
+    for (const route of serverRoutes) {
+      try {
+        const routeComponent = async (props) => {
+          console.log('[0x1 App] 🔍 Route component called for:', route.path);
+          
+          try {
+            // Analyze and load dependencies
+            const componentDeps = await analyzeComponentDependencies(route.componentPath);
+            
+            if (componentDeps.size > 0) {
+              console.log('[0x1 App] 📦 Loading dependencies for', route.path, ':', Array.from(componentDeps));
+              
+              for (const dep of componentDeps) {
+                await loadPolyfillOnDemand(dep);
+              }
+            }
+            
+            // Load the component
+            const componentModule = await import(route.componentPath + '?t=' + Date.now());
+            
+            if (componentModule && componentModule.default) {
+              console.log('[0x1 App] ✅ Route component resolved:', route.path);
+              return componentModule.default(props);
+            } else {
+              console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
+              return {
+                type: 'div',
+                props: { 
+                  className: 'p-8 text-center',
+                  style: 'color: #f59e0b;' 
+                },
+                children: ['⚠️ Component loaded but has no default export']
+              };
+            }
+          } catch (error) {
+            console.error('[0x1 App] ❌ Route component error:', route.path, error);
+            return {
+              type: 'div',
+              props: { 
+                className: 'p-8 text-center',
+                style: 'color: #ef4444;' 
+              },
+              children: ['❌ Error loading component: ' + error.message]
+            };
+          }
+        };
+        
+        router.addRoute(route.path, routeComponent, { 
+          componentPath: route.componentPath 
+        });
+        
+        console.log('[0x1 App] ✅ Route registered:', route.path);
+        
+      } catch (error) {
+        console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      }
+    }
     
-    return true;
+    console.log('[0x1 App] 📊 All routes registered successfully');
+    
+    // Step 5: Start router
+    console.log('[0x1 App] 🎯 Starting router...');
+    router.init();
+    
+    // Step 6: Navigate to current path
+    router.navigate(window.location.pathname, false);
+    
+    console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
+    
   } catch (error) {
-    logger.debug(`Component build had issues: ${error instanceof Error ? error.message : String(error)}`);
-    return true; // Return true to allow server to continue
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details></div>';
+    }
+  }
+}
+
+// ===== START IMMEDIATELY =====
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+`;
+
+    // Write the sophisticated app.js
+    writeFileSync(outputPath, appScript);
+    const appSize = (appScript.length / 1024).toFixed(1);
+    logger.info(`✅ Sophisticated app.js generated: ${appSize}KB with ${discoveredRoutes.length} routes`);
+    
+  } catch (error) {
+    logger.error(`Failed to generate sophisticated app.js: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   }
 }
 
 /**
- * Build the app bundle from the entry point
+ * REMOVED: buildAppBundle - replaced with generateSophisticatedAppJs
+ * The old buildAppBundle was using simple bundling logic that didn't align with dev-server
  */
-export async function buildAppBundle(projectPath: string): Promise<boolean> {
-  try {
-    // Define possible entry points in order of preference
-    const possibleEntryPoints = [
-      join(projectPath, 'app', 'page.tsx'),  // Modern app directory structure
-      join(projectPath, 'app', 'page.jsx'),  // JSX variant
-      join(projectPath, 'app', 'page.js'),   // Plain JS variant
-      join(projectPath, 'app', '_app.tsx'),  // Legacy entry point
-      join(projectPath, 'app', 'Page.tsx'),  // Case variation
-      join(projectPath, 'src', 'app', 'page.tsx') // Alternative src directory structure
-    ];
-    
-    // Find the first existing entry point
-    let entryPoint: string | null = null;
-    for (const ep of possibleEntryPoints) {
-      if (existsSync(ep)) {
-        entryPoint = ep;
-        break;
-      }
-    }
-    
-    if (!entryPoint) {
-      logger.debug(`No valid entry point found. Tried: ${possibleEntryPoints.join(', ')}`);
-      return false;
-    }
-
-    logger.info(`Building app bundle from ${basename(entryPoint)}`);
-    
-    // Create output directory
-    const outDir = join(projectPath, '.0x1', 'public');
-    if (!existsSync(outDir)) {
-      mkdirSync(outDir, { recursive: true });
-    }
-    
-    // Define bundle path
-    const bundlePath = join(outDir, 'app-bundle.js');
-    
-    // Fallback function that still tries to handle imports
-    const createFallbackBundle = async (): Promise<boolean> => {
-      const content = readFileSync(entryPoint as string, 'utf-8');
-      
-      // Use Bun's transpiler to convert JSX to JavaScript
-      const transpiler = new Bun.Transpiler({
-        loader: entryPoint!.endsWith('.tsx') || entryPoint!.endsWith('.ts') ? 'tsx' : 'jsx'
-      });
-      
-      let transpiledContent = transpiler.transformSync(content);
-      
-      // Remove problematic component imports that can't be resolved
-      transpiledContent = transpiledContent.replace(
-        /import\s+[^;]+\s+from\s+["'][^"']*components\/[^"']*["'];?\s*/g,
-        '// Component import removed (inline components needed)\n'
-      );
-      
-      // Fix 0x1 framework import paths
-      transpiledContent = transpiledContent.replace(
-        /import\s+([^;]+)\s+from\s+["']0x1\/jsx-runtime["'];?/g,
-        'import $1 from "/0x1/jsx-runtime.js";'
-      );
-      
-      transpiledContent = transpiledContent.replace(
-        /import\s+([^;]+)\s+from\s+["']0x1\/link["'];?/g,
-        'import $1 from "/0x1/router.js";'
-      );
-      
-      // Handle bare 0x1 imports (like useState, useEffect, etc.)
-      transpiledContent = transpiledContent.replace(
-        /import\s+([^;]+)\s+from\s+["']0x1["'];?/g,
-        'import $1 from "/0x1/index.js";'
-      );
-      
-      transpiledContent = transpiledContent.replace(
-        /import\s+([^;]+)\s+from\s+["']0x1(\/[^"']*)?["'];?/g,
-        'import $1 from "/0x1$2.js";'
-      );
-      
-      // Create a fallback bundle with inline placeholder components
-      const fallbackBundle = `// 0x1 Framework - Fallback Bundle (FALLBACK TEMPLATE v2)
-// Entry point: ${basename(entryPoint as string)}
-// Component imports replaced with placeholders
-
-// Browser polyfills for Node.js globals
-if (typeof process === 'undefined') {
-  window.process = {
-    env: {
-      NODE_ENV: 'production',
-      CI: false,
-      VERCEL: false,
-      NETLIFY: false,
-      GITHUB_ACTIONS: false,
-      GITLAB_CI: false,
-      DEBUG: false
-    },
-    stdout: {
-      isTTY: false,
-      clearLine: undefined,
-      cursorTo: undefined
-    }
-  };
-}
-
-// Placeholder components for missing imports
-const Button = ({ children, ...props }) => {
-  const button = document.createElement('button');
-  button.textContent = children || 'Button';
-  Object.assign(button, props);
-  return button;
-};
-
-const Counter = ({ initialCount = 0 }) => {
-  const div = document.createElement('div');
-  div.innerHTML = '<p>Counter: ' + initialCount + '</p>';
-  return div;
-};
-
-${transpiledContent}
-
-// Make component available globally and mount to DOM
-if (typeof window !== 'undefined') {
-  // Wait for DOM and framework to be ready
-  const initializeApp = () => {
-    const appRoot = document.getElementById('app');
-    if (!appRoot) {
-      console.error('[0x1] App root element (#app) not found');
-      return;
-    }
-
-    // In the bundle, HomePage is directly available in scope
-    // Try multiple ways to get the component
-    let PageComponent = null;
-    
-    // Method 1: Direct reference (most reliable since it's in the same bundle)
-    try {
-      PageComponent = HomePage; // Direct reference
-      console.log('[0x1] Found HomePage via direct reference');
-    } catch (e) {
-      console.debug('[0x1] Direct HomePage reference not available:', e);
-    }
-    
-    // Method 2: Check module exports (fallback)
-    if (!PageComponent) {
-      try {
-        PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
-                       (typeof exports !== 'undefined' && exports.default) ||
-                       window.PageComponent;
-        if (PageComponent) {
-          console.log('[0x1] Found PageComponent via exports');
-        }
-      } catch (e) {
-        console.debug('[0x1] Module exports not available:', e);
-      }
-    }
-    
-    if (!PageComponent) {
-      console.error('[0x1] No page component found to mount');
-      appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error: No page component found</div>';
-      return;
-    }
-
-    console.log('[0x1] Page component found, mounting...');
-    
-    // CRITICAL FIX: Proper hooks context and JSX rendering (matches dev server)
-    const tryRender = async () => {
-      try {
-        // Wait for hooks system to be ready
-        let hooksReady = false;
-        let retries = 0;
-        const maxRetries = 20;
-        
-        while (!hooksReady && retries < maxRetries) {
-          if (typeof window !== 'undefined' && window.React && window.React.useState) {
-            hooksReady = true;
-            break;
-          }
-          
-          retries++;
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        
-        if (!hooksReady) {
-          console.warn('[0x1] Hooks system not ready, using fallback');
-          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
-          if (window.appReady) window.appReady();
-          return;
-        }
-        
-        // Import jsx runtime
-        const { jsx } = await import('/0x1/jsx-runtime.js');
-        
-        // CRITICAL FIX: Set up component context for hooks (same as production app.js)
-        if (window.__0x1_enterComponentContext) {
-          window.__0x1_enterComponentContext('HomePage');
-        }
-        
-        try {
-          // CRITICAL FIX: Override JSX function to auto-handle component context for hook-using components
-          const originalJsx = window.jsx;
-          if (originalJsx) {
-            window.jsx = function(type, props, key) {
-              // If type is a function (component), set up context
-              if (typeof type === 'function') {
-                const componentName = type.name || type.displayName || 'Component';
-                
-                // Set up component context
-                if (window.__0x1_enterComponentContext) {
-                  window.__0x1_enterComponentContext(componentName);
-                }
-                
-                try {
-                  // Call the original jsx function
-                  const result = originalJsx(type, props, key);
-                  return result;
-                } finally {
-                  // Clean up component context
-                  if (window.__0x1_exitComponentContext) {
-                    window.__0x1_exitComponentContext();
-                  }
-                }
-              } else {
-                // For non-function types (DOM elements), call original
-                return originalJsx(type, props, key);
-              }
-            };
-          }
-          
-          // Create component element with proper context
-          const element = jsx(PageComponent, {});
-          
-          // Use framework's renderToDOM if available
-          if (window.__0x1_renderToDOM) {
-            const rendered = window.__0x1_renderToDOM(element);
-            if (rendered) {
-              appRoot.innerHTML = '';
-              appRoot.appendChild(rendered);
-              console.log('[0x1] Component mounted successfully');
-              if (window.appReady) window.appReady();
-              return;
-            }
-          }
-          
-          // Fallback: basic mounting
-          console.warn('[0x1] Using basic mounting fallback');
-          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
-          if (window.appReady) window.appReady();
-          
-        } finally {
-          // Always clean up component context
-          if (window.__0x1_exitComponentContext) {
-            window.__0x1_exitComponentContext();
-          }
-        }
-        
-      } catch (error) {
-        console.error('[0x1] Error mounting component:', error);
-        appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error loading app</div>';
-      }
-    };
-
-    // Start rendering
-    tryRender();
-  };
-
-  // Initialize when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeApp);
-  } else {
-    initializeApp();
-  }
-}
-
-// Module export support
-if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
-  module.exports = exports;
-}
-`;
-      
-      writeFileSync(bundlePath, fallbackBundle);
-      logger.info(`✅ Fallback bundle created at ${bundlePath} (${fallbackBundle.length} bytes)`);
-      return true;
-    };
-    
-    // Simple approach: just read and copy the entry point without complex processing
-    try {
-      const content = readFileSync(entryPoint, 'utf-8');
-      
-      // Use Bun's bundler to create a single file with all dependencies resolved
-      const buildResult = await Bun.build({
-        entrypoints: [entryPoint],
-        target: 'browser',
-        format: 'esm',
-        minify: false,
-        external: ['0x1*', '/0x1/*'], // Only externalize 0x1 framework imports
-        define: {
-          'process.env.NODE_ENV': '"production"',
-          'process.env.CI': 'false',
-          'process.env.VERCEL': 'false',
-          'process.env.NETLIFY': 'false',
-          'process.env.GITHUB_ACTIONS': 'false',
-          'process.env.GITLAB_CI': 'false',
-          'process.stdout.isTTY': 'false',
-          'process.stdout.clearLine': 'undefined',
-          'process.stdout.cursorTo': 'undefined',
-          'process.env.DEBUG': 'false'
-        }
-      });
-      
-      if (buildResult.success && buildResult.outputs.length > 0) {
-        // Get the bundled content
-        let bundledContent = await buildResult.outputs[0].text();
-        
-        // Fix the framework import paths to use absolute paths
-        bundledContent = bundledContent.replace(
-          /from\s+["']0x1\/jsx-runtime["']/g,
-          'from "/0x1/jsx-runtime.js"'
-        );
-        
-        bundledContent = bundledContent.replace(
-          /from\s+["']0x1\/link["']/g,
-          'from "/0x1/router.js"'
-        );
-        
-        // Handle bare 0x1 imports (like useState, useEffect, etc.)
-        bundledContent = bundledContent.replace(
-          /from\s+["']0x1["']/g,
-          'from "/0x1/index.js"'
-        );
-        
-        bundledContent = bundledContent.replace(
-          /from\s+["']0x1(\/[^"']*)?["']/g,
-          'from "/0x1$1.js"'
-        );
-        
-        // Create the final bundle
-        const finalBundle = `// 0x1 Framework - Bundled App (MAIN TEMPLATE v2)
-// Entry point: ${basename(entryPoint)}
-// All components bundled inline
-
-// Browser polyfills for Node.js globals
-if (typeof process === 'undefined') {
-  window.process = {
-    env: {
-      NODE_ENV: 'production',
-      CI: false,
-      VERCEL: false,
-      NETLIFY: false,
-      GITHUB_ACTIONS: false,
-      GITLAB_CI: false,
-      DEBUG: false
-    },
-    stdout: {
-      isTTY: false,
-      clearLine: undefined,
-      cursorTo: undefined
-    }
-  };
-}
-
-${bundledContent}
-
-// BUILDER.TS TEST: This line should appear if builder.ts is working
-console.log('[BUILDER.TS] This message proves builder.ts changes are working!');
-
-// CRITICAL FIX: Production-ready component mounting with proper hooks context
-if (typeof window !== 'undefined') {
-  const initializeApp = () => {
-    const appRoot = document.getElementById('app');
-    if (!appRoot) {
-      console.error('[0x1] App root element (#app) not found');
-      return;
-    }
-
-    // Try multiple ways to get the component (same as dev server)
-    let PageComponent = null;
-    
-    try {
-      PageComponent = HomePage; // Direct reference
-      console.log('[0x1] Found HomePage via direct reference');
-    } catch (e) {
-      console.debug('[0x1] Direct HomePage reference not available:', e);
-    }
-    
-    if (!PageComponent) {
-      try {
-        PageComponent = (typeof module !== 'undefined' && module.exports?.default) || 
-                       (typeof exports !== 'undefined' && exports.default) ||
-                       window.PageComponent;
-        if (PageComponent) {
-          console.log('[0x1] Found PageComponent via exports');
-        }
-      } catch (e) {
-        console.debug('[0x1] Module exports not available:', e);
-      }
-    }
-    
-    if (!PageComponent) {
-      console.error('[0x1] No page component found to mount');
-      appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error: No page component found</div>';
-      return;
-    }
-
-    console.log('[0x1] Page component found, mounting...');
-    
-    // CRITICAL FIX: Proper hooks context and JSX rendering (matches dev server)
-    const tryRender = async () => {
-      try {
-        // Wait for hooks system to be ready
-        let hooksReady = false;
-        let retries = 0;
-        const maxRetries = 20;
-        
-        while (!hooksReady && retries < maxRetries) {
-          if (typeof window !== 'undefined' && window.React && window.React.useState) {
-            hooksReady = true;
-            break;
-          }
-          
-          retries++;
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        
-        if (!hooksReady) {
-          console.warn('[0x1] Hooks system not ready, using fallback');
-          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
-          if (window.appReady) window.appReady();
-          return;
-        }
-        
-        // Import jsx runtime
-        const { jsx } = await import('/0x1/jsx-runtime.js');
-
-        // CRITICAL FIX: Set up component context for hooks (same as production app.js)
-        if (window.__0x1_enterComponentContext) {
-          window.__0x1_enterComponentContext('HomePage');
-        }
-        
-        try {
-          // CRITICAL FIX: Override JSX function to auto-handle component context for hook-using components
-          const originalJsx = window.jsx;
-          if (originalJsx) {
-            window.jsx = function(type, props, key) {
-              // If type is a function (component), set up context
-              if (typeof type === 'function') {
-                const componentName = type.name || type.displayName || 'Component';
-                
-                // Set up component context
-                if (window.__0x1_enterComponentContext) {
-                  window.__0x1_enterComponentContext(componentName);
-}
-
-                try {
-                  // Call the original jsx function
-                  const result = originalJsx(type, props, key);
-                  return result;
-                } finally {
-                  // Clean up component context
-                  if (window.__0x1_exitComponentContext) {
-                    window.__0x1_exitComponentContext();
-                  }
-                }
-              } else {
-                // For non-function types (DOM elements), call original
-                return originalJsx(type, props, key);
-              }
-            };
-          }
-          
-          // Create component element with proper context
-          const element = jsx(PageComponent, {});
-          
-          // Use framework's renderToDOM if available
-          if (window.__0x1_renderToDOM) {
-            const rendered = window.__0x1_renderToDOM(element);
-            if (rendered) {
-              appRoot.innerHTML = '';
-              appRoot.appendChild(rendered);
-              console.log('[0x1] Component mounted successfully');
-              if (window.appReady) window.appReady();
-              return;
-            }
-          }
-          
-          // Fallback: basic mounting
-          console.warn('[0x1] Using basic mounting fallback');
-          appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #00d4ff; font-size: 1.2rem;">⚡ 0x1 App loaded (fallback mode)</div>';
-          if (window.appReady) window.appReady();
-          
-        } finally {
-          // Always clean up component context
-          if (window.__0x1_exitComponentContext) {
-            window.__0x1_exitComponentContext();
-          }
-        }
-        
-      } catch (error) {
-        console.error('[0x1] Error mounting component:', error);
-        appRoot.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ff6b6b;">⚡ Error loading app</div>';
-      }
-    };
-
-    // Start rendering
-    tryRender();
-  };
-
-  // Initialize when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeApp);
-  } else {
-    initializeApp();
-    }
-}
-
-// Module export support
-if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
-  module.exports = exports;
-}
-`;
-      
-        writeFileSync(bundlePath, finalBundle);
-        logger.info(`✅ Bundled app created at ${bundlePath} (${finalBundle.length} bytes)`);
-      return true;
-        
-      } else {
-        logger.warn('Bun.build failed, falling back to simple transpilation');
-        for (const message of buildResult.logs) {
-          logger.debug(message.toString());
-        }
-        return await createFallbackBundle();
-      }
-      
-    } catch (error) {
-      logger.warn(`Bundling failed: ${error instanceof Error ? error.message : String(error)}`);
-      return await createFallbackBundle();
-    }
-  } catch (error) {
-    logger.debug(`Failed to build app bundle: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
-  }
-}
 
 /**
  * Clean up temporary files

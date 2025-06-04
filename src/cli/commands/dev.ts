@@ -9,14 +9,14 @@ import { join } from "node:path";
 
 // Server imports
 import {
-  getLocalIP,
-  isPortAvailable
+    getLocalIP,
+    isPortAvailable
 } from "./utils/server/network";
 
-// Builder imports
+// Builder imports - UPDATED TO USE SOPHISTICATED FUNCTIONS
 import {
-  buildAppBundle,
-  buildComponents
+    findComponentFiles,
+    generateSophisticatedAppJs
 } from "../utils/builder";
 
 // Utility imports
@@ -368,25 +368,35 @@ async function cleanup(state: DevServerState): Promise<void> {
  */
 async function buildComponentsWithStatus(projectPath: string): Promise<void> {
   logger.info('💠 Building components...');
-  const componentsBuilt = await buildComponents(projectPath);
-  if (!componentsBuilt) {
+  const componentFiles = await findComponentFiles(projectPath);
+  if (!componentFiles || componentFiles.length === 0) {
     logger.warn('⚠️ No component files found - this is okay for simple projects');
   } else {
-    logger.success('✅ Components built successfully');
+    logger.success(`✅ Found ${componentFiles.length} component files`);
   }
 }
 
 /**
- * Build app bundle and show status
+ * Build app bundle and show status - UPDATED FOR SOPHISTICATED APP.JS
  */
 async function buildAppBundleWithStatus(projectPath: string): Promise<void> {
-  logger.info('💠 Building app bundle from page.tsx');
-  const bundleBuilt = await buildAppBundle(projectPath);
-  if (!bundleBuilt) {
-    logger.error('❌ Failed to build application bundle');
-    throw new Error('App bundle build failed');
+  logger.info('💠 Generating sophisticated app.js using dev-server logic...');
+  
+  try {
+    // Create output directory if it doesn't exist
+    const outputDir = join(projectPath, '.0x1', 'public');
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
+    }
+    
+    const outputPath = join(outputDir, 'app.js');
+    await generateSophisticatedAppJs(projectPath, outputPath);
+    
+    logger.success('✅ Sophisticated app.js generated at ' + outputPath);
+  } catch (error) {
+    logger.error('❌ Failed to generate sophisticated app.js');
+    throw error;
   }
-  logger.success('✅ App bundle created at ' + join(projectPath, '.0x1', 'public', 'app-bundle.js'));
 }
 
 /**

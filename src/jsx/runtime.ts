@@ -276,89 +276,26 @@ export function jsx(type: string | ComponentFunction | symbol, props: any, key?:
     };
   }
   
-  // CRITICAL FIX: Handle function components without immediately clearing context
+  // CRITICAL FIX: Use callComponentWithContext for function components
+  // This ensures we get the sophisticated updateCallback with proper DOM re-rendering
   if (typeof type === 'function') {
     const componentProps = { ...otherProps };
     if (children !== undefined) {
       componentProps.children = children;
     }
     
-    // Check if hooks context functions are available
-    const setContext = (globalThis as any)[HOOKS_CONTEXT_ENTER];
-    const clearContext = (globalThis as any)[HOOKS_CONTEXT_EXIT];
-    
-    if (setContext && clearContext) {
-      // Generate stable component ID for this specific component call
-      const componentName = type.name || 'Anonymous';
-      const propsString = JSON.stringify(componentProps || {});
-      let hash = 0;
-      for (let i = 0; i < propsString.length; i++) {
-        const char = propsString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-      }
-      const componentId = `${componentName}_${Math.abs(hash).toString(36)}`;
-      
-      // Create a minimal update callback for this component
-      const updateCallback = () => {
-        console.debug(`[0x1 Hooks] Component ${componentId} state changed`);
-        // Basic re-render logic here if needed
-      };
-      
-      // Set context for this component
-      setContext(componentId, updateCallback);
-      
-      try {
-        // Call the component with proper context
-        const result = type(componentProps);
-        
-        // CRITICAL FIX: Don't clear context automatically - let component lifecycle handle it
-        // This allows nested components to inherit and use the context properly
-        
-        // Ensure metadata is applied
-        return ensureComponentMetadata(result, componentId, componentName);
-        
-      } catch (error: any) {
-        console.error(`[0x1 JSX] Component error in ${componentName}:`, error);
-        
-        // Clear context only on error to prevent contamination
-        clearContext();
-        
-        // Return error boundary fallback
-        return {
-          type: 'div',
-          props: { 
-            className: 'error-boundary',
-            style: { color: 'red', padding: '10px', border: '1px solid red' },
-            'data-component-id': componentId,
-            'data-component-name': componentName
-          },
-          children: [`Error in ${componentName}: ${error.message}`],
-          key: null
-        };
-      }
-    } else {
-      // Fallback: No hooks context available, call component directly
-      console.warn(`[0x1 JSX] No hooks context for ${type.name || 'Anonymous'}, calling without hooks`);
-      try {
-        return type(componentProps);
-      } catch (error: any) {
-        console.error(`[0x1 JSX] Component error (no hooks):`, error);
-        return {
-          type: 'div',
-          props: { className: 'error-boundary' },
-          children: [`Error: ${error.message}`],
-          key: null
-        };
-      }
-    }
+    // Use the sophisticated callComponentWithContext instead of minimal inline handling
+    return callComponentWithContext(type, componentProps);
   }
   
-  // Handle DOM elements
+  // Handle regular HTML elements
   return {
-    type: type as string,
-    props: otherProps,
-    children: Array.isArray(children) ? children : (children !== undefined ? [children] : []),
+    type,
+    props: {
+      ...otherProps,
+      children: Array.isArray(children) ? children.flat().filter(c => c != null) : (children != null ? [children] : [])
+    },
+    children: Array.isArray(children) ? children.flat().filter(c => c != null) : (children != null ? [children] : []),
     key: key || null
   };
 }

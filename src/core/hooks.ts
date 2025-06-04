@@ -166,7 +166,7 @@ function getCurrentComponentData(): ComponentData {
 }
 
 /**
- * Queue a component update - FIXED TO ACTUALLY RE-RENDER COMPONENTS
+ * Queue a component update - FIXED FOR COMPONENT-ONLY UPDATES
  */
 function queueUpdate(componentId: string): void {
   // Validate componentId
@@ -180,19 +180,12 @@ function queueUpdate(componentId: string): void {
   const updateCallback = componentUpdateCallbacks.get(componentId);
   if (!updateCallback) {
     console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
-    // FALLBACK: Try to force a global re-render via router
-    if (typeof window !== 'undefined' && (window as any).__0x1_router) {
-      console.log('[0x1 Hooks] Fallback: Triggering router refresh');
-      try {
-        (window as any).__0x1_router.refresh();
-      } catch (e) {
-        console.warn('[0x1 Hooks] Router refresh failed:', e);
-      }
-    }
+    // REMOVED: Router refresh fallback that causes full page reloads
+    // Instead, just log the issue - the component may not need re-rendering
     return;
   }
   
-  // SIMPLIFIED APPROACH: Just call the update callback directly
+  // Call the update callback directly - this should trigger JSX runtime's executeReRender
   console.log(`[0x1 Hooks] Calling update callback for ${componentId}`);
   try {
     updateCallback();
@@ -201,7 +194,7 @@ function queueUpdate(componentId: string): void {
     console.error(`[0x1 Hooks] Update error for ${componentId}:`, error);
   }
   
-  // ADDITIONAL: Queue for microtask processing
+  // ADDITIONAL: Queue for microtask processing for batching
   updateQueue.add(updateCallback);
   
   if (!isProcessingUpdates) {
@@ -371,7 +364,7 @@ export function forceUpdateAllComponents(): void {
 // ============================================================================
 
 /**
- * useState - Manage component state - FIXED FOR ASYNC CONTEXT
+ * useState - Manage component state - FIXED FOR PROPER COMPONENT-ONLY UPDATES
  */
 export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((prevValue: T) => T)) => void] {
   if (!currentComponentId) {
@@ -410,10 +403,24 @@ export function useState<T>(initialValue: T | (() => T)): [T, (newValue: T | ((p
     if (prevValue !== nextValue) {
       data.states[hookIndex] = nextValue;
       
-      // Trigger re-render by calling the update callback
+      console.log(`[0x1 Hooks] Component ${componentIdSnapshot} state changed`);
+      
+      // CRITICAL FIX: Use the same re-render mechanism as JSX runtime
+      // This ensures component-only updates without full page refreshes
       const updateCallback = componentUpdateCallbacks.get(componentIdSnapshot);
       if (updateCallback) {
-        updateCallback();
+        try {
+          // Call the updateCallback which should trigger JSX runtime's executeReRender
+          updateCallback();
+          console.debug(`[0x1 Hooks] Update callback executed for ${componentIdSnapshot}`);
+        } catch (error) {
+          console.error(`[0x1 Hooks] Update callback failed for ${componentIdSnapshot}:`, error);
+        }
+      } else {
+        console.warn(`[0x1 Hooks] No update callback found for component ${componentIdSnapshot}`);
+        
+        // FALLBACK: Try to queue the update using the same mechanism as queueUpdate
+        queueUpdate(componentIdSnapshot);
       }
     }
   };
@@ -968,13 +975,23 @@ export default {
 export type { RefObject };
 
 // ============================================================================
-// Auto-Initialize Browser Compatibility - SIMPLIFIED
+// Auto-Initialize Browser Compatibility - IMMEDIATE (NO DELAY)
 // ============================================================================
 
-// Initialize browser compatibility automatically when module loads
+// Initialize browser compatibility IMMEDIATELY when module loads (no setTimeout)
 if (typeof window !== 'undefined') {
-  // Use setTimeout to ensure this runs after all module code is parsed
-  setTimeout(() => {
-    initializeBrowserCompat();
-  }, 0);
+  // IMMEDIATE initialization - no setTimeout to avoid timing issues
+  initializeBrowserCompat();
+  
+  // DOUBLE ENSURE: Set up window.React hooks immediately as backup
+  if (!(window as any).React) {
+    (window as any).React = {};
+  }
+  
+  // Ensure React hooks are available immediately for React compatibility
+  Object.assign((window as any).React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef
+  });
+  
+  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
 }
