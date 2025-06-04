@@ -7,22 +7,52 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 export default async function handler(req, res) {
+  // Log the request for debugging
+  console.log('API Component called:', req.method, req.url, req.query);
+  
   const { path } = req.query;
   
   if (!path) {
+    console.log('No path parameter provided');
     return res.status(400).json({ error: 'Missing path parameter' });
   }
   
   try {
     // Resolve the component file path
-    const componentPath = join(process.cwd(), path);
+    let componentPath = join(process.cwd(), path);
+    console.log('Looking for component at:', componentPath);
     
     if (!existsSync(componentPath)) {
-      return res.status(404).json({ error: `Component not found: ${path}` });
+      console.log('Component not found at:', componentPath);
+      
+      // Try alternative extensions
+      const alternatives = [
+        componentPath.replace('.tsx', '.jsx'),
+        componentPath.replace('.tsx', '.ts'),
+        componentPath.replace('.tsx', '.js'),
+        componentPath.replace('.tsx', '.tsx'),
+      ];
+      
+      let foundPath = null;
+      for (const altPath of alternatives) {
+        if (existsSync(altPath)) {
+          foundPath = altPath;
+          break;
+        }
+      }
+      
+      if (!foundPath) {
+        console.log('No alternatives found for:', path);
+        return res.status(404).json({ error: `Component not found: ${path}` });
+      }
+      
+      console.log('Found alternative at:', foundPath);
+      componentPath = foundPath;
     }
     
     // Read the component source
     const sourceCode = readFileSync(componentPath, 'utf-8');
+    console.log('Read component source, length:', sourceCode.length);
     
     // Enhanced JSX transformation for browser compatibility
     const transformedCode = sourceCode
@@ -66,6 +96,8 @@ export default async function handler(req, res) {
 import { jsx, jsxs, jsxDEV, Fragment } from '/0x1/jsx-dev-runtime.js';
 
 ${transformedCode}`;
+    
+    console.log('Transformed component successfully');
     
     // Set proper headers for JavaScript module
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
