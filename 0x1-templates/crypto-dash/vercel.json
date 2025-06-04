@@ -5,8 +5,18 @@
   "framework": null,
   "routes": [
     {
+      "src": "/node_modules/0x1",
+      "dest": "/0x1/index.js",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
+    },
+    {
       "src": "/0x1/(.*)",
-      "dest": "/0x1/$1"
+      "dest": "/0x1/$1",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
     },
     {
       "src": "/styles.css",
