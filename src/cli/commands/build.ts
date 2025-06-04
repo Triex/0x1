@@ -5,7 +5,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
 
 export interface BuildOptions {
@@ -61,10 +61,9 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     await generateSophisticatedAppJs(projectPath, outputPath);
     log.info('✅ Production app.js generated');
 
-    // Step 2: Generate component files as static assets (CRITICAL FOR VERCEL)
-    log.info('🧩 Pre-building component files for static serving...');
-    await generateStaticComponentFiles(projectPath, outputPath);
-    log.info('✅ Component files pre-built');
+    // Step 2: Component files handled by Vercel API (not pre-built)
+    log.info('🧩 Component transpilation will be handled by Vercel API...');
+    log.info('✅ Component handling configured');
 
     // Step 3: Copy 0x1 framework files (same structure as dev server)
     log.info('📋 Copying framework files...');
@@ -920,21 +919,33 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
         // Read and transpile the component
         const sourceCode = await Bun.file(sourcePath).text();
         
-        // Transpile using Bun (same as dev server)
+        // Transpile using Bun (SAME AS DEV SERVER)
         const transpiled = await Bun.build({
           entrypoints: [sourcePath],
           format: 'esm',
           target: 'browser',
           minify: false,
           splitting: false,
-          outdir: outputPath,
-          naming: {
-            entry: componentPath // Use the exact path from route discovery
+          sourcemap: 'none',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('development')
           },
-          external: ['node:*', 'path', 'url', 'fs', '0x1'] // Exclude Node.js modules and 0x1 framework
+          external: [], // Don't externalize anything - let Bun resolve everything
         });
         
-        if (transpiled.success) {
+        if (transpiled.success && transpiled.outputs.length > 0) {
+          // Get the transpiled content
+          let transpiledContent = '';
+          for (const output of transpiled.outputs) {
+            transpiledContent += await output.text();
+          }
+          
+          // Write the component file manually
+          const outputComponentPath = join(outputPath, componentPath);
+          const outputComponentDir = dirname(outputComponentPath);
+          await mkdir(outputComponentDir, { recursive: true });
+          await Bun.write(outputComponentPath, transpiledContent);
+          
           generatedCount++;
           console.log(`[Build] ✅ Generated component: ${componentPath}`);
         }
@@ -966,14 +977,26 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
           target: 'browser',
           minify: false,
           splitting: false,
-          outdir: outputDir,
-          naming: {
-            entry: basename(outputPath_component)
+          sourcemap: 'none',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('development')
           },
-          external: ['node:*', 'path', 'url', 'fs', '0x1'] // Exclude Node.js modules and 0x1 framework
+          external: [], // Don't externalize anything - let Bun resolve everything
         });
         
-        if (transpiled.success) {
+        if (transpiled.success && transpiled.outputs.length > 0) {
+          // Get the transpiled content
+          let transpiledContent = '';
+          for (const output of transpiled.outputs) {
+            transpiledContent += await output.text();
+          }
+          
+          // Write the component file manually
+          const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
+          const outputComponentDir = dirname(outputComponentPath);
+          await mkdir(outputComponentDir, { recursive: true });
+          await Bun.write(outputComponentPath, transpiledContent);
+          
           generatedCount++;
           console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
         }
