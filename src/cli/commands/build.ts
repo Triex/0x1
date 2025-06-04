@@ -61,9 +61,10 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     await generateSophisticatedAppJs(projectPath, outputPath);
     log.info('✅ Production app.js generated');
 
-    // Step 2: Component files handled by Vercel API (not pre-built)
-    log.info('🧩 Component transpilation will be handled by Vercel API...');
-    log.info('✅ Component handling configured');
+    // Step 2: Generate static component files (same as dev server transpilation)
+    log.info('🧩 Generating static component files...');
+    await generateStaticComponentFiles(projectPath, outputPath);
+    log.info('✅ Component files generated');
 
     // Step 3: Copy 0x1 framework files (same structure as dev server)
     log.info('📋 Copying framework files...');
