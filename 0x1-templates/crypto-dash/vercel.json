@@ -3,6 +3,11 @@
   "outputDirectory": "dist",
   "installCommand": "bun install",
   "framework": null,
+  "functions": {
+    "api/component.js": {
+      "runtime": "@vercel/node"
+    }
+  },
   "routes": [
     {
       "src": "/node_modules/0x1",
@@ -32,14 +37,14 @@
     },
     {
       "src": "/app/(.*)\\.js",
-      "dest": "/app/$1.js",
+      "dest": "/api/component?path=app/$1.tsx",
       "headers": {
         "Content-Type": "application/javascript"
       }
     },
     {
       "src": "/components/(.*)\\.js",
-      "dest": "/components/$1.js",
+      "dest": "/api/component?path=components/$1.tsx",
       "headers": {
         "Content-Type": "application/javascript"
       }
