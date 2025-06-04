@@ -600,29 +600,175 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
    </script>
    
    <style>
-     #app { min-height: 100vh; }
-     .app-loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
-     .app-loading.loaded { display: none; }
+     /* Dark mode detection and initial theme setup */
+     :root {
+       --bg-primary: #ffffff;
+       --bg-secondary: #f8fafc;
+       --text-primary: #1f2937;
+       --text-secondary: #6b7280;
+       --accent: #8b5cf6;
+       --accent-hover: #7c3aed;
+     }
+     
+     @media (prefers-color-scheme: dark) {
+       :root {
+         --bg-primary: #0f172a;
+         --bg-secondary: #1e293b;
+         --text-primary: #f1f5f9;
+         --text-secondary: #94a3b8;
+         --accent: #a78bfa;
+         --accent-hover: #8b5cf6;
+       }
+     }
+     
+     .dark {
+       --bg-primary: #0f172a;
+       --bg-secondary: #1e293b;
+       --text-primary: #f1f5f9;
+       --text-secondary: #94a3b8;
+       --accent: #a78bfa;
+       --accent-hover: #8b5cf6;
+     }
+     
+     * {
+       margin: 0;
+       padding: 0;
+       box-sizing: border-box;
+     }
+     
+     body, html {
+       height: 100%;
+       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+       background-color: var(--bg-primary);
+       color: var(--text-primary);
+       transition: background-color 0.2s ease, color 0.2s ease;
+     }
+     
+     #app { 
+       min-height: 100vh; 
+       background-color: var(--bg-primary);
+     }
+     
+     .app-loading { 
+       display: flex; 
+       flex-direction: column;
+       justify-content: center; 
+       align-items: center; 
+       height: 100vh; 
+       background-color: var(--bg-primary);
+       transition: opacity 0.3s ease;
+     }
+     
+     .app-loading.loaded { 
+       opacity: 0;
+       pointer-events: none;
+     }
+     
+     .loading-spinner {
+       width: 48px;
+       height: 48px;
+       border: 3px solid var(--text-secondary);
+       border-top: 3px solid var(--accent);
+       border-radius: 50%;
+       animation: spin 1s linear infinite;
+       margin-bottom: 24px;
+     }
+     
+     .loading-text {
+       color: var(--text-primary);
+       font-size: 18px;
+       font-weight: 500;
+       margin-bottom: 8px;
+     }
+     
+     .loading-subtext {
+       color: var(--text-secondary);
+       font-size: 14px;
+     }
+     
+     @keyframes spin {
+       0% { transform: rotate(0deg); }
+       100% { transform: rotate(360deg); }
+     }
+     
+     /* Fade out animation when app is ready */
+     .app-loading.loaded {
+       animation: fadeOut 0.5s ease forwards;
+     }
+     
+     @keyframes fadeOut {
+       from { opacity: 1; }
+       to { opacity: 0; display: none; }
+     }
    </style>
+   
+   <!-- CRITICAL: Set theme immediately to prevent flash -->
+   <script>
+     (function() {
+       try {
+         const savedTheme = localStorage.getItem('0x1-dark-mode');
+         if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+           document.documentElement.classList.add('dark');
+         }
+       } catch (e) {
+         // Fallback to system preference
+         if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+           document.documentElement.classList.add('dark');
+         }
+       }
+     })();
+   </script>
  </head>
  <body>
    <div id="app"></div>
-   <div class="app-loading" id="app-loading">Loading...</div>
+   <div class="app-loading" id="app-loading">
+     <div class="loading-spinner"></div>
+     <div class="loading-text">Loading App...</div>
+     <div class="loading-subtext">Initializing 0x1 Framework</div>
+   </div>
    
    <script>
      if (typeof process === 'undefined') {
        window.process = { env: { NODE_ENV: 'production' } };
      }
      
+     // Enhanced error handling with better UX
      window.addEventListener('error', function(e) {
        console.error('[0x1] Error:', e.error);
-       document.getElementById('app-loading').style.display = 'none';
+       const loading = document.getElementById('app-loading');
+       if (loading) {
+         loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="color: var(--text-primary); font-size: 18px; margin-bottom: 8px;">⚠️ Loading Error</div><div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Something went wrong while loading the app</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Retry</button></div>';
+       }
      });
      
+     // Faster app ready function with better transitions
      window.appReady = function() {
        const loading = document.getElementById('app-loading');
-       if (loading) loading.classList.add('loaded');
+       if (loading) {
+         loading.classList.add('loaded');
+         // Remove from DOM after animation
+         setTimeout(() => {
+           if (loading.parentNode) {
+             loading.parentNode.removeChild(loading);
+           }
+         }, 500);
+       }
      };
+     
+     // PERFORMANCE: Preload critical resources
+     const preloadLinks = [
+       { href: '/0x1/hooks.js', as: 'script' },
+       { href: '/0x1/router.js', as: 'script' }
+     ];
+     
+     preloadLinks.forEach(({ href, as }) => {
+       const link = document.createElement('link');
+       link.rel = 'preload';
+       link.href = href;
+       link.as = as;
+       link.crossOrigin = 'anonymous';
+       document.head.appendChild(link);
+     });
    </script>
    
    <script src="/app.js" type="module"></script>
@@ -970,7 +1116,7 @@ async function initApp() {
             await new Promise(resolve => setTimeout(resolve, 50));
             
             return componentModule.default(props);
-          } else {
+        } else {
             console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
@@ -1003,7 +1149,7 @@ async function initApp() {
     await new Promise(resolve => {
       if (document.readyState === 'complete') {
         resolve();
-      } else {
+  } else {
         const onReady = () => {
           document.removeEventListener('readystatechange', onReady);
           resolve();

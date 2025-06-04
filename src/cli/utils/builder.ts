@@ -137,11 +137,11 @@ async function loadPolyfillOnDemand(polyfillName) {
 async function initApp() {
   try {
     console.log('[0x1 App] 🚀 Starting production-ready initialization...');
-    
+        
     // CRITICAL: Clear any existing router state and timers
     if (window.__0x1_ROUTER__) {
       console.log('[0x1 App] 🧹 Cleaning up existing router state...');
-      try {
+        try {
         window.__0x1_ROUTER__.destroy?.();
       } catch (e) {
         console.warn('[0x1 App] Router cleanup warning:', e);
@@ -274,7 +274,7 @@ async function initApp() {
                 window.router.navigate('/');
               } else {
                 window.location.href = '/';
-              }
+      }
             }
           },
           children: ['🏠 Back to Home'],
@@ -316,7 +316,7 @@ async function initApp() {
               const importPath = route.componentPath + (loadRetryCount > 0 ? '?retry=' + loadRetryCount : '');
               componentModule = await import(importPath);
               
-            } catch (error) {
+  } catch (error) {
               loadRetryCount++;
               console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
               
@@ -340,21 +340,18 @@ async function initApp() {
           if (componentModule && componentModule.default) {
             console.log('[0x1 App] ✅ Route component resolved:', route.path);
             
-            // CRITICAL: Ensure DOM is ready before rendering new component
+            // OPTIMIZED: Faster DOM readiness check for quicker component rendering
             await new Promise(resolve => {
               if (document.readyState === 'complete') {
                 resolve();
               } else {
-                const onReady = () => {
-                  document.removeEventListener('readystatechange', onReady);
-                  resolve();
-                };
-                document.addEventListener('readystatechange', onReady);
+                // Use requestAnimationFrame for faster response
+                requestAnimationFrame(resolve);
               }
             });
-            
-            // Additional small delay to ensure DOM is fully stable
-            await new Promise(resolve => setTimeout(resolve, 50));
+    
+            // OPTIMIZED: Reduced delay for faster rendering
+            await new Promise(resolve => setTimeout(resolve, 10));
             
             return componentModule.default(props);
           } else {
@@ -385,8 +382,8 @@ async function initApp() {
     
     // Step 4: Start router with proper DOM synchronization
     console.log('[0x1 App] 🎯 Starting router...');
-    
-    // Ensure DOM is completely ready before starting router
+      
+    // OPTIMIZED: Reduced waiting time for faster initialization
     await new Promise(resolve => {
       if (document.readyState === 'complete') {
         resolve();
@@ -401,8 +398,8 @@ async function initApp() {
     
     router.init();
     
-    // Step 5: Navigate to current path with additional delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // OPTIMIZED: Reduced delay for faster navigation
+    await new Promise(resolve => setTimeout(resolve, 25));
     router.navigate(window.location.pathname, false);
     
     // Setup cleanup function for future use
@@ -412,10 +409,10 @@ async function initApp() {
       }
     };
     
-    // Hide loading indicator
+    // OPTIMIZED: Hide loading indicator immediately after navigation
     if (typeof window.appReady === 'function') {
       window.appReady();
-    }
+        }
     
     console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
     
@@ -425,8 +422,8 @@ async function initApp() {
     const appElement = document.getElementById('app');
     if (appElement) {
       appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
-    }
-    
+}
+
     // Hide loading indicator even on error
     if (typeof window.appReady === 'function') {
       window.appReady();
