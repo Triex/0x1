@@ -580,7 +580,7 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
   }
 
   const indexHtml = `<!DOCTYPE html>
- <html lang="en">
+ <html lang="en" class="dark">
  <head>
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -600,162 +600,115 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
    </script>
    
    <style>
-     /* Dark mode detection and initial theme setup */
-     :root {
-       --bg-primary: #ffffff;
-       --bg-secondary: #f8fafc;
-       --text-primary: #1f2937;
-       --text-secondary: #6b7280;
-       --accent: #8b5cf6;
-       --accent-hover: #7c3aed;
-     }
-     
-     @media (prefers-color-scheme: dark) {
-       :root {
-         --bg-primary: #0f172a;
-         --bg-secondary: #1e293b;
-         --text-primary: #f1f5f9;
-         --text-secondary: #94a3b8;
-         --accent: #a78bfa;
-         --accent-hover: #8b5cf6;
-       }
-     }
-     
-     .dark {
-       --bg-primary: #0f172a;
-       --bg-secondary: #1e293b;
-       --text-primary: #f1f5f9;
-       --text-secondary: #94a3b8;
-       --accent: #a78bfa;
-       --accent-hover: #8b5cf6;
-     }
-     
-     * {
-       margin: 0;
-       padding: 0;
-       box-sizing: border-box;
-     }
-     
-     body, html {
-       height: 100%;
-       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-       background-color: var(--bg-primary);
-       color: var(--text-primary);
-       transition: background-color 0.2s ease, color 0.2s ease;
-     }
-     
-     #app { 
-       min-height: 100vh; 
-       background-color: var(--bg-primary);
-     }
-     
+     /* Minimal loading styles that work with Tailwind */
+     #app { min-height: 100vh; }
      .app-loading { 
        display: flex; 
        flex-direction: column;
        justify-content: center; 
        align-items: center; 
-       height: 100vh; 
-       background-color: var(--bg-primary);
+       height: 100vh;
+       background: #0f172a;
+       color: #d1d5db;
        transition: opacity 0.3s ease;
      }
-     
+     html:not(.dark) .app-loading {
+       background: white;
+       color: #374151;
+     }
      .app-loading.loaded { 
        opacity: 0;
        pointer-events: none;
      }
-     
      .loading-spinner {
-       width: 48px;
-       height: 48px;
-       border: 3px solid var(--text-secondary);
-       border-top: 3px solid var(--accent);
+       width: 32px;
+       height: 32px;
+       border: 2px solid #374151;
+       border-top: 2px solid #a78bfa;
        border-radius: 50%;
        animation: spin 1s linear infinite;
-       margin-bottom: 24px;
+       margin-bottom: 16px;
      }
-     
+     html:not(.dark) .loading-spinner {
+       border-color: #e5e7eb;
+       border-top-color: #8b5cf6;
+     }
      .loading-text {
-       color: var(--text-primary);
-       font-size: 18px;
-       font-weight: 500;
-       margin-bottom: 8px;
-     }
-     
-     .loading-subtext {
-       color: var(--text-secondary);
        font-size: 14px;
+       font-weight: 500;
      }
-     
      @keyframes spin {
        0% { transform: rotate(0deg); }
        100% { transform: rotate(360deg); }
      }
-     
-     /* Fade out animation when app is ready */
-     .app-loading.loaded {
-       animation: fadeOut 0.5s ease forwards;
-     }
-     
-     @keyframes fadeOut {
-       from { opacity: 1; }
-       to { opacity: 0; display: none; }
-     }
    </style>
-   
-   <!-- CRITICAL: Set theme immediately to prevent flash -->
-   <script>
-     (function() {
-       try {
-         const savedTheme = localStorage.getItem('0x1-dark-mode');
-         if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-           document.documentElement.classList.add('dark');
-         }
-       } catch (e) {
-         // Fallback to system preference
-         if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-           document.documentElement.classList.add('dark');
-         }
-       }
-     })();
-   </script>
  </head>
- <body>
+ <body class="bg-slate-900 dark:bg-slate-900 text-white dark:text-white">
    <div id="app"></div>
    <div class="app-loading" id="app-loading">
      <div class="loading-spinner"></div>
-     <div class="loading-text">Loading App...</div>
-     <div class="loading-subtext">Initializing 0x1 Framework</div>
+     <div class="loading-text">Loading...</div>
    </div>
    
    <script>
+     // IMMEDIATE theme detection before any rendering
+     (function() {
+       try {
+         const savedTheme = localStorage.getItem('0x1-dark-mode');
+         if (savedTheme === 'light') {
+           document.documentElement.classList.remove('dark');
+           document.body.className = 'bg-white text-gray-900';
+         }
+       } catch (e) {
+         // Default to dark mode if anything fails
+         console.log('Theme detection error, defaulting to dark');
+       }
+     })();
+     
      if (typeof process === 'undefined') {
        window.process = { env: { NODE_ENV: 'production' } };
      }
      
-     // Enhanced error handling with better UX
+     let appReadyCalled = false;
+     let loadingTimeout;
+     
+     // Auto-hide loading after 10 seconds if stuck
+     loadingTimeout = setTimeout(() => {
+       if (!appReadyCalled) {
+         console.warn('[0x1] App seems stuck, forcing hide loading screen');
+         const loading = document.getElementById('app-loading');
+         if (loading) {
+           loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="font-size: 16px; margin-bottom: 8px;">⚠️ Loading Taking Longer Than Expected</div><div style="font-size: 14px; margin-bottom: 16px;">The app may be experiencing issues</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;">Reload App</button></div>';
+         }
+       }
+     }, 10000);
+     
      window.addEventListener('error', function(e) {
        console.error('[0x1] Error:', e.error);
+       clearTimeout(loadingTimeout);
        const loading = document.getElementById('app-loading');
-       if (loading) {
-         loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="color: var(--text-primary); font-size: 18px; margin-bottom: 8px;">⚠️ Loading Error</div><div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Something went wrong while loading the app</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Retry</button></div>';
+       if (loading && !appReadyCalled) {
+         loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="font-size: 16px; margin-bottom: 8px;">⚠️ Loading Error</div><div style="font-size: 14px; margin-bottom: 16px;">Something went wrong loading the app</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button></div>';
        }
      });
      
-     // Faster app ready function with better transitions
      window.appReady = function() {
+       if (appReadyCalled) return; // Prevent multiple calls
+       appReadyCalled = true;
+       clearTimeout(loadingTimeout);
+       
        const loading = document.getElementById('app-loading');
        if (loading) {
          loading.classList.add('loaded');
-         // Remove from DOM after animation
          setTimeout(() => {
            if (loading.parentNode) {
              loading.parentNode.removeChild(loading);
            }
-         }, 500);
+         }, 300);
        }
      };
      
-     // PERFORMANCE: Preload critical resources
+     // Preload critical resources
      const preloadLinks = [
        { href: '/0x1/hooks.js', as: 'script' },
        { href: '/0x1/router.js', as: 'script' }
@@ -766,7 +719,6 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
        link.rel = 'preload';
        link.href = href;
        link.as = as;
-       link.crossOrigin = 'anonymous';
        document.head.appendChild(link);
      });
    </script>

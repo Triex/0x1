@@ -315,8 +315,9 @@ async function initApp() {
               // Use cache-busting query parameter for retries only
               const importPath = route.componentPath + (loadRetryCount > 0 ? '?retry=' + loadRetryCount : '');
               componentModule = await import(importPath);
+              break; // Success, exit retry loop
               
-  } catch (error) {
+            } catch (error) {
               loadRetryCount++;
               console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
               
@@ -328,30 +329,20 @@ async function initApp() {
                     className: 'p-8 text-center',
                     style: 'color: #ef4444;' 
                   },
-                  children: ['❌ Failed to load component after retries: ' + error.message]
+                  children: ['❌ Failed to load component: ' + route.path]
                 };
               }
               
-              // Wait before retrying
-              await new Promise(resolve => setTimeout(resolve, 500 * loadRetryCount));
+              // Wait before retrying (but shorter delays to prevent getting stuck)
+              await new Promise(resolve => setTimeout(resolve, 200 * loadRetryCount));
             }
           }
           
           if (componentModule && componentModule.default) {
             console.log('[0x1 App] ✅ Route component resolved:', route.path);
             
-            // OPTIMIZED: Faster DOM readiness check for quicker component rendering
-            await new Promise(resolve => {
-              if (document.readyState === 'complete') {
-                resolve();
-              } else {
-                // Use requestAnimationFrame for faster response
-                requestAnimationFrame(resolve);
-              }
-            });
-    
-            // OPTIMIZED: Reduced delay for faster rendering
-            await new Promise(resolve => setTimeout(resolve, 10));
+            // OPTIMIZED: Minimal delay for smoother transitions
+            await new Promise(resolve => requestAnimationFrame(resolve));
             
             return componentModule.default(props);
           } else {
@@ -362,7 +353,7 @@ async function initApp() {
                 className: 'p-8 text-center',
                 style: 'color: #f59e0b;' 
               },
-              children: ['⚠️ Component loaded but has no default export']
+              children: ['⚠️ Component loaded but has no default export: ' + route.path]
             };
           }
         };
@@ -382,25 +373,26 @@ async function initApp() {
     
     // Step 4: Start router with proper DOM synchronization
     console.log('[0x1 App] 🎯 Starting router...');
-      
-    // OPTIMIZED: Reduced waiting time for faster initialization
-    await new Promise(resolve => {
-      if (document.readyState === 'complete') {
-        resolve();
-      } else {
+    
+    // OPTIMIZED: Faster DOM readiness check
+    if (document.readyState !== 'complete') {
+      await new Promise(resolve => {
         const onReady = () => {
           document.removeEventListener('readystatechange', onReady);
           resolve();
         };
         document.addEventListener('readystatechange', onReady);
-      }
-    });
+        // Also listen for DOMContentLoaded as fallback
+        if (document.readyState === 'interactive') {
+          setTimeout(resolve, 10);
+        }
+      });
+    }
     
     router.init();
     
-    // OPTIMIZED: Reduced delay for faster navigation
-    await new Promise(resolve => setTimeout(resolve, 25));
-    router.navigate(window.location.pathname, false);
+    // CRITICAL: Navigate to current path and show content immediately
+    await router.navigate(window.location.pathname, false);
     
     // Setup cleanup function for future use
     window.__0x1_cleanup = () => {
@@ -412,7 +404,7 @@ async function initApp() {
     // OPTIMIZED: Hide loading indicator immediately after navigation
     if (typeof window.appReady === 'function') {
       window.appReady();
-        }
+    }
     
     console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
     
