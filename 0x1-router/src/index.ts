@@ -639,9 +639,16 @@ class Router {
           transition: opacity 0.15s ease;
         `;
         loadingElement.innerHTML = `
-          <div style="color: #6b7280; font-size: 14px;">
-            <div style="margin-bottom: 4px;">⚡</div>
-            <div>Loading...</div>
+          <div style="position: fixed; top: 20px; right: 20px; z-index: 9999; width: 24px; height: 24px; opacity: 0.6; pointer-events: none;">
+            <svg style="width: 24px; height: 24px; fill: #fbbf24; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1)); animation: lightning-pulse 2s ease-in-out infinite;" viewBox="0 0 24 24">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <style>
+              @keyframes lightning-pulse {
+                0%, 100% { opacity: 0.4; transform: scale(1); }
+                50% { opacity: 0.8; transform: scale(1.05); }
+              }
+            </style>
           </div>
         `;
         

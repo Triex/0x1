@@ -602,52 +602,78 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
    <style>
      /* Minimal loading styles that work with Tailwind */
      #app { min-height: 100vh; }
-     .app-loading { 
-       display: flex; 
-       flex-direction: column;
-       justify-content: center; 
-       align-items: center; 
-       height: 100vh;
-       background: #0f172a;
-       color: #d1d5db;
-       transition: opacity 0.3s ease;
-     }
-     html:not(.dark) .app-loading {
-       background: white;
-       color: #374151;
-     }
-     .app-loading.loaded { 
-       opacity: 0;
+     
+     /* Ultra-minimal top-right loading indicator */
+     .app-loading {
+       position: fixed;
+       top: 20px;
+       right: 20px;
+       z-index: 9999;
+       width: 24px;
+       height: 24px;
+       opacity: 0.6;
+       transform: translateY(0);
+       transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
        pointer-events: none;
      }
-     .loading-spinner {
-       width: 32px;
-       height: 32px;
-       border: 2px solid #374151;
-       border-top: 2px solid #a78bfa;
-       border-radius: 50%;
-       animation: spin 1s linear infinite;
-       margin-bottom: 16px;
+     
+     .app-loading.loaded {
+       opacity: 0;
+       transform: translateY(-4px) scale(0.8);
      }
-     html:not(.dark) .loading-spinner {
-       border-color: #e5e7eb;
-       border-top-color: #8b5cf6;
+     
+     /* Lightning bolt icon */
+     .loading-icon {
+       width: 24px;
+       height: 24px;
+       animation: lightning-pulse 2s ease-in-out infinite;
      }
-     .loading-text {
-       font-size: 14px;
-       font-weight: 500;
+     
+     .lightning-bolt {
+       fill: #fbbf24;
+       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
      }
-     @keyframes spin {
-       0% { transform: rotate(0deg); }
-       100% { transform: rotate(360deg); }
+     
+     html:not(.dark) .lightning-bolt {
+       fill: #f59e0b;
+       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+     }
+     
+     @keyframes lightning-pulse {
+       0%, 100% { 
+         opacity: 0.4;
+         transform: scale(1);
+       }
+       50% { 
+         opacity: 0.8;
+         transform: scale(1.05);
+       }
+     }
+     
+     /* Even more minimal on mobile */
+     @media (max-width: 640px) {
+       .app-loading {
+         top: 16px;
+         right: 16px;
+         width: 20px;
+         height: 20px;
+         opacity: 0.5;
+       }
+       .loading-icon {
+         width: 20px;
+         height: 20px;
+       }
      }
    </style>
  </head>
  <body class="bg-slate-900 dark:bg-slate-900 text-white dark:text-white">
    <div id="app"></div>
    <div class="app-loading" id="app-loading">
-     <div class="loading-spinner"></div>
-     <div class="loading-text">Loading...</div>
+     <div class="loading-icon">
+       <svg class="lightning-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor"/>
+       </svg>
+     </div>
    </div>
    
    <script>
@@ -678,7 +704,7 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
          console.warn('[0x1] App seems stuck, forcing hide loading screen');
          const loading = document.getElementById('app-loading');
          if (loading) {
-           loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="font-size: 16px; margin-bottom: 8px;">⚠️ Loading Taking Longer Than Expected</div><div style="font-size: 14px; margin-bottom: 16px;">The app may be experiencing issues</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;">Reload App</button></div>';
+           loading.classList.add('loaded');
          }
        }
      }, 10000);
@@ -688,7 +714,7 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
        clearTimeout(loadingTimeout);
        const loading = document.getElementById('app-loading');
        if (loading && !appReadyCalled) {
-         loading.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="font-size: 16px; margin-bottom: 8px;">⚠️ Loading Error</div><div style="font-size: 14px; margin-bottom: 16px;">Something went wrong loading the app</div><button onclick="window.location.reload()" style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button></div>';
+         loading.classList.add('loaded');
        }
      });
      
@@ -700,11 +726,6 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
        const loading = document.getElementById('app-loading');
        if (loading) {
          loading.classList.add('loaded');
-         setTimeout(() => {
-           if (loading.parentNode) {
-             loading.parentNode.removeChild(loading);
-           }
-         }, 300);
        }
      };
      
