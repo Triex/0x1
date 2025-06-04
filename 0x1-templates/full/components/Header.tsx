@@ -64,7 +64,7 @@ export function Header() {
         </div>
 
         {/* Visual Separator - Made more visible */}
-        <div className="hidden md:block h-10 w-1 bg-[#2a204c] mx-6 opacity-80"></div>
+        <div className="hidden md:block h-10 w-1 bg-gray-100 dark:bg-[#2a204c] mx-6 opacity-80"></div>
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex space-x-6 flex-1">

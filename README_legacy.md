@@ -1202,3 +1202,10 @@ Ultimately; adding crypto features to give the framework a real use case, and ab
   - [ ] Properly tested, and documented. Confirmed functional.
 - [ ] Create `0x1 Website` with documentation, examples, and tutorials.
   - [ ] Add in-browser `AI Component IDE Generator` tool (paid LLM API)
+
+# Notes
+
+## Mimic Production Environment
+```bash
+cd ../../../ && lsof -ti:8000 | xargs kill -9 2>/dev/null; cd 0x1-templates/full/dist && python3 -m http.server 8000
+```
