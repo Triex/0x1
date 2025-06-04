@@ -31,18 +31,12 @@
       "dest": "/app-bundle.js"
     },
     {
-      "src": "/app/(.*)\\.js",
-      "dest": "/api/component?path=app/$1.tsx",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "src": "/app/(.+)\\.js",
+      "dest": "/api/component?path=app/$1.tsx"
     },
     {
-      "src": "/components/(.*)\\.js",
-      "dest": "/api/component?path=components/$1.tsx",
-      "headers": {
-        "Content-Type": "application/javascript"
-      }
+      "src": "/components/(.+)\\.js",
+      "dest": "/api/component?path=components/$1.tsx"
     },
     {
       "src": "/public/(.*)",
