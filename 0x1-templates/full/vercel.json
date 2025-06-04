@@ -35,28 +35,18 @@
       "dest": "/app-bundle.js"
     },
     {
-      "src": "/app/page.js",
-      "dest": "/api/component?path=app/page.tsx"
-    },
-    {
-      "src": "/app/dashboard/page.js",
-      "dest": "/api/component?path=app/dashboard/page.tsx"
-    },
-    {
-      "src": "/app/features/page.js",
-      "dest": "/api/component?path=app/features/page.tsx"
-    },
-    {
-      "src": "/app/contact/page.js",
-      "dest": "/api/component?path=app/contact/page.tsx"
-    },
-    {
-      "src": "/app/about/page.js",
-      "dest": "/api/component?path=app/about/page.tsx"
+      "src": "/app/(.*)\\.js",
+      "dest": "/app/$1.js",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
     },
     {
       "src": "/components/(.*)\\.js",
-      "dest": "/api/component?path=components/$1.tsx"
+      "dest": "/components/$1.js",
+      "headers": {
+        "Content-Type": "application/javascript"
+      }
     },
     {
       "src": "/public/(.*)",
