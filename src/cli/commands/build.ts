@@ -4,7 +4,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
 
@@ -180,6 +180,10 @@ async function copy0x1FrameworkFiles(outputPath: string): Promise<void> {
   const framework0x1Dir = join(outputPath, '0x1');
   await mkdir(framework0x1Dir, { recursive: true });
   
+  // Create node_modules/0x1 structure for import resolution
+  const nodeModulesDir = join(outputPath, 'node_modules', '0x1');
+  await mkdir(nodeModulesDir, { recursive: true });
+  
   // Get framework files from the same location as dev server
   const currentFile = new URL(import.meta.url).pathname;
   const frameworkRoot = resolve(dirname(currentFile), '..', '..');
@@ -205,9 +209,208 @@ async function copy0x1FrameworkFiles(outputPath: string): Promise<void> {
     }
   }
   
+  // CRITICAL: Generate browser-compatible 0x1 framework entry point (same as dev server)
+  await generateBrowserCompatible0x1Entry(nodeModulesDir);
+  
   if (copiedCount === 0) {
     logger.warn('⚠️ No 0x1 framework files found - build may not work in production');
   }
+}
+
+/**
+ * Generate browser-compatible 0x1 framework entry point
+ * This matches exactly what the dev server provides for component imports
+ */
+async function generateBrowserCompatible0x1Entry(nodeModulesDir: string): Promise<void> {
+  const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
+console.log('[0x1] Framework module loaded - dynamic runtime version');
+
+// =====================================================
+// DYNAMIC RUNTIME HOOK RESOLUTION
+// =====================================================
+
+// Create dynamic getters that resolve hooks at import time, not module load time
+if (!globalThis.hasOwnProperty('__0x1_hooks_getter')) {
+Object.defineProperty(globalThis, '__0x1_hooks_getter', {
+  value: function(hookName) {
+    // Check window.React first (set by hooks module)
+    if (typeof window !== 'undefined' && window.React && typeof window.React[hookName] === 'function') {
+      return window.React[hookName];
+    }
+    
+    // Check direct window access
+    if (typeof window !== 'undefined' && typeof window[hookName] === 'function') {
+      return window[hookName];
+    }
+    
+    // Check JSX runtime hooks
+    if (typeof window !== 'undefined' && typeof window.__0x1_useState === 'function' && hookName === 'useState') {
+      return window.__0x1_useState;
+    }
+    
+    // Check for useEffect specifically
+    if (typeof window !== 'undefined' && typeof window.__0x1_useEffect === 'function' && hookName === 'useEffect') {
+      return window.__0x1_useEffect;
+    }
+    
+    // Debug: show what's available
+    const available = typeof window !== 'undefined' && window.React 
+      ? Object.keys(window.React).filter(k => typeof window.React[k] === 'function')
+      : 'React not available';
+    
+    console.error('[0x1] Hook "' + hookName + '" not found. Available: ' + available);
+    throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+  },
+  writable: false,
+  enumerable: false
+});
+}
+
+// Create runtime hook getters - these resolve the actual hooks when first accessed
+if (!globalThis.hasOwnProperty('__0x1_useState')) {
+Object.defineProperty(globalThis, '__0x1_useState', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useState');
+    // Replace this getter with the actual hook for performance
+    Object.defineProperty(globalThis, '__0x1_useState', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useEffect')) {
+Object.defineProperty(globalThis, '__0x1_useEffect', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useEffect');
+    Object.defineProperty(globalThis, '__0x1_useEffect', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useCallback')) {
+Object.defineProperty(globalThis, '__0x1_useCallback', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useCallback');
+    Object.defineProperty(globalThis, '__0x1_useCallback', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useMemo')) {
+Object.defineProperty(globalThis, '__0x1_useMemo', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useMemo');
+    Object.defineProperty(globalThis, '__0x1_useMemo', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useRef')) {
+Object.defineProperty(globalThis, '__0x1_useRef', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useRef');
+    Object.defineProperty(globalThis, '__0x1_useRef', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+// Export the dynamic hooks - CRITICAL FIX: Add useEffect export
+export const useState = (...args) => globalThis.__0x1_useState(...args);
+export const useEffect = (...args) => globalThis.__0x1_useEffect(...args);
+export const useCallback = (...args) => globalThis.__0x1_useCallback(...args);
+export const useMemo = (...args) => globalThis.__0x1_useMemo(...args);
+export const useRef = (...args) => globalThis.__0x1_useRef(...args);
+export const useClickOutside = (...args) => globalThis.__0x1_hooks_getter('useClickOutside')(...args);
+export const useFetch = (...args) => globalThis.__0x1_hooks_getter('useFetch')(...args);
+export const useForm = (...args) => globalThis.__0x1_hooks_getter('useForm')(...args);
+export const useLocalStorage = (...args) => globalThis.__0x1_hooks_getter('useLocalStorage')(...args);
+
+// Additional exports
+export const JSXNode = (...args) => {
+  if (typeof window !== 'undefined' && window.JSXNode) {
+    return window.JSXNode(...args);
+  }
+  throw new Error('[0x1] JSXNode not available - JSX runtime not loaded');
+};
+
+console.log('[0x1] Dynamic runtime hook resolution ready');
+
+// =====================================================
+// MINIMAL JSX RUNTIME DELEGATION
+// =====================================================
+
+export function jsx(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsx) {
+    return window.jsx(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export function jsxs(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsxs) {
+    return window.jsxs(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  if (typeof window !== 'undefined' && window.jsxDEV) {
+    return window.jsxDEV(type, props, key, isStaticChildren, source, self);
+  }
+  throw new Error('[0x1] JSX dev runtime not loaded');
+}
+
+export function createElement(type, props, ...children) {
+  if (typeof window !== 'undefined' && window.createElement) {
+    return window.createElement(type, props, ...children);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export const Fragment = (() => {
+  if (typeof window !== 'undefined' && window.Fragment) {
+    return window.Fragment;
+  }
+  return Symbol.for('react.fragment');
+})();
+
+// Export version
+export const version = '0.1.0';
+
+// Default export
+export default {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useClickOutside,
+  useFetch,
+  useForm,
+  useLocalStorage,
+  jsx,
+  jsxs,
+  jsxDEV,
+  createElement,
+  Fragment,
+  JSXNode,
+  version
+};
+`;
+
+  // Write the browser-compatible entry point
+  await Bun.write(join(nodeModulesDir, 'index.js'), cleanFrameworkModule);
+  
+  logger.info('✅ Generated browser-compatible 0x1 framework entry point');
 }
 
 /**
@@ -323,7 +526,13 @@ async function processCss(
       });
 
       // Clean up temp file
-      Bun.spawnSync(['rm', tempCssPath], { cwd: projectPath });
+      if (existsSync(tempCssPath)) {
+        try {
+          await unlink(tempCssPath);
+        } catch (error) {
+          // Ignore cleanup errors
+        }
+      }
 
       if (result.exitCode !== 0) {
         const error = new TextDecoder().decode(result.stderr);
@@ -373,6 +582,18 @@ async function generateProductionHtml(projectPath: string, outputPath: string): 
    <title>0x1 App</title>
    <meta name="description" content="Fast, modern web applications built with 0x1 framework">
    <link rel="stylesheet" href="/styles.css">
+   
+   <!-- Import map for 0x1 framework module resolution (same as dev server) -->
+   <script type="importmap">
+   {
+     "imports": {
+       "0x1": "/node_modules/0x1/index.js",
+       "0x1/router": "/0x1/router.js",
+       "0x1/": "/0x1/"
+     }
+   }
+   </script>
+   
    <style>
      #app { min-height: 100vh; }
      .app-loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -818,7 +1039,7 @@ async function initApp() {
             if (componentModule && componentModule.default) {
               console.log('[0x1 App] ✅ Route component resolved:', route.path);
               return componentModule.default(props);
-      } else {
+        } else {
               console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
               return {
                 type: 'div',
@@ -828,8 +1049,8 @@ async function initApp() {
                 },
                 children: ['⚠️ Component loaded but has no default export']
               };
-            }
-          } catch (error) {
+        }
+      } catch (error) {
             console.error('[0x1 App] ❌ Route component error:', route.path, error);
             return {
               type: 'div',
@@ -898,7 +1119,7 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
   const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
   
   // Discover all routes using the same logic as dev server
-  const routes = await discoverRoutesFromFileSystem(projectPath);
+  const routes = discoverRoutesFromFileSystem(projectPath);
   
   // Create app directory structure in build output
   const appDir = join(outputPath, 'app');
@@ -907,6 +1128,28 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
   await mkdir(componentsDir, { recursive: true });
   
   let generatedCount = 0;
+  
+  // Browser-safe externals - exclude Node.js modules
+  const browserExternals = [
+    'node:fs', 'node:path', 'node:url', 'node:crypto', 'node:stream', 'node:buffer',
+    'fs', 'path', 'url', 'crypto', 'stream', 'buffer', 'util', 'os', 'events',
+    'child_process', 'cluster', 'dgram', 'dns', 'http', 'https', 'net', 'tls',
+    'querystring', 'readline', 'repl', 'string_decoder', 'timers', 'tty', 'vm', 'zlib'
+  ];
+  
+  // Custom plugin to redirect 0x1 imports to browser-compatible version
+  const redirect0x1Plugin = {
+    name: '0x1-redirect',
+    setup(build: any) {
+      build.onResolve({ filter: /^0x1$/ }, (args: any) => {
+        // Redirect 0x1 imports to our browser-compatible entry point
+        return {
+          path: join(outputPath, 'node_modules', '0x1', 'index.js'),
+          external: true
+        };
+      });
+    }
+  };
   
   // Generate component files for each route
   for (const route of routes) {
@@ -917,38 +1160,62 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
       const sourcePath = join(projectPath, sourceFile);
       
       if (existsSync(sourcePath)) {
-        // Read and transpile the component
+        // Read source code and check for 0x1 imports
         const sourceCode = await Bun.file(sourcePath).text();
         
-        // Transpile using Bun (SAME AS DEV SERVER)
-        const transpiled = await Bun.build({
-          entrypoints: [sourcePath],
-          format: 'esm',
-          target: 'browser',
-          minify: false,
-          splitting: false,
-          sourcemap: 'none',
-          define: {
-            'process.env.NODE_ENV': JSON.stringify('development')
-          },
-          external: [], // Don't externalize anything - let Bun resolve everything
-        });
+        // CRITICAL DECISION: If component imports from "0x1", skip build-time transpilation
+        // Let it load dynamically at runtime (same as dev server approach)
+        if (sourceCode.includes('from "0x1"') || sourceCode.includes("from '0x1'")) {
+          console.log(`[Build] ⏭️ Skipping component with 0x1 imports (will load at runtime): ${componentPath}`);
+          continue;
+        }
         
-        if (transpiled.success && transpiled.outputs.length > 0) {
-          // Get the transpiled content
-          let transpiledContent = '';
-          for (const output of transpiled.outputs) {
-            transpiledContent += await output.text();
+        // Create a temporary file with source
+        const tempPath = sourcePath + '.temp';
+        await Bun.write(tempPath, sourceCode);
+        
+        try {
+          // Transpile using Bun with browser-safe configuration and custom plugin
+          const transpiled = await Bun.build({
+            entrypoints: [tempPath],
+            format: 'esm',
+            target: 'browser',
+            minify: false,
+            splitting: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('production'),
+              'global': 'globalThis'
+            },
+            external: browserExternals,
+            plugins: [redirect0x1Plugin], // Use our custom plugin
+          });
+          
+          if (transpiled.success && transpiled.outputs.length > 0) {
+            // Get the transpiled content
+            let transpiledContent = '';
+            for (const output of transpiled.outputs) {
+              transpiledContent += await output.text();
+            }
+            
+            // Write the component file manually
+            const outputComponentPath = join(outputPath, componentPath);
+            const outputComponentDir = dirname(outputComponentPath);
+            await mkdir(outputComponentDir, { recursive: true });
+            await Bun.write(outputComponentPath, transpiledContent);
+            
+            generatedCount++;
+            console.log(`[Build] ✅ Generated component: ${componentPath}`);
           }
-          
-          // Write the component file manually
-          const outputComponentPath = join(outputPath, componentPath);
-          const outputComponentDir = dirname(outputComponentPath);
-          await mkdir(outputComponentDir, { recursive: true });
-          await Bun.write(outputComponentPath, transpiledContent);
-          
-          generatedCount++;
-          console.log(`[Build] ✅ Generated component: ${componentPath}`);
+        } finally {
+          // Clean up temp file
+          if (existsSync(tempPath)) {
+            try {
+              await unlink(tempPath);
+            } catch (error) {
+              // Ignore cleanup errors
+            }
+          }
         }
       }
     } catch (error) {
@@ -968,38 +1235,61 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
     const sourcePath = join(projectPath, componentFile);
     if (existsSync(sourcePath)) {
       try {
-        const outputPath_component = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
-        const outputDir = dirname(outputPath_component);
-        await mkdir(outputDir, { recursive: true });
+        // Read source code and check for 0x1 imports
+        const sourceCode = await Bun.file(sourcePath).text();
         
-        const transpiled = await Bun.build({
-          entrypoints: [sourcePath],
-          format: 'esm', 
-          target: 'browser',
-          minify: false,
-          splitting: false,
-          sourcemap: 'none',
-          define: {
-            'process.env.NODE_ENV': JSON.stringify('development')
-          },
-          external: [], // Don't externalize anything - let Bun resolve everything
-        });
+        // CRITICAL DECISION: If component imports from "0x1", skip build-time transpilation
+        // Let it load dynamically at runtime (same as dev server approach)
+        if (sourceCode.includes('from "0x1"') || sourceCode.includes("from '0x1'")) {
+          console.log(`[Build] ⏭️ Skipping component with 0x1 imports (will load at runtime): ${componentFile}`);
+          continue;
+        }
         
-        if (transpiled.success && transpiled.outputs.length > 0) {
-          // Get the transpiled content
-          let transpiledContent = '';
-          for (const output of transpiled.outputs) {
-            transpiledContent += await output.text();
+        // Create a temporary file with source
+        const tempPath = sourcePath + '.temp';
+        await Bun.write(tempPath, sourceCode);
+        
+        try {
+          const transpiled = await Bun.build({
+            entrypoints: [tempPath],
+            format: 'esm', 
+            target: 'browser',
+            minify: false,
+            splitting: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('production'),
+              'global': 'globalThis'
+            },
+            external: browserExternals,
+            plugins: [redirect0x1Plugin], // Use our custom plugin
+          });
+          
+          if (transpiled.success && transpiled.outputs.length > 0) {
+            // Get the transpiled content
+            let transpiledContent = '';
+            for (const output of transpiled.outputs) {
+              transpiledContent += await output.text();
+            }
+            
+            // Write the component file manually
+            const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
+            const outputComponentDir = dirname(outputComponentPath);
+            await mkdir(outputComponentDir, { recursive: true });
+            await Bun.write(outputComponentPath, transpiledContent);
+            
+            generatedCount++;
+            console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
           }
-          
-          // Write the component file manually
-          const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
-          const outputComponentDir = dirname(outputComponentPath);
-          await mkdir(outputComponentDir, { recursive: true });
-          await Bun.write(outputComponentPath, transpiledContent);
-          
-          generatedCount++;
-          console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
+        } finally {
+          // Clean up temp file
+          if (existsSync(tempPath)) {
+            try {
+              await unlink(tempPath);
+            } catch (error) {
+              // Ignore cleanup errors
+            }
+          }
         }
       } catch (error) {
         console.warn(`[Build] ⚠️ Failed to generate component ${componentFile}:`, error);
