@@ -514,6 +514,10 @@
     animation-fill-mode: both;
   }
 
+  .animate-fade-in-fast {
+    animation: fade-in 0.3s ease-out forwards;
+  }
+
   .animate-slide-up {
     animation: slideUp 0.6s ease-out forwards;
     animation-fill-mode: both;
@@ -536,6 +540,18 @@
     from {
       opacity: 0;
       transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
     }
 
     to {

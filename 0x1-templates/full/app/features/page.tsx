@@ -3,6 +3,8 @@
  * Similar to Next.js 15's app/features/page.tsx
  */
 
+import PerformanceBenchmark from '../../components/PerformanceBenchmark';
+
 export default function FeaturesPage() {
   return (
     <div className="py-16">
@@ -37,33 +39,7 @@ export default function FeaturesPage() {
                 </p>
               </div>
               
-              <div className="bg-muted/50 backdrop-blur border border-border/40 rounded-2xl p-8">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold mb-4 flex items-center gap-3">
-                    <span className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center text-sm font-bold">⚡</span>
-                    Performance Benchmark
-                  </h3>
-                  <p className="opacity-75 mb-6 text-lg">Click the button below to run a performance test.</p>
-                  
-                  <button 
-                    id="run-benchmark-btn"
-                    className="btn btn-primary btn-lg"
-                  >
-                    🚀 Run Benchmark
-                  </button>
-                </div>
-                
-                <div className="mt-6">
-                  <div className="w-full bg-secondary/60 rounded-full h-6 mb-3 overflow-hidden">
-                    <div 
-                      id="progress-bar"
-                      className="bg-gradient-to-r from-primary to-accent h-6 rounded-full transition-all duration-500 shadow-lg" 
-                      style={{ width: '0%' }}
-                    ></div>
-                  </div>
-                  <p id="progress-text" className="text-sm opacity-70 font-medium">Ready to start benchmark...</p>
-                </div>
-              </div>
+              <PerformanceBenchmark />
             </div>
           </div>
           

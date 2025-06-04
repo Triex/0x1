@@ -110,8 +110,14 @@ class BuildCache {
   }
 }
 
-// 🚀 CRITICAL FIX: Transform imports for browser (FIXED REGEX PATTERN)
+// 🚀 CRITICAL FIX: Transform imports for browser (PROPER WORKING VERSION FROM BUILD-OLD.TS)
 function transformImportsForBrowser(sourceCode: string): string {
+  // Transform "0x1" imports first
+  sourceCode = sourceCode.replace(
+    /from\s+["']0x1["']/g,
+    'from "/node_modules/0x1/index.js"'
+  );
+  
   // 🚀 STEP 1: Fix relative component imports to use absolute browser paths
   sourceCode = sourceCode.replace(
     /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"](\.\.[/\\].*?)['"];?/g,
@@ -121,7 +127,7 @@ function transformImportsForBrowser(sourceCode: string): string {
       // Map specific patterns to browser-accessible paths
       if (importPath.includes('components/')) {
         // ../components/Header -> /components/Header.js
-        browserPath = importPath.replace(/^\.\.\/components\//, '/components/');
+        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
       } else if (importPath.includes('lib/')) {
         // ../lib/utils -> /lib/utils.js
         browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
@@ -130,7 +136,7 @@ function transformImportsForBrowser(sourceCode: string): string {
         browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
       } else {
         // Generic relative imports - assume they're components
-        browserPath = importPath.replace(/^\.\.\//, '/components/');
+        browserPath = importPath.replace(/^\.\.\//, '/');
       }
       
       // Add .js extension if not present
@@ -150,12 +156,13 @@ function transformImportsForBrowser(sourceCode: string): string {
       let browserPath = importPath;
       
       if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\/components\//, '/components/');
+        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
       } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\/lib\//, '/lib/');
+        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
       } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\/utils\//, '/utils/');
+        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
       } else {
+        // For same-directory imports, figure out what they likely are
         browserPath = importPath.replace(/^\.\//, '/components/');
       }
       
@@ -167,12 +174,6 @@ function transformImportsForBrowser(sourceCode: string): string {
       
       return `import ${importClause} from '${browserPath}';`;
     }
-  );
-
-  // 🚀 STEP 3: Transform 0x1 framework imports
-  sourceCode = sourceCode.replace(
-    /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"]0x1['"];?/g,
-    'import $1 from "/node_modules/0x1/index.js";'
   );
   
   return sourceCode;
@@ -450,7 +451,7 @@ async function discoverAllComponentsSuperFast(projectPath: string): Promise<Arra
   return allComponents;
 }
 
-// 🚀 ULTRA-FAST APP.JS GENERATION
+// 🚀 ULTRA-FAST APP.JS GENERATION - FIXED WITH BUILD-OLD.TS STABILITY
 async function generateSophisticatedAppJsFast(projectPath: string, outputPath: string, routes: Array<{ path: string; componentPath: string }>): Promise<void> {
   // Safely serialize routes data
   let routesJson;
@@ -465,78 +466,339 @@ async function generateSophisticatedAppJsFast(projectPath: string, outputPath: s
     routesJson = '[]';
   }
 
-  // Generate ultra-fast app.js
-  const appScript = `// 0x1 Framework - ULTRA-FAST App Bundle
-console.log('[0x1] ⚡ Ultra-fast app starting...');
+  // Generate the production app.js with enhanced stability (from build-old.ts)
+  const appScript = `// 0x1 Framework App Bundle - PRODUCTION-READY with ENHANCED STABILITY
+console.log('[0x1 App] Starting production-ready app with proper sequencing...');
 
+// Server-discovered routes
 const serverRoutes = ${routesJson};
-const polyfillCache = new Map();
 
-async function loadPolyfill(name) {
-  if (polyfillCache.has(name)) return polyfillCache.get(name);
-  const promise = import('/node_modules/' + name).catch(() => null);
-  polyfillCache.set(name, promise);
-  return promise;
+// ===== PRODUCTION-READY POLYFILL SYSTEM =====
+const polyfillCache = new Map();
+const polyfillQueue = new Map();
+
+async function loadPolyfillOnDemand(polyfillName) {
+  if (polyfillCache.has(polyfillName)) {
+    return polyfillCache.get(polyfillName);
+  }
+  
+  if (polyfillQueue.has(polyfillName)) {
+    return polyfillQueue.get(polyfillName);
+  }
+  
+  console.log('[0x1 App] Loading polyfill:', polyfillName);
+  
+  const promise = (async () => {
+    try {
+      const polyfillScript = document.createElement('script');
+      polyfillScript.type = 'module';
+      polyfillScript.src = '/node_modules/' + polyfillName;
+      
+      await new Promise((resolve, reject) => {
+        polyfillScript.onload = resolve;
+        polyfillScript.onerror = reject;
+        document.head.appendChild(polyfillScript);
+      });
+      
+      console.log('[0x1 App] ✅ Polyfill loaded:', polyfillName);
+      return true;
+    } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
+      return false;
+    }
+  })();
+  
+  polyfillQueue.set(polyfillName, promise);
+  polyfillCache.set(polyfillName, promise);
+  
+  try {
+    await promise;
+    return promise;
+  } finally {
+    polyfillQueue.delete(polyfillName);
+  }
 }
 
+// ===== MAIN INITIALIZATION WITH ENHANCED STABILITY =====
 async function initApp() {
   try {
-    console.log('[0x1] 🚀 Lightning init...');
+    console.log('[0x1 App] 🚀 Starting production-ready initialization...');
     
-    // Ultra-fast parallel loading
-    const [hooksModule, routerModule] = await Promise.all([
-      import('/0x1/hooks.js'),
-      import('/0x1/router.js')
-    ]);
+    // CRITICAL: Clear any existing router state and timers
+    if (window.__0x1_ROUTER__) {
+      console.log('[0x1 App] 🧹 Cleaning up existing router state...');
+      try {
+        window.__0x1_ROUTER__.destroy?.();
+      } catch (e) {
+        console.warn('[0x1 App] Router cleanup warning:', e);
+      }
+      delete window.__0x1_ROUTER__;
+      delete window.__0x1_router;
+      delete window.router;
+    }
+    
+    // Clear any existing timers and callbacks
+    if (window.__0x1_cleanup) {
+      console.log('[0x1 App] 🧹 Running existing cleanup...');
+      try {
+        window.__0x1_cleanup();
+      } catch (e) {
+        console.warn('[0x1 App] Cleanup warning:', e);
+      }
+    }
+    
+    // Clear any existing app content and ensure clean state
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '';
+      // Force a DOM flush
+      appElement.offsetHeight;
+    }
+    
+    // Step 1: Load essential dependencies with retry logic
+    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    
+    let hooksLoaded = false;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (!hooksLoaded && retryCount < maxRetries) {
+      try {
+        const hooksScript = document.createElement('script');
+        hooksScript.type = 'module';
+        hooksScript.src = '/0x1/hooks.js' + (retryCount > 0 ? '?retry=' + retryCount : '');
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Hooks loading timeout'));
+          }, 5000);
+          
+          hooksScript.onload = () => {
+            clearTimeout(timeout);
+            console.log('[0x1 App] ✅ Hooks ready');
+            hooksLoaded = true;
+            resolve();
+          };
+          hooksScript.onerror = (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          };
+          document.head.appendChild(hooksScript);
+        });
+      } catch (error) {
+        retryCount++;
+        console.warn('[0x1 App] ⚠️ Hooks loading attempt ' + retryCount + ' failed:', error);
+        if (retryCount >= maxRetries) {
+          throw new Error('Failed to load hooks after ' + maxRetries + ' attempts: ' + error.message);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
+    
+    // Step 2: Create router with enhanced error handling
+    console.log('[0x1 App] Creating router...');
+    
+    let routerModule;
+    retryCount = 0;
+    
+    while (!routerModule && retryCount < maxRetries) {
+      try {
+        routerModule = await import('/0x1/router.js' + (retryCount > 0 ? '?retry=' + retryCount : ''));
+      } catch (error) {
+        retryCount++;
+        console.warn('[0x1 App] ⚠️ Router loading attempt ' + retryCount + ' failed:', error);
+        if (retryCount >= maxRetries) {
+          throw new Error('Failed to load router after ' + maxRetries + ' attempts: ' + error.message);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
     
     const { Router } = routerModule;
-    const appElement = document.getElementById('app');
     
-    if (!appElement) throw new Error('App element not found');
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
+    }
+    
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    // Create beautiful 404 component
+    const notFoundComponent = () => ({
+      type: 'div',
+      props: { 
+        className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+      },
+      children: [
+        {
+          type: 'h1',
+          props: { className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4' },
+          children: ['404'],
+          key: null
+        },
+        {
+          type: 'h2',
+          props: { className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4' },
+          children: ['Page Not Found'],
+          key: null
+        },
+        {
+          type: 'p',
+          props: { className: 'text-lg text-gray-600 dark:text-gray-300 mb-8' },
+          children: ['The page you are looking for does not exist.'],
+          key: null
+        },
+        {
+          type: 'a',
+          props: {
+            href: '/',
+            className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+            onClick: (e) => {
+              e.preventDefault();
+              if (window.router && typeof window.router.navigate === 'function') {
+                window.router.navigate('/');
+              } else {
+                window.location.href = '/';
+              }
+            }
+          },
+          children: ['🏠 Back to Home'],
+          key: null
+        }
+      ],
+      key: null
+    });
     
     const router = new Router({
       rootElement: appElement,
       mode: 'history',
       debug: false,
       base: '/',
-      notFoundComponent: () => ({
-        type: 'div',
-        props: { className: 'flex items-center justify-center min-h-screen' },
-        children: [
-          { type: 'h1', props: { className: 'text-4xl font-bold text-violet-600' }, children: ['404'] },
-          { type: 'p', props: { className: 'text-gray-600 mt-4' }, children: ['Page not found'] },
-          { type: 'a', props: { href: '/', className: 'mt-4 px-4 py-2 bg-violet-600 text-white rounded' }, children: ['Home'] }
-        ]
-      })
+      notFoundComponent: notFoundComponent
     });
     
+    window.__0x1_ROUTER__ = router;
+    window.__0x1_router = router;
     window.router = router;
     
-    // Ultra-fast route registration
+    console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
+    
+    // Step 3: Register routes with enhanced error handling and DOM mounting sync
+    console.log('[0x1 App] 📝 Registering routes...');
+    
     for (const route of serverRoutes) {
-      router.addRoute(route.path, async (props) => {
-        const module = await import(route.componentPath);
-        return module?.default?.(props) || { type: 'div', children: ['Loading...'] };
+      try {
+        const routeComponent = async (props) => {
+          console.log('[0x1 App] 🔍 Route component called for:', route.path);
+          
+          let componentModule;
+          let loadRetryCount = 0;
+          const maxLoadRetries = 3;
+          
+          while (!componentModule && loadRetryCount < maxLoadRetries) {
+            try {
+              // Use cache-busting query parameter for retries only
+              const importPath = route.componentPath + (loadRetryCount > 0 ? '?retry=' + loadRetryCount : '');
+              componentModule = await import(importPath);
+              break; // Exit loop on success
+              
+            } catch (error) {
+              loadRetryCount++;
+              console.warn('[0x1 App] ⚠️ Component loading attempt ' + loadRetryCount + ' failed for ' + route.path + ':', error);
+              
+              if (loadRetryCount >= maxLoadRetries) {
+                console.error('[0x1 App] ❌ Route component error after all retries:', route.path, error);
+                return {
+                  type: 'div',
+                  props: { 
+                    className: 'p-8 text-center',
+                    style: 'color: #ef4444;' 
+                  },
+                  children: ['❌ Failed to load component: ' + route.path]
+                };
+              }
+              
+              // Short retry delay
+              await new Promise(resolve => setTimeout(resolve, 100 * loadRetryCount));
+            }
+          }
+          
+          if (componentModule && componentModule.default) {
+            console.log('[0x1 App] ✅ Route component resolved:', route.path);
+            // NO EXTRA DELAYS - let router handle timing
+            return componentModule.default(props);
+          } else {
+            console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
+            return {
+              type: 'div',
+              props: { 
+                className: 'p-8 text-center',
+                style: 'color: #f59e0b;' 
+              },
+              children: ['⚠️ Component loaded but has no default export: ' + route.path]
+            };
+          }
+        };
+        
+        router.addRoute(route.path, routeComponent, { 
+          componentPath: route.componentPath 
+        });
+        
+        console.log('[0x1 App] ✅ Route registered:', route.path);
+        
+      } catch (error) {
+        console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      }
+    }
+    
+    console.log('[0x1 App] 📊 All routes registered successfully');
+    
+    // Step 4: Start router with proper DOM synchronization
+    console.log('[0x1 App] 🎯 Starting router...');
+    
+    // Simple DOM readiness check
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => {
+        document.addEventListener('DOMContentLoaded', resolve, { once: true });
       });
     }
     
     router.init();
+    
+    // Navigate to current path immediately
     router.navigate(window.location.pathname, false);
     
-    // Hide loading immediately
-    window.appReady?.();
+    // Setup cleanup function for future use
+    window.__0x1_cleanup = () => {
+      if (router && router.destroy) {
+        router.destroy();
+      }
+    };
     
-    console.log('[0x1] ✅ Ultra-fast init complete');
+    // Hide loading indicator immediately
+    if (typeof window.appReady === 'function') {
+      window.appReady();
+    }
+    
+    console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
+    
   } catch (error) {
-    console.error('[0x1] ❌ Init failed:', error);
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
     const appElement = document.getElementById('app');
     if (appElement) {
-      appElement.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error: ' + error.message + '</div>';
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
     }
-    window.appReady?.();
+    
+    // Hide loading indicator immediately
+    if (typeof window.appReady === 'function') {
+      window.appReady();
+    }
   }
 }
 
+// ===== START IMMEDIATELY =====
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
@@ -735,87 +997,258 @@ async function generateStaticComponentFilesSuperFast(
   console.log(`[Build] ✅ COMPONENT GENERATION: ${generatedCount} files in ${totalTime.toFixed(1)}ms (WITH IMPORT FIXES)`);
 }
 
-// 🚀 LIGHTNING-FAST FRAMEWORK FILES COPY
+// 🚀 LIGHTNING-FAST FRAMEWORK FILES COPY - FIXED ROUTER ISSUE  
 async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
-  const currentFile = new URL(import.meta.url).pathname;
-  const frameworkRoot = resolve(dirname(currentFile), '..', '..');
-  const frameworkDistPath = join(frameworkRoot, 'dist');
-  const routerSourcePath = join(frameworkRoot, '0x1-router', 'dist', 'index.js');
-  
   const framework0x1Dir = join(outputPath, '0x1');
   const nodeModulesDir = join(outputPath, 'node_modules', '0x1');
   
+  // Get framework files from the same location as build-old.ts
+  const currentFile = new URL(import.meta.url).pathname;
+  const frameworkRoot = resolve(dirname(currentFile), '..', '..');
+  const frameworkDistPath = join(frameworkRoot, 'dist');
+
+  // CRITICAL FIX: Use the updated 0x1-router as single source of truth (from build-old.ts)
+  const routerSourcePath = join(frameworkRoot, '0x1-router', 'dist', 'index.js');
+
   const frameworkFiles = [
     { src: 'jsx-runtime.js', dest: 'jsx-runtime.js' },
     { src: 'jsx-dev-runtime.js', dest: 'jsx-dev-runtime.js' },
     { src: 'core/hooks.js', dest: 'hooks.js' },
     { src: 'index.js', dest: 'index.js' }
   ];
-  
-  // Parallel file copying
-  const copyTasks = frameworkFiles.map(async ({ src, dest }) => {
+
+  let copiedCount = 0;
+
+  // Copy standard framework files
+  for (const { src, dest } of frameworkFiles) {
     const srcPath = join(frameworkDistPath, src);
     const destPath = join(framework0x1Dir, dest);
-    
+
     if (existsSync(srcPath)) {
       const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
-      return true;
+      copiedCount++;
     }
-    return false;
-  });
-  
-  // Copy router and generate browser entry in parallel
-  const [, routerCopied, browserEntryGenerated] = await Promise.all([
-    Promise.all(copyTasks),
-    copyRouterFast(routerSourcePath, framework0x1Dir),
-    generateBrowserCompatible0x1EntryFast(nodeModulesDir)
-  ]);
-}
+  }
 
-async function copyRouterFast(routerSourcePath: string, framework0x1Dir: string): Promise<boolean> {
+  // CRITICAL: Copy the updated router from 0x1-router package (same as build-old.ts)
   if (existsSync(routerSourcePath)) {
     const routerContent = await Bun.file(routerSourcePath).text();
-    await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
-    return true;
+    const routerDestPath = join(framework0x1Dir, 'router.js');
+    await Bun.write(routerDestPath, routerContent);
+    copiedCount++;
+    logger.info('✅ Using updated 0x1-router as single source of truth');
+  } else {
+    logger.error(`❌ Updated 0x1-router not found at: ${routerSourcePath}`);
+    // Fallback to old router if new one doesn't exist
+    const fallbackRouterPath = join(frameworkDistPath, 'core/router.js');
+    if (existsSync(fallbackRouterPath)) {
+      const content = await Bun.file(fallbackRouterPath).text();
+      await Bun.write(join(framework0x1Dir, 'router.js'), content);
+      copiedCount++;
+      logger.warn('⚠️ Using fallback router - rebuild 0x1-router for latest fixes');
+    }
   }
-  return false;
+
+  // CRITICAL: Generate browser-compatible 0x1 framework entry point (same as build-old.ts)
+  await generateBrowserCompatible0x1EntryFast(nodeModulesDir);
+
+  if (copiedCount === 0) {
+    logger.warn('⚠️ No 0x1 framework files found - build may not work in production');
+  }
 }
 
 async function generateBrowserCompatible0x1EntryFast(nodeModulesDir: string): Promise<void> {
-  const cleanFrameworkModule = `// 0x1 Framework - Ultra-Fast Build Version
-console.log('[0x1] ⚡ Ultra-fast framework loaded');
+  // Use the EXACT same browser-compatible module as build-old.ts
+  const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
+console.log('[0x1] Framework module loaded - dynamic runtime version');
 
-// Dynamic hook resolution
-const hooks = new Proxy({}, {
-  get(_, prop) {
-    return (...args) => {
-      const hook = window.React?.[prop] || window[prop];
-      if (!hook) throw new Error('[0x1] Hook ' + prop + ' not loaded');
-      return hook(...args);
-    };
-  }
+// =====================================================
+// DYNAMIC RUNTIME HOOK RESOLUTION
+// =====================================================
+
+// Create dynamic getters that resolve hooks at import time, not module load time
+if (!globalThis.hasOwnProperty('__0x1_hooks_getter')) {
+Object.defineProperty(globalThis, '__0x1_hooks_getter', {
+  value: function(hookName) {
+    // Check window.React first (set by hooks module)
+    if (typeof window !== 'undefined' && window.React && typeof window.React[hookName] === 'function') {
+      return window.React[hookName];
+    }
+    
+    // Check direct window access
+    if (typeof window !== 'undefined' && typeof window[hookName] === 'function') {
+      return window[hookName];
+    }
+    
+    // Check JSX runtime hooks
+    if (typeof window !== 'undefined' && typeof window.__0x1_useState === 'function' && hookName === 'useState') {
+      return window.__0x1_useState;
+    }
+    
+    // Check for useEffect specifically
+    if (typeof window !== 'undefined' && typeof window.__0x1_useEffect === 'function' && hookName === 'useEffect') {
+      return window.__0x1_useEffect;
+    }
+    
+    // Debug: show what's available
+    const available = typeof window !== 'undefined' && window.React 
+      ? Object.keys(window.React).filter(k => typeof window.React[k] === 'function')
+      : 'React not available';
+    
+    console.error('[0x1] Hook "' + hookName + '" not found. Available: ' + available);
+    throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+  },
+  writable: false,
+  enumerable: false
 });
+}
 
-export const { useState, useEffect, useCallback, useMemo, useRef, useClickOutside, useFetch, useForm, useLocalStorage } = hooks;
+// Create runtime hook getters - these resolve the actual hooks when first accessed
+if (!globalThis.hasOwnProperty('__0x1_useState')) {
+Object.defineProperty(globalThis, '__0x1_useState', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useState');
+    // Replace this getter with the actual hook for performance
+    Object.defineProperty(globalThis, '__0x1_useState', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useEffect')) {
+Object.defineProperty(globalThis, '__0x1_useEffect', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useEffect');
+    Object.defineProperty(globalThis, '__0x1_useEffect', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useCallback')) {
+Object.defineProperty(globalThis, '__0x1_useCallback', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useCallback');
+    Object.defineProperty(globalThis, '__0x1_useCallback', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useMemo')) {
+Object.defineProperty(globalThis, '__0x1_useMemo', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useMemo');
+    Object.defineProperty(globalThis, '__0x1_useMemo', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+if (!globalThis.hasOwnProperty('__0x1_useRef')) {
+Object.defineProperty(globalThis, '__0x1_useRef', {
+  get() {
+    const hook = globalThis.__0x1_hooks_getter('useRef');
+    Object.defineProperty(globalThis, '__0x1_useRef', { value: hook, writable: false });
+    return hook;
+  },
+  configurable: true
+});
+}
+
+// Export the dynamic hooks - CRITICAL FIX: Add useEffect export
+export const useState = (...args) => globalThis.__0x1_useState(...args);
+export const useEffect = (...args) => globalThis.__0x1_useEffect(...args);
+export const useCallback = (...args) => globalThis.__0x1_useCallback(...args);
+export const useMemo = (...args) => globalThis.__0x1_useMemo(...args);
+export const useRef = (...args) => globalThis.__0x1_useRef(...args);
+export const useClickOutside = (...args) => globalThis.__0x1_hooks_getter('useClickOutside')(...args);
+export const useFetch = (...args) => globalThis.__0x1_hooks_getter('useFetch')(...args);
+export const useForm = (...args) => globalThis.__0x1_hooks_getter('useForm')(...args);
+export const useLocalStorage = (...args) => globalThis.__0x1_hooks_getter('useLocalStorage')(...args);
+
+// Additional exports
+export const JSXNode = (...args) => {
+  if (typeof window !== 'undefined' && window.JSXNode) {
+    return window.JSXNode(...args);
+  }
+  throw new Error('[0x1] JSXNode not available - JSX runtime not loaded');
+};
+
+console.log('[0x1] Dynamic runtime hook resolution ready');
+
+// =====================================================
+// MINIMAL JSX RUNTIME DELEGATION
+// =====================================================
 
 export function jsx(type, props, key) {
-  return window.jsx ? window.jsx(type, props, key) : { type, props: props || {}, key };
+  if (typeof window !== 'undefined' && window.jsx) {
+    return window.jsx(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
 }
 
 export function jsxs(type, props, key) {
-  return window.jsxs ? window.jsxs(type, props, key) : { type, props: props || {}, key };
+  if (typeof window !== 'undefined' && window.jsxs) {
+    return window.jsxs(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
 }
 
-export function jsxDEV(type, props, key) {
-  return window.jsxDEV ? window.jsxDEV(type, props, key) : { type, props: props || {}, key };
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  if (typeof window !== 'undefined' && window.jsxDEV) {
+    return window.jsxDEV(type, props, key, isStaticChildren, source, self);
+  }
+  throw new Error('[0x1] JSX dev runtime not loaded');
 }
 
-export const Fragment = Symbol.for('react.fragment');
+export function createElement(type, props, ...children) {
+  if (typeof window !== 'undefined' && window.createElement) {
+    return window.createElement(type, props, ...children);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export const Fragment = (() => {
+  if (typeof window !== 'undefined' && window.Fragment) {
+    return window.Fragment;
+  }
+  return Symbol.for('react.fragment');
+})();
+
+// Export version
 export const version = '0.1.0';
-export default { useState, useEffect, jsx, jsxs, jsxDEV, Fragment, version };`;
 
+// Default export
+export default {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useClickOutside,
+  useFetch,
+  useForm,
+  useLocalStorage,
+  jsx,
+  jsxs,
+  jsxDEV,
+  createElement,
+  Fragment,
+  JSXNode,
+  version
+};
+`;
+
+  // Write the browser-compatible entry point
   await Bun.write(join(nodeModulesDir, 'index.js'), cleanFrameworkModule);
+
+  logger.info('✅ Generated browser-compatible 0x1 framework entry point');
 }
 
 // 🚀 LIGHTNING-FAST ASSET COPYING
