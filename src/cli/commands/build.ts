@@ -3,7 +3,7 @@
  * Builds the application for production - simplified to match dev server approach
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
@@ -1247,101 +1247,9 @@ async function generateStaticComponentFiles(projectPath: string, outputPath: str
             .replace(/import\s+["'][^"']*\.css["'];?\s*\n?/g, ''); // Remove any CSS imports
           const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
           
-          sourceCode = `// AUTO-GENERATED: Layout-wrapped page component
-${layoutWithoutExport}
-
-// Original page component
-${pageWithoutExport}
-
-// Export layout-wrapped version as default
-export default function LayoutWrapped${pageComponentName}(props) {
-  return RootLayout({ 
-    children: ${pageComponentName}(props) 
-  });
-}`;
+          // Combine them
+          sourceCode = `${layoutWithoutExport}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return RootLayout({ children: ${pageComponentName}(props) });\n}`;
         }
-        
-        // SIMPLIFIED: Transform "0x1" imports to browser-compatible paths
-        sourceCode = sourceCode.replace(
-          /from\s+["']0x1["']/g,
-          'from "/node_modules/0x1/index.js"'
-        );
-        
-        try {
-          // Use Bun's transpiler for proper JSX transformation
-          const transpiler = new Bun.Transpiler({
-            loader: 'tsx',
-            target: 'browser',
-            define: {
-              'process.env.NODE_ENV': '"production"',
-              'global': 'globalThis'
-            },
-            tsconfig: {
-              compilerOptions: {
-                jsx: 'react-jsx',
-                jsxImportSource: '/0x1/jsx-runtime.js'
-              }
-            }
-          });
-          
-          // Transform JSX to JavaScript function calls
-          let transpiledContent = await transpiler.transform(sourceCode);
-          
-          // SIMPLIFIED: Fix import paths for absolute resolution
-          transpiledContent = transpiledContent
-            // Convert relative component imports to absolute
-            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "/components/$1.js"')
-            .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "./$1.js"');
-          
-          // Add JSX runtime import at the top
-          const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
-          const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
-          
-          if (jsxMatch) {
-            const jsxFuncName = jsxMatch[0];
-            let imports = `import { jsxDEV as ${jsxFuncName}`;
-            
-            if (fragmentMatch) {
-              const fragmentFuncName = fragmentMatch[0];
-              imports += `, Fragment as ${fragmentFuncName}`;
-            }
-            
-            imports += ' } from "/0x1/jsx-runtime.js";\n';
-            transpiledContent = imports + transpiledContent;
-          }
-          
-          // Write the component file
-          const outputComponentPath = join(outputPath, componentPath);
-          const outputComponentDir = dirname(outputComponentPath);
-          await mkdir(outputComponentDir, { recursive: true });
-          await Bun.write(outputComponentPath, transpiledContent);
-          
-          generatedCount++;
-          console.log(`[Build] ✅ Generated component: ${componentPath} ${isPageComponent && hasLayout ? '(with layout)' : ''}`);
-          
-        } catch (transpileError) {
-          console.warn(`[Build] ⚠️ Transpilation failed for ${route.componentPath}:`, transpileError);
-        }
-    }
-  } catch (error) {
-      console.warn(`[Build] ⚠️ Failed to generate component ${route.componentPath}:`, error);
-    }
-  }
-  
-  // Also handle commonly imported components
-  const commonComponents = [
-    'components/Button.tsx',
-    'components/Counter.tsx', 
-    'components/ThemeToggle.tsx',
-    'components/Card.tsx'
-  ];
-  
-  for (const componentFile of commonComponents) {
-    const sourcePath = join(projectPath, componentFile);
-    if (existsSync(sourcePath)) {
-      try {
-        // Read and transform source code
-        let sourceCode = await Bun.file(sourcePath).text();
         
         // Transform "0x1" imports
         sourceCode = sourceCode.replace(
@@ -1386,24 +1294,121 @@ export default function LayoutWrapped${pageComponentName}(props) {
           }
           
           // Write the component file
-          const outputComponentPath = join(outputPath, componentFile.replace(/\.tsx$/, '.js'));
+          const outputComponentPath = join(outputPath, componentPath);
           const outputComponentDir = dirname(outputComponentPath);
           await mkdir(outputComponentDir, { recursive: true });
           await Bun.write(outputComponentPath, transpiledContent);
           
           generatedCount++;
-          console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.tsx$/, '.js')}`);
+          console.log(`[Build] ✅ Generated component: ${componentPath} ${isPageComponent && hasLayout ? '(with layout)' : ''}`);
           
         } catch (transpileError) {
-          console.warn(`[Build] ⚠️ Transpilation failed for ${componentFile}:`, transpileError);
+          console.warn(`[Build] ⚠️ Transpilation failed for ${route.componentPath}:`, transpileError);
         }
-      } catch (error) {
-        console.warn(`[Build] ⚠️ Failed to generate component ${componentFile}:`, error);
       }
+    } catch (error) {
+      console.warn(`[Build] ⚠️ Failed to generate component ${route.componentPath}:`, error);
     }
   }
   
-  console.log(`[Build] 📦 Generated ${generatedCount} component files for static serving`);
+  // 🚀 DYNAMIC COMPONENT DISCOVERY - NO MORE HARDCODED LISTS!
+  // Auto-discover ALL components in standard directories
+  console.log(`[Build] 🔍 Dynamically discovering all components...`);
+  
+  const componentDirectories = ['components', 'lib', 'src/components', 'src/lib'];
+  const componentExtensions = ['.tsx', '.jsx', '.ts', '.js'];
+  
+  for (const dir of componentDirectories) {
+    const fullDirPath = join(projectPath, dir);
+    if (existsSync(fullDirPath)) {
+      console.log(`[Build] 📁 Scanning directory: ${dir}`);
+      
+      // Recursively find all component files
+      const discoverComponentsInDir = async (dirPath: string, relativePath: string = '') => {
+        const items = readdirSync(dirPath);
+        
+        for (const item of items) {
+          const itemPath = join(dirPath, item);
+          const stats = statSync(itemPath);
+          
+          if (stats.isDirectory()) {
+            // Skip node_modules and hidden directories
+            if (!item.startsWith('.') && item !== 'node_modules') {
+              const newRelativePath = relativePath ? join(relativePath, item) : item;
+              await discoverComponentsInDir(itemPath, newRelativePath);
+            }
+          } else if (componentExtensions.some(ext => item.endsWith(ext))) {
+            // Found a component file!
+            const componentFile = relativePath ? join(dir, relativePath, item) : join(dir, item);
+            
+            console.log(`[Build] 🎯 Found component: ${componentFile}`);
+            
+            try {
+              // Read and transform source code
+              let sourceCode = await Bun.file(itemPath).text();
+              
+              // Transform "0x1" imports
+              sourceCode = sourceCode.replace(
+                /from\s+["']0x1["']/g,
+                'from "/node_modules/0x1/index.js"'
+              );
+              
+              // Use Bun's transpiler
+              const transpiler = new Bun.Transpiler({
+                loader: 'tsx',
+                target: 'browser',
+                define: {
+                  'process.env.NODE_ENV': '"production"',
+                  'global': 'globalThis'
+                },
+                tsconfig: {
+                  compilerOptions: {
+                    jsx: 'react-jsx',
+                    jsxImportSource: '/0x1/jsx-runtime.js'
+                  }
+                }
+              });
+              
+              let transpiledContent = await transpiler.transform(sourceCode);
+              
+              // Add JSX runtime import
+              const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
+              const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
+              
+              if (jsxMatch) {
+                const jsxFuncName = jsxMatch[0];
+                let imports = `import { jsxDEV as ${jsxFuncName}`;
+                
+                if (fragmentMatch) {
+                  const fragmentFuncName = fragmentMatch[0];
+                  imports += `, Fragment as ${fragmentFuncName}`;
+                }
+                
+                imports += ' } from "/0x1/jsx-runtime.js";\n';
+                transpiledContent = imports + transpiledContent;
+              }
+              
+              // Write the component file
+              const outputComponentPath = join(outputPath, componentFile.replace(/\.(tsx|ts)$/, '.js'));
+              const outputComponentDir = dirname(outputComponentPath);
+              await mkdir(outputComponentDir, { recursive: true });
+              await Bun.write(outputComponentPath, transpiledContent);
+              
+              generatedCount++;
+              console.log(`[Build] ✅ Generated component: ${componentFile.replace(/\.(tsx|ts)$/, '.js')}`);
+              
+            } catch (error) {
+              console.warn(`[Build] ⚠️ Failed to generate component ${componentFile}:`, error);
+            }
+          }
+        }
+      };
+      
+      await discoverComponentsInDir(fullDirPath);
+    }
+  }
+  
+  console.log(`[Build] 📦 Generated ${generatedCount} component files for static serving (FULLY DYNAMIC)`);
 }
 
 /**
