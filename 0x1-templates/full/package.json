@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "0x1 dev",
-    "build": "0x1 build",
-    "preview": "0x1 preview",
-    "deploy": "0x1 deploy",
+    "dev": "../../bin/0x1 dev",
+    "build": "../../bin/0x1 build",
+    "preview": "../../bin/0x1 preview",
+    "deploy": "../../bin/0x1 deploy",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write '**/*.{ts,tsx,css,html}'",
-    "pwa": "0x1 pwa",
+    "pwa": "../../bin/0x1 pwa",
     "test": "bun test"
   },
   "dependencies": {
-    "0x1": "^0.0.237"
+    "0x1": "^0.0.238"
   },
   "packageManager": "bun@1.2.13",
   "devDependencies": {

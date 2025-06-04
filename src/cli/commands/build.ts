@@ -853,13 +853,38 @@ async function analyzeComponentDependencies(componentPath) {
                 // Convert relative path to absolute component path for analysis
                 let componentPath;
                 if (packageName.startsWith('./') || packageName.startsWith('../')) {
-                  // TRULY DYNAMIC: Resolve relative path based on current file location
+                  // FIXED: Properly resolve relative paths for nested routes
                   const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
-                  const resolvedPath = new URL(packageName, 'file://' + currentDir + '/').pathname;
-                  // Remove the leading slash if present and add .js extension if needed
-                  componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
+                  
+                  // Handle relative path resolution manually for better control
+                  if (packageName.startsWith('../components/')) {
+                    // Special handling for ../components/ - always resolve to /components/
+                    componentPath = packageName.replace('../components/', '/components/');
+                  } else if (packageName.startsWith('./')) {
+                    // Current directory relative path
+                    componentPath = currentDir + '/' + packageName.substring(2);
+                  } else {
+                    // General ../ handling
+                    let parts = currentDir.split('/').filter(p => p);
+                    let relativeParts = packageName.split('/');
+                    
+                    for (let part of relativeParts) {
+                      if (part === '..') {
+                        parts.pop();
+                      } else if (part !== '.') {
+                        parts.push(part);
+                      }
+                    }
+                    componentPath = '/' + parts.join('/');
+                  }
+                  
+                  // Ensure .js extension
+                  if (!componentPath.endsWith('.js')) {
+                    componentPath += '.js';
+                  }
+                  
                   console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
-        } else {
+                } else {
                   // Handle absolute component paths
                   componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
                 }
@@ -1230,8 +1255,9 @@ export default function LayoutWrapped${pageComponentName}(props) {
           
           // CRITICAL FIX: Post-process the transpiled content
           const processedContent = transpiledContent
-            // Fix import paths - add .js extensions for local components
-            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "../components/$1.js"')
+            // Fix import paths - handle nested routes correctly and preserve .js extension
+            .replace(/from\s+["']\.\.\/components\/([^"']+)\.js["']/g, 'from "/components/$1.js"')
+            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "/components/$1.js"')
             .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "./$1.js"')
             // Extract JSX function name and add runtime import
             .replace(/^/, () => {
@@ -1335,8 +1361,9 @@ export default function LayoutWrapped${pageComponentName}(props) {
           
           // CRITICAL FIX: Post-process the transpiled content
           const processedContent = transpiledContent
-            // Fix import paths - add .js extensions for local components
-            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "../components/$1.js"')
+            // Fix import paths - handle nested routes correctly and preserve .js extension
+            .replace(/from\s+["']\.\.\/components\/([^"']+)\.js["']/g, 'from "/components/$1.js"')
+            .replace(/from\s+["']\.\.\/components\/([^"']+)["']/g, 'from "/components/$1.js"')
             .replace(/from\s+["']\.\/([^"']+)["']/g, 'from "./$1.js"')
             // Extract JSX function name and add runtime import
             .replace(/^/, () => {
