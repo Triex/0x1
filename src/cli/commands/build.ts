@@ -12,6 +12,9 @@ import { logger } from '../utils/logger';
 // Import the proper metadata system
 import { extractMetadataFromFile } from '../../core/metadata';
 
+// Import directive validation functions from component handler
+import { processDirectives } from '../../core/directives.js';
+
 export interface BuildOptions {
   outDir?: string;
   minify?: boolean;
@@ -320,115 +323,87 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     console.log(`[Build]   Has JSX elements: ${hasJsxElements}`);
     console.log(`[Build]   Has jsx calls: ${hasJsxCalls}`);
     
-    // CRITICAL: Apply the same preprocessing as dev-server component handler
-    // 1. Transform imports for browser compatibility first
-    let preprocessedCode = transformImportsForBrowser(sourceCode);
+    // CRITICAL FIX: Disable aggressive directive validation for documentation files
+    const isDocumentationFile = sourcePath.includes('/docs/') || sourcePath.includes('/app/docs/');
     
-    // 2. Apply TypeScript stripping (same as dev-server)
-    // Remove interface declarations
-    preprocessedCode = preprocessedCode.replace(/interface\s+\w+\s*\{[\s\S]*?\n\}/g, '');
+    let processedCode = sourceCode;
+    if (!isDocumentationFile) {
+      // Only validate non-documentation files
+      const directiveValidation = validateFileDirectives(sourcePath, sourceCode);
+      if (directiveValidation.hasErrors) {
+        // Filter out false positives from code examples
+        const realErrors = directiveValidation.errors.filter((error: any) => {
+          if (error.message.includes('server API') || error.message.includes('Async functions')) {
+            return false;
+          }
+          return true;
+        });
+        
+        if (realErrors.length > 0) {
+          console.warn(`[Build] Directive validation errors in ${sourcePath}:`, realErrors);
+          // For build, we'll continue but log the errors
+        }
+      }
+      processedCode = directiveValidation.processedCode;
+    } else {
+      console.log(`[Build] Skipping directive validation for documentation file: ${sourcePath}`);
+    }
     
-    // Remove 'as const' assertions (be more aggressive)
-    preprocessedCode = preprocessedCode.replace(/\s+as\s+const\b/g, '');
-    preprocessedCode = preprocessedCode.replace(/,\s*type:\s*'[^']*'\s+as\s+const/g, '');
-    preprocessedCode = preprocessedCode.replace(/type:\s*'[^']*'\s+as\s+const,/g, '');
-    preprocessedCode = preprocessedCode.replace(/type:\s*'[^']*'\s+as\s+const/g, '');
+    // Transform imports for browser compatibility
+    processedCode = transformBareImports(processedCode, sourcePath);
     
-    // Remove useState generic types (same patterns as dev-server)
-    preprocessedCode = preprocessedCode.replace(/useState<'0x1' \| 'nextjs' \| null>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<string\[\]>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<Set<string>>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<[^>]*(?:<[^>]*>[^>]*)*>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<[^>]*>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<>/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState<[^(]*/g, 'useState');
-    preprocessedCode = preprocessedCode.replace(/useState>[^(]*/g, 'useState');
-    
-    // Remove function parameter types
-    preprocessedCode = preprocessedCode.replace(/\(framework: '0x1' \| 'nextjs'\)/g, '(framework)');
-    preprocessedCode = preprocessedCode.replace(/\(step: BuildStep, isNewlyAdded: boolean\)/g, '(step, isNewlyAdded)');
-    preprocessedCode = preprocessedCode.replace(/\(e: MediaQueryListEvent\)/g, '(e)');
-    preprocessedCode = preprocessedCode.replace(/useState<boolean>/g, 'useState');
-    
-    // Clean up empty lines
-    preprocessedCode = preprocessedCode.replace(/\n\s*\n\s*\n/g, '\n\n');
-    
-    console.log(`[Build] Preprocessed ${sourcePath}, length: ${preprocessedCode.length}`);
-    
-    // 3. Force JSX transpilation for any file with JSX elements (same logic as dev server)
+    // CRITICAL FIX: Force JSX transpilation for any file with JSX elements
     if (hasJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
       console.log(`[Build] FORCING JSX transpilation for: ${sourcePath}`);
-    
-    const transpiler = new Bun.Transpiler({
+      
+      const transpiler = new Bun.Transpiler({
         loader: 'tsx', // Always use tsx loader for JSX files
-      target: 'browser',
-      define: {
-        'process.env.NODE_ENV': JSON.stringify('production'),
-        'global': 'globalThis'
-      }
-    });
-    
-      console.log(`[Build] Starting Bun transpilation for: ${sourcePath}`);
-    let transpiledContent = await transpiler.transform(preprocessedCode);
-      console.log(`[Build] Transpilation complete for ${sourcePath}, output length: ${transpiledContent.length}`);
+        target: 'browser',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('production'),
+          'global': 'globalThis'
+        }
+      });
+      
+      const transpiledContent = await transpiler.transform(processedCode);
+      console.log(`[Build] Transpilation complete for ${sourcePath}. Output length: ${transpiledContent.length}`);
       
       // Check if transpilation actually converted JSX (same validation as dev server)
       const hasJsxAfterTranspile = /<[A-Za-z]/.test(transpiledContent);
       const hasJsxCallsAfterTranspile = /jsx\s*\(/.test(transpiledContent) || 
-                                       /jsxs\s*\(/.test(transpiledContent) || 
-                                       /jsxDEV\s*\(/.test(transpiledContent) ||
-                                       /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(transpiledContent); // Detect hashed jsx functions
+                                        /jsxs\s*\(/.test(transpiledContent) || 
+                                        /jsxDEV\s*\(/.test(transpiledContent) ||
+                                        /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(transpiledContent); // Detect hashed jsx functions
       
       console.log(`[Build] Post-transpilation analysis for ${sourcePath}:`);
       console.log(`[Build]   Still has JSX elements: ${hasJsxAfterTranspile}`);
       console.log(`[Build]   Now has jsx calls: ${hasJsxCallsAfterTranspile}`);
       
       if (hasJsxAfterTranspile && !hasJsxCallsAfterTranspile) {
-        console.error(`[Build] ERROR: JSX elements still present but no jsx calls generated for ${sourcePath}!`);
-        return generateErrorComponent(sourcePath, "JSX transpilation failed - JSX elements still present");
+        throw new Error(`JSX elements still present but no jsx calls generated in ${sourcePath}`);
       }
-    
-    // 4. Normalize JSX function calls (same as dev-server)
-    transpiledContent = normalizeJsxFunctionCalls(transpiledContent);
-    
-    // 5. Insert JSX runtime preamble (same as dev-server)
-    transpiledContent = insertJsxRuntimePreamble(transpiledContent);
-    
-    // 6. Ensure default export is preserved (same as dev-server)
-    const hasDefaultExport = sourceCode.includes('export default');
-    if (hasDefaultExport && !transpiledContent.includes('export default')) {
-      const defaultExportMatch = sourceCode.match(/export\s+default\s+(?:function\s+)?(\w+)/);
-      const componentName = defaultExportMatch?.[1] || 'Component';
       
-      if (transpiledContent.includes(`function ${componentName}`)) {
-        transpiledContent += `\nexport default ${componentName};\n`;
-      } else {
-        const functionMatch = transpiledContent.match(/function\s+(\w+)\s*\(/);
-        if (functionMatch) {
-          const funcName = functionMatch[1];
-          transpiledContent += `\nexport default ${funcName};\n`;
-        }
-      }
-    }
-    
-    console.log(`[Build] Final transpiled content for ${sourcePath} ready, length: ${transpiledContent.length}`);
-    return transpiledContent;
+      // Normalize JSX function calls and insert runtime preamble
+      let finalCode = normalizeJsxFunctionCalls(transpiledContent);
+      finalCode = insertJsxRuntimePreamble(finalCode);
       
+      console.log(`[Build] ✅ Successfully transpiled JSX file: ${sourcePath}`);
+      return finalCode;
     } else {
-      // Non-JSX file - just process imports and return (same as dev server)
+      // Non-JSX file - just process imports and return
       console.log(`[Build] Processing non-JSX file: ${sourcePath}`);
-      let finalCode = preprocessedCode;
+      let finalCode = processedCode;
       
       // Still add JSX runtime preamble in case the component needs it
       finalCode = insertJsxRuntimePreamble(finalCode);
       
+      console.log(`[Build] ✅ Successfully processed non-JSX file: ${sourcePath}`);
       return finalCode;
     }
     
   } catch (error) {
-    console.error(`[Build] Critical transpilation failure for ${sourcePath}:`, error);
-    return generateErrorComponent(sourcePath, error instanceof Error ? error.message : String(error));
+    console.error(`[Build] CRITICAL ERROR transpiling ${sourcePath}:`, error);
+    throw error;
   }
 }
 
@@ -1961,3 +1936,117 @@ async function generatePwaFilesFast(outputPath: string): Promise<void> {
 
   await Promise.all(tasks);
 } 
+
+/**
+ * Transform code content to handle imports for browser compatibility
+ * This converts React and 0x1 imports to browser-compatible paths
+ * and removes CSS imports that would cause MIME type errors
+ */
+function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
+  // CRITICAL FIX: Preserve destructuring imports properly
+  let transformedContent = content;
+  
+  // CRITICAL: Remove CSS imports first (they cause MIME type errors)
+  transformedContent = transformedContent
+    .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility');
+  
+  // Transform 0x1 imports ONLY
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"]0x1['"]/g,
+    'import $1 from "/node_modules/0x1/index.js"'
+  );
+  
+  // Transform relative imports to absolute paths
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      // Don't modify the import clause structure - just fix the path
+      let browserPath = importPath;
+      
+      // Map specific patterns to browser-accessible paths
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\.\//, '/');
+      }
+      
+      // Add .js extension if not present
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
+      }
+      
+      // Return the import with the same clause structure
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  // Transform same-directory imports
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      let browserPath = importPath;
+      
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\//, '/components/');
+      }
+      
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
+      }
+      
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  return transformedContent;
+}
+
+/**
+ * Process and validate a TypeScript/JSX file for directive usage
+ */
+function validateFileDirectives(
+  filePath: string,
+  sourceCode: string
+): {
+  hasErrors: boolean;
+  errors: Array<{ type: string; message: string; line: number; suggestion: string }>;
+  inferredContext?: 'client' | 'server';
+  processedCode: string;
+} {
+  try {
+    const result = processDirectives(sourceCode, filePath);
+    
+    return {
+      hasErrors: result.errors.length > 0,
+      errors: result.errors,
+      inferredContext: result.inferredContext,
+      processedCode: result.code
+    };
+  } catch (error) {
+    return {
+      hasErrors: true,
+      errors: [{
+        type: 'processing-error',
+        message: `Failed to process directives: ${error instanceof Error ? error.message : String(error)}`,
+        line: 1,
+        suggestion: 'Check your syntax and directive usage'
+      }],
+      processedCode: sourceCode
+    };
+  }
+}
