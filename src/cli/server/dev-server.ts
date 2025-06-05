@@ -525,13 +525,14 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
 
 /**
  * Server-side route discovery - scans the actual file system
+ * Enhanced to support Next.js 15-style nested layouts
  */
 export function discoverRoutesFromFileSystem(
   projectPath: string
-): Array<{ path: string; componentPath: string }> {
-  const routes: Array<{ path: string; componentPath: string }> = [];
+): Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> {
+  const routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> = [];
 
-  function scanDirectory(dirPath: string, routePath: string = "") {
+  function scanDirectory(dirPath: string, routePath: string = "", parentLayouts: Array<{ path: string; componentPath: string }> = []) {
     try {
       if (!existsSync(dirPath)) {
         return;
@@ -539,20 +540,44 @@ export function discoverRoutesFromFileSystem(
 
       const items = readdirSync(dirPath);
 
+      // Check for layout file in current directory
+      const layoutFiles = items.filter((item: string) =>
+        item.match(/^layout\.(tsx|jsx|ts|js)$/)
+      );
+
+      // Build current layout hierarchy (parent layouts + current layout if exists)
+      const currentLayouts = [...parentLayouts];
+      if (layoutFiles.length > 0) {
+        const actualLayoutFile = layoutFiles[0];
+        const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
+        currentLayouts.push({ 
+          path: routePath || "/", 
+          componentPath: layoutComponentPath 
+        });
+        logger.debug(
+          `Found layout: ${routePath || "/"} -> ${layoutComponentPath} (source: ${actualLayoutFile})`
+        );
+      }
+
       // Check for page files in current directory
       const pageFiles = items.filter((item: string) =>
         item.match(/^page\.(tsx|jsx|ts|js)$/)
       );
 
       if (pageFiles.length > 0) {
-        // Found a page file, add route
+        // Found a page file, add route with its complete layout hierarchy
         const route = routePath || "/";
-        // Use the actual file extension found, but serve as .js (transpiled)
         const actualFile = pageFiles[0];
         const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
-        routes.push({ path: route, componentPath });
+        
+        routes.push({ 
+          path: route, 
+          componentPath: componentPath,
+          layouts: currentLayouts // Include all layouts from root to current level
+        });
+        
         logger.debug(
-          `Found route: ${route} -> ${componentPath} (source: ${actualFile})`
+          `Found route: ${route} -> ${componentPath} (source: ${actualFile}) with ${currentLayouts.length} layouts`
         );
       }
 
@@ -574,7 +599,8 @@ export function discoverRoutesFromFileSystem(
       for (const subdir of subdirs) {
         const subdirPath = join(dirPath, subdir);
         const subroutePath = routePath + "/" + subdir;
-        scanDirectory(subdirPath, subroutePath);
+        // Pass current layouts to children
+        scanDirectory(subdirPath, subroutePath, currentLayouts);
       }
     } catch (error) {
       logger.debug(`Error scanning directory ${dirPath}: ${error}`);
@@ -601,6 +627,16 @@ export function discoverRoutesFromFileSystem(
   logger.info(
     `Discovered ${routes.length} routes: ${routes.map((r) => r.path).join(", ")}`
   );
+  
+  // Log layout hierarchy for debugging
+  routes.forEach(route => {
+    if (route.layouts.length > 0) {
+      logger.debug(
+        `Route ${route.path} layout hierarchy: ${route.layouts.map(l => l.path).join(' -> ')}`
+      );
+    }
+  });
+  
   return routes;
 }
 
@@ -3379,7 +3415,8 @@ body {
             // Sanitize route data before JSON.stringify
             const sanitizedRoutes = discoveredRoutes.map(route => ({
               path: route.path,
-              componentPath: route.componentPath
+              componentPath: route.componentPath,
+              layouts: route.layouts
             }));
             routesJson = JSON.stringify(sanitizedRoutes, null, 2);
           } catch (jsonError) {
@@ -3868,77 +3905,110 @@ async function loadComponent(componentPath) {
   }
 }
 
-// ===== LAYOUT LOADING WITH DEPENDENCY RESOLUTION =====
-async function loadLayoutWithDependencies() {
-  try {
-    console.log('[0x1 App] 🏗️ Loading layout with dependencies...');
+// ===== LAYOUT LOADING WITH NESTED LAYOUT SUPPORT =====
+async function loadLayoutHierarchy(layouts) {
+  const loadedLayouts = [];
   
-    // Analyze layout dependencies first
-    const layoutDeps = await analyzeComponentDependencies('/app/layout.js');
-    console.log('[0x1 App] 📋 Layout dependencies:', Array.from(layoutDeps));
-    
-    // Load dependencies BEFORE loading layout
-    await loadPolyfillsSequentially(layoutDeps);
-    
-    // Now load the layout component
-    const layoutModule = await loadComponent('/app/layout.js');
-    if (layoutModule && layoutModule.default) {
-      console.log('[0x1 App] ✅ Layout loaded with dependencies');
-      return layoutModule.default;
-    }
+  for (const layout of layouts) {
+    try {
+      console.log('[0x1 App] Loading layout for path: ' + layout.path + ' from ' + layout.componentPath);
+      
+      const layoutModule = await loadComponent(layout.componentPath);
+      if (layoutModule && layoutModule.default) {
+        loadedLayouts.push(layoutModule.default);
+        console.log('[0x1 App] Layout loaded for: ' + layout.path);
+      } else {
+        console.warn('[0x1 App] Layout has no default export: ' + layout.componentPath);
+      }
     } catch (error) {
-    console.error('[0x1 App] ❌ Layout loading failed:', error);
+      console.error('[0x1 App] Failed to load layout: ' + layout.componentPath, error);
     }
+  }
   
-  // Enhanced fallback
-  console.log('[0x1 App] 📦 Using layout fallback');
-  return ({ children }) => {
-    console.log('[0x1 Layout] Fallback rendering children');
-    return children;
+  return loadedLayouts;
+}
+
+// ===== NESTED LAYOUT COMPOSITION =====
+function composeNestedLayouts(pageComponent, layouts) {
+  if (layouts.length === 0) {
+    return pageComponent;
+  }
+  
+  // Compose layouts from innermost (page) to outermost (root layout)
+  // layouts[0] = root layout, layouts[1] = nested layout, etc.
+  return (props) => {
+    let wrappedComponent = pageComponent(props);
+    
+    // Apply layouts in reverse order (innermost to outermost)
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const currentLayout = layouts[i];
+      const children = wrappedComponent;
+      
+      try {
+        wrappedComponent = currentLayout({ 
+          children: children,
+          ...props 
+        });
+      } catch (error) {
+        console.error('[0x1 App] Layout composition error at level ' + i + ':', error);
+        // Fallback to previous level
+        wrappedComponent = children;
+      }
+    }
+    
+    return wrappedComponent;
   };
 }
 
 // ===== ROUTE REGISTRATION WITH PROPER SEQUENCING =====
 async function registerRoutes(router) {
-  console.log('[0x1 App] 📝 Registering routes with proper sequencing...');
-  
-  // Load shared layout first
-  const sharedLayoutComponent = await loadLayoutWithDependencies();
+  console.log('[0x1 App] 📝 Registering routes with nested layout support...');
   
   for (const route of serverRoutes) {
     try {
-      // CRITICAL FIX: Pre-load components during registration, not during render
+      console.log('[0x1 App] Processing route: ' + route.path + ' with ' + (route.layouts?.length || 0) + ' layouts');
+      
+      // Load all layouts for this route
+      const layouts = route.layouts || [];
+      const loadedLayouts = await loadLayoutHierarchy(layouts);
+      
+      // Pre-load the page component during registration
       const componentModule = await loadComponentWithDependencies(route.componentPath);
-        
+      
       const routeComponent = (props) => {
         console.log('[0x1 App] 🔍 Route component called for:', route.path);
           
           if (componentModule && componentModule.default) {
           console.log('[0x1 App] ✅ Route component resolved:', route.path);
-          return componentModule.default(props);
+          
+          // Compose the page component with all its layouts
+          const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+          
+          return composedComponent(props);
           } else {
-            console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
+          console.warn('[0x1 App] Component has no default export:', route.path);
             return {
               type: 'div',
             props: { 
               className: 'p-8 text-center',
               style: 'color: #f59e0b;' 
             },
-            children: ['⚠️ Component loaded but has no default export'],
+            children: ['Component loaded but has no default export'],
             key: null
           };
         }
       };
       
+      // Add route to router without layout (since we handle layouts internally)
       router.addRoute(route.path, routeComponent, { 
-        layout: sharedLayoutComponent,
-        componentPath: route.componentPath 
+        componentPath: route.componentPath,
+        layouts: layouts
       });
       
-      console.log('[0x1 App] ✅ Route registered:', route.path);
+      console.log('[0x1 App] Route registered:', route.path);
       
     } catch (error) {
-      console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      console.error('[0x1 App] Failed to register route:', route.path, error);
       
       // Create error component for failed routes
       const errorComponent = (props) => {
@@ -3948,19 +4018,18 @@ async function registerRoutes(router) {
             className: 'p-8 text-center',
             style: 'color: #ef4444;' 
           },
-          children: ['❌ Error loading component: ' + error.message],
+          children: ['Error loading component: ' + error.message],
           key: null
         };
       };
       
       router.addRoute(route.path, errorComponent, { 
-        layout: sharedLayoutComponent,
         componentPath: route.componentPath 
       });
     }
   }
   
-  console.log('[0x1 App] 📊 All routes registered successfully');
+  console.log('[0x1 App] All routes registered successfully');
 }
 
 // ===== COMPONENT LOADING WITH DEPENDENCIES =====

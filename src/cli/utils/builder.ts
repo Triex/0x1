@@ -67,12 +67,20 @@ export async function generateSophisticatedAppJs(projectPath: string, outputPath
     const discoveredRoutes = discoverRoutesFromFileSystem(projectPath);
     logger.info(`Discovered ${discoveredRoutes.length} routes for build: ${discoveredRoutes.map(r => r.path).join(', ')}`);
     
+    // Log layout information
+    discoveredRoutes.forEach(route => {
+      if (route.layouts && route.layouts.length > 0) {
+        logger.info(`Route ${route.path} has ${route.layouts.length} layouts: ${route.layouts.map(l => l.path).join(' -> ')}`);
+      }
+    });
+    
     // Safely serialize routes data
     let routesJson;
     try {
       const sanitizedRoutes = discoveredRoutes.map(route => ({
         path: route.path,
-        componentPath: route.componentPath
+        componentPath: route.componentPath,
+        layouts: route.layouts || []
       }));
       routesJson = JSON.stringify(sanitizedRoutes, null, 2);
     } catch (jsonError) {

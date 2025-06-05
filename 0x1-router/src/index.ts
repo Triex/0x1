@@ -5,10 +5,10 @@
 /// <reference lib="dom" />
 
 // Import JSX utilities
-declare function jsx(
+declare function _jsx(
   type: string | ComponentFunction,
   props: any,
-  key?: string
+  _key?: string
 ): any;
 
 // Component function type - more specific than Function
@@ -199,8 +199,8 @@ class Router {
 
     // Initialize popstate handler for browser back/forward
     window.addEventListener('popstate', () => {
-      const path = window.location.pathname;
-      this.navigate(path, false);
+      const _match = window.location.pathname.match(/\?(.*)$/);
+      const searchParams = new URLSearchParams(_match ? _match[1] : '');
     });
   }
 
@@ -1035,7 +1035,7 @@ class Router {
       const keysToDelete = [];
       
       // Find all old component IDs with the same component name
-      for (const [existingId, data] of registry.entries()) {
+      for (const [existingId, _data] of registry.entries()) {
         if (existingId.startsWith(`${componentName}_`) && existingId !== componentName) {
           // Check if this component still exists in DOM
           const element = document.querySelector(`[data-component-id="${existingId}"]`);

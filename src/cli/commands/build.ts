@@ -124,88 +124,90 @@ function transformImportsForBrowser(sourceCode: string): string {
   // CRITICAL FIX: Preserve line breaks and string literals properly
   let transformedCode = sourceCode;
   
-  // Transform "0x1" imports first
+  // Transform "0x1" imports first - ONLY match actual import statements
   transformedCode = transformedCode.replace(
-    /from\s+["']0x1["']/g,
-    'from "/node_modules/0x1/index.js"'
+    /^(\s*import\s+.*?\s+from\s+)["']0x1["']/gm,
+    '$1"/node_modules/0x1/index.js"'
   );
   
-  // CRITICAL FIX: Transform 0x1 module imports (Link, router, etc.)
+  // CRITICAL FIX: Transform 0x1 module imports (Link, router, etc.) - ONLY match actual import statements
   transformedCode = transformedCode.replace(
-    /from\s+["']0x1\/link["']/g,
-    'from "/0x1/link.js"'
-  );
-  
-  transformedCode = transformedCode.replace(
-    /from\s+["']0x1\/router["']/g,
-    'from "/0x1/router.js"'
+    /^(\s*import\s+.*?\s+from\s+)["']0x1\/link["']/gm,
+    '$1"/0x1/link.js"'
   );
   
   transformedCode = transformedCode.replace(
-    /from\s+["']0x1\/jsx-runtime["']/g,
-    'from "/0x1/jsx-runtime.js"'
+    /^(\s*import\s+.*?\s+from\s+)["']0x1\/router["']/gm,
+    '$1"/0x1/router.js"'
   );
   
   transformedCode = transformedCode.replace(
-    /from\s+["']0x1\/jsx-dev-runtime["']/g,
-    'from "/0x1/jsx-dev-runtime.js"'
+    /^(\s*import\s+.*?\s+from\s+)["']0x1\/jsx-runtime["']/gm,
+    '$1"/0x1/jsx-runtime.js"'
   );
   
-  // 🚀 STEP 1: Fix relative component imports to use absolute browser paths
   transformedCode = transformedCode.replace(
-    /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"](\.\.[/\\].*?)['"];?/g,
-    (match, importClause, importPath) => {
-      let browserPath = importPath;
-      
-      // Map specific patterns to browser-accessible paths
-      if (importPath.includes('components/')) {
-        // ../components/Header -> /components/Header.js
-        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        // ../lib/utils -> /lib/utils.js
-        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        // ../utils/helper -> /utils/helper.js
-        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
-      } else {
-        // Generic relative imports - assume they're components
-        browserPath = importPath.replace(/^\.\.\//, '/');
+    /^(\s*import\s+.*?\s+from\s+)["']0x1\/jsx-dev-runtime["']/gm,
+    '$1"/0x1/jsx-dev-runtime.js"'
+  );
+  
+  // Transform relative imports to absolute paths - ONLY match actual import statements
+  transformedCode = transformedCode.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']\.\/([^"']+)["']/gm,
+    (match, importPart, path) => {
+      // Add .js extension if not present and not already a .js/.ts/.tsx/.jsx file
+      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
+        path += '.js';
+      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
+        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
       }
-      
-      // Add .js extension if not present
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
-      }
-      
-      return `import ${importClause} from '${browserPath}';`;
+      return `${importPart}"/${path}"`;
     }
   );
-
-  // 🚀 STEP 2: Handle ./relative imports
+  
+  // Transform parent directory imports - ONLY match actual import statements
   transformedCode = transformedCode.replace(
-    /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"](\.\/.*?)['"];?/g,
-    (match, importClause, importPath) => {
-      let browserPath = importPath;
-      
-      if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
-      } else {
-        // For same-directory imports, figure out what they likely are
-        browserPath = importPath.replace(/^\.\//, '/components/');
+    /^(\s*import\s+.*?\s+from\s+)["']\.\.\/([^"']+)["']/gm,
+    (match, importPart, path) => {
+      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
+        path += '.js';
+      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
+        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
+      }
+      return `${importPart}"/${path}"`;
+    }
+  );
+  
+  // Transform other relative imports that start with / - ONLY match actual import statements
+  transformedCode = transformedCode.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']\/([^"']+)["']/gm,
+    (match, importPart, path) => {
+      // Don't transform if it's already a node_modules path or 0x1 path
+      if (path.startsWith('node_modules/') || path.startsWith('0x1/')) {
+        return match;
       }
       
-      // Add .js extension if not present
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
+      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
+        path += '.js';
+      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
+        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
+      }
+      return `${importPart}"/${path}"`;
+    }
+  );
+  
+  // Transform named npm package imports to use polyfill system - ONLY match actual import statements
+  transformedCode = transformedCode.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/gm,
+    (match, importPart, packageName) => {
+      // Skip transformation for certain system packages
+      const skipPackages = ['react', 'react-dom', '0x1'];
+      if (skipPackages.includes(packageName) || packageName.startsWith('0x1/')) {
+        return match;
       }
       
-      return `import ${importClause} from '${browserPath}';`;
+      // Transform to polyfill path
+      return `${importPart}"/node_modules/${packageName}"`;
     }
   );
   
@@ -302,6 +304,22 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
   try {
     console.log(`[Build] Attempting to transpile: ${sourcePath}`);
     
+    // Enhanced JSX detection (same as dev server)
+    const hasJsxElements = /<[A-Z][A-Za-z0-9]*[\s/>]/.test(sourceCode) || // React components
+                           /<[a-z][A-Za-z0-9-]*[\s/>]/.test(sourceCode) || // HTML elements
+                           /<\/[A-Za-z]/.test(sourceCode) || // Closing tags
+                           /<>/.test(sourceCode) || // React fragments
+                           /<\/[^>]+>/.test(sourceCode); // Any closing tag
+    
+    const hasJsxCalls = /jsx\s*\(/.test(sourceCode) || 
+                       /jsxs\s*\(/.test(sourceCode) || 
+                       /jsxDEV\s*\(/.test(sourceCode) ||
+                       /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(sourceCode); // Detect hashed jsx functions
+    
+    console.log(`[Build] JSX Detection for ${sourcePath}:`);
+    console.log(`[Build]   Has JSX elements: ${hasJsxElements}`);
+    console.log(`[Build]   Has jsx calls: ${hasJsxCalls}`);
+    
     // CRITICAL: Apply the same preprocessing as dev-server component handler
     // 1. Transform imports for browser compatibility first
     let preprocessedCode = transformImportsForBrowser(sourceCode);
@@ -338,17 +356,12 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     
     console.log(`[Build] Preprocessed ${sourcePath}, length: ${preprocessedCode.length}`);
     
-    // 3. Use Bun.Transpiler with proper loader detection (same as dev-server)
-    const hasJsx = preprocessedCode.includes('<') && (preprocessedCode.includes('/>') || preprocessedCode.includes('</'));
-    const loader = hasJsx ? 'tsx' : 
-                  sourcePath.endsWith('.tsx') ? 'tsx' : 
-                  sourcePath.endsWith('.jsx') ? 'jsx' : 
-                  sourcePath.endsWith('.ts') ? 'ts' : 'js';
-    
-    console.log(`[Build] Using loader: ${loader} for ${sourcePath}`);
+    // 3. Force JSX transpilation for any file with JSX elements (same logic as dev server)
+    if (hasJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
+      console.log(`[Build] FORCING JSX transpilation for: ${sourcePath}`);
     
     const transpiler = new Bun.Transpiler({
-      loader: loader,
+        loader: 'tsx', // Always use tsx loader for JSX files
       target: 'browser',
       define: {
         'process.env.NODE_ENV': JSON.stringify('production'),
@@ -356,8 +369,25 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       }
     });
     
+      console.log(`[Build] Starting Bun transpilation for: ${sourcePath}`);
     let transpiledContent = await transpiler.transform(preprocessedCode);
-    console.log(`[Build] Transpilation successful for ${sourcePath}, output length: ${transpiledContent.length}`);
+      console.log(`[Build] Transpilation complete for ${sourcePath}, output length: ${transpiledContent.length}`);
+      
+      // Check if transpilation actually converted JSX (same validation as dev server)
+      const hasJsxAfterTranspile = /<[A-Za-z]/.test(transpiledContent);
+      const hasJsxCallsAfterTranspile = /jsx\s*\(/.test(transpiledContent) || 
+                                       /jsxs\s*\(/.test(transpiledContent) || 
+                                       /jsxDEV\s*\(/.test(transpiledContent) ||
+                                       /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(transpiledContent); // Detect hashed jsx functions
+      
+      console.log(`[Build] Post-transpilation analysis for ${sourcePath}:`);
+      console.log(`[Build]   Still has JSX elements: ${hasJsxAfterTranspile}`);
+      console.log(`[Build]   Now has jsx calls: ${hasJsxCallsAfterTranspile}`);
+      
+      if (hasJsxAfterTranspile && !hasJsxCallsAfterTranspile) {
+        console.error(`[Build] ERROR: JSX elements still present but no jsx calls generated for ${sourcePath}!`);
+        return generateErrorComponent(sourcePath, "JSX transpilation failed - JSX elements still present");
+      }
     
     // 4. Normalize JSX function calls (same as dev-server)
     transpiledContent = normalizeJsxFunctionCalls(transpiledContent);
@@ -384,6 +414,17 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     
     console.log(`[Build] Final transpiled content for ${sourcePath} ready, length: ${transpiledContent.length}`);
     return transpiledContent;
+      
+    } else {
+      // Non-JSX file - just process imports and return (same as dev server)
+      console.log(`[Build] Processing non-JSX file: ${sourcePath}`);
+      let finalCode = preprocessedCode;
+      
+      // Still add JSX runtime preamble in case the component needs it
+      finalCode = insertJsxRuntimePreamble(finalCode);
+      
+      return finalCode;
+    }
     
   } catch (error) {
     console.error(`[Build] Critical transpilation failure for ${sourcePath}:`, error);
@@ -612,7 +653,7 @@ async function loadConfigFast(projectPath: string, configPath?: string): Promise
         const config = await import(fullPath);
         return config.default || config;
       }
-      } catch (error) {
+  } catch (error) {
       return null;
     }
   });
@@ -621,21 +662,44 @@ async function loadConfigFast(projectPath: string, configPath?: string): Promise
   return results.find(config => config !== null) || {};
 }
 
-// 🚀 LIGHTNING-FAST ROUTE DISCOVERY
-async function discoverRoutesSuperFast(projectPath: string): Promise<Array<{ path: string; componentPath: string }>> {
-  const routes: Array<{ path: string; componentPath: string }> = [];
+// 🚀 LIGHTNING-FAST ROUTE DISCOVERY WITH NESTED LAYOUT SUPPORT
+async function discoverRoutesSuperFast(projectPath: string): Promise<Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }>> {
+  const routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> = [];
   const appDir = join(projectPath, 'app');
   
   if (!existsSync(appDir)) return routes;
 
-  const scanDirFast = async (dirPath: string, routePath: string = ''): Promise<void> => {
+  const scanDirFast = async (dirPath: string, routePath: string = '', parentLayouts: Array<{ path: string; componentPath: string }> = []): Promise<void> => {
     try {
       const items = readdirSync(dirPath, { withFileTypes: true });
+      
+      // Check for layout file in current directory
+      const layoutFiles = items.filter(item => 
+        !item.isDirectory() && (item.name === 'layout.tsx' || item.name === 'layout.ts' || 
+                               item.name === 'layout.jsx' || item.name === 'layout.js')
+      );
+
+      // Build current layout hierarchy (parent layouts + current layout if exists)
+      const currentLayouts = [...parentLayouts];
+      if (layoutFiles.length > 0) {
+        const actualLayoutFile = layoutFiles[0].name;
+        const layoutComponentPath = join(dirPath, actualLayoutFile)
+          .replace(projectPath, '')
+          .replace(/\\/g, '/')
+          .replace(/\.(tsx|ts|jsx)$/, '.js');
+        
+        currentLayouts.push({ 
+          path: routePath || "/", 
+          componentPath: layoutComponentPath 
+        });
+        
+        console.log(`[Build] Found layout: ${routePath || "/"} -> ${layoutComponentPath} (source: ${actualLayoutFile})`);
+      }
       
       const tasks = items.map(async (item) => {
         if (item.isDirectory() && !item.name.startsWith('.') && !item.name.startsWith('(')) {
           const newRoutePath = routePath + '/' + item.name;
-          await scanDirFast(join(dirPath, item.name), newRoutePath);
+          await scanDirFast(join(dirPath, item.name), newRoutePath, currentLayouts);
         } else if (item.name === 'page.tsx' || item.name === 'page.ts' || item.name === 'page.jsx' || item.name === 'page.js') {
           const fullRoutePath = routePath || '/';
           const componentPath = join(dirPath, item.name)
@@ -645,18 +709,30 @@ async function discoverRoutesSuperFast(projectPath: string): Promise<Array<{ pat
           
           routes.push({
             path: fullRoutePath,
-            componentPath: componentPath
+            componentPath: componentPath,
+            layouts: currentLayouts
           });
+          
+          console.log(`[Build] Found route: ${fullRoutePath} -> ${componentPath} with ${currentLayouts.length} layouts`);
         }
       });
       
       await Promise.all(tasks);
-  } catch (error) {
+    } catch (error) {
       // Silent fail for individual directories
+      console.warn(`[Build] Error scanning directory ${dirPath}:`, error);
     }
   };
 
   await scanDirFast(appDir);
+  
+  // Log layout hierarchy for debugging
+  routes.forEach(route => {
+    if (route.layouts.length > 0) {
+      console.log(`[Build] Route ${route.path} layout hierarchy: ${route.layouts.map(l => l.path).join(' -> ')}`);
+    }
+  });
+  
   return routes;
 }
 
@@ -1066,76 +1142,124 @@ if (document.readyState === 'loading') {
 async function generateStaticComponentFilesSuperFast(
   projectPath: string,
   outputPath: string,
-  routes: Array<{ path: string; componentPath: string }>,
+  routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }>,
   allComponents: Array<{ path: string; relativePath: string; dir: string }>
 ): Promise<void> {
-  console.log(`[Build] 🚀 COMPONENT GENERATION with import fixes...`);
-  const startTime = performance.now();
-  
-  // 🚀 STEP 1: CHECK LAYOUT ONCE (1ms)
-  const layoutPath = join(projectPath, 'app', 'layout.tsx');
-  const hasLayout = existsSync(layoutPath);
-  let layoutContent = '';
-  
-  if (hasLayout) {
-    layoutContent = await Bun.file(layoutPath).text();
-  }
+  console.log(`[Build] 🚀 COMPONENT GENERATION with nested layout support...`);
 
-  // 🚀 STEP 2: PARALLEL ROUTE PROCESSING - Enhanced with safe transpilation
-  const routeTasks = routes.map(async (route) => {
-    try {
-      const sourcePath = join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
-      
-      // Check cache first
-      const cached = await buildCache.get(sourcePath);
-      if (cached) {
-        const outputPath_component = join(outputPath, route.componentPath.replace(/^\//, ''));
-        await mkdir(dirname(outputPath_component), { recursive: true });
-        await Bun.write(outputPath_component, cached);
-        return 1;
-      }
-      
-      if (!existsSync(sourcePath)) {
-        const tsxAlt = sourcePath.replace('.tsx', '.ts');
-        const jsxAlt = sourcePath.replace('.tsx', '.jsx');
-        const jsAlt = sourcePath.replace('.tsx', '.js');
+  const results = await Promise.all(
+    routes.map(async (route) => {
+      try {
+        const sourcePath = join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
         
-        if (existsSync(tsxAlt)) {
-          return await processRouteComponent(tsxAlt, route, outputPath, hasLayout, layoutContent);
-        } else if (existsSync(jsxAlt)) {
-          return await processRouteComponent(jsxAlt, route, outputPath, hasLayout, layoutContent);
-        } else if (existsSync(jsAlt)) {
-          return await processRouteComponent(jsAlt, route, outputPath, hasLayout, layoutContent);
+        // Check cache first
+        const cached = await buildCache.get(sourcePath);
+        if (cached) {
+          const outputPath_component = join(outputPath, route.componentPath.replace(/^\//, ''));
+          await mkdir(dirname(outputPath_component), { recursive: true });
+          await Bun.write(outputPath_component, cached);
+          return 1;
         }
         
-        console.warn(`[Build] ⚠️ Route component not found: ${sourcePath}`);
+        if (!existsSync(sourcePath)) {
+          const tsxAlt = sourcePath.replace('.tsx', '.ts');
+          const jsxAlt = sourcePath.replace('.tsx', '.jsx');
+          const jsAlt = sourcePath.replace('.tsx', '.js');
+          
+          if (existsSync(tsxAlt)) {
+            return await processRouteComponent(tsxAlt, route, outputPath);
+          } else if (existsSync(jsxAlt)) {
+            return await processRouteComponent(jsxAlt, route, outputPath);
+          } else if (existsSync(jsAlt)) {
+            return await processRouteComponent(jsAlt, route, outputPath);
+          }
+          
+          console.warn(`[Build] ⚠️ Route component not found: ${sourcePath}`);
+          return 0;
+        }
+        
+        return await processRouteComponent(sourcePath, route, outputPath);
+      } catch (error) {
+        console.warn(`[Build] ⚠️ Failed to generate route component ${route.path}:`, error);
         return 0;
       }
-      
-      return await processRouteComponent(sourcePath, route, outputPath, hasLayout, layoutContent);
-    } catch (error) {
-      console.warn(`[Build] ⚠️ Failed to generate route component ${route.path}:`, error);
-      return 0;
-    }
-  });
+    })
+  );
 
-  // Helper function to process individual route components
-  async function processRouteComponent(sourcePath: string, route: any, outputPath: string, hasLayout: boolean, layoutContent: string): Promise<number> {
+  // Helper function to process individual route components with nested layouts
+  async function processRouteComponent(sourcePath: string, route: any, outputPath: string): Promise<number> {
     try {
       let sourceCode = await Bun.file(sourcePath).text();
-      const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
+      const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || 
+                             sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
       
-      if (isPageComponent && hasLayout) {
+      // Handle nested layouts composition
+      if (isPageComponent && route.layouts && route.layouts.length > 0) {
+        console.log(`[Build] Composing ${route.layouts.length} layouts for route ${route.path}`);
+        
+        // Load all layout components
+        const layoutContents: string[] = [];
+        const layoutNames: string[] = [];
+        
+        for (let i = 0; i < route.layouts.length; i++) {
+          const layout = route.layouts[i];
+          const layoutSourcePath = join(projectPath, layout.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
+          
+          // Try different extensions for layout
+          let actualLayoutPath = layoutSourcePath;
+          if (!existsSync(layoutSourcePath)) {
+            const alternatives = [
+              layoutSourcePath.replace('.tsx', '.ts'),
+              layoutSourcePath.replace('.tsx', '.jsx'),
+              layoutSourcePath.replace('.tsx', '.js')
+            ];
+            
+            for (const alt of alternatives) {
+              if (existsSync(alt)) {
+                actualLayoutPath = alt;
+                break;
+              }
+            }
+          }
+          
+          if (existsSync(actualLayoutPath)) {
+            const layoutContent = await Bun.file(actualLayoutPath).text();
+            const layoutFunctionName = `Layout${i}`;
+            
+            // Extract layout component and give it a unique name
+            const processedLayoutContent = layoutContent
+              .replace(/export\s+default\s+function\s+\w+/, `function ${layoutFunctionName}`)
+              .replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '')
+              .replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
+            
+            layoutContents.push(processedLayoutContent);
+            layoutNames.push(layoutFunctionName);
+            
+            console.log(`[Build] Loaded layout ${i}: ${layout.componentPath} as ${layoutFunctionName}`);
+          } else {
+            console.warn(`[Build] Layout not found: ${actualLayoutPath}`);
+          }
+        }
+        
+        // Extract page component
         const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
         const pageComponentName = defaultExportMatch?.[1] || 'PageComponent';
         
-        const layoutWithoutExport = layoutContent
-          .replace(/export\s+default\s+function\s+RootLayout/, 'function RootLayout')
-          .replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '')
-          .replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
         const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
         
-        sourceCode = `${layoutWithoutExport}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return RootLayout({ children: ${pageComponentName}(props) });\n}`;
+        // Compose all layouts with the page component
+        let wrappedComponentCode = `${pageComponentName}(props)`;
+        
+        // Apply layouts from innermost to outermost (reverse order)
+        for (let i = layoutNames.length - 1; i >= 0; i--) {
+          const layoutName = layoutNames[i];
+          wrappedComponentCode = `${layoutName}({ children: ${wrappedComponentCode}, ...props })`;
+        }
+        
+        // Combine all layout contents + page + wrapper
+        sourceCode = `${layoutContents.join('\n\n')}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
+        
+        console.log(`[Build] Composed nested layouts for ${route.path}: ${layoutNames.join(' -> ')} -> ${pageComponentName}`);
       }
       
       // CRITICAL FIX: Use safe transpilation
@@ -1158,74 +1282,8 @@ async function generateStaticComponentFilesSuperFast(
     }
   }
 
-  // 🚀 STEP 3: PARALLEL COMPONENT PROCESSING - Enhanced with safe transpilation
-  const componentTasks = allComponents.map(async ({ path: sourcePath, relativePath }) => {
-    try {
-      console.log(`[Build] Processing component: ${sourcePath} -> ${relativePath}`);
-      
-      // Check cache first
-      const cached = await buildCache.get(sourcePath);
-      if (cached) {
-        console.log(`[Build] Using cached version for ${sourcePath}`);
-        const outputPath_component = join(outputPath, relativePath.replace(/\.(tsx|ts)$/, '.js'));
-        await mkdir(dirname(outputPath_component), { recursive: true });
-        await Bun.write(outputPath_component, cached);
-        return 1;
-      }
-      
-      let sourceCode = await Bun.file(sourcePath).text();
-      console.log(`[Build] Read source code for ${sourcePath}, length: ${sourceCode.length}`);
-      
-      const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
-      
-      if (isPageComponent && hasLayout) {
-        console.log(`[Build] Processing page component with layout: ${sourcePath}`);
-        const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
-        const pageComponentName = defaultExportMatch?.[1] || 'PageComponent';
-        
-        const layoutWithoutExport = layoutContent
-          .replace(/export\s+default\s+function\s+RootLayout/, 'function RootLayout')
-          .replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '')
-          .replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
-        const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
-        
-        sourceCode = `${layoutWithoutExport}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return RootLayout({ children: ${pageComponentName}(props) });\n}`;
-        console.log(`[Build] Combined layout + page for ${sourcePath}, final length: ${sourceCode.length}`);
-      }
-      
-      // CRITICAL FIX: Use safe transpilation
-      console.log(`[Build] About to call transpileComponentSafely for ${sourcePath}`);
-      let transpiledContent = await transpileComponentSafely(sourceCode, sourcePath);
-      console.log(`[Build] transpileComponentSafely returned for ${sourcePath}, length: ${transpiledContent.length}`);
-      
-      // Transform imports AFTER transpiling
-      transpiledContent = transformImportsForBrowser(transpiledContent);
-      
-      const outputPath_component = join(outputPath, relativePath.replace(/\.(tsx|ts)$/, '.js'));
-      await mkdir(dirname(outputPath_component), { recursive: true });
-      await Bun.write(outputPath_component, transpiledContent);
-      console.log(`[Build] Wrote transpiled component to ${outputPath_component}`);
-      
-      // Cache the result
-      await buildCache.set(sourcePath, transpiledContent);
-      
-      return 1;
-    } catch (error) {
-      console.warn(`[Build] ⚠️ Failed to generate component ${relativePath}:`, error);
-      return 0;
-    }
-  });
-
-  // Execute all tasks in parallel
-  const [routeResults, componentResults] = await Promise.all([
-    Promise.all(routeTasks),
-    Promise.all(componentTasks)
-  ]);
-  
-  const generatedCount = routeResults.reduce((a: number, b: number) => a + b, 0) + componentResults.reduce((a: number, b: number) => a + b, 0);
-  
-  const totalTime = performance.now() - startTime;
-  console.log(`[Build] ✅ COMPONENT GENERATION: ${generatedCount} files in ${totalTime.toFixed(1)}ms (WITH IMPORT FIXES)`);
+  const successful = results.reduce((sum, result) => sum + result, 0);
+  console.log(`[Build] ✅ Generated ${successful}/${routes.length} components with nested layout support`);
 }
 
 // 🚀 LIGHTNING-FAST FRAMEWORK FILES COPY - FIXED ROUTER ISSUE  

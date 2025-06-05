@@ -361,6 +361,77 @@ globalThis.__fragment = Fragment;
 }
 
 /**
+ * Helper function to scan directories for components
+ */
+async function scanDirectoryForComponents(
+  dir: string,
+  relativePath: string = '',
+  appDir: string,
+  components: Record<string, any>,
+  debug: boolean = false
+) {
+  try {
+    // Check if directory exists
+    if (!existsSync(dir)) return;
+    
+    // Read directory contents
+    const dirEntries = readdirSync(dir);
+    if (!dirEntries || dirEntries.length === 0) return;
+    
+    // Process each file/directory
+    for (const entry of dirEntries) {
+      // Skip hidden files and directories
+      if (entry.startsWith('.') || entry === 'node_modules') continue;
+      
+      const fullPath = join(dir, entry);
+      const newRelativePath = relativePath ? join(relativePath, entry) : entry;
+      
+      // Check if this is a directory
+      const stat = statSync(fullPath);
+      const isDirectory = stat.isDirectory();
+      
+      if (isDirectory) {
+        // Recurse into subdirectories
+        await scanDirectoryForComponents(fullPath, newRelativePath, appDir, components, debug);
+      } else {
+        // Check if this is a component file
+        const isComponent = ['page', 'layout', 'loading', 'error', 'not-found'].some(type => {
+          return entry === `${type}.tsx` || entry === `${type}.jsx` || 
+                 entry === `${type}.ts` || entry === `${type}.js`;
+        });
+        
+        if (isComponent) {
+          // Extract the component type (page, layout, etc.)
+          const componentType = entry.split('.')[0];
+          // Create the path that would be requested by the browser
+          // We need to use dirname() to get the parent directory path
+          const dirPath = dirname(newRelativePath) === '.' ? '' : dirname(newRelativePath);
+          const componentPath = join('app', dirPath, componentType);
+          
+          // Transpile the component
+          debug && logger.debug(`Found component: ${componentPath} at ${fullPath}`);
+          
+          const result = await transpileFile(fullPath, { 
+            projectRoot: appDir,
+            debug
+          });
+          
+          if (result.success && result.content) {
+            // Store the transpiled component
+            components[componentPath] = result.content;
+            debug && logger.debug(`Successfully transpiled component: ${componentPath}`);
+          } else {
+            debug && logger.warn(`Failed to transpile component: ${componentPath}`);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.error(`Error scanning directory ${dir}: ${error}`);
+  }
+}
+
+/**
  * Find and load all components in the app directory structure
  */
 export async function discoverComponents(
@@ -379,76 +450,8 @@ export async function discoverComponents(
       return components;
     }
     
-    // Standard Next.js app directory component files
-    const componentTypes = ['page', 'layout', 'loading', 'error', 'not-found'];
-    
-        /**
-     * Recursive function to scan directories for components
-     */
-    async function scanDirectory(dir: string, relativePath: string = '') {
-      try {
-        // Check if the directory exists
-        if (!existsSync(dir)) return;
-        
-        // Read directory contents
-        const dirEntries = readdirSync(dir);
-        if (!dirEntries || dirEntries.length === 0) return;
-        
-        // Process each file/directory
-        for (const entry of dirEntries) {
-          // Skip hidden files and directories
-          if (entry.startsWith('.') || entry === 'node_modules') continue;
-          
-          const fullPath = join(dir, entry);
-          const newRelativePath = relativePath ? join(relativePath, entry) : entry;
-          
-          // Check if this is a directory
-          const stat = statSync(fullPath);
-          const isDirectory = stat.isDirectory();
-          
-          if (isDirectory) {
-            // Recurse into subdirectories
-            await scanDirectory(fullPath, newRelativePath);
-          } else {
-            // Check if this is a component file
-            const isComponent = componentTypes.some(type => {
-              return entry === `${type}.tsx` || entry === `${type}.jsx` || 
-                     entry === `${type}.ts` || entry === `${type}.js`;
-            });
-            
-            if (isComponent) {
-              // Extract the component type (page, layout, etc.)
-              const componentType = entry.split('.')[0];
-              // Create the path that would be requested by the browser
-              // We need to use dirname() to get the parent directory path
-              const dirPath = dirname(newRelativePath) === '.' ? '' : dirname(newRelativePath);
-              const componentPath = join('app', dirPath, componentType);
-              
-              // Transpile the component
-              debug && logger.debug(`Found component: ${componentPath} at ${fullPath}`);
-              
-              const result = await transpileFile(fullPath, { 
-                projectRoot: appDir,
-                debug
-              });
-              
-              if (result.success && result.content) {
-                // Store the transpiled component
-                components[componentPath] = result.content;
-                debug && logger.debug(`Successfully transpiled component: ${componentPath}`);
-              } else {
-                debug && logger.warn(`Failed to transpile component: ${componentPath}`);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        logger.error(`Error scanning directory ${dir}: ${error}`);
-      }
-    }
-    
     // Start the recursive scan from the app directory
-    await scanDirectory(appDir);
+    await scanDirectoryForComponents(appDir, '', appDir, components, debug);
     
     debug && logger.info(`Discovered ${Object.keys(components).length} components`);
     

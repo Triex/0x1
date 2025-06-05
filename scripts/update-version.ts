@@ -350,7 +350,7 @@ async function updateReadmeVersion(version: string): Promise<void> {
       if (catchAllPattern && catchAllPattern.contexts) {
         for (const context of catchAllPattern.contexts) {
           // Create a regex that looks for the context and a version number nearby
-          const contextRegex = new RegExp(`${context}[^\n]*?\b(v?[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)\b`, 'gi');
+          const contextRegex = new RegExp(`${context}[^\n]*?\\b(v?[0-9]+.[0-9]+.[0-9]+(?:-[a-z]+.[0-9]+)?)\\b`, 'gi');
           
           // Find and replace within this context
           readmeContent = readmeContent.replace(contextRegex, function(match: string, versionMatch: string) {

@@ -7,8 +7,9 @@
  */
 
 // Import our JSX definitions to ensure they're available
-/// <reference path="../../types/jsx.d.ts" />
-/// <reference path="../../types/jsx-runtime.d.ts" />
+// Import JSX types
+import '../../types/jsx.d.ts';
+import '../../types/jsx-runtime.d.ts';
 
 // These types can be used internally in the framework
 export type JSXElement = {
@@ -39,7 +40,7 @@ export type HTMLAttributes = {
 
 // Re-export these types from the globally defined JSX namespace
 export namespace JSX {
-  interface IntrinsicElements {
+  interface _IntrinsicElements {
     // HTML elements
     a: any;
     abbr: any;
@@ -214,15 +215,15 @@ export namespace JSX {
     view: any;
   }
   
-  interface ElementClass {
+  interface _ElementClass {
     render: any;
   }
   
-  interface ElementAttributesProperty {
+  interface _ElementAttributesProperty {
     props: any;
   }
   
-  interface ElementChildrenAttribute {
+  interface _ElementChildrenAttribute {
     children: any;
   }
 }

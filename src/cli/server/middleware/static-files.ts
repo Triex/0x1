@@ -125,6 +125,21 @@ export async function serveStaticFile(
   const relativePath = pathname.startsWith('/') ? pathname.slice(1) : pathname;
   const filePath = resolve(projectPath, basePath, relativePath);
   
+  // CRITICAL FIX: Don't serve .js files from component directories - they should be transpiled
+  const ext = extname(filePath).toLowerCase();
+  const isJavaScript = ext === '.js' || ext === '.mjs';
+  const isComponentDirectory = basePath.includes('app') || basePath.includes('src') || 
+                                basePath.includes('lib') || basePath.includes('components') ||
+                                basePath.includes('dist') || // Don't serve build artifacts
+                                pathname.includes('/app/') || pathname.includes('/src/') ||
+                                pathname.includes('/lib/') || pathname.includes('/components/') ||
+                                pathname.includes('/dist/'); // Don't serve build artifacts
+  
+  if (isJavaScript && isComponentDirectory) {
+    // Don't serve JS files from component directories - let the component handler transpile them
+    return null;
+  }
+  
   try {
     // Check if the file exists and is a regular file
     if (!existsSync(filePath)) {
