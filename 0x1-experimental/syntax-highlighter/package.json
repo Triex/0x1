@@ -1,6 +1,6 @@
 {
   "name": "@0x1js/highlighter",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lightweight, beautiful syntax highlighter for JavaScript, TypeScript, and Bash",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -29,7 +29,7 @@
     "0x1"
   ],
   "author": "0x1 Framework",
-  "license": "MIT",
+  "license": "TDLv1",
   "publishConfig": {
     "access": "public"
   },

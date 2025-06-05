@@ -1,6 +1,6 @@
 {
   "name": "0x1",
-  "version": "0.0.263",
+  "version": "0.0.264",
   "description": "0x1: Lightning-fast web framework for JavaScript/TypeScript with zero overhead and maximum performance, powered by Bun",
   "type": "module",
   "main": "dist/index.js",
@@ -111,7 +111,7 @@
     "spa"
   ],
   "author": "TriexDev",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "TDLv1",
   "homepage": "https://0x1.onl",
   "repository": {
     "type": "git",
