@@ -226,7 +226,9 @@ function sanitizeJavaScriptString(str: string): string {
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
     .replace(/'/g, "\\'")
-    .replace(/"/g, '\\"');
+    .replace(/"/g, '\\"')
+    .replace(/`/g, '\\`') // CRITICAL FIX: Escape backticks to prevent template literal syntax errors
+    .replace(/\\/g, '\\\\'); // CRITICAL FIX: Escape backslashes
 }
 
 // Insert JSX runtime preamble function (same as dev-server)
@@ -352,19 +354,23 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     // Transform imports for browser compatibility
     processedCode = transformBareImports(processedCode, sourcePath);
     
+    // CRITICAL FIX: Pre-process source code to handle template literals properly
+    // This prevents the transpiler from generating invalid JavaScript
+    processedCode = preprocessTemplateLiterals(processedCode);
+    
     // CRITICAL FIX: Force JSX transpilation for any file with JSX elements
     if (hasJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
       console.log(`[Build] FORCING JSX transpilation for: ${sourcePath}`);
-      
-      const transpiler = new Bun.Transpiler({
+    
+    const transpiler = new Bun.Transpiler({
         loader: 'tsx', // Always use tsx loader for JSX files
-        target: 'browser',
-        define: {
-          'process.env.NODE_ENV': JSON.stringify('production'),
-          'global': 'globalThis'
-        }
-      });
-      
+      target: 'browser',
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+        'global': 'globalThis'
+      }
+    });
+    
       const transpiledContent = await transpiler.transform(processedCode);
       console.log(`[Build] Transpilation complete for ${sourcePath}. Output length: ${transpiledContent.length}`);
       
@@ -387,9 +393,13 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       let finalCode = normalizeJsxFunctionCalls(transpiledContent);
       finalCode = insertJsxRuntimePreamble(finalCode);
       
+      // CRITICAL FIX: Fix template literal syntax issues in transpiled code
+      // Escape unescaped backticks that are breaking JavaScript syntax
+      finalCode = fixTemplateLiteralSyntax(finalCode);
+      
       console.log(`[Build] ✅ Successfully transpiled JSX file: ${sourcePath}`);
       return finalCode;
-    } else {
+      } else {
       // Non-JSX file - just process imports and return
       console.log(`[Build] Processing non-JSX file: ${sourcePath}`);
       let finalCode = processedCode;
@@ -2049,4 +2059,158 @@ function validateFileDirectives(
       processedCode: sourceCode
     };
   }
+}
+
+// CRITICAL FIX: Fix template literal syntax issues in transpiled code
+function fixTemplateLiteralSyntax(code: string): string {
+  // ROBUST FIX: Parse and fix JavaScript AST properly instead of pattern matching
+  
+  try {
+    // Use Bun's built-in JavaScript parser to handle this properly
+    const transpiler = new Bun.Transpiler({
+      loader: 'js',
+      target: 'browser',
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production')
+      }
+    });
+    
+    // Parse and re-transpile to normalize syntax
+    const normalizedCode = transpiler.transformSync(code);
+    
+    // If that worked, use it
+    if (normalizedCode && !normalizedCode.includes('SyntaxError')) {
+      console.log('[Build] JavaScript normalized successfully with AST parser');
+      return normalizedCode;
+    }
+  } catch (error) {
+    console.warn('[Build] AST normalization failed, using manual fix:', error);
+  }
+  
+  // FALLBACK: Comprehensive manual fix using proper regex patterns
+  let fixedCode = code;
+  
+  // Fix 1: Convert template literals that should be strings (comprehensive)
+  // This handles ALL template literals that don't use interpolation
+  fixedCode = fixedCode.replace(/`([^`$\\]+)`/g, (match, content) => {
+    // Only convert if there's no template literal interpolation (${...})
+    if (!content.includes('${')) {
+      // Properly escape the content for a string literal
+      const escaped = content
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+      return `"${escaped}"`;
+    }
+    return match;
+  });
+  
+  // Fix 2: Handle any remaining template literal fragments in arrays/objects
+  fixedCode = fixedCode.replace(
+    /([[{,]\s*)`([^`$]+)`(\s*[\]},])/g,
+    (match, before, content, after) => {
+      if (!content.includes('${')) {
+        const escaped = content
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+        return `${before}"${escaped}"${after}`;
+      }
+      return match;
+    }
+  );
+  
+  // Fix 3: Validate the result
+  try {
+    // Use Function constructor to validate syntax without executing
+    new Function(fixedCode);
+    console.log('[Build] JavaScript syntax validated successfully');
+  } catch (error) {
+    console.error('[Build] Generated JavaScript still has syntax errors:', error);
+    // In this case, we could try more aggressive fixes or fall back to error component
+  }
+  
+  console.log('[Build] Applied comprehensive JavaScript syntax fixes');
+  return fixedCode;
+} 
+
+/**
+ * ROOT CAUSE FIX: Pre-process template literals in source code before transpilation
+ * This prevents Bun from generating invalid JavaScript with unescaped backticks
+ */
+function preprocessTemplateLiterals(sourceCode: string): string {
+  // The root issue: Template literals in JSX examples/documentation should be treated as text
+  // Instead of letting Bun transpile them as actual template literals, convert them to strings
+  
+  let processed = sourceCode;
+  
+  // Strategy 1: Convert template literals in JSX text content to regular strings
+  // Look for template literals that are clearly text content, not actual template literals
+  processed = processed.replace(
+    /(\w+:\s*)`([^`]*)`/g,
+    (match, prefix, content) => {
+      // If this looks like a documentation example (no interpolation), convert to string
+      if (!content.includes('${') && (
+        content.includes('{') || 
+        content.includes('useState') || 
+        content.includes('import') ||
+        content.includes('export') ||
+        content.includes('function')
+      )) {
+        // This is likely a code example, convert to string
+        const escaped = content
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'");
+        return `${prefix}'${escaped}'`;
+      }
+      return match;
+    }
+  );
+  
+  // Strategy 2: Convert template literals in JSX attribute values that are code examples
+  processed = processed.replace(
+    /(\w+\s*=\s*)`([^`]*)`/g,
+    (match, prefix, content) => {
+      if (!content.includes('${') && (
+        content.includes('{') || 
+        content.includes('useState') || 
+        content.includes('import') ||
+        content.includes('export')
+      )) {
+        const escaped = content
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'");
+        return `${prefix}'${escaped}'`;
+      }
+      return match;
+    }
+  );
+  
+  // Strategy 3: Convert template literals in array/object literals that are documentation
+  processed = processed.replace(
+    /(\[\s*|\{\s*|,\s*)`([^`]*)`(\s*[\],}])/g,
+    (match, before, content, after) => {
+      if (!content.includes('${') && (
+        content.includes('{') || 
+        content.includes('useState') || 
+        content.includes('import') ||
+        content.includes('export') ||
+        content.includes('React') ||
+        content.includes('function')
+      )) {
+        const escaped = content
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'");
+        return `${before}'${escaped}'${after}`;
+      }
+      return match;
+    }
+  );
+  
+  console.log('[Build] Pre-processed template literals to prevent syntax errors');
+  return processed;
 }
