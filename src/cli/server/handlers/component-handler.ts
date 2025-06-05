@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, statSync } from 'fs';
-import { basename, dirname, extname, join, resolve } from 'path';
+import { existsSync } from "fs";
+import { basename, extname, join } from 'path';
 
 // Import directive validation functions
 import { processDirectives } from '../../../core/directives.js';
+import { logger } from "../../utils/logger";
 
 // Transpilation cache to prevent duplicate work
 const transpilationCache = new Map<string, { content: string; mtime: number; etag: string }>();
@@ -13,176 +14,77 @@ const transpilationCache = new Map<string, { content: string; mtime: number; eta
  * and removes CSS imports that would cause MIME type errors
  */
 function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
-  let transformed = content;
+  // CRITICAL FIX: Preserve destructuring imports properly
+  let transformedContent = content;
   
-  // Remove CSS imports that cause MIME type errors in the browser
-  transformed = transformed
+  // CRITICAL: Remove CSS imports first (they cause MIME type errors)
+  transformedContent = transformedContent
     .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
     .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
     .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility')
-    // Handle the specific format: import"./globals.css"
-    .replace(/import"[^"]*\.css"/g, '// CSS import removed for browser compatibility')
-    .replace(/import'[^']*\.css'/g, '// CSS import removed for browser compatibility');
+    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility');
   
-  // CRITICAL FIX: Transform React hook imports to use direct window.React access
-  // This completely bypasses ES6 import issues with the hooks module
-  transformed = transformed
-    .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*['"]0x1['"];?/g, (match, imports) => {
-      // Parse the imports 
-      const hookNames = imports.split(',').map((s: string) => s.trim());
-      const hookAssignments = hookNames.map((hookName: string) => {
-        const cleanName = hookName.trim();
-        // Map hooks to window.React access
-        if (['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'].includes(cleanName)) {
-          return `const ${cleanName} = window.React?.${cleanName} || (() => { throw new Error('[0x1] ${cleanName} not available'); });`;
-        }
-        return `// Skipped non-hook import: ${cleanName}`;
-      });
-      return `// Hook imports transformed to direct window.React access\n${hookAssignments.join('\n')}`;
-    })
-    .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*['"]\/0x1\/hooks\.js['"];?/g, (match, imports) => {
-      // Parse the imports from hooks.js
-      const hookNames = imports.split(',').map((s: string) => s.trim());
-      const hookAssignments = hookNames.map((hookName: string) => {
-        const cleanName = hookName.trim();
-        // Map hooks to window.React access
-        if (['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'].includes(cleanName)) {
-          return `const ${cleanName} = window.React?.${cleanName} || (() => { throw new Error('[0x1] ${cleanName} not available'); });`;
-        }
-        return `// Skipped non-hook import: ${cleanName}`;
-      });
-      return `// Hook imports transformed to direct window.React access\n${hookAssignments.join('\n')}`;
-    });
-  
-  // Transform third-party Web3 imports to polyfill paths (keep this working)
-  // ULTRA-DYNAMIC: Convert named imports to property access of polyfill namespace
-  transformed = transformed
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]viem['"]/g,
-      (match, imports) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill_viem || window.__0x1_polyfill_viem;
-            if (!polyfill) throw new Error('[0x1] viem polyfill not loaded - ensure /node_modules/viem is loaded first');
-            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from viem polyfill'); });
-          })();`
-        );
-        return `// ULTRA-DYNAMIC viem imports\n${assignments.join('\n')}`;
-      }
-    )
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]viem\/([^'"]+)['"]/g,
-      (match, imports, subPath) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill_viem || window.__0x1_polyfill_viem;
-            if (!polyfill) throw new Error('[0x1] viem polyfill not loaded - ensure /node_modules/viem is loaded first');
-            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from viem/${subPath} polyfill'); });
-          })();`
-        );
-        return `// ULTRA-DYNAMIC viem/${subPath} imports\n${assignments.join('\n')}`;
-      }
-    )
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]wagmi['"]/g,
-      (match, imports) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill_wagmi || window.__0x1_polyfill_wagmi;
-            if (!polyfill) throw new Error('[0x1] wagmi polyfill not loaded - ensure /node_modules/wagmi is loaded first');
-            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from wagmi polyfill'); });
-          })();`
-        );
-        return `// ULTRA-DYNAMIC wagmi imports\n${assignments.join('\n')}`;
-      }
-    )
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]wagmi\/([^'"]+)['"]/g,
-      (match, imports, subPath) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill_wagmi || window.__0x1_polyfill_wagmi;
-            if (!polyfill) throw new Error('[0x1] wagmi polyfill not loaded - ensure /node_modules/wagmi is loaded first');
-            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from wagmi/${subPath} polyfill'); });
-          })();`
-        );
-        return `// ULTRA-DYNAMIC wagmi/${subPath} imports\n${assignments.join('\n')}`;
-      }
-    )
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]@tanstack\/react-query['"]/g,
-      (match, imports) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill__tanstack_react_query || window.__0x1_polyfill__tanstack_react_query;
-            if (!polyfill) throw new Error('[0x1] @tanstack/react-query polyfill not loaded - ensure /node_modules/@tanstack/react-query is loaded first');
-            return polyfill.${name} || polyfill.default?.${name} || (() => { throw new Error('[0x1] ${name} not available from @tanstack/react-query polyfill'); });
-          })();`
-        );
-        return `// ULTRA-DYNAMIC @tanstack/react-query imports\n${assignments.join('\n')}`;
-      }
-    )
-    .replace(
-      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]@rainbow-me\/rainbowkit['"]/g,
-      (match, imports) => {
-        const namedImports = imports.split(',').map((name: string) => name.trim());
-        const assignments = namedImports.map((name: string) => 
-          `const ${name} = (() => { 
-            const polyfill = globalThis.__0x1_polyfill__rainbow_me_rainbowkit || window.__0x1_polyfill__rainbow_me_rainbowkit;
-            console.log('[0x1 DEBUG] Accessing ${name} from RainbowKit polyfill. Polyfill exists:', !!polyfill);
-            if (!polyfill) {
-              console.error('[0x1 ERROR] RainbowKit polyfill not found. Available keys:', Object.keys(globalThis).filter(k => k.includes('polyfill')));
-              throw new Error('[0x1] @rainbow-me/rainbowkit polyfill not loaded - ensure /node_modules/@rainbow-me/rainbowkit is loaded first');
-            }
-            const result = polyfill.${name} || polyfill.default?.${name};
-            console.log('[0x1 DEBUG] Retrieved ${name}:', typeof result, result);
-            if (!result) {
-              console.error('[0x1 ERROR] ${name} not available in polyfill. Available props:', Object.getOwnPropertyNames(polyfill));
-              throw new Error('[0x1] ${name} not available from @rainbow-me/rainbowkit polyfill');
-            }
-            return result;
-          })();`
-        );
-        return `// ULTRA-DYNAMIC @rainbow-me/rainbowkit imports\n${assignments.join('\n')}`;
-      }
-    );
-  
-  // Transform other 0x1 framework imports
-  transformed = transformed
-    .replace(/from\s+['"]0x1\/link['"]/g, 'from "/0x1/link"')
-    .replace(/from\s+['"]0x1\/router['"]/g, 'from "/0x1/router.js"')
-    .replace(/from\s+['"]0x1['"]/g, 'from "/node_modules/0x1/index.js"');
+  // Transform 0x1 imports ONLY
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"]0x1['"]/g,
+    'import $1 from "/node_modules/0x1/index.js"'
+  );
   
   // Transform relative imports to absolute paths
-  if (filePath && projectPath) {
-    const currentDir = dirname(filePath);
-    
-    // Handle parent directory imports: ../filename
-    transformed = transformed.replace(
-      /from\s+['"](\.\.[/\\][^'"]+)['"]/g, 
-      (match, relativePath) => {
-        const absolutePath = resolve(currentDir, relativePath).replace(projectPath, '');
-        return `from "${absolutePath.replace(/\\/g, '/')}"`;
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      // Don't modify the import clause structure - just fix the path
+      let browserPath = importPath;
+      
+      // Map specific patterns to browser-accessible paths
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\.\//, '/');
       }
-    );
-    
-    // Handle same directory imports: ./filename
-    transformed = transformed.replace(
-      /from\s+['"](\.[/\\][^'"]+)['"]/g, 
-      (match, relativePath) => {
-        const absolutePath = resolve(currentDir, relativePath).replace(projectPath, '');
-        return `from "${absolutePath.replace(/\\/g, '/')}"`;
+      
+      // Add .js extension if not present
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
       }
-    );
-  }
-
-  return transformed;
+      
+      // Return the import with the same clause structure
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  // Transform same-directory imports
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      let browserPath = importPath;
+      
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\//, '/components/');
+      }
+      
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
+      }
+      
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  return transformedContent;
 }
 
 /**
@@ -270,17 +172,14 @@ function normalizeJsxFunctionCalls(content: string): string {
 
 /**
  * Generate production-quality JSX runtime preamble
- * Uses import statements instead of variable declarations to avoid syntax errors
+ * Simple and reliable approach that works
  */
-function generateJsxRuntimePreamble(): string {
+function generateJsxRuntimePreamble(transpiledCode?: string): string {
   return `// 0x1 Framework - JSX Runtime Access
 import { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';`;
 }
 
-/**
- * Insert JSX runtime import after existing imports
- */
-function insertJsxRuntimePreamble(code: string): string {
+function insertJsxRuntimePreamble(code: string, transpiledCode?: string): string {
   const lines = code.split('\n');
   let insertIndex = 0;
   let foundImports = false;
@@ -391,305 +290,383 @@ Suggestion: \${validationError.suggestion}\`;
 }
 
 /**
- * Locate a component file based on the request path
+ * Locate component source file from request path
  */
 function locateComponent(reqPath: string, projectPath: string): string | null {
-  // Remove .js extension and add project path
-  const componentBasePath = reqPath.replace(/\.js$/, '');
+  // Clean the path and extract the component name
+  const cleanPath = reqPath.split('?')[0]; // Remove query params
+  const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
+  let relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
   
-  // Check for the component in various formats (.tsx, .jsx, .ts, .js)
-  const possibleComponentPaths = [
-    join(projectPath, `${componentBasePath}.tsx`),
-    join(projectPath, `${componentBasePath}.jsx`),
-    join(projectPath, `${componentBasePath}.ts`),
-    join(projectPath, `${componentBasePath}.js`)
-  ];
+  // CRITICAL FIX: Handle root route mapping to app/page
+  if (relativePath === '' || relativePath === '/') {
+    relativePath = 'app/page';
+  }
+  // Handle other app routes - if it doesn't start with 'app/', 'components/', 'lib/', assume it's an app route
+  else if (!relativePath.startsWith('app/') && !relativePath.startsWith('components/') && !relativePath.startsWith('lib/') && !relativePath.startsWith('src/')) {
+    // This is likely an app route like /features -> app/features/page
+    relativePath = `app/${relativePath}/page`;
+  }
   
-  // Find the first matching component path
-  return possibleComponentPaths.find(path => existsSync(path)) || null;
+  // Generate possible source file paths
+  const possibleExtensions = ['.tsx', '.jsx', '.ts', '.js'];
+  const possiblePaths = possibleExtensions.map(ext => join(projectPath, `${relativePath}${ext}`));
+  
+  // Find the first existing file
+  for (const path of possiblePaths) {
+    if (existsSync(path)) {
+      return path;
+    }
+  }
+  
+  return null;
 }
 
 /**
- * Handles component requests and transpilation
+ * Handle component transpilation requests with enhanced error handling
  */
-export function handleComponentRequest(
+export async function handleComponentRequest(
   reqPath: string, 
   projectPath: string,
-  componentBasePath: string
-): Response | null {
-  // Check for the component in various formats (.tsx, .jsx, .ts, .js)
-  const possibleComponentPaths = [
-    join(projectPath, `${componentBasePath}.tsx`),
-    join(projectPath, `${componentBasePath}.jsx`),
-    join(projectPath, `${componentBasePath}.ts`),
-    join(projectPath, `${componentBasePath}.js`)
-  ];
-  
-  // Find the first matching component path
-  const componentPath = possibleComponentPaths.find(path => existsSync(path));
-  
-  if (!componentPath) return null;
-  
+  componentPath: string
+): Promise<Response | null> {
   try {
-    console.log(`✅ 200 OK: ${reqPath} (Component from ${componentPath.replace(projectPath, '')})`);
+    // Add debug logging to see if this function is called
+    if (reqPath.includes('PerformanceBenchmark')) {
+      console.log('🔧 handleComponentRequest called for PerformanceBenchmark with reqPath:', reqPath);
+    }
     
-    // Read the source code
-    const sourceCode = readFileSync(componentPath, 'utf-8');
+    const sourceFile = locateComponent(reqPath, projectPath);
     
-    // PERFORMANCE: Check transpilation cache first
-    const stats = statSync(componentPath);
-    const currentMtime = stats.mtime.getTime();
-    const cacheKey = componentPath;
-    
-    if (transpilationCache.has(cacheKey)) {
-      const cached = transpilationCache.get(cacheKey)!;
-      if (cached.mtime >= currentMtime) {
-        console.log(`[0x1 Cache] Using cached transpilation for ${componentPath}`);
-        return new Response(cached.content, {
+    if (!sourceFile) {
+      if (reqPath.includes('PerformanceBenchmark')) {
+        console.log('🔧 DEBUG: PerformanceBenchmark sourceFile not found, returning not found component');
+      }
+      // Component not found, return a helpful fallback
+      const safePath = (componentPath || reqPath).replace(/'/g, "\\'");
+      const notFoundCode = generateNotFoundComponent(safePath);
+      return new Response(notFoundCode, {
           status: 200,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "ETag": cached.etag,
-            "X-Transpiled": "cached"
+          "Cache-Control": "no-cache",
+          }
+        });
+      }
+
+    if (reqPath.includes('PerformanceBenchmark')) {
+      console.log('🔧 DEBUG: PerformanceBenchmark sourceFile found:', sourceFile);
+    }
+
+    // Check cache first (if caching is enabled)
+    const stats = await Bun.file(sourceFile).stat();
+    const cacheKey = `${sourceFile}:${stats.mtime}`;
+    
+    // Validate the file content
+    let sourceCode = await Bun.file(sourceFile).text();
+    
+    if (reqPath.includes('PerformanceBenchmark')) {
+      console.log('🔧 DEBUG: PerformanceBenchmark sourceCode loaded, length:', sourceCode.length);
+    }
+    
+    // MINIMAL TypeScript stripping - only remove specific patterns that break transpilation
+    // Do NOT touch function syntax, arrow functions, or any valid JavaScript
+    
+    // 1. Remove interface declarations (handle multi-line properly)
+    sourceCode = sourceCode.replace(/interface\s+\w+\s*\{[\s\S]*?\n\}/g, '');
+    
+    // 2. Remove 'as const' assertions (be more aggressive)
+    sourceCode = sourceCode.replace(/\s+as\s+const\b/g, '');
+    sourceCode = sourceCode.replace(/,\s*type:\s*'[^']*'\s+as\s+const/g, ''); // Remove type: 'value' as const
+    sourceCode = sourceCode.replace(/type:\s*'[^']*'\s+as\s+const,/g, ''); // Handle different comma positions
+    sourceCode = sourceCode.replace(/type:\s*'[^']*'\s+as\s+const/g, ''); // Without comma
+    
+    // 3. Remove useState generic types only (be very specific and handle edge cases)
+    // Handle specific patterns found in PerformanceBenchmark component
+    sourceCode = sourceCode.replace(/useState<'0x1' \| 'nextjs' \| null>/g, 'useState');
+    sourceCode = sourceCode.replace(/useState<string\[\]>/g, 'useState');
+    sourceCode = sourceCode.replace(/useState<Set<string>>/g, 'useState');
+    // More aggressive cleanup for nested generics and malformed patterns
+    sourceCode = sourceCode.replace(/useState<[^>]*(?:<[^>]*>[^>]*)*>/g, 'useState');
+    sourceCode = sourceCode.replace(/useState<[^>]*>/g, 'useState');
+    sourceCode = sourceCode.replace(/useState>/g, 'useState');
+    sourceCode = sourceCode.replace(/useState<>/g, 'useState');
+    // Extra aggressive cleanup for any remaining issues
+    sourceCode = sourceCode.replace(/useState<[^(]*/g, 'useState');
+    sourceCode = sourceCode.replace(/useState>[^(]*/g, 'useState');
+    
+    // 4. Remove specific problematic function parameter types (very targeted)
+    sourceCode = sourceCode.replace(/\(framework: '0x1' \| 'nextjs'\)/g, '(framework)');
+    sourceCode = sourceCode.replace(/\(step: BuildStep, isNewlyAdded: boolean\)/g, '(step, isNewlyAdded)');
+    // Additional function parameter types found in ThemeToggle
+    sourceCode = sourceCode.replace(/\(e: MediaQueryListEvent\)/g, '(e)');
+    sourceCode = sourceCode.replace(/useState<boolean>/g, 'useState');
+    
+    // 5. Clean up empty lines
+    sourceCode = sourceCode.replace(/\n\s*\n\s*\n/g, '\n\n');
+    
+    if (reqPath.includes('PerformanceBenchmark')) {
+      console.log('🔧 DEBUG: PerformanceBenchmark TypeScript stripping complete');
+    }
+    
+    // Process directives and validate
+    const validation = validateFileDirectives(sourceFile, sourceCode);
+    if (validation.hasErrors) {
+      if (reqPath.includes('PerformanceBenchmark')) {
+        console.log('🔧 DEBUG: PerformanceBenchmark has directive validation errors');
+      }
+      logger.warn(`Directive validation errors in ${sourceFile}:`);
+      validation.errors.forEach(error => {
+        logger.warn(`  Line ${error.line}: ${error.message}`);
+      });
+      
+      // Only return early for serious errors, not warnings about async functions
+      const seriousErrors = validation.errors.filter(error => 
+        !error.message.includes('Async functions in client components should use React hooks')
+      );
+      
+      if (seriousErrors.length > 0) {
+        // Return the processed code with error boundary integration
+        const errorScript = generateDirectiveErrorScript(sourceFile, validation.errors);
+        return new Response(validation.processedCode + '\n\n' + errorScript, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache",
           }
         });
       }
     }
     
-    // CRITICAL FIX: Process directives to detect client components
-    const directiveResult = processDirectives(sourceCode, componentPath);
-    if (directiveResult.errors.length > 0) {
-      console.warn(`Component ${componentPath} has directive errors:`, directiveResult.errors);
-      return new Response(generateDirectiveErrorScript(componentPath, directiveResult.errors), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/javascript; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
+    if (reqPath.includes('PerformanceBenchmark')) {
+      console.log('🔧 DEBUG: PerformanceBenchmark directive validation passed (or only warnings)');
+    }
+    
+    // Apply directive processing
+    sourceCode = validation.processedCode;
+    
+    // CRITICAL FIX: Use Bun.Transpiler with proper import transformation order
+    try {
+      // CRITICAL: Transform imports BEFORE transpilation to avoid import mangling
+      const preprocessedCode = transformBareImports(sourceCode, sourceFile, projectPath);
+      
+      // Debug logging for transpilation issues
+      if (sourceFile.includes('PerformanceBenchmark')) {
+        console.log('🔍 Debug: PerformanceBenchmark preprocessing complete, about to transpile...');
+        console.log('🔍 First 200 chars of preprocessed code:', preprocessedCode.substring(0, 200));
+        console.log('🔍 Has JSX in preprocessed:', preprocessedCode.includes('<div'));
+        console.log('🔍 File extension detected as:', sourceFile.endsWith('.tsx') ? 'tsx' : sourceFile.endsWith('.jsx') ? 'jsx' : sourceFile.endsWith('.ts') ? 'ts' : 'js');
+      }
+      
+      // Determine loader - force tsx if JSX is detected
+      const hasJsx = preprocessedCode.includes('<') && (preprocessedCode.includes('/>') || preprocessedCode.includes('</'));
+      const loader = hasJsx ? 'tsx' : 
+                    sourceFile.endsWith('.tsx') ? 'tsx' : 
+                    sourceFile.endsWith('.jsx') ? 'jsx' : 
+                    sourceFile.endsWith('.ts') ? 'ts' : 'js';
+      
+      if (sourceFile.includes('PerformanceBenchmark')) {
+        console.log('🔍 Debug: Detected JSX in content:', hasJsx);
+        console.log('🔍 Debug: Using loader:', loader);
+      }
+      
+      const transpiler = new Bun.Transpiler({
+        loader: loader,
+        target: 'browser',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('development'),
+          'global': 'globalThis'
         }
       });
-    }
-    
-    // Use processed code from directive validation
-    const processedSource = directiveResult.code;
-    
-    // Add logging for client component detection
-    if (directiveResult.directive === 'client' || directiveResult.inferredContext === 'client') {
-      console.log(`[0x1 Directive] Detected CLIENT component: ${componentPath}`);
-    }
-    
-    // Transform bare imports
-    const transformedContent = transformBareImports(processedSource, componentPath, projectPath);
-    
-    // Determine if this is a JSX/TSX file
-    const extension = componentPath.split('.').pop() || 'js';
-    const isJSX = extension === 'tsx' || extension === 'jsx';
-    
-    // If this is a JSX/TSX file, transpile it with Bun
-    if (isJSX) {
+      
+      let transpiledContent;
       try {
-        console.log(`Transpiling ${componentPath} using Bun.Transpiler`);
-        
-        const transpiler = new Bun.Transpiler({
-          loader: componentPath.endsWith('.tsx') ? 'tsx' : 'jsx',
-          target: 'browser',
-          define: {
-            'process.env.NODE_ENV': '"development"',
-            'global': 'window'
-          }
-        });
-        
-        const transpiled = transpiler.transformSync(transformedContent);
-        
-        // Insert JSX runtime preamble to ensure it's available
-        const withJsxRuntime = insertJsxRuntimePreamble(transpiled);
-        
-        // // Log debug info for the transpilation
-        // console.log(`=== TRANSPILATION DEBUG for ${componentPath} ===`);
-        // console.log(`Original source (first 200 chars):`, sourceCode.substring(0, 200));
-        // console.log(`Transformed imports (first 200 chars):`, transformedContent.substring(0, 200));
-        // console.log(`Transpiled output (first 500 chars):`, withJsxRuntime.substring(0, 500));
-        // console.log(`Transpiled output (last 200 chars):`, withJsxRuntime.substring(-200));
-        
-        // Apply JSX normalization to handle dynamic hashed function names
-        const normalized = normalizeJsxFunctionCalls(withJsxRuntime);
-        
-        // DISABLE ES6 conversion for proper module loading
-        // Let the browser handle ES6 imports properly via import maps
-        const finalContent = normalized;
-        
-        console.log('✅ ES6 syntax converted to browser-compatible JavaScript');
-        
-        // PERFORMANCE: Cache the transpilation result
-        const etag = `"${Date.now()}-${Math.random()}"`;
-        transpilationCache.set(cacheKey, {
-          content: finalContent,
-          mtime: currentMtime,
-          etag: etag
-        });
-        
-        return new Response(finalContent, {
-          status: 200,
-          headers: {
-            "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Last-Modified": new Date().toUTCString(),
-            "ETag": etag,
-            "X-Transpiled": "bun"
-          }
-        });
-      } catch (error: unknown) {
-        const transpileError = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to transpile ${componentPath}: ${transpileError}`);
-        
-        // Return a production-quality error component with enhanced styling
-        const errorScript = `${generateJsxRuntimePreamble()}
-
-// Enhanced Error Component for Transpilation Failures
-export default function TranspilationErrorComponent(props) {
-  console.group('🚨 0x1 Framework Transpilation Error');
-  console.error('Component:', '${componentPath}');
-  console.error('Error:', '${transpileError.replace(/'/g, "\\'")}');
-  console.groupEnd();
-
-  return jsxDEV('div', {
-    className: 'transpilation-error p-6 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg shadow-lg max-w-4xl mx-auto mt-8',
-    children: [
-      jsxDEV('div', {
-        className: 'flex items-center mb-4',
-        children: [
-          jsxDEV('div', {
-            className: 'flex-shrink-0',
-            children: jsxDEV('svg', {
-              className: 'w-6 h-6 text-red-500',
-              fill: 'currentColor',
-              viewBox: '0 0 20 20',
-              children: jsxDEV('path', {
-                fillRule: 'evenodd',
-                d: 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z',
-                clipRule: 'evenodd'
-              })
-            })
-          }),
-          jsxDEV('div', {
-            className: 'ml-3',
-            children: jsxDEV('h3', {
-              className: 'text-lg font-medium text-red-800 dark:text-red-200',
-              children: 'Component Transpilation Failed'
-            })
-          })
-        ]
-      }),
-      jsxDEV('div', {
-        className: 'mb-4',
-        children: [
-          jsxDEV('p', {
-            className: 'text-sm text-red-700 dark:text-red-300 mb-2 font-mono',
-            children: 'File: ${componentPath}'
-          }),
-          jsxDEV('pre', {
-            className: 'text-sm text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-800/30 p-3 rounded border overflow-auto',
-            children: '${transpileError.replace(/'/g, "\\'")}'
-          })
-        ]
-      }),
-      jsxDEV('div', {
-        className: 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-4',
-        children: [
-          jsxDEV('h4', {
-            className: 'text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2',
-            children: 'Troubleshooting Tips:'
-          }),
-          jsxDEV('ul', {
-            className: 'text-xs text-yellow-700 dark:text-yellow-300 space-y-1 list-disc list-inside',
-            children: [
-              jsxDEV('li', { children: 'Check for syntax errors in your JSX/TSX code' }),
-              jsxDEV('li', { children: 'Ensure all imports are properly formatted' }),
-              jsxDEV('li', { children: 'Verify TypeScript types are correct' }),
-              jsxDEV('li', { children: 'Check the browser console for detailed error information' }),
-              jsxDEV('li', { children: 'Try restarting the development server' })
-            ]
-          })
-        ]
-      })
-    ]
-  });
-}`;
-        
-        return new Response(errorScript, {
-          status: 200, // Return 200 to avoid breaking the app
-          headers: {
-            "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Last-Modified": new Date().toUTCString(),
-            "ETag": `"${Date.now()}-${Math.random()}"`,
-            "X-Transpiled": "error"
-          }
-        });
+        transpiledContent = await transpiler.transform(preprocessedCode);
+      } catch (transpileError) {
+        console.error('🚨 Transpilation failed for', sourceFile, ':', transpileError);
+        if (sourceFile.includes('PerformanceBenchmark')) {
+          console.log('🔍 Debug: PerformanceBenchmark transpilation FAILED');
+          console.log('🔍 Error details:', transpileError instanceof Error ? transpileError.message : String(transpileError));
+          console.log('🔍 Preprocessed code length:', preprocessedCode.length);
+        }
+        throw transpileError;
       }
-    } else {
-      // For non-JSX files, handle TypeScript transpilation if it's a .ts file
-      if (extension === 'ts') {
-        try {
-          console.log(`Transpiling TypeScript file ${componentPath} using Bun.Transpiler`);
-          
-          // Create transpiler for TypeScript
-          const transpiler = new Bun.Transpiler({
-            loader: 'ts',
-            target: 'browser',
-            define: {
-              'process.env.NODE_ENV': '"development"',
-            },
-          });
-          
-          // Transpile the TypeScript code to remove type annotations
-          const transpiled = transpiler.transformSync(transformedContent);
-          
-          console.log(`Successfully transpiled TypeScript file ${componentPath}`);
-          
-          return new Response(transpiled, {
-            status: 200,
-            headers: {
-              "Content-Type": "application/javascript; charset=utf-8",
-              "Cache-Control": "no-cache, no-store, must-revalidate",
-              "Pragma": "no-cache",
-              "Expires": "0",
-              "Last-Modified": new Date().toUTCString(),
-              "ETag": `"${Date.now()}-${Math.random()}"`,
-              "X-Transpiled": "typescript"
-            }
-          });
-        } catch (error: unknown) {
-          const transpileError = error instanceof Error ? error.message : String(error);
-          console.error(`Failed to transpile TypeScript file ${componentPath}: ${transpileError}`);
-          
-          // Fall back to basic transformation
-          console.warn(`Falling back to basic transformation for ${componentPath}`);
+      
+      // Debug logging for transpilation results
+      if (sourceFile.includes('PerformanceBenchmark')) {
+        console.log('🔍 Debug: PerformanceBenchmark transpilation complete');
+        console.log('🔍 First 300 chars of transpiled code:', transpiledContent.substring(0, 300));
+        console.log('🔍 Has JSX tags:', transpiledContent.includes('<div') || transpiledContent.includes('<span'));
+        console.log('🔍 Has jsx calls:', transpiledContent.includes('jsx(') || transpiledContent.includes('jsxDEV('));
+      }
+      
+      // Insert JSX runtime preamble with dynamic analysis
+      transpiledContent = insertJsxRuntimePreamble(transpiledContent, transpiledContent);
+      
+      // CRITICAL FIX: Ensure default export is preserved
+      // If we detect a default export in the original source, make sure it's preserved
+      const hasDefaultExport = sourceCode.includes('export default');
+      if (hasDefaultExport && !transpiledContent.includes('export default')) {
+        // Extract the component name from the original source
+        const defaultExportMatch = sourceCode.match(/export\s+default\s+(?:function\s+)?(\w+)/);
+        const componentName = defaultExportMatch?.[1] || 'Component';
+        
+        // If the transpiled code has the function but no default export, add it
+        if (transpiledContent.includes(`function ${componentName}`)) {
+          transpiledContent += `\n// Auto-restored default export\nexport default ${componentName};\n`;
+        } else {
+          // Look for any function that might be the component
+          const functionMatch = transpiledContent.match(/function\s+(\w+)\s*\(/);
+          if (functionMatch) {
+            const funcName = functionMatch[1];
+            transpiledContent += `\n// Auto-restored default export\nexport default ${funcName};\n`;
+          } else {
+            // Last resort: create a fallback export
+            transpiledContent += `\n// Fallback default export\nexport default function ${componentName}(props) {\n  console.warn('[0x1] Default export was missing, using fallback');\n  return { type: 'div', props: { className: 'component-fallback', children: ['Component Error'] } };\n};\n`;
+          }
         }
       }
       
-      // For non-JSX files (.js or failed .ts), transform bare imports and return
-      return new Response(transformedContent, {
+      // Normalize function calls and validate content
+      transpiledContent = normalizeJsxFunctionCalls(transpiledContent);
+      transpiledContent = validateAndFixTranspiledContent(transpiledContent, componentPath);
+      
+      return new Response(transpiledContent, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+      });
+    } catch (transpileError) {
+      logger.error(`Transpilation failed for ${sourceFile}: ${transpileError}`);
+      
+      // Generate enhanced error component with better debugging info
+      const errorCode = generateErrorComponent(componentPath, transpileError instanceof Error ? transpileError.message : String(transpileError));
+      return new Response(errorCode, {
         status: 200,
         headers: {
           "Content-Type": "application/javascript; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0",
-          "Last-Modified": new Date().toUTCString(),
-          "ETag": `"${Date.now()}-${Math.random()}"`,
-          "X-Transpiled": "bare-imports"
+          "Cache-Control": "no-cache",
         }
       });
     }
   } catch (error) {
-    console.error(`Failed to process component ${componentPath}: ${error}`);
-    return null;
+    logger.error(`Component handler error for ${reqPath}: ${error}`);
+    
+    const fallbackCode = generateErrorComponent(componentPath, error instanceof Error ? error.message : String(error));
+    return new Response(fallbackCode, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "no-cache",
+      }
+    });
   }
+}
+
+/**
+ * Validate and fix common issues in transpiled content
+ */
+function validateAndFixTranspiledContent(content: string, componentPath: string): string {
+  let fixedContent = content;
+  
+  // Fix common syntax issues
+  fixedContent = fixedContent.replace(/\bJSX\.Fragment\b/g, 'Fragment');
+  fixedContent = fixedContent.replace(/\bReact\.Fragment\b/g, 'Fragment');
+  
+  // Ensure proper function declaration format
+  fixedContent = fixedContent.replace(/export\s+default\s+function\s*\(/g, 'export default function Component(');
+  
+  // Fix potential undefined variable references
+  fixedContent = fixedContent.replace(/\bundefined_variable\b/g, 'null');
+  
+  return fixedContent;
+}
+
+/**
+ * Generate error component fallback with clean JSX runtime
+ */
+function generateErrorComponent(safePath: string, safeError: string): string {
+  return `// 0x1 Framework - JSX Runtime Access
+import { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';
+
+// Component error fallback: ${safePath}
+console.error('[0x1 Dev] Component error:', '${safeError}');
+
+export default function ErrorComponent(props) {
+  return jsx('div', {
+    className: 'component-error p-4 border border-red-400 bg-red-50 rounded m-4',
+    children: jsx('div', {
+      className: 'text-red-800',
+      children: [
+        jsx('h3', { className: 'font-bold mb-2', children: 'Component Error' }),
+        jsx('p', { className: 'mb-2', children: 'Error in component: ` + safePath + `' }),
+        jsx('pre', { 
+          className: 'text-xs mt-2 p-2 bg-gray-100 rounded overflow-auto', 
+          children: '` + safeError + `' 
+        }),
+        jsx('p', {
+          className: 'text-xs mt-2 opacity-75',
+          children: 'Check the console for detailed error information'
+        })
+      ]
+    })
+  });
+}`;
+}
+
+/**
+ * Generate not found component fallback with clean JSX runtime
+ */
+function generateNotFoundComponent(safePath: string): string {
+  return `// 0x1 Framework - JSX Runtime Access
+import { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';
+
+// Component not found fallback: ${safePath}
+console.warn('[0x1 Dev] Component not found:', '${safePath}');
+
+export default function NotFoundComponent(props) {
+  return jsx('div', {
+    className: 'component-not-found p-4 border border-yellow-400 bg-yellow-50 rounded m-4',
+    children: jsx('div', {
+      className: 'text-yellow-800',
+      children: [
+        jsx('h3', { className: 'font-bold mb-2', children: 'Component Not Found' }),
+        jsx('p', { className: 'mb-2', children: 'Could not find component: ` + safePath + `' }),
+        jsx('details', {
+          className: 'text-sm',
+          children: [
+            jsx('summary', { className: 'cursor-pointer font-medium', children: 'Searched Paths' }),
+            jsx('ul', {
+              className: 'mt-2 ml-4 text-xs',
+              children: [
+                jsx('li', { children: '` + safePath + `.tsx' }),
+                jsx('li', { children: '` + safePath + `.jsx' }),
+                jsx('li', { children: '` + safePath + `.ts' }),
+                jsx('li', { children: '` + safePath + `.js' })
+              ]
+            })
+          ]
+        }),
+        jsx('p', {
+          className: 'text-xs mt-2 opacity-75',
+          children: 'Create one of these files to resolve this error'
+        })
+      ]
+    })
+  });
+}
+
+// Make available for debugging
+if (typeof window !== 'undefined') {
+  window.__0x1_lastNotFound = {
+    path: '` + safePath + `',
+    timestamp: new Date().toISOString()
+  };
+}`;
 }
 
 /**

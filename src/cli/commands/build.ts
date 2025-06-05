@@ -4,7 +4,7 @@
  * Target: <100ms build times with parallel processing and smart caching
  */
 
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
@@ -21,7 +21,7 @@ export interface BuildOptions {
 // 🚀 ULTRA-FAST BUILD CACHE SYSTEM WITH HASH-BASED CACHING
 class BuildCache {
   private cache = new Map<string, { content: string; hash: string; mtime: number }>();
-  private readonly cacheFile = '.0x1-build-cache.json';
+  private readonly cacheFile = '.0x1/build-cache.json';
   
   constructor() {
     this.loadCache();
@@ -40,8 +40,14 @@ class BuildCache {
   
   private saveCache(): void {
     try {
+      // Ensure .0x1 directory exists
+      const cacheDir = dirname(this.cacheFile);
+      if (!existsSync(cacheDir)) {
+        mkdirSync(cacheDir, { recursive: true });
+      }
+      
       writeFileSync(this.cacheFile, JSON.stringify([...this.cache.entries()]));
-  } catch (error) {
+    } catch (error) {
       // Silent fail
     }
   }
@@ -112,14 +118,17 @@ class BuildCache {
 
 // 🚀 CRITICAL FIX: Transform imports for browser (PROPER WORKING VERSION FROM BUILD-OLD.TS)
 function transformImportsForBrowser(sourceCode: string): string {
+  // CRITICAL FIX: Preserve line breaks and string literals properly
+  let transformedCode = sourceCode;
+  
   // Transform "0x1" imports first
-  sourceCode = sourceCode.replace(
+  transformedCode = transformedCode.replace(
     /from\s+["']0x1["']/g,
     'from "/node_modules/0x1/index.js"'
   );
   
   // 🚀 STEP 1: Fix relative component imports to use absolute browser paths
-  sourceCode = sourceCode.replace(
+  transformedCode = transformedCode.replace(
     /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"](\.\.[/\\].*?)['"];?/g,
     (match, importClause, importPath) => {
       let browserPath = importPath;
@@ -150,7 +159,7 @@ function transformImportsForBrowser(sourceCode: string): string {
   );
 
   // 🚀 STEP 2: Handle ./relative imports
-  sourceCode = sourceCode.replace(
+  transformedCode = transformedCode.replace(
     /import\s+(\{[^}]+\}|\w+|\*\s+as\s+\w+)\s+from\s+['"](\.\/.*?)['"];?/g,
     (match, importClause, importPath) => {
       let browserPath = importPath;
@@ -176,7 +185,226 @@ function transformImportsForBrowser(sourceCode: string): string {
     }
   );
   
-  return sourceCode;
+  return transformedCode;
+}
+
+// CRITICAL FIX: Add string sanitization function to prevent syntax errors
+function sanitizeJavaScriptString(str: string): string {
+  // Replace actual line breaks in strings with escaped line breaks
+  return str
+    .replace(/\r\n/g, '\\n')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"');
+}
+
+// Insert JSX runtime preamble function (same as dev-server)
+function insertJsxRuntimePreamble(code: string): string {
+  const lines = code.split('\n');
+  let insertIndex = 0;
+  let foundImports = false;
+  
+  // Find the end of imports
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (line.startsWith('import ') || (line.startsWith('export ') && line.includes('from '))) {
+      foundImports = true;
+      insertIndex = i + 1;
+    } else if (line.startsWith('//') || line.startsWith('/*') || line === '') {
+      // Skip comments and empty lines but don't update insertIndex unless after imports
+      if (foundImports) {
+        insertIndex = i + 1;
+      }
+    } else if (line && foundImports) {
+      // Found first non-import, non-comment line after imports
+      break;
+    }
+  }
+  
+  // Generate JSX runtime preamble
+  const preamble = `// 0x1 Framework - JSX Runtime Access\nimport { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';`;
+  
+  // Insert the preamble
+  lines.splice(insertIndex, 0, preamble);
+  
+  return lines.join('\n');
+}
+
+// Normalize JSX function calls (same as dev-server)
+function normalizeJsxFunctionCalls(content: string): string {
+  // Log original content statistics
+  const originalHashedFunctions = content.match(/jsx[A-Za-z]*_[a-zA-Z0-9_]+/g) || [];
+  console.log(`🔧 Starting normalization with ${originalHashedFunctions.length} hashed functions found`);
+  
+  // Much more aggressive and comprehensive normalization patterns
+  // Handle the specific pattern we're seeing: jsxDEV_7x81h0kn
+  
+  // 1. Most aggressive: Replace any jsx function with underscore and hash
+  content = content.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
+  content = content.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
+  content = content.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
+  content = content.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
+  
+  // 2. Handle mixed alphanumeric patterns like the one we're seeing
+  content = content.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
+  content = content.replace(/jsx_[0-9a-z]+/gi, 'jsx');
+  content = content.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
+  content = content.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+  
+  // 3. Ultra aggressive catch-all: any jsx followed by underscore and anything
+  content = content.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
+  content = content.replace(/\bjsx_\w+/g, 'jsx');
+  content = content.replace(/\bjsxs_\w+/g, 'jsxs');
+  content = content.replace(/\bFragment_\w+/g, 'Fragment');
+  
+  // 4. Even more aggressive: handle any character combinations
+  content = content.replace(/jsxDEV_[^(\s]+/g, 'jsxDEV');
+  content = content.replace(/jsx_[^(\s]+/g, 'jsx');
+  content = content.replace(/jsxs_[^(\s]+/g, 'jsxs');
+  content = content.replace(/Fragment_[^(\s]+/g, 'Fragment');
+  
+  // Log final statistics
+  const finalHashedFunctions = content.match(/jsx[A-Za-z]*_[a-zA-Z0-9_]+/g) || [];
+  console.log(`🔧 Normalization complete: ${originalHashedFunctions.length} -> ${finalHashedFunctions.length} hashed functions`);
+  
+  return content;
+}
+
+// CRITICAL FIX: Add proper transpilation with safer syntax validation using Bun.Transpiler
+async function transpileComponentSafely(sourceCode: string, sourcePath: string): Promise<string> {
+  try {
+    console.log(`[Build] Attempting to transpile: ${sourcePath}`);
+    
+    // CRITICAL: Apply the same preprocessing as dev-server component handler
+    // 1. Transform imports for browser compatibility first
+    let preprocessedCode = transformImportsForBrowser(sourceCode);
+    
+    // 2. Apply TypeScript stripping (same as dev-server)
+    // Remove interface declarations
+    preprocessedCode = preprocessedCode.replace(/interface\s+\w+\s*\{[\s\S]*?\n\}/g, '');
+    
+    // Remove 'as const' assertions (be more aggressive)
+    preprocessedCode = preprocessedCode.replace(/\s+as\s+const\b/g, '');
+    preprocessedCode = preprocessedCode.replace(/,\s*type:\s*'[^']*'\s+as\s+const/g, '');
+    preprocessedCode = preprocessedCode.replace(/type:\s*'[^']*'\s+as\s+const,/g, '');
+    preprocessedCode = preprocessedCode.replace(/type:\s*'[^']*'\s+as\s+const/g, '');
+    
+    // Remove useState generic types (same patterns as dev-server)
+    preprocessedCode = preprocessedCode.replace(/useState<'0x1' \| 'nextjs' \| null>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<string\[\]>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<Set<string>>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<[^>]*(?:<[^>]*>[^>]*)*>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<[^>]*>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<>/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState<[^(]*/g, 'useState');
+    preprocessedCode = preprocessedCode.replace(/useState>[^(]*/g, 'useState');
+    
+    // Remove function parameter types
+    preprocessedCode = preprocessedCode.replace(/\(framework: '0x1' \| 'nextjs'\)/g, '(framework)');
+    preprocessedCode = preprocessedCode.replace(/\(step: BuildStep, isNewlyAdded: boolean\)/g, '(step, isNewlyAdded)');
+    preprocessedCode = preprocessedCode.replace(/\(e: MediaQueryListEvent\)/g, '(e)');
+    preprocessedCode = preprocessedCode.replace(/useState<boolean>/g, 'useState');
+    
+    // Clean up empty lines
+    preprocessedCode = preprocessedCode.replace(/\n\s*\n\s*\n/g, '\n\n');
+    
+    console.log(`[Build] Preprocessed ${sourcePath}, length: ${preprocessedCode.length}`);
+    
+    // 3. Use Bun.Transpiler with proper loader detection (same as dev-server)
+    const hasJsx = preprocessedCode.includes('<') && (preprocessedCode.includes('/>') || preprocessedCode.includes('</'));
+    const loader = hasJsx ? 'tsx' : 
+                  sourcePath.endsWith('.tsx') ? 'tsx' : 
+                  sourcePath.endsWith('.jsx') ? 'jsx' : 
+                  sourcePath.endsWith('.ts') ? 'ts' : 'js';
+    
+    console.log(`[Build] Using loader: ${loader} for ${sourcePath}`);
+    
+    const transpiler = new Bun.Transpiler({
+      loader: loader,
+      target: 'browser',
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+        'global': 'globalThis'
+      }
+    });
+    
+    let transpiledContent = await transpiler.transform(preprocessedCode);
+    console.log(`[Build] Transpilation successful for ${sourcePath}, output length: ${transpiledContent.length}`);
+    
+    // 4. Normalize JSX function calls (same as dev-server)
+    transpiledContent = normalizeJsxFunctionCalls(transpiledContent);
+    
+    // 5. Insert JSX runtime preamble (same as dev-server)
+    transpiledContent = insertJsxRuntimePreamble(transpiledContent);
+    
+    // 6. Ensure default export is preserved (same as dev-server)
+    const hasDefaultExport = sourceCode.includes('export default');
+    if (hasDefaultExport && !transpiledContent.includes('export default')) {
+      const defaultExportMatch = sourceCode.match(/export\s+default\s+(?:function\s+)?(\w+)/);
+      const componentName = defaultExportMatch?.[1] || 'Component';
+      
+      if (transpiledContent.includes(`function ${componentName}`)) {
+        transpiledContent += `\nexport default ${componentName};\n`;
+      } else {
+        const functionMatch = transpiledContent.match(/function\s+(\w+)\s*\(/);
+        if (functionMatch) {
+          const funcName = functionMatch[1];
+          transpiledContent += `\nexport default ${funcName};\n`;
+        }
+      }
+    }
+    
+    console.log(`[Build] Final transpiled content for ${sourcePath} ready, length: ${transpiledContent.length}`);
+    return transpiledContent;
+    
+  } catch (error) {
+    console.error(`[Build] Critical transpilation failure for ${sourcePath}:`, error);
+    return generateErrorComponent(sourcePath, error instanceof Error ? error.message : String(error));
+  }
+}
+
+// CRITICAL FIX: Generate error component for failed transpilation
+function generateErrorComponent(filePath: string, errorMessage: string): string {
+  const safePath = sanitizeJavaScriptString(filePath);
+  const safeError = sanitizeJavaScriptString(errorMessage);
+  
+  return `
+// Error component for failed transpilation: ${safePath}
+export default function ErrorComponent(props) {
+  return {
+    type: 'div',
+    props: {
+      className: 'p-6 bg-red-50 border border-red-200 rounded-lg m-4',
+      style: 'color: #dc2626;'
+    },
+    children: [
+      {
+        type: 'h3',
+        props: { className: 'font-bold mb-2' },
+        children: ['Transpilation Error'],
+        key: null
+      },
+      {
+        type: 'p',
+        props: { className: 'mb-2' },
+        children: ['File: ${safePath}'],
+        key: null
+      },
+      {
+        type: 'p',
+        props: { className: 'text-sm' },
+        children: ['Error: ${safeError}'],
+        key: null
+      }
+    ],
+    key: null
+  };
+}
+`;
 }
 
 // Global build cache instance
@@ -360,7 +588,7 @@ async function loadConfigFast(projectPath: string, configPath?: string): Promise
         const config = await import(fullPath);
         return config.default || config;
       }
-  } catch (error) {
+      } catch (error) {
       return null;
     }
   });
@@ -399,7 +627,7 @@ async function discoverRoutesSuperFast(projectPath: string): Promise<Array<{ pat
       });
       
       await Promise.all(tasks);
-    } catch (error) {
+  } catch (error) {
       // Silent fail for individual directories
     }
   };
@@ -658,7 +886,7 @@ async function initApp() {
               e.preventDefault();
               if (window.router && typeof window.router.navigate === 'function') {
                 window.router.navigate('/');
-              } else {
+  } else {
                 window.location.href = '/';
               }
             }
@@ -829,26 +1057,49 @@ async function generateStaticComponentFilesSuperFast(
     layoutContent = await Bun.file(layoutPath).text();
   }
 
-  // 🚀 STEP 2: PARALLEL ROUTE COMPONENT PROCESSING (5-20ms)
+  // 🚀 STEP 2: PARALLEL ROUTE PROCESSING - Enhanced with safe transpilation
   const routeTasks = routes.map(async (route) => {
     try {
-      const componentPath = route.componentPath.replace(/^\//, '');
-      const sourceFile = componentPath.replace(/\.js$/, '.tsx');
-      const sourcePath = join(projectPath, sourceFile);
-      
-      if (!existsSync(sourcePath)) return 0;
+      const sourcePath = join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
       
       // Check cache first
       const cached = await buildCache.get(sourcePath);
       if (cached) {
-        const outputPath_component = join(outputPath, componentPath);
+        const outputPath_component = join(outputPath, route.componentPath.replace(/^\//, ''));
         await mkdir(dirname(outputPath_component), { recursive: true });
         await Bun.write(outputPath_component, cached);
         return 1;
       }
       
+      if (!existsSync(sourcePath)) {
+        const tsxAlt = sourcePath.replace('.tsx', '.ts');
+        const jsxAlt = sourcePath.replace('.tsx', '.jsx');
+        const jsAlt = sourcePath.replace('.tsx', '.js');
+        
+        if (existsSync(tsxAlt)) {
+          return await processRouteComponent(tsxAlt, route, outputPath, hasLayout, layoutContent);
+        } else if (existsSync(jsxAlt)) {
+          return await processRouteComponent(jsxAlt, route, outputPath, hasLayout, layoutContent);
+        } else if (existsSync(jsAlt)) {
+          return await processRouteComponent(jsAlt, route, outputPath, hasLayout, layoutContent);
+        }
+        
+        console.warn(`[Build] ⚠️ Route component not found: ${sourcePath}`);
+        return 0;
+      }
+      
+      return await processRouteComponent(sourcePath, route, outputPath, hasLayout, layoutContent);
+    } catch (error) {
+      console.warn(`[Build] ⚠️ Failed to generate route component ${route.path}:`, error);
+      return 0;
+    }
+  });
+
+  // Helper function to process individual route components
+  async function processRouteComponent(sourcePath: string, route: any, outputPath: string, hasLayout: boolean, layoutContent: string): Promise<number> {
+    try {
       let sourceCode = await Bun.file(sourcePath).text();
-      const isPageComponent = sourceFile.startsWith('app/') && sourceFile.endsWith('/page.tsx');
+      const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
       
       if (isPageComponent && hasLayout) {
         const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
@@ -863,40 +1114,13 @@ async function generateStaticComponentFilesSuperFast(
         sourceCode = `${layoutWithoutExport}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return RootLayout({ children: ${pageComponentName}(props) });\n}`;
       }
       
-      // Don't transform imports before transpiling - Bun overwrites them
-      // sourceCode = transformImportsForBrowser(sourceCode);
+      // CRITICAL FIX: Use safe transpilation
+      let transpiledContent = await transpileComponentSafely(sourceCode, sourcePath);
       
-      // Simple fresh transpiler for each file (stable approach)
-      const transpiler = new Bun.Transpiler({
-        loader: 'tsx',
-        target: 'browser',
-        define: { 'process.env.NODE_ENV': '"production"', 'global': 'globalThis' },
-        tsconfig: { compilerOptions: { jsx: 'react-jsx', jsxImportSource: '/0x1/jsx-runtime.js' } }
-      });
-      
-      let transpiledContent = await transpiler.transform(sourceCode);
-      
-      // 🚀 CRITICAL FIX: Transform imports AFTER transpiling
+      // Transform imports AFTER transpiling
       transpiledContent = transformImportsForBrowser(transpiledContent);
       
-      // 🚀 CRITICAL FIX: Properly handle JSX runtime imports including Fragment
-      const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
-      const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
-
-      if (jsxMatch) {
-        const jsxFuncName = jsxMatch[0];
-        let imports = `import { jsxDEV as ${jsxFuncName}`;
-
-        if (fragmentMatch) {
-          const fragmentFuncName = fragmentMatch[0];
-          imports += `, Fragment as ${fragmentFuncName}`;
-        }
-
-        imports += ' } from "/0x1/jsx-runtime.js";\n';
-        transpiledContent = imports + transpiledContent;
-      }
-      
-      const outputPath_component = join(outputPath, componentPath);
+      const outputPath_component = join(outputPath, route.componentPath.replace(/^\//, ''));
       await mkdir(dirname(outputPath_component), { recursive: true });
       await Bun.write(outputPath_component, transpiledContent);
       
@@ -904,18 +1128,21 @@ async function generateStaticComponentFilesSuperFast(
       await buildCache.set(sourcePath, transpiledContent);
       
       return 1;
-      } catch (error) {
-      console.warn(`[Build] ⚠️ Failed to generate route component ${route.path}:`, error);
+    } catch (error) {
+      console.warn(`[Build] ⚠️ Failed to process route component ${route.path}:`, error);
       return 0;
     }
-  });
+  }
 
-  // 🚀 STEP 3: PARALLEL COMPONENT PROCESSING (5-20ms)
+  // 🚀 STEP 3: PARALLEL COMPONENT PROCESSING - Enhanced with safe transpilation
   const componentTasks = allComponents.map(async ({ path: sourcePath, relativePath }) => {
     try {
+      console.log(`[Build] Processing component: ${sourcePath} -> ${relativePath}`);
+      
       // Check cache first
       const cached = await buildCache.get(sourcePath);
       if (cached) {
+        console.log(`[Build] Using cached version for ${sourcePath}`);
         const outputPath_component = join(outputPath, relativePath.replace(/\.(tsx|ts)$/, '.js'));
         await mkdir(dirname(outputPath_component), { recursive: true });
         await Bun.write(outputPath_component, cached);
@@ -923,9 +1150,12 @@ async function generateStaticComponentFilesSuperFast(
       }
       
       let sourceCode = await Bun.file(sourcePath).text();
-      const isPageComponent = sourcePath.endsWith('/page.tsx');
+      console.log(`[Build] Read source code for ${sourcePath}, length: ${sourceCode.length}`);
+      
+      const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
       
       if (isPageComponent && hasLayout) {
+        console.log(`[Build] Processing page component with layout: ${sourcePath}`);
         const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
         const pageComponentName = defaultExportMatch?.[1] || 'PageComponent';
         
@@ -936,50 +1166,27 @@ async function generateStaticComponentFilesSuperFast(
         const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
         
         sourceCode = `${layoutWithoutExport}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return RootLayout({ children: ${pageComponentName}(props) });\n}`;
+        console.log(`[Build] Combined layout + page for ${sourcePath}, final length: ${sourceCode.length}`);
       }
       
-      // Don't transform imports before transpiling - Bun overwrites them
-      // sourceCode = transformImportsForBrowser(sourceCode);
+      // CRITICAL FIX: Use safe transpilation
+      console.log(`[Build] About to call transpileComponentSafely for ${sourcePath}`);
+      let transpiledContent = await transpileComponentSafely(sourceCode, sourcePath);
+      console.log(`[Build] transpileComponentSafely returned for ${sourcePath}, length: ${transpiledContent.length}`);
       
-      // Simple fresh transpiler for each file (stable approach)
-      const transpiler = new Bun.Transpiler({
-        loader: 'tsx',
-        target: 'browser',
-        define: { 'process.env.NODE_ENV': '"production"', 'global': 'globalThis' },
-        tsconfig: { compilerOptions: { jsx: 'react-jsx', jsxImportSource: '/0x1/jsx-runtime.js' } }
-      });
-      
-      let transpiledContent = await transpiler.transform(sourceCode);
-      
-      // 🚀 CRITICAL FIX: Transform imports AFTER transpiling
+      // Transform imports AFTER transpiling
       transpiledContent = transformImportsForBrowser(transpiledContent);
-      
-      // 🚀 CRITICAL FIX: Properly handle JSX runtime imports including Fragment
-      const jsxMatch = transpiledContent.match(/jsxDEV_[a-zA-Z0-9_]+/);
-      const fragmentMatch = transpiledContent.match(/Fragment_[a-zA-Z0-9_]+/);
-
-      if (jsxMatch) {
-        const jsxFuncName = jsxMatch[0];
-        let imports = `import { jsxDEV as ${jsxFuncName}`;
-
-        if (fragmentMatch) {
-          const fragmentFuncName = fragmentMatch[0];
-          imports += `, Fragment as ${fragmentFuncName}`;
-        }
-
-        imports += ' } from "/0x1/jsx-runtime.js";\n';
-        transpiledContent = imports + transpiledContent;
-      }
       
       const outputPath_component = join(outputPath, relativePath.replace(/\.(tsx|ts)$/, '.js'));
       await mkdir(dirname(outputPath_component), { recursive: true });
       await Bun.write(outputPath_component, transpiledContent);
+      console.log(`[Build] Wrote transpiled component to ${outputPath_component}`);
       
       // Cache the result
       await buildCache.set(sourcePath, transpiledContent);
       
       return 1;
-      } catch (error) {
+    } catch (error) {
       console.warn(`[Build] ⚠️ Failed to generate component ${relativePath}:`, error);
       return 0;
     }
@@ -1367,7 +1574,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
           if (result === 0 && existsSync(outputCssPath)) {
             finalCss = await Bun.file(outputCssPath).text();
             console.log('[Build] ✅ Tailwind CSS v4 processed successfully with v4 handler');
-          } else {
+      } else {
             throw new Error('Tailwind CSS v4 handler process failed');
           }
         } else {
@@ -1391,7 +1598,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       
       // Keep user's custom CSS but replace @import "tailwindcss"
       finalCss = inputCss.replace(
-        /@import\s+["']tailwindcss["'];?\s*/g,
+        /@import\s+["']tailwindcss[""];?\s*/g,
         `/* Tailwind CSS v4 - Enhanced Build */
 :root{--color-violet-600:#7c3aed;--color-white:#fff;--spacing:0.25rem}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;border:0 solid}

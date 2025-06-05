@@ -9,14 +9,14 @@ import { join } from "node:path";
 
 // Server imports
 import {
-    getLocalIP,
-    isPortAvailable
+  getLocalIP,
+  isPortAvailable
 } from "./utils/server/network";
 
 // Builder imports - UPDATED TO USE SOPHISTICATED FUNCTIONS
 import {
-    findComponentFiles,
-    generateSophisticatedAppJs
+  findComponentFiles,
+  generateSophisticatedAppJs
 } from "../utils/builder";
 
 // Utility imports

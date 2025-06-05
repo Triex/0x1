@@ -52,14 +52,9 @@ export async function previewBuild(options: PreviewOptions = {}): Promise<void> 
         const path = url.pathname === '/' ? '/index.html' : url.pathname;
         
         // Determine the file path
-        let filePath = resolve(buildPath, path.slice(1));
+        const filePath = resolve(buildPath, path.slice(1));
         
-        // If the path doesn't have an extension, try to serve index.html for SPA
-        if (!path.includes('.')) {
-          filePath = resolve(buildPath, 'index.html');
-        }
-        
-        // Check if the file exists
+        // Check if the file exists first
         if (existsSync(filePath)) {
           const file = Bun.file(filePath);
           const contentType = getContentType(filePath);
@@ -69,6 +64,42 @@ export async function previewBuild(options: PreviewOptions = {}): Promise<void> 
               'Content-Type': contentType,
             }
           });
+        }
+        
+        // If the path doesn't have an extension, try common extensions
+        if (!path.includes('.')) {
+          // Try .js extension first (for jsx-runtime, etc.)
+          const jsPath = resolve(buildPath, path.slice(1) + '.js');
+          if (existsSync(jsPath)) {
+            const file = Bun.file(jsPath);
+            return new Response(file, {
+              headers: {
+                'Content-Type': 'application/javascript'
+              }
+            });
+          }
+          
+          // Try .html extension
+          const htmlPath = resolve(buildPath, path.slice(1) + '.html');
+          if (existsSync(htmlPath)) {
+            const file = Bun.file(htmlPath);
+            return new Response(file, {
+              headers: {
+                'Content-Type': 'text/html'
+              }
+            });
+          }
+          
+          // Finally, try to serve index.html for SPA routing
+          const indexPath = resolve(buildPath, 'index.html');
+          if (existsSync(indexPath)) {
+            const file = Bun.file(indexPath);
+            return new Response(file, {
+              headers: {
+                'Content-Type': 'text/html'
+              }
+            });
+          }
         }
         
         // If file doesn't exist and has no extension, serve index.html (for SPA routing)

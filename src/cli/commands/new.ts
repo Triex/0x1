@@ -481,44 +481,43 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
     initial: 1 // Default to Standard (recommended)
   });
 
-  // Check if user selected a heavy template that requires 0x1-templates package
+  // Check if user selected a heavy template that requires downloading from GitHub
   const heavyTemplates = ['full', 'crypto-dash'];
   let selectedTemplate = templateResponse.template;
   
   if (heavyTemplates.includes(selectedTemplate)) {
-    // Check if 0x1-templates is available
+    // Check if templates are available locally (for development) FIXME: remove?
     const currentDir = import.meta.dirname || '';
-    const templatePaths = [
+    const localTemplatePaths = [
       join(currentDir, '../../../0x1-templates', selectedTemplate),
-      join(currentDir, '../0x1-templates', selectedTemplate),
       join(process.cwd(), '0x1-templates', selectedTemplate),
-      join(currentDir, '../../0x1-templates', selectedTemplate),
     ];
     
-    const hasTemplatePackage = templatePaths.some(path => existsSync(path));
+    const hasLocalTemplate = localTemplatePaths.some(path => existsSync(path));
     
-    if (!hasTemplatePackage) {
-      logger.warn(`Template '${selectedTemplate}' requires the 0x1-templates package.`);
+    if (!hasLocalTemplate) {
+      logger.info(`📦 Template '${selectedTemplate}' will be downloaded from GitHub.`);
       
-      const installChoice = await promptWithCancel({
+      const downloadChoice = await promptWithCancel({
         type: 'select',
-        name: 'installTemplates',
-        message: '📦 0x1-templates package not found. What would you like to do?',
+        name: 'downloadTemplate',
+        message: '📥 Download template from GitHub?',
         choices: [
-          { title: 'Switch to Standard template', value: 'standard', description: 'Use bundled template instead (recommended)' },
-          { title: 'Cancel and install manually', value: 'cancel', description: 'Install 0x1-templates yourself' }
+          { title: 'Yes, download template', value: 'download', description: 'Download from GitHub (recommended)' },
+          { title: 'Switch to Standard template', value: 'standard', description: 'Use bundled template instead' },
+          { title: 'Cancel', value: 'cancel', description: 'Cancel project creation' }
         ],
         initial: 0
       });
       
-      if (installChoice.installTemplates === 'cancel') {
+      if (downloadChoice.downloadTemplate === 'cancel') {
         logger.info('Project creation canceled.');
-        logger.info('To use heavy templates, install: bun add 0x1-templates');
         process.exit(0);
-      } else {
+      } else if (downloadChoice.downloadTemplate === 'standard') {
         logger.info('Switching to Standard template...');
         selectedTemplate = 'standard';
       }
+      // If 'download' is selected, we'll handle it in copyTemplate function
     }
   }
 
@@ -777,8 +776,58 @@ async function promptProjectOptions(defaultOptions: ProjectPromptOptions): Promi
 }
 
 /**
+ * Download template from GitHub
+ */
+async function downloadTemplate(templateType: string, tempDir: string): Promise<string> {
+  const githubUrl = 'https://github.com/Triex/0x1';
+  const templatePath = `0x1-templates/${templateType}`;
+  
+  logger.info(`📦 Downloading ${templateType} template from GitHub...`);
+  
+  try {
+    // Download the template directory from GitHub
+    // Using GitHub's archive API to download specific directory
+    const archiveUrl = `${githubUrl}/archive/refs/heads/main.tar.gz`;
+    
+    const response = await fetch(archiveUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download template: ${response.statusText}`);
+    }
+    
+    // Create temp directory for extraction
+    const extractDir = join(tempDir, 'extracted');
+    await mkdir(extractDir, { recursive: true });
+    
+    // Download and extract using Bun's built-in tar support
+    const archiveBuffer = await response.arrayBuffer();
+    await Bun.write(join(tempDir, 'template.tar.gz'), archiveBuffer);
+    
+    // Extract the archive
+    const extractProcess = Bun.spawn(['tar', '-xzf', 'template.tar.gz', '--strip-components=1'], {
+      cwd: extractDir,
+      stdout: 'inherit',
+      stderr: 'pipe'
+    });
+    
+    await extractProcess.exited;
+    
+    // Return the path to the specific template
+    const templateDir = join(extractDir, templatePath);
+    
+    if (!existsSync(templateDir)) {
+      throw new Error(`Template ${templateType} not found in downloaded archive`);
+    }
+    
+    return templateDir;
+  } catch (error) {
+    logger.error(`Failed to download template: ${error}`);
+    throw error;
+  }
+}
+
+/**
  * Copy template files to project directory
- * Production-ready approach: Use 0x1-templates package with CLI fallbacks
+ * Production-ready approach: Download from GitHub or use local templates
  */
 async function copyTemplate(
   template: string,
@@ -799,44 +848,77 @@ async function copyTemplate(
       await mkdir(projectPath, { recursive: true });
     }
     
-    // Production template resolution strategy:
-    // 1. Try 0x1-templates package (all templates)
-    // 2. Fall back to CLI bundled templates (minimal/standard only)
-    
     logger.debug(`Resolving template ${templateType}...`);
     
     const currentDir = import.meta.dirname || '';
-    const templatePaths = [
-      // First try 0x1-templates package locations
-      join(currentDir, '../../../0x1-templates', templateType), // Dev environment
-      join(currentDir, '../0x1-templates', templateType),       // Local install
-      join(process.cwd(), '0x1-templates', templateType),       // Current directory
-      join(currentDir, '../../0x1-templates', templateType),    // Global install
+    let sourcePath: string | undefined;
+    
+    // For minimal/standard templates, try bundled CLI templates first
+    if (templateType === 'minimal' || templateType === 'standard') {
+      const bundledTemplatePaths = [
+        join(currentDir, '../../../templates-cli', templateType),
+        join(currentDir, '../../templates', templateType),
+        join(currentDir, '../templates', templateType),
+      ];
       
-      // CLI fallback for minimal/standard only (bundled with CLI)
-      ...(templateType === 'minimal' || templateType === 'standard' ? [
-        join(currentDir, '../../../templates-cli', templateType), // CLI fallback path
-      ] : [])
-    ];
+      sourcePath = bundledTemplatePaths.find(path => existsSync(path));
+    }
     
-    // Find first valid template path
-    const sourcePath = templatePaths.find(path => existsSync(path));
-    
+    // For full/crypto-dash templates, or if bundled not found, try local development paths
     if (!sourcePath) {
-      // Provide helpful error message based on template type
+      const localTemplatePaths = [
+        join(currentDir, '../../../0x1-templates', templateType), // Dev environment
+        join(process.cwd(), '0x1-templates', templateType),       // Current directory (for repo development)
+      ];
+      
+      sourcePath = localTemplatePaths.find(path => existsSync(path));
+    }
+    
+    // If no local template found, download from GitHub
+    if (!sourcePath) {
       if (templateType === 'full' || templateType === 'crypto-dash') {
-        throw new Error(
-          `Template '${templateType}' requires the 0x1-templates package.\n` +
-          `Install it with: bun add 0x1-templates\n` +
-          `Or use 'minimal' or 'standard' templates instead.`
-        );
+        logger.info('📦 Downloading template from GitHub...');
+        
+        // Create temp directory for download
+        const tempDir = join(projectPath, '.temp-template');
+        await mkdir(tempDir, { recursive: true });
+        
+        try {
+          sourcePath = await downloadTemplate(templateType, tempDir);
+
+          // Copy template files from downloaded source
+          await copyTemplateFiles(sourcePath, projectPath, {
+            useTailwind,
+            complexity: templateType,
+            useStateManagement,
+            themeMode,
+            isMinimalStructure: false,
+            projectStructure: 'app'
+          });
+          
+          // Clean up temp directory
+          await Bun.spawn(['rm', '-rf', tempDir], { stdout: 'inherit' }).exited;
+          
+          logger.success('✅ Template downloaded and copied successfully');
+          
+        } catch (error) {
+          // Clean up temp directory on error
+          if (existsSync(tempDir)) {
+            await Bun.spawn(['rm', '-rf', tempDir], { stdout: 'inherit' }).exited;
+          }
+          throw error;
+        }
+        
+        // Early return since we've already copied the files
+        await updatePackageJson(projectPath, templateType, { useTailwind, useStateManagement });
+        return;
       } else {
-        throw new Error(`Template '${templateType}' not found. Tried ${templatePaths.length} locations.`);
+        throw new Error(`Template '${templateType}' not found. Bundled templates may be missing from CLI installation.`);
       }
     }
 
-    // Copy template files from source to project directory
-    logger.info(`📦 Using template from ${sourcePath.includes('0x1-templates') ? '0x1-templates package' : 'CLI bundle'}`);
+    // Copy template files from local source
+    logger.info(`📦 Using template from ${sourcePath.includes('0x1-templates') ? 'local development' : 'CLI bundle'}`);
     await copyTemplateFiles(sourcePath, projectPath, {
       useTailwind,
       complexity: templateType,
@@ -846,7 +928,27 @@ async function copyTemplate(
       projectStructure: 'app'
     });
     
-    // Update package.json from the template instead of creating a new one
+    // Update package.json from the template
+    await updatePackageJson(projectPath, templateType, { useTailwind, useStateManagement });
+    
+    logger.success(`Template files copied successfully to ${projectPath}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to copy template: ${errorMessage}`);
+    throw error;
+  }
+}
+
+/**
+ * Update package.json with project-specific settings
+ */
+async function updatePackageJson(
+  projectPath: string, 
+  templateType: string,
+  options: { useTailwind: boolean; useStateManagement?: boolean }
+): Promise<void> {
+  const { useTailwind, useStateManagement } = options;
+  
     const packageJsonPath = join(projectPath, 'package.json');
     if (existsSync(packageJsonPath)) {
       logger.debug(`Updating package.json at ${packageJsonPath}`);
@@ -861,7 +963,6 @@ async function copyTemplate(
         packageJson.name = projectName.toLowerCase().replace(/\s+/g, '-');
         
         // Determine if we should use local framework path (for development)
-        // Only use local framework path if explicitly set by environment variable
         const useLocalFramework = process.env.OX1_DEV === 'true';
         
         // Update 0x1 dependency if needed (for local development)
@@ -905,7 +1006,7 @@ async function copyTemplate(
         }
         
         // Write the updated package.json
-        await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
+      await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
         logger.success('Updated package.json with project-specific settings');
       } catch (err) {
         logger.error(`Error updating package.json: ${err instanceof Error ? err.message : String(err)}`);
@@ -913,13 +1014,6 @@ async function copyTemplate(
       }
     } else {
       logger.warn('No package.json found in template. This is unusual and might cause issues.');
-    }
-
-    logger.success(`Template files copied successfully to ${projectPath}`);
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`Failed to copy template: ${errorMessage}`);
-    throw error;
   }
 }
 
@@ -1176,7 +1270,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.252' // Use current version with caret for compatibility
+      "0x1": '^0.0.253' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

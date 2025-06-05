@@ -518,11 +518,9 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
   }
 
   // Handle component transpilation using the component handler
-  return handleComponentRequest(
-    reqPath,
-    projectPath,
-    reqPath.replace(/^\//, "")
-  );
+  // CRITICAL FIX: Don't handle ALL requests here - only JSX runtime requests
+  // Let other handlers process non-JSX requests (like the root route "/")
+  return null;
 }
 
 /**
@@ -2826,13 +2824,12 @@ if (typeof module !== 'undefined' && module.exports) {
             ? cleanPath.replace(".js", "")
             : cleanPath;
 
-          // Convert .js request to source file (.tsx, .jsx, .ts, .js)
-          const possibleSourcePaths = generatePossiblePaths(projectPath, basePath, SUPPORTED_EXTENSIONS);
+          // CRITICAL FIX: Better path resolution for components
+          const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+          const possibleSourcePaths = generatePossiblePaths(projectPath, relativePath, SUPPORTED_EXTENSIONS);
 
           // Find the actual source file
-          const sourcePath = possibleSourcePaths.find((path) =>
-            existsSync(path)
-          );
+          const sourcePath = possibleSourcePaths.find((path) => existsSync(path));
 
           if (sourcePath) {
             logRequestStatus(
@@ -2843,7 +2840,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
             // Use the component handler to transpile and serve
             const componentBasePath = basePath.replace(/^\//, ""); // Remove leading slash
-            const result = handleComponentRequest(
+            const result = await handleComponentRequest(
               cleanPath, // Use clean path without query params
               projectPath,
               componentBasePath
@@ -2896,15 +2893,20 @@ export default function NotFoundComponent(props) {
   container.className = 'component-not-found p-4 border border-yellow-400 bg-yellow-50 rounded';
   container.innerHTML = \`
     <div class="text-yellow-800">
-      <h3 class="font-bold">Component Not Found</h3>
-      <p>Could not find component: <code>${basePath}</code></p>
-      <p class="text-sm mt-2">Expected one of:</p>
-      <ul class="text-xs mt-1 ml-4">
+      <h3 class="font-bold mb-2">Component Not Found</h3>
+      <p class="mb-2">Could not find component: <code>${basePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Searched Paths</summary>
+        <ul class="mt-2 ml-4 text-xs">
         <li>${basePath}.tsx</li>
         <li>${basePath}.jsx</li>
         <li>${basePath}.ts</li>
         <li>${basePath}.js</li>
       </ul>
+      </details>
+      <p class="text-xs mt-2 opacity-75">
+        💡 Create one of these files to resolve this error
+      </p>
     </div>
   \`;
   return container;
@@ -3905,35 +3907,27 @@ async function registerRoutes(router) {
   
   for (const route of serverRoutes) {
     try {
+      // CRITICAL FIX: Pre-load components during registration, not during render
+      const componentModule = await loadComponentWithDependencies(route.componentPath);
+        
       const routeComponent = (props) => {
         console.log('[0x1 App] 🔍 Route component called for:', route.path);
-        
-        return loadComponentWithDependencies(route.componentPath).then(componentModule => {
+          
           if (componentModule && componentModule.default) {
-            console.log('[0x1 App] ✅ Route component resolved:', route.path);
-            return componentModule.default(props);
+          console.log('[0x1 App] ✅ Route component resolved:', route.path);
+          return componentModule.default(props);
           } else {
             console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
             return {
               type: 'div',
-              props: { 
-                className: 'p-8 text-center',
-                style: 'color: #f59e0b;' 
-              },
-              children: ['⚠️ Component loaded but has no default export']
-            };
-          }
-        }).catch(error => {
-          console.error('[0x1 App] ❌ Route component error:', route.path, error);
-          return {
-            type: 'div',
             props: { 
               className: 'p-8 text-center',
-              style: 'color: #ef4444;' 
+              style: 'color: #f59e0b;' 
             },
-            children: ['❌ Error loading component: ' + error.message]
+            children: ['⚠️ Component loaded but has no default export'],
+            key: null
           };
-        });
+        }
       };
       
       router.addRoute(route.path, routeComponent, { 
@@ -3945,6 +3939,24 @@ async function registerRoutes(router) {
       
     } catch (error) {
       console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      
+      // Create error component for failed routes
+      const errorComponent = (props) => {
+        return {
+      type: 'div',
+          props: { 
+            className: 'p-8 text-center',
+            style: 'color: #ef4444;' 
+          },
+          children: ['❌ Error loading component: ' + error.message],
+          key: null
+        };
+      };
+      
+      router.addRoute(route.path, errorComponent, { 
+        layout: sharedLayoutComponent,
+        componentPath: route.componentPath 
+      });
     }
   }
   
@@ -4244,3 +4256,88 @@ const STANDARD_HEADERS = {
     "Cache-Control": "no-cache",
   }
 } as const;
+
+/**
+ * Generate error fallback component for transpilation failures
+ */
+function generateComponentErrorFallback(componentPath: string, errorMessage: string): string {
+  const safePath = componentPath.replace(/'/g, "\\'");
+  const safeError = errorMessage.replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  
+  return `
+// Component error fallback: ${safePath}
+console.error('[0x1 Dev] Component error:', '${safeError}');
+
+export default function ComponentErrorFallback(props) {
+  const container = document.createElement('div');
+  container.className = 'component-error p-4 border border-red-400 bg-red-50 rounded m-4';
+  container.innerHTML = \`
+    <div class="text-red-800">
+      <h3 class="font-bold mb-2">Component Error</h3>
+      <p class="mb-2">Failed to load: <code>${safePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Error Details</summary>
+        <pre class="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">${safeError}</pre>
+      </details>
+    </div>
+  \`;
+  return container;
+}
+
+// Make error component available globally for debugging
+if (typeof window !== 'undefined') {
+  window.__0x1_lastComponentError = {
+    path: '${safePath}',
+    error: '${safeError}',
+    timestamp: new Date().toISOString()
+  };
+}
+`;
+}
+
+/**
+ * Generate not found fallback component when source files don't exist
+ */
+function generateComponentNotFoundFallback(basePath: string, possiblePaths: string[], projectPath: string): string {
+  const safePath = basePath.replace(/'/g, "\\'");
+  const checkedPaths = possiblePaths.map(p => p.replace(projectPath, '')).join('", "');
+  
+  return `
+// Component not found fallback: ${safePath}
+console.warn('[0x1 Dev] Component not found: ${safePath}');
+console.warn('[0x1 Dev] Checked paths:', ["${checkedPaths}"]);
+
+export default function NotFoundComponent(props) {
+  const container = document.createElement('div');
+  container.className = 'component-not-found p-4 border border-yellow-400 bg-yellow-50 rounded m-4';
+  container.innerHTML = \`
+    <div class="text-yellow-800">
+      <h3 class="font-bold mb-2">Component Not Found</h3>
+      <p class="mb-2">Could not find component: <code>${safePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Searched Paths</summary>
+        <ul class="mt-2 ml-4 text-xs">
+          <li>${basePath}.tsx</li>
+          <li>${basePath}.jsx</li>
+          <li>${basePath}.ts</li>
+          <li>${basePath}.js</li>
+        </ul>
+      </details>
+      <p class="text-xs mt-2 opacity-75">
+        💡 Create one of these files to resolve this error
+      </p>
+    </div>
+  \`;
+  return container;
+}
+
+// Make available for debugging
+if (typeof window !== 'undefined') {
+  window.__0x1_lastNotFound = {
+    path: '${safePath}',
+    checkedPaths: ["${checkedPaths}"],
+    timestamp: new Date().toISOString()
+  };
+}
+`;
+}
