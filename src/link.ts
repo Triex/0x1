@@ -1,8 +1,7 @@
 /**
- * 0x1 Link Component
- * Next.js-compatible Link for JSX/TSX templates
+ * 0x1 Link Component - Standalone Export
+ * Provides direct import path: import Link from '0x1/link'
  */
 
 export { default, default as Link } from './components/link.js';
-export type { LinkProps } from './components/link.js';
 

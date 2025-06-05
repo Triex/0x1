@@ -7,22 +7,25 @@
 
 import type { JSXChildren, JSXElement } from '../jsx-runtime.js';
 
-// Define the LinkProps interface to match Next.js Link component API
+// Define the base LinkProps interface to match Next.js Link component API
 export interface LinkProps {
   href: string;
   className?: string;
   children?: JSXChildren;
   target?: string;
   rel?: string;
-  [key: string]: any;
+  onClick?: (e: MouseEvent) => void;
 }
+
+// Allow additional props through intersection with Record
+type LinkPropsWithExtras = LinkProps & Record<string, any>;
 
 /**
  * Next.js-compatible Link component for 0x1
  * FIXED: Now properly handles children in 0x1 JSX runtime
  */
-export default function Link(props: LinkProps): JSXElement {
-  const { href, children, className = '', target, rel, ...otherProps } = props;
+function Link(props: LinkPropsWithExtras): JSXElement {
+  const { href, children, className = '', target, rel, onClick, ...otherProps } = props;
   
   // CRITICAL FIX: Properly process children for 0x1 JSX runtime
   // Handle different children types: string, number, JSX elements, arrays
@@ -58,8 +61,8 @@ export default function Link(props: LinkProps): JSXElement {
           }
         }
         // Call original onClick if provided
-        if (otherProps.onClick) {
-          otherProps.onClick(e);
+        if (onClick) {
+          onClick(e);
         }
       }
     },
@@ -76,3 +79,5 @@ Link.preload = (href: string): void => {
     router.preload(href);
   }
 };
+
+export default Link;
