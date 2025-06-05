@@ -6,9 +6,9 @@
  * It standardizes import patterns and removes unnecessary JavaScript adapter files.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { join, dirname, basename, extname, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 // Colors for console output
 const colors = {
@@ -39,7 +39,7 @@ const log = {
 const ROOT_DIR = process.cwd();
 const SRC_DIR = join(ROOT_DIR, 'src');
 const CLI_DIR = join(SRC_DIR, 'cli');
-const COMMANDS_DIR = join(CLI_DIR, 'commands');
+const _COMMANDS_DIR = join(CLI_DIR, 'commands');
 
 // Find all JavaScript adapter files
 function findJsAdapterFiles(dir: string): string[] {

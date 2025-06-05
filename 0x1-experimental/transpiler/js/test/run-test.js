@@ -6,9 +6,9 @@
  * and showing the output.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { JSXTranspiler } = require('../jsx-transpiler.js');
+import fs from 'fs';
+import path from 'path';
+import { JSXTranspiler } from '../jsx-transpiler.js';
 
 // ANSI color codes for pretty output
 const colors = {

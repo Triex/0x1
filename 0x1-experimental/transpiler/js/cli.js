@@ -6,9 +6,9 @@
  * This tool can be used to convert JSX files to JavaScript with 0x1 compatible output.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { JSXTranspiler } = require('./jsx-transpiler.js');
+import fs from 'fs';
+import path from 'path';
+import { JSXTranspiler } from './jsx-transpiler.js';
 
 // ANSI color codes for pretty terminal output
 const colors = {

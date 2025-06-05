@@ -5,11 +5,9 @@
  * It provides utility functions for both the build process and dev server.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 // Import the transpiler using dynamic import to handle ESM/CJS differences
-const { JSXTranspiler } = require('./jsx-transpiler.js');
+import { JSXTranspiler } from './jsx-transpiler.js';
 
 /**
  * Interface for Transpiler options
@@ -189,7 +187,7 @@ function transformImportsForBrowser(sourceCode: string): string {
   
   // Transform relative imports without extensions
   transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+["'])([\.\/][^"']*?)(?:["'])/gm,
+    /^(\s*import\s+.*?\s+from\s+["'])([./][^"']*?)(?:["'])/gm,
     (match, prefix, importPath) => {
       // If the import already has an extension, leave it alone
       if (importPath.match(/\.(js|jsx|ts|tsx|mjs|cjs|json)$/)) {

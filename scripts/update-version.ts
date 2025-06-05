@@ -219,9 +219,7 @@ async function updateCliVersions(version: string): Promise<void> {
 // Update version in README.md file
 async function updateReadmeVersion(version: string): Promise<void> {
   // Debug helper function to show exact string content for debugging
-  function showExactString(str: string): string {
-    return JSON.stringify(str);
-  }
+  const _showExactString = false;
   const readmePath = join(ROOT_DIR, 'README.md');
   
   if (existsSync(readmePath)) {
