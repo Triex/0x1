@@ -1,0 +1,169 @@
+/* 0x1 Syntax Highlighter - Component Wrapper Styles */
+
+.syntax-highlighter-wrapper {
+  position: relative;
+  margin: 1rem 0;
+  font-family: inherit;
+}
+
+/* Header styles */
+.syntax-highlighter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.syntax-highlighter-title {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.syntax-highlighter-language {
+  color: #a78bfa;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(167, 139, 250, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Enhanced copy button */
+.copy-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+  color: #e2e8f0;
+  font-family: inherit;
+  backdrop-filter: blur(4px);
+}
+
+.copy-button:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.copy-button.visible {
+  opacity: 1;
+}
+
+.copy-button.copied {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #34d399;
+}
+
+/* Footer styles */
+.syntax-highlighter-footer {
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* Inline code styles */
+.inline-code {
+  display: inline;
+  padding: 2px 6px;
+  font-family: 'Fira Code', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Light theme adjustments */
+.syntax-highlighter-wrapper .theme-light .syntax-highlighter-header {
+  background: rgba(248, 250, 252, 0.8);
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.syntax-highlighter-wrapper .theme-light .syntax-highlighter-title {
+  color: #1e293b;
+}
+
+.syntax-highlighter-wrapper .theme-light .syntax-highlighter-footer {
+  background: rgba(248, 250, 252, 0.8);
+  border-top-color: rgba(0, 0, 0, 0.1);
+  color: #64748b;
+}
+
+.syntax-highlighter-wrapper .theme-light .copy-button {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #1e293b;
+}
+
+.syntax-highlighter-wrapper .theme-light .copy-button:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.syntax-highlighter-wrapper .theme-light .inline-code {
+  background: rgba(248, 250, 252, 0.8);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Violet theme adjustments */
+.syntax-highlighter-wrapper .theme-violet .syntax-highlighter-header {
+  background: rgba(30, 27, 75, 0.8);
+  border-bottom-color: rgba(99, 102, 241, 0.3);
+}
+
+.syntax-highlighter-wrapper .theme-violet .syntax-highlighter-footer {
+  background: rgba(30, 27, 75, 0.8);
+  border-top-color: rgba(99, 102, 241, 0.3);
+}
+
+.syntax-highlighter-wrapper .theme-violet .copy-button {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #e0e7ff;
+}
+
+.syntax-highlighter-wrapper .theme-violet .copy-button:hover {
+  background: rgba(99, 102, 241, 0.3);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .syntax-highlighter-header {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .syntax-highlighter-language {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+  
+  .copy-button {
+    top: 8px;
+    right: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  
+  .syntax-highlighter-footer {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+} 

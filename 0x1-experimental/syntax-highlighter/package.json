@@ -1,0 +1,57 @@
+{
+  "name": "@0x1js/highlighter",
+  "version": "0.1.0",
+  "description": "Lightweight, beautiful syntax highlighter for JavaScript, TypeScript, and Bash",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "homepage": "https://0x1.onl",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Triex/0x1.git",
+    "directory": "0x1-experimental/syntax-highlighter"
+  },
+  "bugs": {
+    "url": "https://github.com/Triex/0x1/issues"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "test": "bun test"
+  },
+  "keywords": [
+    "syntax-highlighter",
+    "javascript",
+    "typescript", 
+    "bash",
+    "code",
+    "highlighting",
+    "0x1"
+  ],
+  "author": "0x1 Framework",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "0x1": "*",
+    "react": "^18.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./styles": "./dist/styles.css"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ]
+} 
