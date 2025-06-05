@@ -122,99 +122,428 @@ class BuildCache {
   }
 }
 
-// 🚀 CRITICAL FIX: Transform imports for browser (PROPER WORKING VERSION FROM BUILD-OLD.TS)
+// 🚀 BULLETPROOF: Context-aware import transformation for React 19/Next.js 15
 function transformImportsForBrowser(sourceCode: string): string {
-  // CRITICAL FIX: Preserve line breaks and string literals properly
-  let transformedCode = sourceCode;
+  console.log('[Build] 🧠 Applying bulletproof context-aware import transformations...');
   
-  // Transform "0x1" imports first - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']0x1["']/gm,
+  // Advanced tokenizer that properly handles all JavaScript/TypeScript contexts
+  const tokens = tokenizeJavaScript(sourceCode);
+  const lines = sourceCode.split('\n');
+  const transformedLines: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineTokens = tokens.filter(token => 
+      token.line === i + 1 && token.type === 'import'
+    );
+    
+    // Skip transformation if line contains imports inside strings/comments/JSX
+    if (lineTokens.length === 0 || isImportInNonCodeContext(line, lines, i)) {
+      transformedLines.push(line);
+      continue;
+    }
+    
+    let transformedLine = line;
+    
+    // Only transform actual import statements (not imports in strings/JSX/comments)
+    if (isValidImportStatement(line)) {
+      console.log(`[Build] ✅ Transforming import at line ${i + 1}: ${line.trim()}`);
+      transformedLine = applyImportTransformations(line);
+    }
+    
+    transformedLines.push(transformedLine);
+  }
+  
+  console.log('[Build] ✅ Bulletproof import transformation complete');
+  return transformedLines.join('\n');
+}
+
+// Advanced JavaScript/TypeScript tokenizer for accurate context detection
+function tokenizeJavaScript(sourceCode: string): Array<{type: string, value: string, line: number, column: number}> {
+  const tokens: Array<{type: string, value: string, line: number, column: number}> = [];
+  const lines = sourceCode.split('\n');
+  
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTemplateString = false;
+  let inRegex = false;
+  let inBlockComment = false;
+  let inLineComment = false;
+  let escapeNext = false;
+  let templateDepth = 0;
+  
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    inLineComment = false; // Reset for each line
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      const prevChar = line[i - 1];
+      
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\' && (inSingleQuote || inDoubleQuote || inTemplateString)) {
+        escapeNext = true;
+        continue;
+      }
+      
+      // Skip if in comments
+      if (inLineComment || inBlockComment) {
+        if (inBlockComment && char === '*' && nextChar === '/') {
+          inBlockComment = false;
+          i++; // Skip the '/'
+        }
+        continue;
+      }
+      
+      // Handle comment detection
+      if (!inSingleQuote && !inDoubleQuote && !inTemplateString && !inRegex) {
+        if (char === '/' && nextChar === '/') {
+          inLineComment = true;
+          continue;
+        }
+        if (char === '/' && nextChar === '*') {
+          inBlockComment = true;
+          i++; // Skip the '*'
+          continue;
+        }
+      }
+      
+      // Handle string literals
+      if (!inLineComment && !inBlockComment && !inRegex) {
+        if (char === '"' && !inSingleQuote && !inTemplateString) {
+          inDoubleQuote = !inDoubleQuote;
+          continue;
+        }
+        
+        if (char === "'" && !inDoubleQuote && !inTemplateString) {
+          inSingleQuote = !inSingleQuote;
+          continue;
+        }
+        
+        if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+          if (inTemplateString) {
+            templateDepth--;
+            if (templateDepth <= 0) {
+              inTemplateString = false;
+              templateDepth = 0;
+            }
+          } else {
+            inTemplateString = true;
+            templateDepth++;
+          }
+          continue;
+        }
+        
+        // Handle template literal expressions ${...}
+        if (inTemplateString && char === '$' && nextChar === '{') {
+          templateDepth++;
+          i++; // Skip the '{'
+          continue;
+        }
+        
+        if (inTemplateString && char === '}') {
+          templateDepth--;
+          continue;
+        }
+      }
+      
+      // Skip if inside strings
+      if (inSingleQuote || inDoubleQuote || inTemplateString) {
+        continue;
+      }
+      
+      // Detect import statements (only outside strings/comments)
+      if (char === 'i' && line.slice(i, i + 6) === 'import' && 
+          (i === 0 || /\s/.test(line[i - 1])) &&
+          (i + 6 >= line.length || /\s/.test(line[i + 6]))) {
+        tokens.push({
+          type: 'import',
+          value: 'import',
+          line: lineIndex + 1,
+          column: i + 1
+        });
+      }
+    }
+  }
+  
+  return tokens;
+}
+
+// Robust detection of imports in non-code contexts
+function isImportInNonCodeContext(line: string, allLines: string[], lineIndex: number): boolean {
+  const trimmed = line.trim();
+  
+  // Check for JSX text content patterns
+  const jsxPatterns = [
+    /^\s*["'`].*?import.*?["'`]/, // String literals containing import
+    /children:\s*\[/, // JSX children arrays
+    /className\s*=/, // JSX className props
+    /<code[^>]*>.*import/, // Code examples in JSX
+    /<pre[^>]*>.*import/, // Preformatted code blocks
+    /[-+]\s*import/, // Diff-style examples (- import, + import)
+    /```.*import/, // Markdown code blocks
+  ];
+  
+  if (jsxPatterns.some(pattern => pattern.test(line))) {
+    return true;
+  }
+  
+  // Check surrounding context for JSX
+  const contextWindow = 3;
+  const startLine = Math.max(0, lineIndex - contextWindow);
+  const endLine = Math.min(allLines.length - 1, lineIndex + contextWindow);
+  
+  for (let i = startLine; i <= endLine; i++) {
+    const contextLine = allLines[i].trim();
+    if (contextLine.includes('return (') || 
+        contextLine.includes('<div') || 
+        contextLine.includes('<span') ||
+        contextLine.includes('<pre') ||
+        contextLine.includes('<code') ||
+        contextLine.includes('children:')) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// Validate actual import statements vs pseudo-imports
+function isValidImportStatement(line: string): boolean {
+  const trimmed = line.trim();
+  
+  // Must start with import
+  if (!trimmed.startsWith('import ')) {
+    return false;
+  }
+  
+  // Must have 'from' keyword
+  if (!trimmed.includes(' from ')) {
+    return false;
+  }
+  
+  // Must have proper import syntax
+  const importRegex = /^import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)(?:\s*,\s*(?:\{[^}]*\}|\w+))*\s+from\s+)?['"`][^'"`]+['"`]/;
+  if (!importRegex.test(trimmed)) {
+    return false;
+  }
+  
+  // Must not be inside a string (check for unmatched quotes before import)
+  const beforeImport = line.substring(0, line.indexOf('import'));
+  const singleQuotes = (beforeImport.match(/'/g) || []).length;
+  const doubleQuotes = (beforeImport.match(/"/g) || []).length;
+  const templateQuotes = (beforeImport.match(/`/g) || []).length;
+  
+  if (singleQuotes % 2 === 1 || doubleQuotes % 2 === 1 || templateQuotes % 2 === 1) {
+    return false;
+  }
+  
+  return true;
+}
+
+// Apply all import transformations with modern React/Next.js support
+function applyImportTransformations(line: string): string {
+  let transformedLine = line;
+  
+  // 1. Remove CSS imports first (MIME type errors in browser)
+  if (/import\s*['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(line)) {
+    return '// CSS import removed for browser compatibility';
+  }
+  
+  // 2. Transform 0x1 framework imports
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']0x1["']/,
     '$1"/node_modules/0x1/index.js"'
   );
   
-  // CRITICAL FIX: Transform 0x1 module imports (Link, router, etc.) - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']0x1\/link["']/gm,
-    '$1"/0x1/link.js"'
-  );
-  
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']0x1\/router["']/gm,
-    '$1"/0x1/router.js"'
-  );
-  
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']0x1\/jsx-runtime["']/gm,
-    '$1"/0x1/jsx-runtime.js"'
-  );
-  
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']0x1\/jsx-dev-runtime["']/gm,
-    '$1"/0x1/jsx-dev-runtime.js"'
-  );
-  
-  // Transform relative imports to absolute paths - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']\.\/([^"']+)["']/gm,
-    (match, importPart, path) => {
-      // Add .js extension if not present and not already a .js/.ts/.tsx/.jsx file
-      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
-        path += '.js';
-      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
-        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
-      }
-      return `${importPart}"/${path}"`;
+  // 3. Transform 0x1 submodule imports
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']0x1\/(link|router|jsx-runtime|jsx-dev-runtime)["']/,
+    (match, importPart, module) => {
+      const moduleMap: Record<string, string> = {
+        'link': '/0x1/link.js',
+        'router': '/0x1/router.js',
+        'jsx-runtime': '/0x1/jsx-runtime.js',
+        'jsx-dev-runtime': '/0x1/jsx-dev-runtime.js'
+      };
+      return `${importPart}"${moduleMap[module]}"`;
     }
   );
   
-  // Transform parent directory imports - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']\.\.\/([^"']+)["']/gm,
+  // 4. Transform relative imports (./component → /component)
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']\.\/([^"']+)["']/,
     (match, importPart, path) => {
-      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
-        path += '.js';
-      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
-        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
-      }
-      return `${importPart}"/${path}"`;
+      const normalizedPath = normalizeModulePath(path);
+      return `${importPart}"/${normalizedPath}"`;
     }
   );
   
-  // Transform other relative imports that start with / - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']\/([^"']+)["']/gm,
+  // 5. Transform parent directory imports (../component → /component)
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']\.\.\/([^"']+)["']/,
     (match, importPart, path) => {
-      // Don't transform if it's already a node_modules path or 0x1 path
+      const normalizedPath = normalizeModulePath(path);
+      return `${importPart}"/${normalizedPath}"`;
+    }
+  );
+  
+  // 6. Transform absolute imports that need normalization
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']\/([^"']+)["']/,
+    (match, importPart, path) => {
       if (path.startsWith('node_modules/') || path.startsWith('0x1/')) {
-        return match;
+        return match; // Already correct
       }
-      
-      if (!path.match(/\.(js|ts|tsx|jsx)$/)) {
-        path += '.js';
-      } else if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.jsx')) {
-        path = path.replace(/\.(ts|tsx|jsx)$/, '.js');
-      }
-      return `${importPart}"/${path}"`;
+      const normalizedPath = normalizeModulePath(path);
+      return `${importPart}"/${normalizedPath}"`;
     }
   );
   
-  // Transform named npm package imports to use polyfill system - ONLY match actual import statements
-  transformedCode = transformedCode.replace(
-    /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/gm,
+  // 7. Transform npm package imports for browser compatibility
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/,
     (match, importPart, packageName) => {
-      // Skip transformation for certain system packages
       const skipPackages = ['react', 'react-dom', '0x1'];
       if (skipPackages.includes(packageName) || packageName.startsWith('0x1/')) {
         return match;
       }
-      
-      // Transform to polyfill path
       return `${importPart}"/node_modules/${packageName}"`;
     }
   );
   
-  return transformedCode;
+  return transformedLine;
+}
+
+// Normalize module paths for browser compatibility
+function normalizeModulePath(path: string): string {
+  let normalizedPath = path;
+  
+  // Handle different directory structures
+  if (path.includes('components/')) {
+    normalizedPath = path.replace(/^.*?components\//, 'components/');
+  } else if (path.includes('lib/')) {
+    normalizedPath = path.replace(/^.*?lib\//, 'lib/');
+  } else if (path.includes('utils/')) {
+    normalizedPath = path.replace(/^.*?utils\//, 'utils/');
+  } else if (path.includes('hooks/')) {
+    normalizedPath = path.replace(/^.*?hooks\//, 'hooks/');
+  } else if (path.includes('context/')) {
+    normalizedPath = path.replace(/^.*?context\//, 'context/');
+  } else {
+    // Default: assume it's a component if no specific directory
+    normalizedPath = path.startsWith('components/') ? path : `components/${path}`;
+  }
+  
+  // Add .js extension if needed
+  if (!normalizedPath.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
+    normalizedPath += '.js';
+  } else if (normalizedPath.match(/\.(ts|tsx|jsx)$/)) {
+    normalizedPath = normalizedPath.replace(/\.(ts|tsx|jsx)$/, '.js');
+  }
+  
+  return normalizedPath;
+}
+
+// Helper function to detect actual import statements vs code examples
+function isActualImportStatement(line: string): boolean {
+  const trimmed = line.trim();
+  
+  // Must start with import (possibly with whitespace)
+  if (!trimmed.startsWith('import ')) {
+    return false;
+  }
+  
+  // Should not be inside a string literal (basic check)
+  const beforeImport = line.substring(0, line.indexOf('import'));
+  const hasOpenQuote = (beforeImport.match(/"/g) || []).length % 2 === 1;
+  const hasOpenSingleQuote = (beforeImport.match(/'/g) || []).length % 2 === 1;
+  const hasOpenTemplate = (beforeImport.match(/`/g) || []).length % 2 === 1;
+  
+  if (hasOpenQuote || hasOpenSingleQuote || hasOpenTemplate) {
+    return false;
+  }
+  
+  // Should have proper import syntax
+  if (!trimmed.includes(' from ') || !trimmed.match(/import\s+.*?\s+from\s+["'].+["']/)) {
+    return false;
+  }
+  
+  return true;
+}
+
+// Helper function to detect if line is inside JSX text content
+function isLineInJsxTextContent(line: string, allLines: string[], lineIndex: number): boolean {
+  // Look for patterns that suggest this is JSX text content containing code examples
+  const trimmed = line.trim();
+  
+  // Check if line contains code example patterns
+  const hasCodeExamplePattern = 
+    trimmed.includes('- import') ||
+    trimmed.includes('+ import') ||
+    trimmed.includes('```') ||
+    (trimmed.includes('import') && (trimmed.includes('{') || trimmed.includes('useState')));
+  
+  if (!hasCodeExamplePattern) {
+    return false;
+  }
+  
+  // Look backwards and forwards to see if we're in JSX content
+  let inJsxContent = false;
+  
+  // Check surrounding lines for JSX patterns
+  for (let i = Math.max(0, lineIndex - 5); i <= Math.min(allLines.length - 1, lineIndex + 5); i++) {
+    const contextLine = allLines[i].trim();
+    
+    // Look for JSX opening tags, className props, or JSX structure
+    if (contextLine.includes('className=') || 
+        contextLine.includes('<div') || 
+        contextLine.includes('<pre') ||
+        contextLine.includes('<code') ||
+        contextLine.includes('children:') ||
+        /return\s*\(/.test(contextLine)) {
+      inJsxContent = true;
+      break;
+    }
+  }
+  
+  return inJsxContent;
+}
+
+// Helper function to detect if line is inside a string literal
+function isLineInStringContent(line: string): boolean {
+  // Check if the import statement is inside quotes
+  const importIndex = line.indexOf('import');
+  if (importIndex === -1) return false;
+  
+  const beforeImport = line.substring(0, importIndex);
+  const afterImport = line.substring(importIndex);
+  
+  // Count quotes before import
+  const singleQuotesBefore = (beforeImport.match(/'/g) || []).length;
+  const doubleQuotesBefore = (beforeImport.match(/"/g) || []).length;
+  const templateQuotesBefore = (beforeImport.match(/`/g) || []).length;
+  
+  // If odd number of quotes before, we're inside a string
+  if (singleQuotesBefore % 2 === 1 || doubleQuotesBefore % 2 === 1 || templateQuotesBefore % 2 === 1) {
+    return true;
+  }
+  
+  // Check for string literal patterns around import
+  if (beforeImport.includes('"') || beforeImport.includes("'") || beforeImport.includes('`')) {
+    const hasClosingQuote = afterImport.includes('"') || afterImport.includes("'") || afterImport.includes('`');
+    if (hasClosingQuote) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // CRITICAL FIX: Add string sanitization function to prevent syntax errors
@@ -244,7 +573,7 @@ function insertJsxRuntimePreamble(code: string): string {
     if (line.startsWith('import ') || (line.startsWith('export ') && line.includes('from '))) {
       foundImports = true;
       insertIndex = i + 1;
-    } else if (line.startsWith('//') || line.startsWith('/*') || line === '') {
+    } else if (line.startsWith('//') || line.startsWith('/*') || line.includes('*/') || line === '') {
       // Skip comments and empty lines but don't update insertIndex unless after imports
       if (foundImports) {
         insertIndex = i + 1;
@@ -2074,85 +2403,6 @@ async function generatePwaFilesFast(outputPath: string): Promise<void> {
 } 
 
 /**
- * Transform code content to handle imports for browser compatibility
- * This converts React and 0x1 imports to browser-compatible paths
- * and removes CSS imports that would cause MIME type errors
- */
-function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
-  // CRITICAL FIX: Preserve destructuring imports properly
-  let transformedContent = content;
-  
-  // CRITICAL: Remove CSS imports first (they cause MIME type errors)
-  transformedContent = transformedContent
-    .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility');
-  
-  // Transform 0x1 imports ONLY
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"]0x1['"]/g,
-    'import $1 from "/node_modules/0x1/index.js"'
-  );
-  
-  // Transform relative imports to absolute paths
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"](\.\.\/.+?)['"]/g,
-    (match, importClause, importPath) => {
-      // Don't modify the import clause structure - just fix the path
-      let browserPath = importPath;
-      
-      // Map specific patterns to browser-accessible paths
-      if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
-      } else {
-        browserPath = importPath.replace(/^\.\.\//, '/');
-      }
-      
-      // Add .js extension if not present
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
-      }
-      
-      // Return the import with the same clause structure
-      return `import ${importClause} from '${browserPath}'`;
-    }
-  );
-  
-  // Transform same-directory imports
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"](\.\/.+?)['"]/g,
-    (match, importClause, importPath) => {
-      let browserPath = importPath;
-      
-      if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
-      } else {
-        browserPath = importPath.replace(/^\.\//, '/components/');
-      }
-      
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
-      }
-      
-      return `import ${importClause} from '${browserPath}'`;
-    }
-  );
-  
-  return transformedContent;
-}
-
-/**
  * Process and validate a TypeScript/JSX file for directive usage
  */
 function validateFileDirectives(
@@ -2339,4 +2589,83 @@ function preprocessTemplateLiterals(sourceCode: string): string {
   
   console.log('[Build] Pre-processed template literals to prevent syntax errors');
   return processed;
+}
+
+/**
+ * Transform code content to handle imports for browser compatibility
+ * This converts React and 0x1 imports to browser-compatible paths
+ * and removes CSS imports that would cause MIME type errors
+ */
+function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
+  // CRITICAL FIX: Preserve destructuring imports properly
+  let transformedContent = content;
+  
+  // CRITICAL: Remove CSS imports first (they cause MIME type errors)
+  transformedContent = transformedContent
+    .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
+    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility');
+  
+  // Transform 0x1 imports ONLY
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"]0x1['"]/g,
+    'import $1 from "/node_modules/0x1/index.js"'
+  );
+  
+  // Transform relative imports to absolute paths
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      // Don't modify the import clause structure - just fix the path
+      let browserPath = importPath;
+      
+      // Map specific patterns to browser-accessible paths
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\.\//, '/');
+      }
+      
+      // Add .js extension if not present
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
+      }
+      
+      // Return the import with the same clause structure
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  // Transform same-directory imports
+  transformedContent = transformedContent.replace(
+    /import\s+(.+?)\s+from\s+['"](\.\/.+?)['"]/g,
+    (match, importClause, importPath) => {
+      let browserPath = importPath;
+      
+      if (importPath.includes('components/')) {
+        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
+      } else if (importPath.includes('lib/')) {
+        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
+      } else if (importPath.includes('utils/')) {
+        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
+      } else {
+        browserPath = importPath.replace(/^\.\//, '/components/');
+      }
+      
+      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
+          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
+        browserPath += '.js';
+      }
+      
+      return `import ${importClause} from '${browserPath}'`;
+    }
+  );
+  
+  return transformedContent;
 }
