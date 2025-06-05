@@ -9,6 +9,9 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
 
+// Import the proper metadata system
+import { extractMetadataFromFile } from '../../core/metadata';
+
 export interface BuildOptions {
   outDir?: string;
   minify?: boolean;
@@ -110,7 +113,7 @@ class BuildCache {
     this.cache.clear();
     try {
       unlinkSync(this.cacheFile);
-    } catch (error) {
+  } catch (error) {
       // Silent fail
     }
   }
@@ -125,6 +128,27 @@ function transformImportsForBrowser(sourceCode: string): string {
   transformedCode = transformedCode.replace(
     /from\s+["']0x1["']/g,
     'from "/node_modules/0x1/index.js"'
+  );
+  
+  // CRITICAL FIX: Transform 0x1 module imports (Link, router, etc.)
+  transformedCode = transformedCode.replace(
+    /from\s+["']0x1\/link["']/g,
+    'from "/0x1/link.js"'
+  );
+  
+  transformedCode = transformedCode.replace(
+    /from\s+["']0x1\/router["']/g,
+    'from "/0x1/router.js"'
+  );
+  
+  transformedCode = transformedCode.replace(
+    /from\s+["']0x1\/jsx-runtime["']/g,
+    'from "/0x1/jsx-runtime.js"'
+  );
+  
+  transformedCode = transformedCode.replace(
+    /from\s+["']0x1\/jsx-dev-runtime["']/g,
+    'from "/0x1/jsx-dev-runtime.js"'
   );
   
   // 🚀 STEP 1: Fix relative component imports to use absolute browser paths
@@ -1221,7 +1245,8 @@ async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
     { src: 'jsx-runtime.js', dest: 'jsx-runtime.js' },
     { src: 'jsx-dev-runtime.js', dest: 'jsx-dev-runtime.js' },
     { src: 'core/hooks.js', dest: 'hooks.js' },
-    { src: 'index.js', dest: 'index.js' }
+    { src: 'index.js', dest: 'index.js' },
+    { src: 'link.js', dest: 'link.js' }
   ];
 
   let copiedCount = 0;
@@ -1625,7 +1650,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     // Apply minification if requested and we have CSS content
     if (minify && finalCss) {
       finalCss = finalCss
-        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
         .replace(/\s+/g, ' ') // Collapse whitespace
         .replace(/;\s*}/g, '}') // Remove last semicolon before }
         .replace(/\s*{\s*/g, '{') // Trim around {
@@ -1633,7 +1658,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
         .replace(/\s*,\s*/g, ',') // Trim around commas
         .replace(/\s*:\s*/g, ':') // Trim around colons
         .replace(/\s*;\s*/g, ';') // Trim around semicolons
-        .trim();
+    .trim();
       
       await Bun.write(outputCssPath, finalCss);
     }
@@ -1648,21 +1673,194 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   }
 }
 
-// 🚀 LIGHTNING-FAST HTML GENERATION
+// 🚀 LIGHTNING-FAST HTML GENERATION WITH METADATA EXTRACTION
 async function generateProductionHtmlFast(projectPath: string, outputPath: string): Promise<void> {
   const appDir = join(projectPath, 'app');
   if (!existsSync(appDir)) return;
 
+  // Get discovered routes for metadata extraction
+  const discoveredRoutes = await discoverRoutesSuperFast(projectPath);
+  
   const faviconLink = existsSync(join(projectPath, 'app/favicon.svg')) ? 
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' :
     '<link rel="icon" href="/favicon.ico">';
 
-  const indexHtml = `<!DOCTYPE html>
+  // Generate metadata for each route
+  const routeMetadata = await Promise.all(discoveredRoutes.map(async (route) => {
+    const metadata = await extractMetadataFromPage(projectPath, route);
+    return { ...route, metadata };
+  }));
+
+  // Generate the main index.html (fallback for SPA)
+  const baseMetadata = {
+    title: "0x1 App",
+    description: "The ultimate TypeScript framework powered by Bun"
+  };
+  
+  const baseHtml = generateHtmlTemplate(baseMetadata, faviconLink, "/");
+  await Bun.write(join(outputPath, 'index.html'), baseHtml);
+
+  // Generate individual HTML files for each route with proper metadata
+  for (const { path: routePath, metadata } of routeMetadata) {
+    const mergedMetadata = {
+      title: metadata.title || "0x1 App",
+      description: metadata.description || "0x1 Framework page",
+      keywords: metadata.keywords,
+      author: metadata.author,
+      image: metadata.image,
+      openGraph: metadata.openGraph,
+      twitter: metadata.twitter
+    };
+    
+    if (routePath === '/') {
+      // Update the main index.html with homepage metadata
+      const homeHtml = generateHtmlTemplate(mergedMetadata, faviconLink, "/");
+      await Bun.write(join(outputPath, 'index.html'), homeHtml);
+      } else {
+      // Generate individual HTML files for other routes
+      const routeHtml = generateHtmlTemplate(mergedMetadata, faviconLink, routePath);
+      
+      // Create the directory structure for the route
+      const routeDir = join(outputPath, routePath === '/' ? '' : routePath);
+      if (routePath !== '/') {
+        await mkdir(routeDir, { recursive: true });
+        await Bun.write(join(routeDir, 'index.html'), routeHtml);
+      }
+    }
+  }
+
+  console.log(`[Build] ✅ Generated HTML files for ${routeMetadata.length} routes with metadata`);
+}
+
+// Extract metadata from page components using the proper metadata system
+async function extractMetadataFromPage(projectPath: string, route: { path: string; componentPath: string }): Promise<any> {
+  try {
+    // Find the source file for this route
+    const sourcePath = join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
+    const possiblePaths = [
+      sourcePath,
+      sourcePath.replace('.tsx', '.ts'),
+      sourcePath.replace('.tsx', '.jsx'),
+      sourcePath.replace('.tsx', '.js')
+    ];
+    
+    const pageFile = possiblePaths.find(path => existsSync(path));
+    if (!pageFile) return {};
+    
+    // Use the built-in metadata extraction system
+    const extractedMetadata = await extractMetadataFromFile(pageFile);
+    
+    if (extractedMetadata) {
+      console.log(`[Build] ✅ Extracted metadata from ${pageFile}:`, extractedMetadata.title);
+      return extractedMetadata;
+    }
+    
+    // Fallback: extract from comments if no export found
+    const content = await Bun.file(pageFile).text();
+    const metadata: any = {};
+    
+    // Look for metadata comments at the top of the file
+    const metadataComment = content.match(/\/\*\*[\s\S]*?\*\//);
+    if (metadataComment) {
+      const comment = metadataComment[0];
+      
+      // Extract title
+      const titleMatch = comment.match(/@title\s+(.+)/);
+      if (titleMatch) metadata.title = titleMatch[1].trim();
+      
+      // Extract description
+      const descMatch = comment.match(/@description\s+(.+)/);
+      if (descMatch) metadata.description = descMatch[1].trim();
+      
+      // Extract keywords
+      const keywordsMatch = comment.match(/@keywords\s+(.+)/);
+      if (keywordsMatch) metadata.keywords = keywordsMatch[1].trim();
+      
+      // Extract author
+      const authorMatch = comment.match(/@author\s+(.+)/);
+      if (authorMatch) {
+        metadata.author = authorMatch[1].trim();
+      }
+      
+      // Extract image for OpenGraph
+      const imageMatch = comment.match(/@image\s+(.+)/);
+      if (imageMatch) {
+        metadata.image = imageMatch[1].trim();
+        metadata.openGraph = {
+          images: [{ url: imageMatch[1].trim(), width: 1200, height: 630, alt: metadata.title || 'Page Image' }]
+        };
+        metadata.twitter = {
+          card: 'summary_large_image' as const,
+          image: imageMatch[1].trim()
+        };
+      }
+    }
+    
+    // Default metadata based on route path if nothing found
+    if (!metadata.title) {
+      const routeName = route.path === '/' ? 'Home' : 
+                       route.path.split('/').filter(p => p).map(p => 
+                         p.charAt(0).toUpperCase() + p.slice(1)
+                       ).join(' ');
+      metadata.title = `${routeName} | 0x1 App`;
+    }
+    
+    if (!metadata.description) {
+      const titleStr = typeof metadata.title === 'string' ? metadata.title : metadata.title?.default || 'Page';
+      metadata.description = `${titleStr.replace(' | 0x1 App', '')} page for 0x1 Framework application`;
+    }
+    
+    return metadata;
+  } catch (error) {
+    console.warn(`[Build] Failed to extract metadata from ${route.componentPath}:`, error);
+    return {};
+  }
+}
+
+// Generate HTML template with metadata using simple approach
+function generateHtmlTemplate(metadata: any, faviconLink: string, currentPath: string): string {
+  // Resolve title properly
+  const resolvedTitle = typeof metadata.title === 'string' 
+    ? metadata.title 
+    : metadata.title?.absolute || metadata.title?.default || '0x1 App';
+    
+  const description = metadata.description || "0x1 Framework application";
+  const keywords = Array.isArray(metadata.keywords) ? metadata.keywords.join(', ') : metadata.keywords || "";
+  const author = metadata.author || metadata.authors?.[0]?.name || "";
+  const ogImage = metadata.image || metadata.openGraph?.images?.[0]?.url || metadata.twitter?.image || "";
+  
+  return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
+  
+  <!-- Primary Meta Tags -->
+  <title>${resolvedTitle}</title>
+  <meta name="title" content="${resolvedTitle}">
+  <meta name="description" content="${description}">
+  ${keywords ? `<meta name="keywords" content="${keywords}">` : ''}
+  ${author ? `<meta name="author" content="${author}">` : ''}
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${currentPath}">
+  <meta property="og:title" content="${resolvedTitle}">
+  <meta property="og:description" content="${description}">
+  ${ogImage ? `<meta property="og:image" content="${ogImage}">` : ''}
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="${currentPath}">
+  <meta property="twitter:title" content="${resolvedTitle}">
+  <meta property="twitter:description" content="${description}">
+  ${ogImage ? `<meta property="twitter:image" content="${ogImage}">` : ''}
+  
+  <!-- Additional Meta Tags -->
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+  <meta name="theme-color" content="#7c3aed">
+  
   ${faviconLink}
   <link rel="stylesheet" href="/styles.css">
   <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/router":"/0x1/router.js","0x1/":"/0x1/"}}</script>
@@ -1679,8 +1877,6 @@ async function generateProductionHtmlFast(projectPath: string, outputPath: strin
   <script src="/app.js" type="module"></script>
 </body>
 </html>`;
-
-  await Bun.write(join(outputPath, 'index.html'), indexHtml);
 }
 
 // 🚀 LIGHTNING-FAST PWA GENERATION
