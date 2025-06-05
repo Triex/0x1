@@ -43,7 +43,7 @@ import './jsx-runtime';
 // Export JSX Element type
 export declare namespace JSX {
   interface Element {
-    type: string | Function;
+    type: string | ComponentFunction;
     props: any;
     children: any[];
     __source?: {

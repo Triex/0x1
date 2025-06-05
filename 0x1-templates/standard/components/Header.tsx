@@ -28,7 +28,7 @@ export function Header() {
   ];
   
   // Close mobile menu when navigating
-  const handleNavigation = () => {
+  const _handleNavigation = () => {
     setMobileMenuOpen(false);
   };
   

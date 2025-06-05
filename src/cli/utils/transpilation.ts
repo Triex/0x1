@@ -100,11 +100,11 @@ export function transformTypeScript(content: string): string {
     .replace(/import\s+type\s+.*?;/g, '')
     .replace(/import\s+\{\s*type\s+[^}]+\}\s+from\s+['"][^'"]+['"];/g, '')
     // Remove interface declarations with better regex (handles multi-line)
-    .replace(/interface\s+[A-Za-z0-9_]+(\s*<[^>]*>)?\s*(\extends\s+[A-Za-z0-9_]+(\s*<[^>]*>)?\s*)?\{[\s\S]*?\n\}/g, '')
+    .replace(/interface\s+[A-Za-z0-9_]+(\s*<[^>]*>)?\s*(extends\s+[A-Za-z0-9_]+(\s*<[^>]*>)?\s*)?\{[\s\S]*?\n\}/g, '')
     // Remove type declarations (including complex types)
     .replace(/type\s+[A-Za-z0-9_]+(\s*<[^>]*>)?\s*=\s*[\s\S]*?;/g, '')
     // Remove type annotations in function parameters and return types
-    .replace(/:\s*[A-Za-z<>\[\]|&,\s]+(?=[,)])/g, '')
+    .replace(/:\s*[A-Za-z<>[\]|&,\s]+(?=[,)])/g, '')
     // Remove return type annotations
     .replace(/\)\s*:\s*[A-Za-z<>[\]|&,\s]+\s*(?={)/g, ')')
     // Remove generic type parameters

@@ -46,4 +46,8 @@ export interface HTMLAttributes<T = HTMLElement> {
   
   // Allow any other attributes
   [key: string]: any;
+}
+
+export interface ElementAttributesProperty<_T = any> {
+  // Add any necessary properties here
 } 

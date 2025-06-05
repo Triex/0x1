@@ -67,9 +67,9 @@ export const jsxs = createElement;
 export const jsxDEV = createElement;
 
 // Suspense placeholder
-export const Suspense = ({ children, fallback }) => {
+export function Suspense({ children, _fallback }) {
   return children;
-};
+}
 
 // StrictMode placeholder
 export const StrictMode = ({ children }) => {

@@ -336,7 +336,7 @@ export function tokenizeBash(code: string): Token[] {
  * Main highlight function
  */
 export function highlight(code: string, options: HighlightOptions): string {
-  const { language, showLineNumbers = false, startLineNumber = 1, maxLines, wrapLines = true } = options;
+  const { language, showLineNumbers = false, startLineNumber = 1, maxLines, wrapLines: _wrapLines = true } = options;
   
   // Tokenize based on language
   let tokens: Token[];

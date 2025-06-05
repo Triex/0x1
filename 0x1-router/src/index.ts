@@ -55,11 +55,6 @@ interface RouteContext {
   meta: Record<string, any>;
 }
 
-// Add missing RouteParams interface
-export interface RouteParams {
-  [key: string]: string;
-}
-
 // Router class - handles both client and server-side routing
 class Router {
   private routes: Route[] = [];
@@ -199,8 +194,7 @@ class Router {
 
     // Initialize popstate handler for browser back/forward
     window.addEventListener('popstate', () => {
-      const _match = window.location.pathname.match(/\?(.*)$/);
-      const searchParams = new URLSearchParams(_match ? _match[1] : '');
+      const _searchParams = new URLSearchParams(location.search);
     });
   }
 

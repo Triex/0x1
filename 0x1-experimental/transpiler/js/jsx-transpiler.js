@@ -17,7 +17,7 @@ const ATTR_NAME_VALID = /[a-zA-Z0-9_\-:]/;
 /**
  * Enum for JSX token types
  */
-const JSXToken = {
+const _JSXToken = {
   TEXT: 'Text',
   OPEN_TAG: 'OpenTag',
   CLOSE_TAG: 'CloseTag',

@@ -7,13 +7,33 @@ import type { JSXElement, JSXNode } from './jsx.js';
 
 // Core React types that libraries expect
 export type ReactNode = JSXNode;
-export type ReactElement<P = any, T = any> = JSXElement;
-export type ComponentType<P = Record<string, any>> = (props: P) => ReactElement | null;
-export type FunctionComponent<P = Record<string, any>> = ComponentType<P>;
-export type FC<P = Record<string, any>> = FunctionComponent<P>;
+export type ReactElement<_P = any, _T = any> = JSXElement;
+export interface ComponentType<_P = Record<string, never>> {
+  (_props: _P): JSX.Element | null;
+}
+
+export interface ForwardRefComponent<_T, _P = Record<string, never>> {
+  (_props: _P): JSX.Element | null;
+}
+
+export interface ComponentClass<_P = Record<string, never>> {
+  new (_props: _P): Component<_P>;
+}
+
+export type ElementType<_P = any> = {
+  [K in keyof JSX.IntrinsicElements]: _P extends JSX.IntrinsicElements[K] ? K : never;
+}[keyof JSX.IntrinsicElements] | ComponentType<_P>;
+
+export interface FunctionComponent<_P = Record<string, never>> {
+  (_props: _P): JSX.Element | null;
+}
+
+export interface ReactEventHandler<_E = Event> {
+  (event: _E): void;
+}
 
 // Props types
-export interface PropsWithChildren<P = unknown> {
+export interface PropsWithChildren<_P = unknown> {
   children?: ReactNode;
 }
 
@@ -22,7 +42,7 @@ export type Ref<T> = ((instance: T | null) => void) | { current: T | null } | nu
 export type RefObject<T> = { current: T | null };
 
 // Event types
-export interface SyntheticEvent<T = Element, E = Event> {
+export interface SyntheticEvent<T = Element, _E = Event> {
   currentTarget: T;
   target: EventTarget & T;
   preventDefault(): void;

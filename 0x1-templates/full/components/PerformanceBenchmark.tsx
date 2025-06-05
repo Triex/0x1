@@ -100,7 +100,7 @@ export default function PerformanceBenchmark() {
   const [isRunning, setIsRunning] = useState(false);
   const [currentFramework, setCurrentFramework] = useState<'0x1' | 'nextjs' | null>(null);
   const [visibleSteps, setVisibleSteps] = useState<string[]>([]);
-  const [animatedSteps, setAnimatedSteps] = useState<Set<string>>(new Set());
+  const _animatedSteps = true;
   const [progress, setProgress] = useState(0);
 
   const runBenchmark = async () => {
@@ -108,7 +108,6 @@ export default function PerformanceBenchmark() {
     
     setIsRunning(true);
     setVisibleSteps([]);
-    setAnimatedSteps(new Set());
     setProgress(0);
 
     // Run 0x1 framework first
@@ -121,7 +120,6 @@ export default function PerformanceBenchmark() {
     // Run Next.js
     setCurrentFramework('nextjs');
     setVisibleSteps([]);
-    setAnimatedSteps(new Set());
     setProgress(0);
     await runFrameworkBenchmark('nextjs');
     
@@ -136,7 +134,6 @@ export default function PerformanceBenchmark() {
       await new Promise(resolve => setTimeout(resolve, step.delay - (i > 0 ? steps[i-1].delay : 0)));
       
       setVisibleSteps(prev => [...prev, step.id]);
-      setAnimatedSteps(prev => new Set([...prev, step.id]));
       setProgress(((i + 1) / steps.length) * 100);
     }
   };

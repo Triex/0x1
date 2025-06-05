@@ -8,7 +8,7 @@
 // Reference DOM types
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
-/// <reference path="./jsx.d.ts" />
+import './jsx.d.ts';
 
 // Clean import declarations for Next.js-style imports
 declare module '0x1/router' {
@@ -147,7 +147,7 @@ declare module '0x1' {
   
   // JSX factory
   export function createElement(
-    type: string | Function,
+    type: string | ComponentFunction,
     props: Record<string, any> | null,
     ...children: any[]
   ): any;

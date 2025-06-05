@@ -5,7 +5,7 @@
  * It provides utility functions for both the build process and dev server.
  */
 
-const { JSXTranspiler } = require('./jsx-transpiler.js');
+import { JSXTranspiler } from './jsx-transpiler.js';
 
 /**
  * Transpile JSX content to JavaScript
@@ -117,10 +117,8 @@ function transpileForDevServer(sourceCode, filePath) {
   return result;
 }
 
-module.exports = {
-  transpileJSX,
-  batchTranspileJSX,
-  transpileForBuild,
-  transpileForDevServer,
-  generateErrorComponent
+export {
+  batchTranspileJSX, generateErrorComponent, transpileForBuild,
+  transpileForDevServer, transpileJSX
 };
+
