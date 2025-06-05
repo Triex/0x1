@@ -309,12 +309,8 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
   try {
     console.log(`[Build] Attempting to transpile: ${sourcePath}`);
     
-    // Enhanced JSX detection (same as dev server)
-    const hasJsxElements = /<[A-Z][A-Za-z0-9]*[\s/>]/.test(sourceCode) || // React components
-                           /<[a-z][A-Za-z0-9-]*[\s/>]/.test(sourceCode) || // HTML elements
-                           /<\/[A-Za-z]/.test(sourceCode) || // Closing tags
-                           /<>/.test(sourceCode) || // React fragments
-                           /<\/[^>]+>/.test(sourceCode); // Any closing tag
+    // ROBUST FIX: Context-aware JSX detection that ignores JSX inside strings/template literals
+    const hasActualJsxElements = detectActualJsxElements(sourceCode);
     
     const hasJsxCalls = /jsx\s*\(/.test(sourceCode) || 
                        /jsxs\s*\(/.test(sourceCode) || 
@@ -322,7 +318,7 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
                        /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(sourceCode); // Detect hashed jsx functions
     
     console.log(`[Build] JSX Detection for ${sourcePath}:`);
-    console.log(`[Build]   Has JSX elements: ${hasJsxElements}`);
+    console.log(`[Build]   Has actual JSX elements: ${hasActualJsxElements}`);
     console.log(`[Build]   Has jsx calls: ${hasJsxCalls}`);
     
     // CRITICAL FIX: Disable aggressive directive validation for documentation files
@@ -354,13 +350,8 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     // Transform imports for browser compatibility
     processedCode = transformBareImports(processedCode, sourcePath);
     
-    // CRITICAL FIX: Pre-process source code to handle template literals properly
-    // This prevents the transpiler from generating invalid JavaScript
-    // DISABLED: This is causing "Unterminated string literal" errors
-    // processedCode = preprocessTemplateLiterals(processedCode);
-    
-    // CRITICAL FIX: Force JSX transpilation for any file with JSX elements
-    if (hasJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
+    // CRITICAL FIX: Force JSX transpilation for any file with ACTUAL JSX elements (not just strings)
+    if (hasActualJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
       console.log(`[Build] FORCING JSX transpilation for: ${sourcePath}`);
     
     const transpiler = new Bun.Transpiler({
@@ -394,9 +385,6 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       let finalCode = normalizeJsxFunctionCalls(transpiledContent);
       finalCode = insertJsxRuntimePreamble(finalCode);
       
-      // DISABLED: This was trying to fix the mess from preprocessTemplateLiterals
-      // finalCode = fixTemplateLiteralSyntax(finalCode);
-      
       console.log(`[Build] ✅ Successfully transpiled JSX file: ${sourcePath}`);
       return finalCode;
       } else {
@@ -415,6 +403,107 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     console.error(`[Build] CRITICAL ERROR transpiling ${sourcePath}:`, error);
     throw error;
   }
+}
+
+// ROBUST FIX: Context-aware JSX detection that properly parses code structure
+function detectActualJsxElements(sourceCode: string): boolean {
+  // State machine to track if we're inside strings, template literals, or comments
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTemplateString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let escapeNext = false;
+  
+  const chars = sourceCode.split('');
+  
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const nextChar = chars[i + 1];
+    const prevChar = chars[i - 1];
+    
+    // Handle escape sequences
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    // Handle comments
+    if (!inSingleQuote && !inDoubleQuote && !inTemplateString) {
+      if (char === '/' && nextChar === '/') {
+        inLineComment = true;
+        i++; // Skip next char
+        continue;
+      }
+      
+      if (char === '/' && nextChar === '*') {
+        inBlockComment = true;
+        i++; // Skip next char
+        continue;
+      }
+      
+      if (inBlockComment && char === '*' && nextChar === '/') {
+        inBlockComment = false;
+        i++; // Skip next char
+        continue;
+      }
+      
+      if (inLineComment && char === '\n') {
+        inLineComment = false;
+        continue;
+      }
+    }
+    
+    // Skip if we're in any kind of comment
+    if (inLineComment || inBlockComment) {
+      continue;
+    }
+    
+    // Handle string literals
+    if (char === '"' && !inSingleQuote && !inTemplateString) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    
+    if (char === "'" && !inDoubleQuote && !inTemplateString) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    
+    if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+      inTemplateString = !inTemplateString;
+      continue;
+    }
+    
+    // If we're inside any string/template, skip JSX detection
+    if (inSingleQuote || inDoubleQuote || inTemplateString) {
+      continue;
+    }
+    
+    // Now check for actual JSX elements (only outside strings)
+    if (char === '<') {
+      // Look ahead to see if this looks like JSX
+      const nextFewChars = sourceCode.slice(i, i + 10);
+      
+      // Check for HTML/JSX elements
+      if (/^<[A-Z][A-Za-z0-9]*[\s/>]/.test(nextFewChars) || // React components <Component>
+          /^<[a-z][A-Za-z0-9-]*[\s/>]/.test(nextFewChars) || // HTML elements <div>
+          /^<>/.test(nextFewChars) || // React fragments <>
+          /^<\/[A-Za-z]/.test(nextFewChars)) { // Closing tags </div>
+        
+        console.log(`[Build] Found actual JSX element at position ${i}: ${nextFewChars}`);
+        return true;
+      }
+    }
+  }
+  
+  console.log(`[Build] No actual JSX elements found (all JSX is inside strings/templates)`);
+  return false;
 }
 
 // CRITICAL FIX: Generate error component for failed transpilation
@@ -1267,8 +1356,45 @@ async function generateStaticComponentFilesSuperFast(
     }
   }
 
-  const successful = results.reduce((sum, result) => sum + result, 0);
+  const successful = results.reduce((sum: number, result: number) => sum + result, 0);
   console.log(`[Build] ✅ Generated ${successful}/${routes.length} components with nested layout support`);
+  
+  // CRITICAL FIX: Also process regular components (Header, etc.) that are imported by pages
+  console.log(`[Build] 🧩 Processing ${allComponents.length} regular components...`);
+  
+  const componentResults = await Promise.all(
+    allComponents.map(async (component) => {
+      try {
+        // Check cache first
+        const cached = await buildCache.get(component.path);
+        if (cached) {
+          const outputComponentPath = join(outputPath, component.relativePath.replace(/\.(tsx|ts|jsx)$/, '.js'));
+          await mkdir(dirname(outputComponentPath), { recursive: true });
+          await Bun.write(outputComponentPath, cached);
+          return 1;
+        }
+        
+        const sourceCode = await Bun.file(component.path).text();
+        let transpiledContent = await transpileComponentSafely(sourceCode, component.path);
+        transpiledContent = transformImportsForBrowser(transpiledContent);
+        
+        const outputComponentPath = join(outputPath, component.relativePath.replace(/\.(tsx|ts|jsx)$/, '.js'));
+        await mkdir(dirname(outputComponentPath), { recursive: true });
+        await Bun.write(outputComponentPath, transpiledContent);
+        
+        // Cache the result
+        await buildCache.set(component.path, transpiledContent);
+        
+        return 1;
+      } catch (error) {
+        console.warn(`[Build] ⚠️ Failed to process component ${component.relativePath}:`, error);
+        return 0;
+      }
+    })
+  );
+  
+  const componentSuccessful = componentResults.reduce((sum: number, result: number) => sum + result, 0);
+  console.log(`[Build] ✅ Generated ${componentSuccessful}/${allComponents.length} regular components`);
 }
 
 // 🚀 LIGHTNING-FAST FRAMEWORK FILES COPY - FIXED ROUTER ISSUE  

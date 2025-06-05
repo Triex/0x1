@@ -2,8 +2,8 @@ const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 
-// === JSX TRANSPILER FOR 0x1 FRAMEWORK ===
-// 
+// === JSX TRANSPILER FOR 0x1 FRAMEWORK (Zig 0.15.0-dev) ===
+//
 // This transpiler converts JSX syntax to 0x1-compatible JavaScript/TypeScript
 // Optimized for speed and minimal overhead, based on the Node.js implementation.
 //
