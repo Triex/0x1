@@ -122,40 +122,142 @@ class BuildCache {
   }
 }
 
-// 🚀 BULLETPROOF: Context-aware import transformation for React 19/Next.js 15
+// 🚀 BULLETPROOF: Simple and reliable context-aware import transformation
 function transformImportsForBrowser(sourceCode: string): string {
-  console.log('[Build] 🧠 Applying bulletproof context-aware import transformations...');
+  console.log('[Build] 🧠 Applying simple bulletproof import transformations...');
   
-  // Advanced tokenizer that properly handles all JavaScript/TypeScript contexts
-  const tokens = tokenizeJavaScript(sourceCode);
   const lines = sourceCode.split('\n');
   const transformedLines: string[] = [];
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineTokens = tokens.filter(token => 
-      token.line === i + 1 && token.type === 'import'
-    );
+    const trimmed = line.trim();
     
-    // Skip transformation if line contains imports inside strings/comments/JSX
-    if (lineTokens.length === 0 || isImportInNonCodeContext(line, lines, i)) {
+    // Skip if line doesn't contain import
+    if (!trimmed.includes('import')) {
       transformedLines.push(line);
       continue;
     }
     
-    let transformedLine = line;
+    // BULLETPROOF: Skip obvious code examples and JSX content
+    const isCodeExample = 
+      // Diff-style examples
+      trimmed.includes('- import') ||
+      trimmed.includes('+ import') ||
+      // Inside JSX attributes or text
+      line.includes('children:') ||
+      line.includes('className=') ||
+      // Inside strings/template literals
+      /['"`].*import.*['"`]/.test(line) ||
+      // Inside JSX tags
+      /<[^>]*import/.test(line) ||
+      // Inside code blocks
+      trimmed.includes('```') ||
+      // Inside comments
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('/*') ||
+      // Not at start of line (likely inside JSX)
+      !/^\s*import\s/.test(line);
     
-    // Only transform actual import statements (not imports in strings/JSX/comments)
-    if (isValidImportStatement(line)) {
-      console.log(`[Build] ✅ Transforming import at line ${i + 1}: ${line.trim()}`);
-      transformedLine = applyImportTransformations(line);
+    if (isCodeExample) {
+      console.log(`[Build] 🚫 Skipping code example at line ${i + 1}: ${trimmed.substring(0, 50)}...`);
+      transformedLines.push(line);
+      continue;
     }
     
-    transformedLines.push(transformedLine);
+    // Only transform actual import statements
+    if (/^\s*import\s/.test(line)) {
+      console.log(`[Build] ✅ Transforming actual import at line ${i + 1}: ${trimmed}`);
+      
+      let transformedLine = line;
+      
+      // Remove CSS imports
+      if (/import\s*['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(line)) {
+        transformedLine = '// CSS import removed for browser compatibility';
+      }
+      // Transform 0x1 framework imports
+      else if (/^\s*import\s+.*?\s+from\s+["']0x1["']/.test(line)) {
+        transformedLine = line.replace(
+          /^(\s*import\s+.*?\s+from\s+)["']0x1["']/,
+          '$1"/node_modules/0x1/index.js"'
+        );
+      }
+      // Transform 0x1 submodule imports
+      else if (/^\s*import\s+.*?\s+from\s+["']0x1\//.test(line)) {
+        transformedLine = line.replace(
+          /^(\s*import\s+.*?\s+from\s+)["']0x1\/(link|router|jsx-runtime|jsx-dev-runtime)["']/,
+          (match, importPart, module) => {
+            const moduleMap: Record<string, string> = {
+              'link': '/0x1/link.js',
+              'router': '/0x1/router.js',
+              'jsx-runtime': '/0x1/jsx-runtime.js',
+              'jsx-dev-runtime': '/0x1/jsx-dev-runtime.js'
+            };
+            return `${importPart}"${moduleMap[module]}"`;
+          }
+        );
+      }
+      // Transform relative imports
+      else if (/^\s*import\s+.*?\s+from\s+["']\./.test(line)) {
+        transformedLine = line.replace(
+          /^(\s*import\s+.*?\s+from\s+)["'](\.[^"']+)["']/,
+          (match, importPart, path) => {
+            let browserPath = path;
+            if (path.startsWith('../')) {
+              browserPath = path.replace(/^\.\.\//, '/');
+            } else if (path.startsWith('./')) {
+              browserPath = path.replace(/^\.\//, '/components/');
+            }
+            
+            if (!browserPath.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
+              browserPath += '.js';
+            } else if (browserPath.match(/\.(ts|tsx|jsx)$/)) {
+              browserPath = browserPath.replace(/\.(ts|tsx|jsx)$/, '.js');
+            }
+            
+            return `${importPart}"${browserPath}"`;
+          }
+        );
+      }
+      
+      transformedLines.push(transformedLine);
+    } else {
+      transformedLines.push(line);
+    }
   }
   
-  console.log('[Build] ✅ Bulletproof import transformation complete');
+  console.log('[Build] ✅ Simple bulletproof import transformation complete');
   return transformedLines.join('\n');
+}
+
+// Normalize module paths for browser compatibility
+function normalizeModulePath(path: string): string {
+  let normalizedPath = path;
+  
+  // Handle different directory structures
+  if (path.includes('components/')) {
+    normalizedPath = path.replace(/^.*?components\//, 'components/');
+  } else if (path.includes('lib/')) {
+    normalizedPath = path.replace(/^.*?lib\//, 'lib/');
+  } else if (path.includes('utils/')) {
+    normalizedPath = path.replace(/^.*?utils\//, 'utils/');
+  } else if (path.includes('hooks/')) {
+    normalizedPath = path.replace(/^.*?hooks\//, 'hooks/');
+  } else if (path.includes('context/')) {
+    normalizedPath = path.replace(/^.*?context\//, 'context/');
+  } else {
+    // Default: assume it's a component if no specific directory
+    normalizedPath = path.startsWith('components/') ? path : `components/${path}`;
+  }
+  
+  // Add .js extension if needed
+  if (!normalizedPath.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
+    normalizedPath += '.js';
+  } else if (normalizedPath.match(/\.(ts|tsx|jsx)$/)) {
+    normalizedPath = normalizedPath.replace(/\.(ts|tsx|jsx)$/, '.js');
+  }
+  
+  return normalizedPath;
 }
 
 // Advanced JavaScript/TypeScript tokenizer for accurate context detection
@@ -166,7 +268,7 @@ function tokenizeJavaScript(sourceCode: string): Array<{type: string, value: str
   let inSingleQuote = false;
   let inDoubleQuote = false;
   let inTemplateString = false;
-  let inRegex = false;
+  const inRegex = false;
   let inBlockComment = false;
   let inLineComment = false;
   let escapeNext = false;
@@ -419,36 +521,6 @@ function applyImportTransformations(line: string): string {
   );
   
   return transformedLine;
-}
-
-// Normalize module paths for browser compatibility
-function normalizeModulePath(path: string): string {
-  let normalizedPath = path;
-  
-  // Handle different directory structures
-  if (path.includes('components/')) {
-    normalizedPath = path.replace(/^.*?components\//, 'components/');
-  } else if (path.includes('lib/')) {
-    normalizedPath = path.replace(/^.*?lib\//, 'lib/');
-  } else if (path.includes('utils/')) {
-    normalizedPath = path.replace(/^.*?utils\//, 'utils/');
-  } else if (path.includes('hooks/')) {
-    normalizedPath = path.replace(/^.*?hooks\//, 'hooks/');
-  } else if (path.includes('context/')) {
-    normalizedPath = path.replace(/^.*?context\//, 'context/');
-  } else {
-    // Default: assume it's a component if no specific directory
-    normalizedPath = path.startsWith('components/') ? path : `components/${path}`;
-  }
-  
-  // Add .js extension if needed
-  if (!normalizedPath.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
-    normalizedPath += '.js';
-  } else if (normalizedPath.match(/\.(ts|tsx|jsx)$/)) {
-    normalizedPath = normalizedPath.replace(/\.(ts|tsx|jsx)$/, '.js');
-  }
-  
-  return normalizedPath;
 }
 
 // Helper function to detect actual import statements vs code examples
@@ -2597,75 +2669,8 @@ function preprocessTemplateLiterals(sourceCode: string): string {
  * and removes CSS imports that would cause MIME type errors
  */
 function transformBareImports(content: string, filePath?: string, projectPath?: string): string {
-  // CRITICAL FIX: Preserve destructuring imports properly
-  let transformedContent = content;
+  console.log('[Build] 🧠 Applying context-aware import transformations (transformBareImports)...');
   
-  // CRITICAL: Remove CSS imports first (they cause MIME type errors)
-  transformedContent = transformedContent
-    .replace(/import\s*['"'][^'"]*\.css['"];?/g, '// CSS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.scss['"];?/g, '// SCSS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.sass['"];?/g, '// SASS import removed for browser compatibility')
-    .replace(/import\s*['"'][^'"]*\.less['"];?/g, '// LESS import removed for browser compatibility');
-  
-  // Transform 0x1 imports ONLY
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"]0x1['"]/g,
-    'import $1 from "/node_modules/0x1/index.js"'
-  );
-  
-  // Transform relative imports to absolute paths
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"](\.\.\/.+?)['"]/g,
-    (match, importClause, importPath) => {
-      // Don't modify the import clause structure - just fix the path
-      let browserPath = importPath;
-      
-      // Map specific patterns to browser-accessible paths
-      if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\.\/.*?utils\//, '/utils/');
-      } else {
-        browserPath = importPath.replace(/^\.\.\//, '/');
-      }
-      
-      // Add .js extension if not present
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
-      }
-      
-      // Return the import with the same clause structure
-      return `import ${importClause} from '${browserPath}'`;
-    }
-  );
-  
-  // Transform same-directory imports
-  transformedContent = transformedContent.replace(
-    /import\s+(.+?)\s+from\s+['"](\.\/.+?)['"]/g,
-    (match, importClause, importPath) => {
-      let browserPath = importPath;
-      
-      if (importPath.includes('components/')) {
-        browserPath = importPath.replace(/^\.\/.*?components\//, '/components/');
-      } else if (importPath.includes('lib/')) {
-        browserPath = importPath.replace(/^\.\/.*?lib\//, '/lib/');
-      } else if (importPath.includes('utils/')) {
-        browserPath = importPath.replace(/^\.\/.*?utils\//, '/utils/');
-      } else {
-        browserPath = importPath.replace(/^\.\//, '/components/');
-      }
-      
-      if (!browserPath.endsWith('.js') && !browserPath.endsWith('.ts') && !browserPath.endsWith('.tsx') && 
-          !browserPath.endsWith('.css') && !browserPath.endsWith('.json') && !browserPath.endsWith('.svg')) {
-        browserPath += '.js';
-      }
-      
-      return `import ${importClause} from '${browserPath}'`;
-    }
-  );
-  
-  return transformedContent;
+  // CRITICAL FIX: Use the same bulletproof context-aware logic
+  return transformImportsForBrowser(content);
 }
