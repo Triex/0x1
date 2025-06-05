@@ -30,7 +30,7 @@ export interface PageProps extends ComponentProps {
 }
 
 // Type definition for components
-export type Component<P extends ComponentProps = ComponentProps> = (props: P) => ComponentReturn;
+export type DOMComponent<P extends ComponentProps = ComponentProps> = (props: P) => ComponentReturn;
 
 /**
  * Creates a DOM element with the specified tag and props
@@ -90,14 +90,14 @@ export function createElement<K extends keyof HTMLElementTagNameMap>(
  */
 export function createComponent<P extends ComponentProps>(
   render: (props: P) => HTMLElement
-): Component<P> {
+): DOMComponent<P> {
   return render;
 }
 
 /**
  * Mount a component to a DOM element
  */
-export function mount(component: Component | ComponentReturn, container: HTMLElement): void {
+export function mount(component: DOMComponent | ComponentReturn, container: HTMLElement): void {
   let content: ComponentReturn;
   
   if (typeof component === 'function') {
@@ -126,7 +126,7 @@ export function mount(component: Component | ComponentReturn, container: HTMLEle
  */
 export function updateComponent<P extends ComponentProps>(
   element: HTMLElement,
-  component: Component<P>,
+  component: DOMComponent<P>,
   props: P
 ): HTMLElement | DocumentFragment {
   const result = component(props);
@@ -156,9 +156,9 @@ export function updateComponent<P extends ComponentProps>(
 }
 
 /**
- * Fragment component for grouping multiple children without a wrapper element
+ * DOMFragment component for grouping multiple children without a wrapper element
  */
-export function Fragment(props: ComponentProps): DocumentFragment {
+export function DOMFragment(props: ComponentProps): DocumentFragment {
   const fragment = document.createDocumentFragment();
   
   const { children } = props;

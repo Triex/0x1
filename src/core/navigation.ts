@@ -3,21 +3,17 @@
  * Provides routing and page navigation components
  */
 
-export interface Component {
+export interface NavigationComponent {
   render: (props?: any) => HTMLElement;
   onMount?: () => void;
   onUnmount?: () => void;
 }
 
-export interface Page<P = any> extends Component {
-  title?: string;
-  meta?: {
-    description?: string;
-    [key: string]: string | undefined;
-  };
-  render: (props?: P) => HTMLElement;
-  onMount?: () => void;
-  onUnmount?: () => void;
+// Page interface for navigation (renamed to avoid conflicts with router Page)
+export interface NavigationPage {
+  render: (params?: any) => HTMLElement;
+  onMount?: (element: HTMLElement, params?: any) => void;
+  onUnmount?: (element: HTMLElement) => void;
 }
 
 
@@ -102,7 +98,7 @@ export function NavLink(props: {
 /**
  * Create a redirect component
  */
-export function Redirect(props: { to: string }): Component {
+export function Redirect(props: { to: string }): NavigationComponent {
   return {
     render: () => {
       setTimeout(() => {

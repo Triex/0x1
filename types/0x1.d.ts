@@ -291,3 +291,45 @@ declare module '0x1/link' {
   
   export default function Link(props: LinkProps): any;
 }
+
+declare namespace ZeroX1Core {
+  // Core router interfaces
+  export interface RouterOptions {
+    root: HTMLElement;
+    mode?: 'history' | 'hash';
+    basePath?: string;
+    notFoundComponent?: any;
+    transitionDuration?: number;
+  }
+
+  export interface RouteParams {
+    [key: string]: string;
+  }
+
+  export interface Page<T = any> {
+    render: (params?: RouteParams) => HTMLElement;
+    onMount?: (element: HTMLElement, params?: RouteParams) => void;
+    onUnmount?: (element: HTMLElement) => void;
+    getData?: () => Promise<T>;
+  }
+
+  // Router class and related functionality
+  export class Router {
+    constructor(options: RouterOptions);
+    rootElement: HTMLElement;
+    mode: 'history' | 'hash';
+    routes: Map<string, any>;
+    basePath: string;
+    notFoundComponent: any;
+    transitionDuration: number;
+    currentComponent: any;
+
+    init(): void;
+    add(path: string, component: any): void;
+    addRoute(path: string, component: Page<any> | Component): void;
+    navigate(path: string): void;
+    go(delta: number): void;
+    back(): void;
+    forward(): void;
+  }
+}

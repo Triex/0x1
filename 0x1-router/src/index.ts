@@ -55,6 +55,9 @@ interface RouteContext {
   meta: Record<string, any>;
 }
 
+// Route parameters type - needed by the main framework
+export type RouteParams = Record<string, string>;
+
 // Router class - handles both client and server-side routing
 class Router {
   private routes: Route[] = [];
