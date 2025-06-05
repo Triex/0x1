@@ -66,6 +66,10 @@ async function buildFramework() {
           import: "./jsx-dev-runtime.js",
           default: "./jsx-dev-runtime.js",
         },
+        "./router": {
+          import: "./router.js",
+          default: "./router.js",
+        },
         "./core/*": {
           types: "./types/*.d.ts",
           import: "./core/*.js",
@@ -155,6 +159,26 @@ async function buildFramework() {
         console.log("✅ Built link.js");
       } else {
         console.warn("⚠️ Failed to build link.js");
+      }
+    }
+
+    console.log("📦 Building Router module...");
+
+    // Build Router module for Next.js-style imports (0x1/router)
+    const routerModulePath = join(srcDir, "router.ts");
+    if (existsSync(routerModulePath)) {
+      const { success } = await Bun.build({
+        entrypoints: [routerModulePath],
+        outdir: distDir,
+        target: "browser",
+        format: "esm",
+        minify: true,
+      });
+
+      if (success) {
+        console.log("✅ Built router.js");
+      } else {
+        console.warn("⚠️ Failed to build router.js");
       }
     }
 

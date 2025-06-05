@@ -15,3 +15,7 @@ export function createRouter(options: any) {
 
 // Export type definitions with consistent naming
 export type { NavigationPage as Page } from './core/navigation.js';
+
+// Re-export router hooks for Next.js-style imports
+export { useParams, useRouter, useSearchParams } from '0x1-router';
+

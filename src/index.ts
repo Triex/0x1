@@ -21,7 +21,7 @@ export {
 } from './core/hooks.js';
 
 // Router (from 0x1-router package)
-export { Router, type RouteParams } from '0x1-router';
+export { NavLink, Redirect, Router, Link as RouterLink, useParams, useRouter, useSearchParams, type RouteParams } from '0x1-router';
 
 // Store (from 0x1-store package)
 export * as store from '0x1-store';
