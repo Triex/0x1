@@ -356,7 +356,8 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     
     // CRITICAL FIX: Pre-process source code to handle template literals properly
     // This prevents the transpiler from generating invalid JavaScript
-    processedCode = preprocessTemplateLiterals(processedCode);
+    // DISABLED: This is causing "Unterminated string literal" errors
+    // processedCode = preprocessTemplateLiterals(processedCode);
     
     // CRITICAL FIX: Force JSX transpilation for any file with JSX elements
     if (hasJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
@@ -393,9 +394,8 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       let finalCode = normalizeJsxFunctionCalls(transpiledContent);
       finalCode = insertJsxRuntimePreamble(finalCode);
       
-      // CRITICAL FIX: Fix template literal syntax issues in transpiled code
-      // Escape unescaped backticks that are breaking JavaScript syntax
-      finalCode = fixTemplateLiteralSyntax(finalCode);
+      // DISABLED: This was trying to fix the mess from preprocessTemplateLiterals
+      // finalCode = fixTemplateLiteralSyntax(finalCode);
       
       console.log(`[Build] ✅ Successfully transpiled JSX file: ${sourcePath}`);
       return finalCode;
