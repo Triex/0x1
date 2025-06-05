@@ -162,26 +162,6 @@ async function buildFramework() {
       }
     }
 
-    console.log("📦 Building Router module...");
-
-    // Build Router module for Next.js-style imports (0x1/router)
-    const routerModulePath = join(srcDir, "router.ts");
-    if (existsSync(routerModulePath)) {
-      const { success } = await Bun.build({
-        entrypoints: [routerModulePath],
-        outdir: distDir,
-        target: "browser",
-        format: "esm",
-        minify: true,
-      });
-
-      if (success) {
-        console.log("✅ Built router.js");
-      } else {
-        console.warn("⚠️ Failed to build router.js");
-      }
-    }
-
     console.log("📦 Building JSX runtime...");
 
     // Build JSX runtime files from our ONE SOURCE OF TRUTH
@@ -317,6 +297,26 @@ async function buildFramework() {
     if (existsSync(routerSource)) {
       await Bun.write(routerDest, await Bun.file(routerSource).text());
       console.log("✅ Copied router to dist/core/router.js");
+    }
+
+    console.log("📦 Building Router module...");
+
+    // Build Router module for Next.js-style imports (0x1/router)
+    const routerModulePath = join(srcDir, "router.ts");
+    if (existsSync(routerModulePath)) {
+      const { success } = await Bun.build({
+        entrypoints: [routerModulePath],
+        outdir: distDir,
+        target: "browser",
+        format: "esm",
+        minify: true,
+      });
+
+      if (success) {
+        console.log("✅ Built router.js");
+      } else {
+        console.warn("⚠️ Failed to build router.js");
+      }
     }
 
     // Build 0x1-templates package
