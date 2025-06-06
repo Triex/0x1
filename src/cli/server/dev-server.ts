@@ -525,7 +525,7 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
 
 /**
  * Server-side route discovery - scans the actual file system
- * Enhanced to support Next.js 15-style routing with full feature parity:
+ * Enhanced to support Next15-style routing with full feature parity:
  * - Dynamic routes: [slug], [id], etc.
  * - Catch-all routes: [...slug], [[...slug]]
  * - Route groups: (group) - don't affect URL structure
@@ -1777,7 +1777,7 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
         );
 
         const searchParamsHooks = `
-// 0x1 Framework - Next.js 15-style Search Params & Navigation Hooks
+// 0x1 Framework - Next15-style Search Params & Navigation Hooks
 console.log('[0x1 Navigation] Loading Next.js-style navigation hooks...');
 
 // ===== SEARCH PARAMS MANAGEMENT =====
@@ -3875,7 +3875,7 @@ if (document.readyState === 'loading') {
       // ========================================
       // 🎨 ULTRA-DYNAMIC CSS & GLOBALS HANDLER
       // Intelligent CSS discovery and serving
-      // Works with Next.js 15, Vite, any framework!
+      // Works with Next15, Vite, any framework!
       // ========================================
 
       // Handle globals.css and any CSS file requests

@@ -25,7 +25,7 @@ function filterBooleanValues(item) {
 
 /**
  * Check if content has a full HTML structure (with html, head, body tags)
- * Used to detect Next.js 15-style layouts
+ * Used to detect Next15-style layouts
  * 
  * @param {any} content - The content to check
  * @returns {boolean} True if content has HTML structure

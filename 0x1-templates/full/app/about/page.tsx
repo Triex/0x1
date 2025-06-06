@@ -1,6 +1,6 @@
 /**
  * About page component
- * Similar to Next.js 15's app/about/page.tsx
+ * Similar to Next15's app/about/page.tsx
  */
 
 export default function AboutPage() {

@@ -1004,7 +1004,7 @@ class Router {
     }
   }
 
-  // Efficient component rendering inspired by React 19/Next.js 15
+  // Efficient component rendering inspired by React 19/Next15
   public renderComponentWithHookContext(
     component: (props?: any) => any,
     props: any

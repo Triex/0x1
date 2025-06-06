@@ -1,6 +1,6 @@
 /**
  * Not Found component
- * Similar to Next.js 15's app/not-found.tsx
+ * Similar to Next15's app/not-found.tsx
  */
 
 export default function NotFound() {

@@ -1,5 +1,5 @@
 /**
- * 0x1 Metadata System - Next.js 15 Compatible
+ * 0x1 Metadata System - Next15 Compatible
  * Simple, static metadata exports for production apps
  */
 
@@ -97,7 +97,7 @@ export interface AppLinks {
 }
 
 /**
- * Next.js 15 Compatible Metadata Interface
+ * Next15 Compatible Metadata Interface
  * Use this for static metadata exports: export const metadata: Metadata = {...}
  */
 export interface Metadata {
@@ -645,7 +645,7 @@ export function generateHeadContent(metadata: Metadata, pageTitle?: string): str
 
 /**
  * Automatically extract metadata from a file's exports
- * This enables Next.js 15-style static metadata exports
+ * This enables Next15-style static metadata exports
  */
 export async function extractMetadataFromFile(filePath: string): Promise<Metadata | null> {
   try {

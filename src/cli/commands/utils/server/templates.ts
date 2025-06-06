@@ -135,7 +135,7 @@ export const BODY_START = `</head>
       }
     })();
     
-    // Handle Next.js 15-style layouts with full HTML structure
+    // Handle Next15-style layouts with full HTML structure
     (function() {
       // Function to check if a node has a full HTML structure
       window.__0x1_hasHtmlStructure = function(content) {

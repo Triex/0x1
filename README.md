@@ -46,7 +46,7 @@
 ### 🔄 React/Next.js Drop-in Replacement
 - **Full React Hooks API**: `useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`
 - **Next.js-compatible Link**: Drop-in replacement for `next/link`
-- **App Directory Structure**: Next.js 15-style file-based routing
+- **App Directory Structure**: Next15-style file-based routing
 - **JSX Runtime**: Custom JSX implementation without React dependencies
 - **Efficient Server Actions**: `"use server"` functions with automatic internal API generation (never exposed publicly)
 - **Explicitly Split Client/Server**: Simply use `"use server"` for server-side functions and `"use client"` for client-side components, or leave it up to 0x1 to automatically infer the context
@@ -54,7 +54,7 @@
 
 ### 🧩 Component System
 - **TypeScript-Only**: Exclusively built for TypeScript with full type safety
-- **Simple API**: Modern component system, Next.js 15-compatible, but without the bloat
+- **Simple API**: Modern component system, Next15-compatible, but without the bloat
 - **Minimal abstractions**: Near-vanilla performance with type-checked templates
 - **Custom Diffing**: Optimized DOM updates with TypeScript safety
 - **Compile-time validation**: Catch errors early with strict typing
@@ -62,7 +62,7 @@
 - **Runtime Error Boundaries**: Beautiful error display for development with helpful suggestions
 
 ### 📁 App Directory Structure
-- **Next.js 15-compatible**: Modern app directory structure with file-based routing
+- **Next15-compatible**: Modern app directory structure with file-based routing
 - **Nested layouts**: Component co-location and shared UI
 - **Special file conventions**: `page.tsx`, `layout.tsx`, `loading.tsx`, `not-found.tsx`, etc.
 - **Zero configuration**: Works out of the box
@@ -70,7 +70,7 @@
 ### 🛣️ Advanced Routing System
 - **Dynamic routes**: `[slug]`, `[...slug]`, `[[...slug]]` patterns
 - **Route groups**: `(auth)` folders that don't affect URL structure
-- **Search params**: Next.js 15-style `useSearchParams`, `useParams`, `usePathname`
+- **Search params**: Next15-style `useSearchParams`, `useParams`, `usePathname`
 - **Route conflict detection**: Automatic detection and resolution of conflicting routes
 - **Hash fragment navigation**: Proper `#anchor` link handling with auto-scroll
 - **Nested layouts**: Automatic composition of multiple layout levels
@@ -193,7 +193,7 @@ cd my-app
 
 ## 🎯 Metadata & SEO Management
 
-0x1 provides a Next.js 15-compatible metadata system that works automatically without requiring manual imports or function calls.
+0x1 provides a Next15-compatible metadata system that works automatically without requiring manual imports or function calls.
 
 ### Static Metadata Export
 
@@ -313,7 +313,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
 
 ## Client/Server Directives
 
-0x1 supports Next.js 15-style client and server directives for clear separation of concerns.
+0x1 supports Next15-style client and server directives for clear separation of concerns.
 
 ### Client Components
 
@@ -662,11 +662,11 @@ function MyComponent() {
 
 ## 📁 App Directory Structure
 
-0x1 uses the modern Next.js 15-compatible app directory structure:
+0x1 uses the modern Next15patible app directory structure:
 
 ```
 my-app/
-├── app/                    # App directory (Next.js 15-style)
+├── app/                    # App directory (Next15-style)
 │   ├── layout.tsx          # Root layout (required)
 │   ├── page.tsx            # Home page
 │   ├── not-found.tsx       # 404 page
@@ -1052,7 +1052,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.270)
+### Current State (v0.0.271)
 - ✅ Full React Hooks API compatibility
 - ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component

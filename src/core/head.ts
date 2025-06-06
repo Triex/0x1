@@ -1,5 +1,5 @@
 /**
- * 0x1 Head Management System - Next.js 15 Compatible
+ * 0x1 Head Management System - Next15 Compatible
  * Simple, static head management for production apps
  */
 
@@ -9,7 +9,7 @@ import { DEFAULT_METADATA, Metadata, generateHeadContent, mergeMetadata } from '
 let globalMetadata: Metadata = { ...DEFAULT_METADATA };
 
 /**
- * Set global metadata that applies to all pages (Next.js 15 style)
+ * Set global metadata that applies to all pages (Next15 style)
  * Call this once in your root layout
  */
 export function setGlobalMetadata(metadata: Metadata): void {
@@ -68,7 +68,7 @@ export interface HeadProps {
 }
 
 /**
- * Head component for JSX-based head content (Next.js 15 style)
+ * Head component for JSX-based head content (Next15 style)
  * Usage: <Head title="Page Title" metadata={{...}} />
  */
 export function Head(props: HeadProps): null {
@@ -153,7 +153,7 @@ export function useMetadata(metadata: Metadata, title?: string): void {
 }
 
 /**
- * Generate metadata object for a page (Next.js 15 style)
+ * Generate metadata object for a page (Next15 style)
  * Use this to create metadata objects for static export
  */
 export function generateMetadata(params: {

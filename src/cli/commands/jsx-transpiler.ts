@@ -1,11 +1,11 @@
 /**
  * JSX Transpiler - Uses Bun build command to transform JSX code
- * Optimized for React 19 and Next.js 15 compatibility
+ * Optimized for React 19 and Next15 compatibility
  */
 import Bun from 'bun';
-import { existsSync, mkdirSync, promises as fsPromises } from 'fs';
-import { basename, dirname, extname, join, resolve } from 'path';
+import { promises as fsPromises } from 'fs';
 import { tmpdir } from 'os';
+import { basename, dirname, join } from 'path';
 import { logger } from '../utils/logger';
 
 // Constants for build configuration
@@ -158,7 +158,7 @@ export async function transpileJSX(
     // Add a preamble to ensure all required globals are available
     const preamble = `
 // 0x1 Framework JSX compatibility layer
-// This ensures compatibility with React 19 and Next.js 15
+// This ensures compatibility with React 19 and Next15
 
 // Global JSX functions to ensure consistent behavior
 globalThis.__jsx = function jsx(type, props, key) { return { type, props, key }; };

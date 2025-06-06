@@ -1,6 +1,6 @@
 /**
  * Contact page component
- * Similar to Next.js 15's app/contact/page.tsx
+ * Similar to Next15's app/contact/page.tsx
  */
 
 // In Next.js this would be a Server Component that could handle form submissions

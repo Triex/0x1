@@ -1,6 +1,6 @@
 /**
  * Features page component
- * Similar to Next.js 15's app/features/page.tsx
+ * Similar to Next15's app/features/page.tsx
  */
 
 import PerformanceBenchmark from '../../components/PerformanceBenchmark';

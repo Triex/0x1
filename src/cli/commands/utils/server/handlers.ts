@@ -127,7 +127,7 @@ export async function serveAppDirectoryHtml(
         // Function to properly handle layout content
         window.__0x1_processLayoutContent = function(content) {
           if (window.__0x1_hasHtmlStructure(content)) {
-            console.log('[0x1] Detected Next.js 15-style layout with full HTML structure');
+            console.log('[0x1] Detected Next15-style layout with full HTML structure');
             return window.__0x1_extractBodyContent(content);
           }
           return content;

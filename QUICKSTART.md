@@ -138,11 +138,11 @@ find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]next\/lin
 
 ## App Directory Structure
 
-0x1 uses Next.js 15-compatible app directory structure:
+0x1 uses Next15-compatible app directory structure:
 
 ```
 my-app/
-├── app/                    # App directory (Next.js 15-style)
+├── app/                    # App directory
 │   ├── layout.tsx          # Root layout (required)
 │   ├── page.tsx            # Home page
 │   ├── not-found.tsx       # 404 page
@@ -251,7 +251,7 @@ function EnhancedComponent() {
 
 ## Metadata & SEO
 
-0x1 supports Next.js 15-style metadata:
+0x1 supports Next15-style metadata:
 
 ```tsx
 // app/page.tsx

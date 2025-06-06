@@ -1,5 +1,5 @@
 /**
- * 0x1 Client/Server Directives - Next.js 15 Compatible
+ * 0x1 Client/Server Directives - Next15 Compatible
  * Provides "use client" and "use server" directive support
  */
 

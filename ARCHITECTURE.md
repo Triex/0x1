@@ -126,7 +126,7 @@ Supported hooks:
 
 ### 3. App Directory Router (`src/router/`)
 
-Next.js 15-compatible file-based routing with app directory structure:
+Next15-compatible file-based routing with app directory structure:
 
 ```typescript
 export class AppRouter {
@@ -247,7 +247,7 @@ export default function Link({
 
 ### 5. Metadata System (`src/metadata/`)
 
-Next.js 15-compatible metadata handling:
+Next15-compatible metadata handling:
 
 ```typescript
 // Metadata types
