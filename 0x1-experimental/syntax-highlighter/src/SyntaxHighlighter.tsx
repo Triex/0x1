@@ -3,13 +3,13 @@
  * Beautiful, lightweight code highlighting for your 0x1 apps
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from '0x1';
 import { highlight, HighlightOptions } from './highlighter';
 
 export interface SyntaxHighlighterProps extends HighlightOptions {
   children: string;
   className?: string;
-  style?: React.CSSProperties;
+  style?: any; // Changed from React.CSSProperties to any for 0x1 compatibility
   copyable?: boolean;
   title?: string;
   footer?: string;
@@ -31,31 +31,49 @@ export function SyntaxHighlighter({
   footer,
   onCopy
 }: SyntaxHighlighterProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const containerRef = useRef<any>(null);
+  const copyButtonRef = useRef<any>(null);
+  const timeoutRef = useRef<any>(null);
 
-  // Generate highlighted HTML
-  const highlightedHTML = highlight(code, {
-    language,
-    theme,
-    showLineNumbers,
-    startLineNumber,
-    maxLines,
-    wrapLines
-  });
+  // Memoize the highlighted HTML to prevent re-renders
+  const highlightedHTML = useMemo(() => {
+    return highlight(code, {
+      language,
+      theme,
+      showLineNumbers,
+      startLineNumber,
+      maxLines,
+      wrapLines
+    });
+  }, [code, language, theme, showLineNumbers, startLineNumber, maxLines, wrapLines]);
 
-  // Copy to clipboard functionality
+  // Copy to clipboard functionality - no state updates!
   const handleCopy = async () => {
-    if (!copyable) return;
+    console.log('Copy button clicked!', { copyable, copyButtonRef: copyButtonRef.current });
+    if (!copyable || !copyButtonRef.current) return;
     
     try {
+      console.log('Attempting to copy:', code);
       await navigator.clipboard.writeText(code);
-      setCopied(true);
-      onCopy?.(code);
+      console.log('Copy successful!');
       
-      // Reset copied state after 2 seconds
-      setTimeout(() => setCopied(false), 2000);
+      // Update button directly without state
+      copyButtonRef.current.textContent = '✅';
+      copyButtonRef.current.classList.add('copied');
+      
+      // Clear any existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      
+      // Reset after 2 seconds
+      timeoutRef.current = setTimeout(() => {
+        console.log('Resetting copy button');
+        if (copyButtonRef.current) {
+          copyButtonRef.current.textContent = '📋';
+          copyButtonRef.current.classList.remove('copied');
+        }
+      }, 2000);
     } catch (error) {
       console.error('Failed to copy code:', error);
       
@@ -66,15 +84,52 @@ export function SyntaxHighlighter({
       textArea.select();
       try {
         document.execCommand('copy');
-        setCopied(true);
-        onCopy?.(code);
-        setTimeout(() => setCopied(false), 2000);
+        console.log('Fallback copy successful!');
+        
+        // Update button directly without state
+        copyButtonRef.current.textContent = '✅';
+        copyButtonRef.current.classList.add('copied');
+        
+        // Clear any existing timeout
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        
+        timeoutRef.current = setTimeout(() => {
+          console.log('Resetting copy button (fallback)');
+          if (copyButtonRef.current) {
+            copyButtonRef.current.textContent = '📋';
+            copyButtonRef.current.classList.remove('copied');
+          }
+        }, 2000);
       } catch (fallbackError) {
         console.error('Fallback copy failed:', fallbackError);
       }
       document.body.removeChild(textArea);
     }
   };
+
+  // Handle hover with direct DOM manipulation - no state!
+  const handleMouseEnter = () => {
+    if (copyButtonRef.current) {
+      copyButtonRef.current.classList.add('visible');
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (copyButtonRef.current) {
+      copyButtonRef.current.classList.remove('visible');
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   // Add keyboard shortcut for copying (Ctrl/Cmd + C when focused)
   useEffect(() => {
@@ -96,8 +151,8 @@ export function SyntaxHighlighter({
     <div 
       className={`syntax-highlighter-wrapper ${className}`}
       style={style}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Header with title */}
       {title && (
@@ -116,15 +171,16 @@ export function SyntaxHighlighter({
         aria-label={`Code snippet in ${language}`}
         aria-readonly="true"
       >
-        {/* Copy button */}
+        {/* Copy button with hover */}
         {copyable && (
           <button
-            className={`copy-button ${copied ? 'copied' : ''} ${isHovered ? 'visible' : ''}`}
+            ref={copyButtonRef}
+            className="copy-button"
             onClick={handleCopy}
-            aria-label={copied ? 'Copied!' : 'Copy code to clipboard'}
-            title={copied ? 'Copied!' : 'Copy code'}
+            aria-label="Copy code to clipboard"
+            title="Copy code"
           >
-            {copied ? '✅' : '📋'}
+            📋
           </button>
         )}
         

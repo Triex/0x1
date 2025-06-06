@@ -26,28 +26,7 @@ npm install @0x1js/highlighter
 
 ## 🚀 Quick Start
 
-### Basic Usage (Vanilla JS)
-
-```javascript
-import { highlight } from '@0x1js/highlighter';
-import '@0x1js/highlighter/styles';
-
-const code = `
-function greet(name) {
-  console.log(\`Hello, \${name}!\`);
-}
-`;
-
-const highlightedHTML = highlight(code, {
-  language: 'javascript',
-  theme: 'dark',
-  showLineNumbers: true
-});
-
-document.getElementById('code-container').innerHTML = highlightedHTML;
-```
-
-### React Component
+### React Component (Recommended)
 
 ```tsx
 import { SyntaxHighlighter } from '@0x1js/highlighter';
@@ -85,59 +64,48 @@ function Counter() {
 }
 ```
 
-### Specialized Components
+### Vanilla JavaScript
 
-```tsx
-import { 
-  JavaScriptHighlighter,
-  TypeScriptHighlighter,
-  BashHighlighter,
-  InlineCode 
-} from '@0x1js/highlighter';
+```javascript
+import { highlight } from '@0x1js/highlighter';
+import '@0x1js/highlighter/styles';
 
-// JavaScript with custom options
-<JavaScriptHighlighter 
-  theme="light"
-  showLineNumbers
-  maxLines={20}
->
-  {jsCode}
-</JavaScriptHighlighter>
+const code = `
+function greet(name) {
+  console.log(\`Hello, \${name}!\`);
+}
+`;
 
-// TypeScript
-<TypeScriptHighlighter theme="violet">
-  {tsCode}
-</TypeScriptHighlighter>
+const highlightedHTML = highlight(code, {
+  language: 'javascript',
+  theme: 'dark',
+  showLineNumbers: true
+});
 
-// Bash commands
-<BashHighlighter theme="dark">
-  {`#!/bin/bash
-cd /path/to/project
-bun install
-bun run build`}
-</BashHighlighter>
-
-// Inline code
-<p>
-  Use <InlineCode>console.log()</InlineCode> for debugging.
-</p>
+document.getElementById('code-container').innerHTML = highlightedHTML;
 ```
 
 ## 🎨 Themes
 
 ### Dark Theme (Default)
 ```javascript
-highlight(code, { language: 'javascript', theme: 'dark' })
+<SyntaxHighlighter language="javascript" theme="dark">
+  {code}
+</SyntaxHighlighter>
 ```
 
 ### Light Theme
 ```javascript
-highlight(code, { language: 'javascript', theme: 'light' })
+<SyntaxHighlighter language="javascript" theme="light">
+  {code}
+</SyntaxHighlighter>
 ```
 
 ### Violet Theme (0x1 Brand)
 ```javascript
-highlight(code, { language: 'javascript', theme: 'violet' })
+<SyntaxHighlighter language="javascript" theme="violet">
+  {code}
+</SyntaxHighlighter>
 ```
 
 ## 🛠️ Configuration Options
@@ -165,6 +133,28 @@ interface SyntaxHighlighterProps extends HighlightOptions {
 
 ## 📚 Examples
 
+### Different Languages
+
+```tsx
+{/* TypeScript */}
+<SyntaxHighlighter language="typescript" theme="violet">
+  {tsCode}
+</SyntaxHighlighter>
+
+{/* Bash commands */}
+<SyntaxHighlighter language="bash" theme="dark">
+  {`#!/bin/bash
+cd /path/to/project
+bun install
+bun run build`}
+</SyntaxHighlighter>
+
+{/* JSON data */}
+<SyntaxHighlighter language="json" theme="light" showLineNumbers>
+  {jsonData}
+</SyntaxHighlighter>
+```
+
 ### With Custom Styling
 
 ```tsx
@@ -184,41 +174,14 @@ interface SyntaxHighlighterProps extends HighlightOptions {
 </SyntaxHighlighter>
 ```
 
-### Bash Commands
+### Inline Code
 
 ```tsx
-<BashHighlighter title="Installation" theme="dark">
-{`# Clone the repository
-git clone https://github.com/yourusername/0x1-project.git
+import { InlineCode } from '@0x1js/highlighter';
 
-# Navigate to project
-cd 0x1-project
-
-# Install dependencies
-bun install
-
-# Start development server
-bun dev`}
-</BashHighlighter>
-```
-
-### JSON Configuration
-
-```tsx
-<JSONHighlighter theme="light" showLineNumbers>
-{`{
-  "name": "@0x1/my-app",
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "0x1 dev",
-    "build": "0x1 build",
-    "start": "0x1 start"
-  },
-  "dependencies": {
-    "0x1": "^0.1.0"
-  }
-}`}
-</JSONHighlighter>
+<p>
+  Use <InlineCode>console.log()</InlineCode> for debugging.
+</p>
 ```
 
 ## 🎯 Advanced Usage
@@ -277,6 +240,28 @@ console.log(getSupportedLanguages());
 // ['javascript', 'typescript', 'bash', 'json', 'html', 'css']
 ```
 
+## 💡 Best Practices
+
+### ✅ Recommended Approach
+```tsx
+// Use the main component with language prop
+import { SyntaxHighlighter } from '@0x1js/highlighter';
+
+<SyntaxHighlighter language="typescript" theme="dark">
+  {code}
+</SyntaxHighlighter>
+```
+
+### ⚠️ Alternative (but not recommended)
+```tsx
+// Individual language components work but are unnecessary
+import { TypeScriptHighlighter } from '@0x1js/highlighter';
+
+<TypeScriptHighlighter theme="dark">
+  {code}
+</TypeScriptHighlighter>
+```
+
 ## 🎨 Customization
 
 ### Custom CSS
@@ -296,27 +281,6 @@ console.log(getSupportedLanguages());
 .theme-custom .token-string {
   color: #98fb98;
 }
-```
-
-### Custom Copy Button
-
-```tsx
-<SyntaxHighlighter
-  copyable={false}
-  className="custom-highlighter"
->
-  {code}
-</SyntaxHighlighter>
-
-<style jsx>{`
-  .custom-highlighter::after {
-    content: "📥";
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    cursor: pointer;
-  }
-`}</style>
 ```
 
 ## 🏗️ Building

@@ -397,7 +397,7 @@ export async function transpileJsx(input: string, options?: TranspileOptions): P
       process.env.VERCEL || 
       process.env.NETLIFY || 
       process.env.CI ||
-      !process.stdout.isTTY
+      (typeof process !== 'undefined' && process.stdout && !process.stdout.isTTY)
     );
     
     // Create a temporary file instead of using virtual filesystem

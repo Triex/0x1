@@ -77,18 +77,21 @@ function applyGradient(text: string): string {
   return colored;
 }
 
+// Browser compatibility: Check if we're in a Node.js environment
+const isNodeEnvironment = typeof process !== 'undefined' && process.stdout;
+
 // Check if we're in a CI/build environment (like Vercel, GitHub Actions, etc.)
-const isCI = Boolean(
+const isCI = isNodeEnvironment ? Boolean(
   process.env.CI || 
   process.env.VERCEL || 
   process.env.NETLIFY || 
   process.env.GITHUB_ACTIONS ||
   process.env.GITLAB_CI ||
   !process.stdout.isTTY
-);
+) : true; // Assume CI-like environment in browser
 
 // Check if terminal control methods are available and we're not in CI
-const supportsTerminalControl = !isCI && Boolean(
+const supportsTerminalControl = isNodeEnvironment && !isCI && Boolean(
   process.stdout.clearLine &&
   process.stdout.cursorTo &&
   typeof process.stdout.clearLine === 'function' && 
@@ -153,7 +156,7 @@ export const logger = {
    * Log a debugging message (only in verbose mode)
    */
   debug: (message: string) => {
-    if (process.env.DEBUG === 'true') {
+    if (isNodeEnvironment && process.env.DEBUG === 'true') {
       console.log(colors.dim(icons.debug), colors.dim(message));
     }
   },
@@ -229,7 +232,7 @@ export const logger = {
     if (supportsTerminalControl) {
     process.stdout.write(`${colors.cyan(frames[0])} ${displayMessage}`);
     } else {
-      // Fallback for environments like Vercel
+      // Fallback for environments like Vercel or browser
       console.log(`${colors.cyan(frames[0])} ${displayMessage}`);
     }
     
@@ -240,7 +243,7 @@ export const logger = {
       process.stdout.cursorTo(0);
       process.stdout.write(`${colors.cyan(frames[i])} ${displayMessage}`);
       }
-      // In non-terminal environments, we don't update the spinner
+      // In non-terminal environments (browser/CI), we don't update the spinner
     }, 80);
     
     return {

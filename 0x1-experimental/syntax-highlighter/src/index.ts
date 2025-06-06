@@ -5,26 +5,31 @@
 
 // Core highlighting functions
 export {
-  getSupportedLanguages, highlight, tokenizeBash, tokenizeJavaScript, type HighlightOptions,
-  type Token
+    getSupportedLanguages, highlight, tokenizeBash, tokenizeJavaScript, type HighlightOptions,
+    type Token
 } from './highlighter';
 
-// React components (will be available when React is installed)
+// Main React component (recommended)
 export {
-  BashHighlighter, InlineCode, JavaScriptHighlighter, JSONHighlighter, SyntaxHighlighter, TypeScriptHighlighter, useHighlight,
-  type SyntaxHighlighterProps
+    InlineCode, SyntaxHighlighter, useHighlight,
+    type SyntaxHighlighterProps
+} from './SyntaxHighlighter';
+
+// Convenience components (optional - SyntaxHighlighter with language prop is preferred)
+export {
+    BashHighlighter, JavaScriptHighlighter, JSONHighlighter, TypeScriptHighlighter
 } from './SyntaxHighlighter';
 
 // Re-import for default export
 import {
-  getSupportedLanguages,
-  highlight,
-  tokenizeBash,
-  tokenizeJavaScript
+    getSupportedLanguages,
+    highlight,
+    tokenizeBash,
+    tokenizeJavaScript
 } from './highlighter';
 
 // Version
-export const version = '0.1.0';
+export const version = '0.1.4';
 
 // Default export for convenience
 export default {

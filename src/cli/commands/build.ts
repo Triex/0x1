@@ -239,7 +239,7 @@ if (typeof window !== 'undefined') {
 
 // 🚀 BULLETPROOF: Simple and reliable context-aware import transformation
 function transformImportsForBrowser(sourceCode: string): string {
-  console.log('[Build] 🧠 Applying simple bulletproof import transformations...');
+  console.log('[Build] 🧠 Applying bulletproof import transformations...');
   
   const lines = sourceCode.split('\n');
   const transformedLines: string[] = [];
@@ -256,22 +256,15 @@ function transformImportsForBrowser(sourceCode: string): string {
     
     // BULLETPROOF: Skip obvious code examples and JSX content
     const isCodeExample = 
-      // Diff-style examples
       trimmed.includes('- import') ||
       trimmed.includes('+ import') ||
-      // Inside JSX attributes or text
       line.includes('children:') ||
       line.includes('className=') ||
-      // Inside strings/template literals
       /['"`].*import.*['"`]/.test(line) ||
-      // Inside JSX tags
       /<[^>]*import/.test(line) ||
-      // Inside code blocks
       trimmed.includes('```') ||
-      // Inside comments
       trimmed.startsWith('//') ||
       trimmed.startsWith('/*') ||
-      // Not at start of line (likely inside JSX)
       !/^\s*import\s/.test(line);
     
     if (isCodeExample) {
@@ -280,15 +273,42 @@ function transformImportsForBrowser(sourceCode: string): string {
       continue;
     }
     
-    // Only transform actual import statements
+    // CRITICAL: Only transform actual import statements with proper regex
     if (/^\s*import\s/.test(line)) {
       console.log(`[Build] ✅ Transforming actual import at line ${i + 1}: ${trimmed}`);
       
       let transformedLine = line;
       
-      // Remove CSS imports
+      // DYNAMIC CSS TRACKING: Track and remove CSS imports
       if (/import\s*['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(line)) {
-        transformedLine = '// CSS import removed for browser compatibility';
+        const cssMatch = line.match(/import\s*['"']([^'"]*\.(css|scss|sass|less))['"];?/);
+        if (cssMatch) {
+          const cssPath = cssMatch[1];
+          // Track the CSS dependency for later inclusion in HTML
+          if (cssPath.includes('@0x1js/highlighter/styles')) {
+            cssDependencyTracker.addDependency('/node_modules/@0x1js/highlighter/dist/styles.css');
+          } else if (cssPath.includes('globals.css') || cssPath.includes('global.css')) {
+            cssDependencyTracker.addDependency('/styles.css');
+          } else {
+            // Handle other CSS files
+            cssDependencyTracker.addDependency(cssPath.startsWith('/') ? cssPath : `/${cssPath}`);
+          }
+        }
+        transformedLine = '// CSS import removed for browser compatibility - tracked for HTML inclusion';
+      }
+      // Transform CSS-only imports (like @0x1js/highlighter/styles)
+      else if (/^\s*import\s+["']([^"']+\/styles?)["']/.test(line)) {
+        const styleMatch = line.match(/^\s*import\s+["']([^"']+\/styles?)["']/);
+        if (styleMatch) {
+          const stylePath = styleMatch[1];
+          if (stylePath.includes('@0x1js/highlighter/styles')) {
+            cssDependencyTracker.addDependency('/node_modules/@0x1js/highlighter/dist/styles.css');
+          } else {
+            cssDependencyTracker.addDependency(`/${stylePath}.css`);
+          }
+        }
+        transformedLine = '// CSS import removed for browser compatibility - tracked for HTML inclusion';
+        console.log(`[Build] 🎨 Tracked CSS-only import for HTML inclusion`);
       }
       // Transform 0x1 framework imports
       else if (/^\s*import\s+.*?\s+from\s+["']0x1["']/.test(line)) {
@@ -334,6 +354,28 @@ function transformImportsForBrowser(sourceCode: string): string {
           }
         );
       }
+      // DYNAMIC: Transform npm package imports for browser compatibility
+      else if (/^\s*import\s+.*?\s+from\s+["']([^"'./][^"']*)["']/.test(line)) {
+        transformedLine = line.replace(
+          /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/,
+          (match, importPart, packageName) => {
+            const skipPackages = ['react', 'react-dom', '0x1'];
+            if (skipPackages.includes(packageName) || packageName.startsWith('0x1/')) {
+              return match;
+            }
+            
+            // Handle scoped packages like @0x1js/highlighter
+            if (packageName.startsWith('@')) {
+              console.log(`[Build] 🎨 Transforming scoped package: ${packageName}`);
+              return `${importPart}"/node_modules/${packageName}/dist/index.js"`;
+            }
+            
+            // Handle regular packages
+            console.log(`[Build] 📦 Transforming npm package: ${packageName}`);
+            return `${importPart}"/node_modules/${packageName}/index.js"`;
+          }
+        );
+      }
       
       transformedLines.push(transformedLine);
     } else {
@@ -341,7 +383,7 @@ function transformImportsForBrowser(sourceCode: string): string {
     }
   }
   
-  console.log('[Build] ✅ Simple bulletproof import transformation complete');
+  console.log('[Build] ✅ Bulletproof import transformation complete');
   return transformedLines.join('\n');
 }
 
@@ -633,6 +675,18 @@ function applyImportTransformations(line: string): string {
       }
       return `${importPart}"/node_modules/${packageName}"`;
     }
+  );
+  
+  // 4.5. CRITICAL FIX: Transform @0x1js/highlighter imports
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+.*?\s+from\s+)["']@0x1js\/highlighter["']/,
+    '$1"/node_modules/@0x1js/highlighter/dist/index.js"'
+  );
+  
+  // 4.6. Transform @0x1js/highlighter/styles imports
+  transformedLine = transformedLine.replace(
+    /^(\s*import\s+)["']@0x1js\/highlighter\/styles["']/,
+    '// CSS import removed for browser compatibility (styles should be linked in HTML)'
   );
   
   return transformedLine;
@@ -1193,6 +1247,28 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
     // Process CSS with production optimizations and cache busting
     await processTailwindCssFast(projectPath, outputPath, minify);
+    
+    // CRITICAL FIX: Ensure global.css exists for compatibility
+    const globalCssPath = join(outputPath, 'global.css');
+    const stylesCssPath = join(outputPath, 'styles.css');
+    
+    if (existsSync(stylesCssPath) && !existsSync(globalCssPath)) {
+      // Create a symlink or copy styles.css as global.css for compatibility
+      const stylesContent = await Bun.file(stylesCssPath).text();
+      await Bun.write(globalCssPath, stylesContent);
+      console.log('[Build] ✅ Created global.css for compatibility');
+    }
+    
+    // Also create it in the styles directory for module loader compatibility
+    const stylesDir = join(outputPath, 'styles');
+    await mkdir(stylesDir, { recursive: true });
+    const stylesGlobalCssPath = join(stylesDir, 'global.css');
+    
+    if (existsSync(stylesCssPath) && !existsSync(stylesGlobalCssPath)) {
+      const stylesContent = await Bun.file(stylesCssPath).text();
+      await Bun.write(stylesGlobalCssPath, stylesContent);
+      console.log('[Build] ✅ Created styles/global.css for module loader compatibility');
+    }
 
     // Generate HTML files with proper metadata and SEO
     await generateProductionHtmlFast(projectPath, outputPath);
@@ -1204,8 +1280,8 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     const moduleList = [
       '/0x1/index.js',
       '/0x1/jsx-runtime.js',
-      '/0x1/core/hooks.js',
-      '/0x1/core/router.js',
+      '/0x1/hooks.js',        // FIXED: Use direct path, not core/hooks.js
+      '/0x1/router.js',       // FIXED: Use direct path, not core/router.js
       ...discoveredRoutes.map(route => route.componentPath.replace(/\.tsx?$/, '.js')),
       ...allComponents.slice(0, 10).map(comp => comp.relativePath.replace(/\.tsx?$/, '.js')) // Top 10 components
     ];
@@ -1990,31 +2066,44 @@ async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
 
   // CRITICAL FIX: Copy all hashed files that redirects point to
   console.log('[Build] 🔧 Copying hashed framework files...');
-  const hashedFiles = [
-    'hooks-d2be986e.js',
-    'jsx-runtime-f954a4e5.js', 
-    'index-2d019ccf.js',
-    'link-cdab5eab.js',
-    'component-1ca931f5.js',
-    'navigation-40371615.js',
-    'error-boundary-a4f4e9ca.js',
-    'metadata-210728ab.js',
-    'head-bf9bc419.js',
-    'directives-47674809.js',
-    'pwa-cb1bdc72.js'
-  ];
-
-  for (const hashedFile of hashedFiles) {
-    const srcPath = join(frameworkDistPath, hashedFile);
-    const destPath = join(framework0x1Dir, hashedFile);
+  
+  // First, scan the actual framework dist directory for all files
+  const frameworkDistFiles = existsSync(frameworkDistPath) 
+    ? readdirSync(frameworkDistPath).filter(file => file.endsWith('.js') || file.endsWith('.css'))
+    : [];
+  
+  console.log(`[Build] Found ${frameworkDistFiles.length} framework files to copy`);
+  
+  // Copy ALL files from framework dist, not just a hardcoded list
+  for (const file of frameworkDistFiles) {
+    const srcPath = join(frameworkDistPath, file);
+    const destPath = join(framework0x1Dir, file);
 
     if (existsSync(srcPath)) {
       const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
-      console.log(`[Build] ✅ Copied hashed file: ${hashedFile}`);
+      console.log(`[Build] ✅ Copied framework file: ${file}`);
       copiedCount++;
-    } else {
-      console.log(`[Build] ⚠️ Hashed file not found: ${hashedFile}`);
+    }
+  }
+  
+  // Also copy any chunk files from the 0x1-experimental/syntax-highlighter if they exist
+  const highlighterDistPath = join(frameworkRoot, '0x1-experimental', 'syntax-highlighter', 'dist');
+  if (existsSync(highlighterDistPath)) {
+    console.log('[Build] 🎨 Copying syntax highlighter files...');
+    const highlighterNodeModulesPath = join(outputPath, 'node_modules', '@0x1js', 'highlighter', 'dist');
+    await mkdir(highlighterNodeModulesPath, { recursive: true });
+    
+    const highlighterFiles = readdirSync(highlighterDistPath);
+    for (const file of highlighterFiles) {
+      const srcPath = join(highlighterDistPath, file);
+      const destPath = join(highlighterNodeModulesPath, file);
+      
+      if (statSync(srcPath).isFile()) {
+        const content = await Bun.file(srcPath).arrayBuffer();
+        await Bun.write(destPath, content);
+        console.log(`[Build] ✅ Copied highlighter file: ${file}`);
+      }
     }
   }
 
@@ -2626,6 +2715,9 @@ function generateHtmlTemplate(metadata: any, faviconLink: string, currentPath: s
   const author = metadata.author || metadata.authors?.[0]?.name || "";
   const ogImage = metadata.image || metadata.openGraph?.images?.[0]?.url || metadata.twitter?.image || "";
   
+  // DYNAMIC CSS INCLUSION: Generate CSS links from dependencies
+  const dynamicCssLinks = cssDependencyTracker.generateHtmlLinks();
+  
   return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -2660,6 +2752,7 @@ function generateHtmlTemplate(metadata: any, faviconLink: string, currentPath: s
   
   ${faviconLink}
   <link rel="stylesheet" href="/styles.css">
+${dynamicCssLinks}
   <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/router":"/0x1/router.js","0x1/":"/0x1/"}}</script>
   <style>.app-loading{position:fixed;top:20px;right:20px;opacity:0.6;transition:opacity 0.3s}.app-loading.loaded{opacity:0}</style>
 </head>
@@ -2901,3 +2994,46 @@ function transformBareImports(content: string, filePath?: string, projectPath?: 
   // CRITICAL FIX: Use the same bulletproof context-aware logic
   return transformImportsForBrowser(content);
 }
+
+// 🚀 CSS DEPENDENCY TRACKER - DYNAMIC CSS DETECTION
+class CssDependencyTracker {
+  private dependencies = new Set<string>();
+  private packageCssFiles = new Map<string, string>();
+
+  // Track a CSS dependency
+  addDependency(cssPath: string): void {
+    this.dependencies.add(cssPath);
+    console.log(`[Build] 📝 Tracked CSS dependency: ${cssPath}`);
+  }
+
+  // Register package CSS files
+  registerPackageCss(packageName: string, cssPath: string): void {
+    this.packageCssFiles.set(packageName, cssPath);
+    console.log(`[Build] 📦 Registered package CSS: ${packageName} -> ${cssPath}`);
+  }
+
+  // Get all dependencies as HTML link tags
+  generateHtmlLinks(): string {
+    const links: string[] = [];
+    
+    for (const dep of this.dependencies) {
+      links.push(`  <link rel="stylesheet" href="${dep}">`);
+    }
+    
+    return links.join('\n');
+  }
+
+  // Get all dependencies as an array
+  getDependencies(): string[] {
+    return Array.from(this.dependencies);
+  }
+
+  // Clear all dependencies
+  clear(): void {
+    this.dependencies.clear();
+    this.packageCssFiles.clear();
+  }
+}
+
+// Global CSS dependency tracker instance
+const cssDependencyTracker = new CssDependencyTracker();
