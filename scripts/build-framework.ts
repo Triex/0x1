@@ -1,14 +1,44 @@
 /**
- * 0x1 Framework Build Script - Optimized
- * Builds only essential framework files for distribution
+ * 0x1 Framework Build Script - Production Optimized
+ * Builds only essential framework files for distribution with production optimizations
  */
 
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 
+// Generate cache-busting hash
+function generateHash(content: string): string {
+  return Bun.hash(content).toString(16).slice(0, 8);
+}
+
+// Production console.log removal plugin
+const consoleLogRemovalPlugin = {
+  name: 'remove-console-logs',
+  setup(build: any) {
+    build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args: any) => {
+      const contents = await Bun.file(args.path).text();
+      
+      // Remove console.log statements but keep console.error and console.warn
+      const processedContents = contents
+        .replace(/console\.log\([^;]*\);?/g, '/* console.log removed */;')
+        .replace(/console\.log\([^)]*\)/g, '/* console.log removed */')
+        // Also remove debug-style console statements
+        .replace(/console\.debug\([^;]*\);?/g, '/* console.debug removed */;')
+        .replace(/console\.debug\([^)]*\)/g, '/* console.debug removed */');
+      
+      return {
+        contents: processedContents,
+        loader: args.path.endsWith('.tsx') ? 'tsx' : 
+               args.path.endsWith('.ts') ? 'ts' : 
+               args.path.endsWith('.jsx') ? 'jsx' : 'js'
+      };
+    });
+  }
+};
+
 async function buildFramework() {
   try {
-    console.log("🚀 Building 0x1 framework (optimized)...");
+    console.log("🚀 Building 0x1 framework (production optimized)...");
 
     const srcDir = resolve("src");
     const distDir = resolve("dist");
@@ -41,9 +71,27 @@ async function buildFramework() {
     Bun.spawnSync(["mkdir", "-p", join(distDir, "core")]);
     Bun.spawnSync(["mkdir", "-p", join(distDir, "types")]);
 
-    console.log("📦 Building core framework bundle...");
+    console.log("📦 Building core framework bundle with production optimizations...");
 
-    // Create optimized package.json
+    // Production build configuration
+    const productionBuildConfig = {
+      target: "browser" as const,
+      format: "esm" as const,
+      minify: true,
+      splitting: true, // Enable code splitting for parallel loading
+      plugins: [consoleLogRemovalPlugin],
+      loader: {
+        ".ts": "ts" as const,
+        ".tsx": "tsx" as const,
+      },
+      define: {
+        'process.env.NODE_ENV': '"production"',
+        '__DEV__': 'false'
+      }
+    };
+
+    // Create optimized package.json with cache busting
+    const buildTime = Date.now();
     const packageJson = {
       name: "0x1",
       version: "0.1.0",
@@ -56,6 +104,21 @@ async function buildFramework() {
           import: "./index.js",
           default: "./index.js",
         },
+        "./link": {
+          types: "./types/link.d.ts",
+          import: "./link.js",
+          default: "./link.js",
+        },
+        "./router": {
+          types: "./types/router.d.ts",
+          import: "./router.js",
+          default: "./router.js",
+        },
+        "./core/*": {
+          types: "./types/*.d.ts",
+          import: "./core/*.js",
+          default: "./core/*.js",
+        },
         "./jsx-runtime": {
           types: "./types/jsx-runtime.d.ts",
           import: "./jsx-runtime.js",
@@ -66,16 +129,16 @@ async function buildFramework() {
           import: "./jsx-dev-runtime.js",
           default: "./jsx-dev-runtime.js",
         },
-        "./router": {
-          import: "./router.js",
-          default: "./router.js",
+        "./jsx": {
+          types: "./types/jsx.d.ts"
         },
-        "./core/*": {
-          types: "./types/*.d.ts",
-          import: "./core/*.js",
-          default: "./core/*.js",
-        },
+        "./store": {
+          types: "./types/store.d.ts",
+          import: "./core/store.js",
+          default: "./core/store.js",
+        }
       },
+      buildTime // Add build timestamp for cache busting
     };
 
     await Bun.write(
@@ -85,17 +148,11 @@ async function buildFramework() {
 
     console.log("📦 Building main framework bundle...");
 
-    // Build main framework bundle with minification
+    // Build main framework bundle with production optimizations
     const buildResult = await Bun.build({
       entrypoints: [join(srcDir, "index.ts")],
       outdir: distDir,
-      target: "browser",
-      format: "esm",
-      minify: true, // Enable minification
-      loader: {
-        ".ts": "ts",
-        ".tsx": "tsx",
-      },
+      ...productionBuildConfig
     });
 
     if (!buildResult.success) {
@@ -103,9 +160,22 @@ async function buildFramework() {
       throw new Error("Main bundle build failed");
     }
 
+    // Add cache busting to main bundle
+    const mainBundlePath = join(distDir, "index.js");
+    if (existsSync(mainBundlePath)) {
+      const content = await Bun.file(mainBundlePath).text();
+      const hash = generateHash(content);
+      const hashedPath = join(distDir, `index-${hash}.js`);
+      await Bun.write(hashedPath, content);
+      
+      // Create a loader that points to the hashed version
+      await Bun.write(mainBundlePath, `export * from './index-${hash}.js';`);
+      console.log(`✅ Main bundle with cache busting: index-${hash}.js`);
+    }
+
     console.log("📦 Building core modules...");
 
-    // Only build essential core files
+    // Only build essential core files with production optimizations
     const essentialCoreFiles = [
       'hooks.ts',
       'component.ts',
@@ -117,46 +187,65 @@ async function buildFramework() {
       'pwa.ts'
     ];
 
-    for (const file of essentialCoreFiles) {
+    // Build core modules in parallel for better performance
+    const corePromises = essentialCoreFiles.map(async (file) => {
       const tsPath = join(srcDir, "core", file);
 
       if (existsSync(tsPath)) {
         console.log(`Building ${file}...`);
 
-        const { success } = await Bun.build({
+        const { success, outputs } = await Bun.build({
           entrypoints: [tsPath],
           outdir: join(distDir, "core"),
-          target: "browser",
-          format: "esm",
-          minify: true, // Enable minification
-          loader: {
-            ".ts": "ts",
-          },
+          ...productionBuildConfig
         });
 
-        if (success) {
-          console.log(`✅ Built ${file.replace('.ts', '.js')}`);
+        if (success && outputs.length > 0) {
+          // Add cache busting to core modules
+          const outputPath = outputs[0].path;
+          const content = await Bun.file(outputPath).text();
+          const hash = generateHash(content);
+          const fileName = file.replace('.ts', '');
+          const hashedPath = join(distDir, "core", `${fileName}-${hash}.js`);
+          
+          await Bun.write(hashedPath, content);
+          // Create loader pointing to hashed version
+          await Bun.write(outputPath, `export * from './${fileName}-${hash}.js';`);
+          
+          console.log(`✅ Built ${fileName}-${hash}.js`);
+          return true;
         } else {
           console.warn(`⚠️ Failed to build ${file}`);
+          return false;
         }
       }
-    }
+      return false;
+    });
+
+    await Promise.all(corePromises);
 
     console.log("📦 Building Link component...");
 
-    // Build Link component
+    // Build Link component with production optimizations
     const linkPath = join(srcDir, "link.ts");
     if (existsSync(linkPath)) {
-      const { success } = await Bun.build({
+      const { success, outputs } = await Bun.build({
         entrypoints: [linkPath],
         outdir: distDir,
-        target: "browser",
-        format: "esm",
-        minify: true,
+        ...productionBuildConfig
       });
 
-      if (success) {
-        console.log("✅ Built link.js");
+      if (success && outputs.length > 0) {
+        // Add cache busting to link component
+        const outputPath = outputs[0].path;
+        const content = await Bun.file(outputPath).text();
+        const hash = generateHash(content);
+        const hashedPath = join(distDir, `link-${hash}.js`);
+        
+        await Bun.write(hashedPath, content);
+        await Bun.write(outputPath, `export * from './link-${hash}.js';`);
+        
+        console.log(`✅ Built link-${hash}.js`);
       } else {
         console.warn("⚠️ Failed to build link.js");
       }
@@ -164,42 +253,43 @@ async function buildFramework() {
 
     console.log("📦 Building JSX runtime...");
 
-    // Build JSX runtime files from our ONE SOURCE OF TRUTH
+    // Build JSX runtime files from our ONE SOURCE OF TRUTH with production optimizations
     const jsxRuntimePath = join(srcDir, "jsx", "runtime.ts");
 
     if (existsSync(jsxRuntimePath)) {
       const { success, outputs } = await Bun.build({
         entrypoints: [jsxRuntimePath],
         outdir: distDir,
-        target: "browser",
-        format: "esm",
-        minify: true,
+        ...productionBuildConfig
       });
 
       if (!success) {
         throw new Error("JSX runtime build failed");
       }
       
-      // Rename the output to jsx-runtime.js
+      // Add cache busting to JSX runtime
       if (outputs.length > 0) {
         const outputPath = outputs[0].path;
+        const content = await Bun.file(outputPath).text();
+        const hash = generateHash(content);
+        const hashedPath = join(distDir, `jsx-runtime-${hash}.js`);
         const targetPath = join(distDir, "jsx-runtime.js");
-        if (outputPath !== targetPath) {
-          const content = await Bun.file(outputPath).text();
-          await Bun.write(targetPath, content);
-        }
+        
+        await Bun.write(hashedPath, content);
+        await Bun.write(targetPath, `export * from './jsx-runtime-${hash}.js';`);
+        
+        console.log(`✅ JSX runtime built with cache busting: jsx-runtime-${hash}.js`);
       }
-      console.log("✅ JSX runtime built from ONE SOURCE OF TRUTH");
     }
 
-    // Create jsx-dev-runtime.js that exports the same as jsx-runtime.js
-    const jsxRuntimeContent = await Bun.file(join(distDir, "jsx-runtime.js")).text();
+    // Create jsx-dev-runtime.js that points to the same optimized runtime
+    const jsxRuntimeContent = `export * from './jsx-runtime.js';`;
     await Bun.write(join(distDir, "jsx-dev-runtime.js"), jsxRuntimeContent);
-    console.log("✅ JSX dev runtime created (same as production runtime)");
+    console.log("✅ JSX dev runtime created (points to production runtime)");
 
     console.log("📦 Building browser scripts...");
 
-    // Build live-reload script from TypeScript source
+    // Build live-reload script from TypeScript source with production optimizations
     const liveReloadTsPath = join(srcDir, "browser", "live-reload.ts");
     const liveReloadJsPath = join(srcDir, "browser", "live-reload.js");
     
@@ -207,21 +297,33 @@ async function buildFramework() {
       const { success, outputs } = await Bun.build({
         entrypoints: [liveReloadTsPath],
         outdir: distDir,
-        target: "browser",
-        format: "esm",
-        minify: true,
+        ...productionBuildConfig
       });
 
       if (success && outputs.length > 0) {
         const content = await Bun.file(outputs[0].path).text();
-        await Bun.write(join(distDir, "live-reload.js"), content);
-        console.log("✅ Built live-reload.js from TypeScript source");
+        const hash = generateHash(content);
+        const hashedPath = join(distDir, `live-reload-${hash}.js`);
+        
+        await Bun.write(hashedPath, content);
+        await Bun.write(join(distDir, "live-reload.js"), `export * from './live-reload-${hash}.js';`);
+        
+        console.log(`✅ Built live-reload-${hash}.js from TypeScript source`);
       }
     } else if (existsSync(liveReloadJsPath)) {
-      // Fallback to existing JS file
+      // Fallback to existing JS file with optimization
       const content = await Bun.file(liveReloadJsPath).text();
-      await Bun.write(join(distDir, "live-reload.js"), content);
-      console.log("✅ Built live-reload.js from existing source");
+      const optimizedContent = content
+        .replace(/console\.log\([^;]*\);?/g, '/* console.log removed */;')
+        .replace(/console\.log\([^)]*\)/g, '/* console.log removed */');
+      
+      const hash = generateHash(optimizedContent);
+      const hashedPath = join(distDir, `live-reload-${hash}.js`);
+      
+      await Bun.write(hashedPath, optimizedContent);
+      await Bun.write(join(distDir, "live-reload.js"), `export * from './live-reload-${hash}.js';`);
+      
+      console.log(`✅ Built live-reload-${hash}.js from existing source`);
     }
 
     console.log("📦 Copying essential type definitions...");
@@ -408,7 +510,7 @@ async function buildFramework() {
     console.log(`  • Total size: ${(totalSize / 1024).toFixed(1)} KB`);
     console.log(`  • Files: ${requiredFiles.length} essential files`);
 
-    console.log("🎉 Optimized build completed successfully!");
+    console.log("🎉 Production optimized build completed successfully!");
 
   } catch (error) {
     console.error("❌ Build failed:", error);
