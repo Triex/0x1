@@ -828,27 +828,8 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     // ROBUST FIX: Always transpile .tsx/.jsx files regardless of JSX detection
     const isTsxOrJsx = sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx');
     
-    // ROBUST FIX: Improved JSX detection that catches more cases
-    const hasActualJsxElements = detectActualJsxElements(sourceCode) || 
-                                sourceCode.includes('<div') || 
-                                sourceCode.includes('<span') || 
-                                sourceCode.includes('<button') || 
-                                sourceCode.includes('<input') || 
-                                sourceCode.includes('<h1') || 
-                                sourceCode.includes('<h2') || 
-                                sourceCode.includes('<h3') || 
-                                sourceCode.includes('<p>') ||
-                                sourceCode.includes('<main') ||
-                                sourceCode.includes('<section') ||
-                                sourceCode.includes('<article') ||
-                                sourceCode.includes('<header') ||
-                                sourceCode.includes('<footer') ||
-                                sourceCode.includes('<nav') ||
-                                sourceCode.includes('<aside') ||
-                                sourceCode.includes('<form') ||
-                                /return\s*\(\s*</.test(sourceCode) || // JSX return statements
-                                /=\s*<[A-Za-z]/.test(sourceCode) || // JSX assignments
-                                /<[A-Z][A-Za-z0-9]*[\s/>]/.test(sourceCode); // React components
+    // ROBUST FIX: Proper JSX detection using AST-like parsing instead of string matching
+    const hasActualJsxElements = detectActualJsxElements(sourceCode);
     
     const hasJsxCalls = /jsx\s*\(/.test(sourceCode) || 
                        /jsxs\s*\(/.test(sourceCode) || 
@@ -984,13 +965,13 @@ function detectActualJsxElements(sourceCode: string): boolean {
   let inLineComment = false;
   let inBlockComment = false;
   let escapeNext = false;
+  let templateDepth = 0;
   
   const chars = sourceCode.split('');
   
   for (let i = 0; i < chars.length; i++) {
     const char = chars[i];
     const nextChar = chars[i + 1];
-    const prevChar = chars[i - 1];
     
     // Handle escape sequences
     if (escapeNext) {
@@ -1046,7 +1027,28 @@ function detectActualJsxElements(sourceCode: string): boolean {
     }
     
     if (char === '`' && !inSingleQuote && !inDoubleQuote) {
-      inTemplateString = !inTemplateString;
+      if (inTemplateString) {
+        templateDepth--;
+        if (templateDepth <= 0) {
+          inTemplateString = false;
+          templateDepth = 0;
+        }
+      } else {
+        inTemplateString = true;
+        templateDepth++;
+      }
+      continue;
+    }
+    
+    // Handle template literal expressions ${...}
+    if (inTemplateString && char === '$' && nextChar === '{') {
+      templateDepth++;
+      i++; // Skip the '{'
+      continue;
+    }
+    
+    if (inTemplateString && char === '}') {
+      templateDepth--;
       continue;
     }
     
@@ -1055,24 +1057,36 @@ function detectActualJsxElements(sourceCode: string): boolean {
       continue;
     }
     
-    // Now check for actual JSX elements (only outside strings)
+    // Now check for actual JSX elements (only outside strings/comments)
     if (char === '<') {
       // Look ahead to see if this looks like JSX
-      const nextFewChars = sourceCode.slice(i, i + 10);
+      const nextFewChars = sourceCode.slice(i, i + 20);
       
-      // Check for HTML/JSX elements
-      if (/^<[A-Z][A-Za-z0-9]*[\s/>]/.test(nextFewChars) || // React components <Component>
-          /^<[a-z][A-Za-z0-9-]*[\s/>]/.test(nextFewChars) || // HTML elements <div>
-          /^<>/.test(nextFewChars) || // React fragments <>
-          /^<\/[A-Za-z]/.test(nextFewChars)) { // Closing tags </div>
+      // Enhanced JSX detection patterns
+      const jsxPatterns = [
+        /^<[A-Z][A-Za-z0-9]*[\s/>]/, // React components <Component>
+        /^<[a-z][A-Za-z0-9-]*[\s/>]/, // HTML elements <div>
+        /^<>/, // React fragments <>
+        /^<[/][A-Za-z]/, // Closing tags </div>
+        /^<[a-z]+\s+[^>]*>/, // HTML with attributes <div className="...">
+        /^<[A-Z][A-Za-z0-9]*\s+[^>]*>/, // Components with props <Component prop="...">
+      ];
+      
+      // Check if this matches JSX patterns
+      if (jsxPatterns.some(pattern => pattern.test(nextFewChars))) {
+        // Additional validation: make sure it's not a comparison operator
+        const prevChar = chars[i - 1];
+        const isComparison = prevChar === '=' || prevChar === '<' || prevChar === '>' || prevChar === '!';
         
-        console.log(`[Build] Found actual JSX element at position ${i}: ${nextFewChars}`);
-        return true;
+        if (!isComparison) {
+          console.log(`[Build] Found actual JSX element at position ${i}: ${nextFewChars.substring(0, 10)}`);
+          return true;
+        }
       }
     }
   }
   
-  console.log(`[Build] No actual JSX elements found (all JSX is inside strings/templates)`);
+  console.log(`[Build] No actual JSX elements found (all angle brackets are in strings/templates/comments)`);
   return false;
 }
 
@@ -1921,7 +1935,7 @@ async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
   const frameworkFiles = [
     { src: 'jsx-runtime.js', dest: 'jsx-runtime.js' },
     { src: 'jsx-dev-runtime.js', dest: 'jsx-dev-runtime.js' },
-    { src: 'core/hooks.js', dest: 'hooks.js' },
+    { src: 'hooks.js', dest: 'hooks.js' }, // CRITICAL FIX: Changed from core/hooks.js
     { src: 'index.js', dest: 'index.js' },
     { src: 'link.js', dest: 'link.js' }
   ];
@@ -1937,6 +1951,36 @@ async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
       const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
       copiedCount++;
+    }
+  }
+
+  // CRITICAL FIX: Copy all hashed files that redirects point to
+  console.log('[Build] 🔧 Copying hashed framework files...');
+  const hashedFiles = [
+    'hooks-d2be986e.js',
+    'jsx-runtime-f954a4e5.js', 
+    'index-2d019ccf.js',
+    'link-cdab5eab.js',
+    'component-1ca931f5.js',
+    'navigation-40371615.js',
+    'error-boundary-a4f4e9ca.js',
+    'metadata-210728ab.js',
+    'head-bf9bc419.js',
+    'directives-47674809.js',
+    'pwa-cb1bdc72.js'
+  ];
+
+  for (const hashedFile of hashedFiles) {
+    const srcPath = join(frameworkDistPath, hashedFile);
+    const destPath = join(framework0x1Dir, hashedFile);
+
+    if (existsSync(srcPath)) {
+      const content = await Bun.file(srcPath).text();
+      await Bun.write(destPath, content);
+      console.log(`[Build] ✅ Copied hashed file: ${hashedFile}`);
+      copiedCount++;
+    } else {
+      console.log(`[Build] ⚠️ Hashed file not found: ${hashedFile}`);
     }
   }
 
@@ -2311,7 +2355,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
           if (result === 0 && existsSync(outputCssPath)) {
             finalCss = await Bun.file(outputCssPath).text();
             console.log('[Build] ✅ Tailwind CSS v4 processed successfully with v4 handler');
-      } else {
+        } else {
             throw new Error('Tailwind CSS v4 handler process failed');
           }
         } else {

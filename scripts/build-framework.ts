@@ -199,7 +199,7 @@ async function buildFramework() {
 
         const { success, outputs } = await Bun.build({
           entrypoints: [tsPath],
-          outdir: join(distDir, "core"),
+          outdir: distDir,
           ...productionBuildConfig
         });
 
@@ -209,7 +209,7 @@ async function buildFramework() {
           const content = await Bun.file(outputPath).text();
           const hash = generateHash(content);
           const fileName = file.replace('.ts', '');
-          const hashedPath = join(distDir, "core", `${fileName}-${hash}.js`);
+          const hashedPath = join(distDir, `${fileName}-${hash}.js`);
           
           await Bun.write(hashedPath, content);
           // Create loader pointing to hashed version
@@ -490,7 +490,7 @@ async function buildFramework() {
       join(distDir, "index.js"),
       join(distDir, "package.json"), 
       join(distDir, "jsx-runtime.js"),
-      join(distDir, "core", "hooks.js"),
+      join(distDir, "hooks.js"), // CRITICAL FIX: Core modules are now in distDir, not distDir/core
     ];
     
     let buildValid = true;

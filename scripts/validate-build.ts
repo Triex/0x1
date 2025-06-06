@@ -15,26 +15,26 @@ const requiredFiles = [
   'dist/jsx-runtime.js',
   'dist/jsx-dev-runtime.js',
   
-  // Essential core module files only
-  'dist/core/hooks.js',
-  'dist/core/component.js',
-  'dist/core/navigation.js',
-  'dist/core/error-boundary.js',
+  // Essential core module files (now in /dist/ not /dist/core/)
+  'dist/hooks.js',
+  'dist/component.js',
+  'dist/navigation.js',
+  'dist/error-boundary.js',
   
   // Metadata and head management system
-  'dist/core/metadata.js',
-  'dist/core/head.js',
+  'dist/metadata.js',
+  'dist/head.js',
   
   // Client/server directives system
-  'dist/core/directives.js',
+  'dist/directives.js',
   
   // PWA system
-  'dist/core/pwa.js',
+  'dist/pwa.js',
   
-  // 0x1 router (built from 0x1-router package)
+  // 0x1 router (built from 0x1-router package - still in core)
   'dist/core/router.js',
   
-  // 0x1 store (built from 0x1-store package)
+  // 0x1 store (built from 0x1-store package - still in core)
   'dist/core/store.js',
   
   // Essential type definitions only
