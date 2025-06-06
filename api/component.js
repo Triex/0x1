@@ -74,9 +74,10 @@ export default async function handler(req, res) {
       })
       
       // Convert other 0x1 imports to browser paths
-      .replace(/from\s*["']0x1\/jsx-dev-runtime["']/g, 'from "/0x1/jsx-dev-runtime.js"')
-      .replace(/from\s*["']0x1\/router["']/g, 'from "/0x1/router.js"')
-      .replace(/from\s*["']0x1["']/g, 'from "/0x1/index.js"')
+      .replace(/from\s*["']0x1\/jsx-dev-runtime["']/g, 'from "0x1/jsx-runtime"')
+      .replace(/from\s*["']0x1\/router["']/g, 'from "0x1/router"')
+      // Preserve 0x1 imports to let import map handle resolution
+      // .replace(/from\s*["']0x1["']/g, 'from "/node_modules/0x1/index.js"')
       
       // Transform relative imports to absolute paths
       .replace(/from\s*["']\.\.\/([^"']+)["']/g, (match, relativePath) => {
@@ -93,7 +94,7 @@ export default async function handler(req, res) {
     
     // Add JSX runtime and compatibility layer
     const browserCompatibleCode = `// 0x1 Framework Component - Browser Compatible
-import { jsx, jsxs, jsxDEV, Fragment } from '/0x1/jsx-dev-runtime.js';
+import { jsx, jsxs, jsxDEV, Fragment } from '0x1/jsx-runtime';
 
 ${transformedCode}`;
     
@@ -111,7 +112,7 @@ ${transformedCode}`;
     
     // Return a production-quality error component
     const errorComponent = `// 0x1 Framework - Error Component
-import { jsx, jsxDEV } from '/0x1/jsx-dev-runtime.js';
+import { jsx, jsxDEV } from '0x1/jsx-runtime';
 
 export default function ErrorComponent() {
   console.error('[0x1] Component error for ${path}:', '${error.message.replace(/'/g, "\\'")}');

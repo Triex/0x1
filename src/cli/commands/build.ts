@@ -2753,7 +2753,7 @@ function generateHtmlTemplate(metadata: any, faviconLink: string, currentPath: s
   ${faviconLink}
   <link rel="stylesheet" href="/styles.css">
 ${dynamicCssLinks}
-  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/router":"/0x1/router.js","0x1/":"/0x1/"}}</script>
+  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/":"/0x1/"}}</script>
   <style>.app-loading{position:fixed;top:20px;right:20px;opacity:0.6;transition:opacity 0.3s}.app-loading.loaded{opacity:0}</style>
 </head>
 <body class="bg-slate-900 text-white">
