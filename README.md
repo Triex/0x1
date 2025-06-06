@@ -769,123 +769,114 @@ function Navigation() {
 
 ### Dynamic Routes
 
-0x1 supports Next15-style dynamic routing:
+0x1 supports Next.js 15-style dynamic routing:
 
 ```
 app/
+├── page.tsx                    // matches /
+├── about/page.tsx             // matches /about
 ├── blog/
-│   ├── [slug]/
-│   │   └── page.tsx          # /blog/my-post
-│   └── [...tags]/
-│       └── page.tsx          # /blog/tag1/tag2/tag3
-├── shop/
-│   └── [[...categories]]/
-│       └── page.tsx          # /shop or /shop/electronics/phones
-└── (auth)/                   # Route group - doesn't affect URL
-    ├── login/
-    │   └── page.tsx          # /login (not /auth/login)
-    └── signup/
-        └── page.tsx          # /signup (not /auth/signup)
+│   ├── [slug]/page.tsx        // matches /blog/hello-world
+│   └── [...tags]/page.tsx     // matches /blog/tag1/tag2/etc
+├── docs/
+│   ├── [[...path]]/page.tsx   // matches /docs, /docs/api, /docs/api/hooks
+│   └── (auth)/                // Route group - doesn't affect URL
+│       ├── login/page.tsx     // matches /login (not /auth/login)
+│       └── register/page.tsx  // matches /register
+└── [category]/
+    └── [id]/page.tsx          // matches /electronics/123
 ```
 
-```tsx
-// app/blog/[slug]/page.tsx
-export default function BlogPost({ params }: { params: { slug: string } }) {
-  return <h1>Blog Post: {params.slug}</h1>;
-}
+### Search Parameters & Navigation
 
-// app/shop/[[...categories]]/page.tsx  
-export default function Shop({ params }: { params: { categories?: string[] } }) {
-  const categories = params.categories || [];
-  return (
-    <div>
-      <h1>Shop</h1>
-      {categories.length > 0 && (
-        <p>Categories: {categories.join(' > ')}</p>
-      )}
-    </div>
-  );
-}
-```
-
-### Search Parameters
-
-Use Next15-style search parameter hooks:
+Access URL search parameters and navigation in your components:
 
 ```tsx
-import { useSearchParams, useParams, usePathname } from '0x1/router';
+import { useSearchParams, useParams, useRouter } from '0x1/router';
 
-function SearchResults() {
+function ProductPage() {
+  const params = useParams<{ category: string; id: string }>();
   const searchParams = useSearchParams();
-  const params = useParams();
-  const pathname = usePathname();
+  const router = useRouter();
   
-  const query = searchParams.get('q');
-  const page = searchParams.get('page') || '1';
+  const color = searchParams.get('color');
+  const size = searchParams.get('size');
+  
+  const handleNavigate = () => {
+    // Navigate with custom scroll behavior
+    router.navigate('/products', true, 'smooth');
+  };
   
   return (
     <div>
-      <h1>Search Results for: {query}</h1>
-      <p>Current path: {pathname}</p>
-      <p>Page: {page}</p>
-      
-      {/* Update search params */}
-      <button 
-        onClick={() => {
-          const newParams = new URLSearchParams(searchParams);
-          newParams.set('page', String(Number(page) + 1));
-          router.navigate(`${pathname}?${newParams.toString()}`);
-        }}
-      >
-        Next Page
-      </button>
+      <h1>Product {params.id} in {params.category}</h1>
+      {color && <p>Color: {color}</p>}
+      {size && <p>Size: {size}</p>}
     </div>
   );
 }
 ```
 
-### Route Groups and Organization
+### Scroll Behavior
 
-Use route groups to organize files without affecting URLs:
+0x1 provides intelligent scroll management that follows modern SPA best practices:
 
-```
-app/
-├── (marketing)/
-│   ├── about/page.tsx        # URL: /about
-│   ├── contact/page.tsx      # URL: /contact  
-│   └── layout.tsx            # Shared layout for marketing pages
-├── (dashboard)/
-│   ├── analytics/page.tsx    # URL: /analytics
-│   ├── settings/page.tsx     # URL: /settings
-│   └── layout.tsx            # Shared layout for dashboard pages
-└── layout.tsx                # Root layout
-```
+**Default Behavior:**
+- **New navigation**: Scroll to top ✅
+- **Browser back/forward**: Preserve scroll position ✅  
+- **Hash fragments**: Scroll to target element ✅
+- **External links**: Normal browser behavior ✅
 
-### Programmatic Navigation
+**Router Configuration:**
 
 ```tsx
-import { useRouter } from '0x1/router';
+// Global scroll behavior
+const router = new Router({
+  scrollBehavior: 'auto',    // Smart default (recommended)
+  // scrollBehavior: 'top',     // Always scroll to top
+  // scrollBehavior: 'preserve', // Never scroll
+  // scrollBehavior: 'smooth',   // Smooth scroll to top
+});
+```
 
-function MyComponent() {
-  const router = useRouter();
+**Per-Link Overrides:**
 
-  const handleNavigation = () => {
-    // Simple navigation
-    router.navigate('/dashboard');
-    
-    // With search params
-    router.navigate('/search?q=typescript&page=1');
-    
-    // With hash fragment
-    router.navigate('/docs/api#useEffect');
-  };
+```tsx
+import Link from '0x1/link';
 
+function Navigation() {
   return (
-    <button onClick={handleNavigation}>
-      Go to Dashboard
-    </button>
+    <nav>
+      {/* Default behavior */}
+      <Link href="/products">Products</Link>
+      
+      {/* Always scroll to top */}
+      <Link href="/about" scrollBehavior="top">About</Link>
+      
+      {/* Preserve scroll position */}
+      <Link href="/settings" scrollBehavior="preserve">Settings</Link>
+      
+      {/* Smooth scroll to top */}
+      <Link href="/contact" scrollBehavior="smooth">Contact</Link>
+      
+      {/* Hash fragment navigation */}
+      <Link href="/docs/api#hooks">API Hooks</Link>
+    </nav>
   );
 }
+```
+
+**Programmatic Navigation:**
+
+```tsx
+const router = useRouter();
+
+// Default behavior
+router.navigate('/products');
+
+// Custom scroll behavior
+router.navigate('/about', true, 'smooth');
+router.navigate('/settings', true, 'preserve');
 ```
 
 ---
@@ -1052,7 +1043,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.271)
+### Current State (v0.0.272)
 - ✅ Full React Hooks API compatibility
 - ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component

@@ -22,6 +22,8 @@ interface RouterOptions {
   notFoundComponent?: ComponentFunction;
   errorComponent?: ComponentFunction;
   base?: string;
+  scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth';
+  scrollToTop?: boolean; // For backwards compatibility
 }
 
 // Core types
@@ -39,6 +41,8 @@ export interface LinkProps {
   className?: string;
   children: any;
   prefetch?: boolean;
+  scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth'; // Override router's default scroll behavior
+  scrollToTop?: boolean; // Backwards compatibility - equivalent to scrollBehavior: 'top'
 }
 
 interface RouteMatch {
@@ -66,6 +70,8 @@ class Router {
   private middleware: Middleware[] = [];
   private isServer: boolean = typeof window === "undefined";
   public options: RouterOptions;
+  private scrollPositions: Map<string, { x: number; y: number }> = new Map();
+  private isBackForward: boolean = false;
 
   // Cache for layout DOM to prevent re-rendering
   private layoutCache: {
@@ -80,6 +86,8 @@ class Router {
       mode: "history",
       debug: false,
       base: "",
+      scrollBehavior: "auto", // Smart default behavior
+      scrollToTop: true, // Backwards compatibility
       ...options,
     };
 
@@ -88,7 +96,13 @@ class Router {
       this.initializeHookSystem();
 
       // Client-side setup
-      window.addEventListener("popstate", () => {
+      window.addEventListener("popstate", (e) => {
+        // Save current scroll position before navigating
+        this.saveScrollPosition(this.currentPath);
+        
+        // Mark this as back/forward navigation
+        this.isBackForward = true;
+        
         this.navigate(window.location.pathname, false);
       });
 
@@ -223,14 +237,25 @@ class Router {
   }
 
   // Navigate to path (client-side only) - optimized for instant navigation
-  public async navigate(path: string, pushState: boolean = true): Promise<void> {
+  public async navigate(
+    path: string, 
+    pushState: boolean = true, 
+    scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth'
+  ): Promise<void> {
     if (this.isServer) return;
+
+    // Save current scroll position before navigating (for back/forward support)
+    if (pushState) {
+      this.saveScrollPosition(this.currentPath);
+    }
 
     // Update URL immediately if needed
     if (pushState && path !== this.currentPath) {
       window.history.pushState({}, '', path);
     }
 
+    const previousPath = this.currentPath;
+    
     // Update current path
     this.currentPath = path;
 
@@ -240,6 +265,12 @@ class Router {
     // Render immediately - no delays
     await this.renderCurrentRoute();
 
+    // Handle scroll behavior after render (use provided behavior or default)
+    this.handleScrollBehavior(path, previousPath, scrollBehavior);
+
+    // Reset back/forward flag
+    this.isBackForward = false;
+
     // Notify listeners immediately
     this.listeners.forEach(async listener => {
       try {
@@ -248,6 +279,128 @@ class Router {
         console.error('[0x1 Router] Error in route change listener:', error);
       }
     });
+  }
+
+  // Save current scroll position for a path
+  private saveScrollPosition(path: string): void {
+    if (this.isServer) return;
+    
+    this.scrollPositions.set(path, {
+      x: window.scrollX || window.pageXOffset,
+      y: window.scrollY || window.pageYOffset
+    });
+  }
+
+  // Handle scroll behavior after navigation
+  private handleScrollBehavior(currentPath: string, previousPath: string, scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth'): void {
+    if (this.isServer) return;
+
+    // Parse hash fragment from current path
+    const [pathname, hash] = currentPath.split('#');
+    
+    // Determine scroll behavior
+    const behavior = scrollBehavior || this.options.scrollBehavior || 'auto';
+    
+    // Handle different scroll behaviors
+    if (behavior === 'preserve') {
+      // Never scroll, preserve current position
+      return;
+    }
+    
+    if (behavior === 'auto') {
+      // Smart default behavior
+      if (hash) {
+        // Hash fragment present - scroll to element
+        this.scrollToHash(hash);
+      } else if (this.isBackForward) {
+        // Browser back/forward - restore previous position
+        this.restoreScrollPosition(currentPath);
+      } else {
+        // Normal navigation - scroll to top
+        this.scrollToTop();
+      }
+    } else if (behavior === 'top') {
+      // Always scroll to top
+      this.scrollToTop();
+    } else if (behavior === 'smooth') {
+      // Smooth scroll to top
+      this.scrollToTop('smooth');
+    }
+  }
+
+  // Scroll to top of page
+  private scrollToTop(behavior: ScrollBehavior = 'auto'): void {
+    if (this.isServer) return;
+    
+    try {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: behavior
+      });
+    } catch (error) {
+      // Fallback for older browsers
+      window.scrollTo(0, 0);
+    }
+  }
+
+  // Scroll to hash fragment element
+  private scrollToHash(hash: string): void {
+    if (this.isServer) return;
+    
+    // Small delay to ensure DOM is ready
+    setTimeout(() => {
+      try {
+        const element = document.getElementById(hash) || 
+                       document.querySelector(`[name="${hash}"]`) ||
+                       document.querySelector(`a[name="${hash}"]`);
+        
+        if (element) {
+          element.scrollIntoView({ 
+            behavior: 'smooth',
+            block: 'start'
+          });
+          
+          // Also update URL to include hash if not already there
+          if (!window.location.hash.includes(hash)) {
+            window.history.replaceState({}, '', `${window.location.pathname}#${hash}`);
+          }
+        } else {
+          // Element not found, scroll to top as fallback
+          console.warn(`[0x1 Router] Hash target not found: #${hash}`);
+          this.scrollToTop();
+        }
+      } catch (error) {
+        console.error('[0x1 Router] Error scrolling to hash:', error);
+        this.scrollToTop();
+      }
+    }, 50); // Small delay for DOM updates
+  }
+
+  // Restore saved scroll position
+  private restoreScrollPosition(path: string): void {
+    if (this.isServer) return;
+    
+    const savedPosition = this.scrollPositions.get(path);
+    
+    if (savedPosition) {
+      // Small delay to ensure DOM is rendered
+      setTimeout(() => {
+        try {
+          window.scrollTo({
+            left: savedPosition.x,
+            top: savedPosition.y,
+            behavior: 'auto' // Instant for back/forward
+          });
+        } catch (error) {
+          // Fallback for older browsers
+          window.scrollTo(savedPosition.x, savedPosition.y);
+        }
+      }, 10);
+    } else {
+      // No saved position, scroll to top
+      this.scrollToTop();
+    }
   }
 
   // Execute middleware chain
@@ -1224,13 +1377,16 @@ function getCurrentRouter(): Router | null {
   return (window as any).__0x1_ROUTER__ || (window as any).__0x1_router || (window as any).router || null;
 }
 
-// JSX-compatible Link component with instant navigation
-export function Link({ href, className, children, prefetch }: LinkProps): any {
+// JSX-compatible Link component with instant navigation and scroll behavior
+export function Link({ href, className, children, prefetch, scrollBehavior, scrollToTop }: LinkProps): any {
   // Check if prefetch is needed
   const router = getCurrentRouter();
   if (prefetch && router) {
     router.prefetch(href);
   }
+
+  // Determine final scroll behavior
+  const finalScrollBehavior = scrollToTop ? 'top' : scrollBehavior;
 
   // Return JSX structure with proper event handling
   return {
@@ -1247,8 +1403,8 @@ export function Link({ href, className, children, prefetch }: LinkProps): any {
         if (href.startsWith("/")) {
           const router = getCurrentRouter();
           if (router) {
-            // Use router for instant client-side navigation
-            router.navigate(href);
+            // Use router for instant client-side navigation with scroll behavior
+            router.navigate(href, true, finalScrollBehavior);
           } else if (typeof window !== "undefined") {
             // Fallback: use history API for client-side navigation
             window.history.pushState(null, "", href);
@@ -1271,7 +1427,7 @@ export function useRouter() {
   if (!router) {
     // Return a placeholder when router is not available
     return {
-      navigate: (path: string) => {
+      navigate: (path: string, pushState = true, scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth') => {
         if (typeof window !== "undefined") {
           window.location.href = path;
         }
@@ -1283,8 +1439,8 @@ export function useRouter() {
   }
 
   return {
-    navigate: (path: string, pushState = true) =>
-      router.navigate(path, pushState),
+    navigate: (path: string, pushState = true, scrollBehavior?: 'auto' | 'top' | 'preserve' | 'smooth') =>
+      router.navigate(path, pushState, scrollBehavior),
     currentPath: router.currentPath,
     getCurrentRoute: () => router.getCurrentRoute(),
     prefetch: (path: string) => router.prefetch(path),
