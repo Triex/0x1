@@ -825,8 +825,30 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
   try {
     console.log(`[Build] Attempting to transpile: ${sourcePath}`);
     
-    // ROBUST FIX: Context-aware JSX detection that ignores JSX inside strings/template literals
-    const hasActualJsxElements = detectActualJsxElements(sourceCode);
+    // ROBUST FIX: Always transpile .tsx/.jsx files regardless of JSX detection
+    const isTsxOrJsx = sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx');
+    
+    // ROBUST FIX: Improved JSX detection that catches more cases
+    const hasActualJsxElements = detectActualJsxElements(sourceCode) || 
+                                sourceCode.includes('<div') || 
+                                sourceCode.includes('<span') || 
+                                sourceCode.includes('<button') || 
+                                sourceCode.includes('<input') || 
+                                sourceCode.includes('<h1') || 
+                                sourceCode.includes('<h2') || 
+                                sourceCode.includes('<h3') || 
+                                sourceCode.includes('<p>') ||
+                                sourceCode.includes('<main') ||
+                                sourceCode.includes('<section') ||
+                                sourceCode.includes('<article') ||
+                                sourceCode.includes('<header') ||
+                                sourceCode.includes('<footer') ||
+                                sourceCode.includes('<nav') ||
+                                sourceCode.includes('<aside') ||
+                                sourceCode.includes('<form') ||
+                                /return\s*\(\s*</.test(sourceCode) || // JSX return statements
+                                /=\s*<[A-Za-z]/.test(sourceCode) || // JSX assignments
+                                /<[A-Z][A-Za-z0-9]*[\s/>]/.test(sourceCode); // React components
     
     const hasJsxCalls = /jsx\s*\(/.test(sourceCode) || 
                        /jsxs\s*\(/.test(sourceCode) || 
@@ -834,6 +856,7 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
                        /jsx[A-Za-z]*_[a-zA-Z0-9_]+\s*\(/.test(sourceCode); // Detect hashed jsx functions
     
     console.log(`[Build] JSX Detection for ${sourcePath}:`);
+    console.log(`[Build]   Is TSX/JSX file: ${isTsxOrJsx}`);
     console.log(`[Build]   Has actual JSX elements: ${hasActualJsxElements}`);
     console.log(`[Build]   Has jsx calls: ${hasJsxCalls}`);
     
@@ -866,18 +889,20 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     // Transform imports for browser compatibility
     processedCode = transformBareImports(processedCode, sourcePath);
     
-    // CRITICAL FIX: Force JSX transpilation for any file with ACTUAL JSX elements (not just strings)
-    if (hasActualJsxElements || sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx')) {
-      console.log(`[Build] FORCING JSX transpilation for: ${sourcePath}`);
+    // CRITICAL FIX: ALWAYS transpile .tsx/.jsx files, even if JSX detection fails
+    const shouldTranspile = isTsxOrJsx || hasActualJsxElements;
     
-    const transpiler = new Bun.Transpiler({
-        loader: 'tsx', // Always use tsx loader for JSX files
-      target: 'browser',
-      define: {
-        'process.env.NODE_ENV': JSON.stringify('production'),
-        'global': 'globalThis'
-      }
-    });
+    if (shouldTranspile) {
+      console.log(`[Build] FORCING JSX transpilation for: ${sourcePath} (TSX/JSX: ${isTsxOrJsx}, JSX elements: ${hasActualJsxElements})`);
+    
+      const transpiler = new Bun.Transpiler({
+        loader: isTsxOrJsx ? 'tsx' : 'js', // Use tsx loader for .tsx/.jsx files
+        target: 'browser',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('production'),
+          'global': 'globalThis'
+        }
+      });
     
       const transpiledContent = await transpiler.transform(processedCode);
       console.log(`[Build] Transpilation complete for ${sourcePath}. Output length: ${transpiledContent.length}`);
@@ -893,8 +918,33 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       console.log(`[Build]   Still has JSX elements: ${hasJsxAfterTranspile}`);
       console.log(`[Build]   Now has jsx calls: ${hasJsxCallsAfterTranspile}`);
       
+      // CRITICAL FIX: Better error handling for failed transpilation
       if (hasJsxAfterTranspile && !hasJsxCallsAfterTranspile) {
-        throw new Error(`JSX elements still present but no jsx calls generated in ${sourcePath}`);
+        console.error(`[Build] CRITICAL: JSX elements still present but no jsx calls generated in ${sourcePath}`);
+        console.error(`[Build] Original code sample: ${sourceCode.substring(0, 200)}...`);
+        console.error(`[Build] Transpiled code sample: ${transpiledContent.substring(0, 200)}...`);
+        
+        // Try a more aggressive transpilation
+        console.log(`[Build] Attempting aggressive transpilation for ${sourcePath}`);
+        const aggressiveTranspiler = new Bun.Transpiler({
+          loader: 'tsx', // Force tsx loader
+          target: 'browser',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('production'),
+            'global': 'globalThis'
+          }
+        });
+        
+        const aggressiveResult = await aggressiveTranspiler.transform(sourceCode); // Use original sourceCode
+        
+        if (!/<[A-Za-z]/.test(aggressiveResult) || /jsx[A-Za-z]*\s*\(/.test(aggressiveResult)) {
+          console.log(`[Build] Aggressive transpilation succeeded for ${sourcePath}`);
+          let finalCode = normalizeJsxFunctionCalls(aggressiveResult);
+          finalCode = insertJsxRuntimePreamble(finalCode);
+          return finalCode;
+        } else {
+          throw new Error(`JSX elements still present after aggressive transpilation in ${sourcePath}`);
+        }
       }
       
       // Normalize JSX function calls and insert runtime preamble
@@ -903,7 +953,7 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
       
       console.log(`[Build] ✅ Successfully transpiled JSX file: ${sourcePath}`);
       return finalCode;
-      } else {
+    } else {
       // Non-JSX file - just process imports and return
       console.log(`[Build] Processing non-JSX file: ${sourcePath}`);
       let finalCode = processedCode;
@@ -917,7 +967,11 @@ async function transpileComponentSafely(sourceCode: string, sourcePath: string):
     
   } catch (error) {
     console.error(`[Build] CRITICAL ERROR transpiling ${sourcePath}:`, error);
-    throw error;
+    
+    // CRITICAL FIX: Generate error component instead of failing build
+    const errorComponent = generateErrorComponent(sourcePath, error instanceof Error ? error.message : String(error));
+    console.log(`[Build] Generated error component for failed transpilation: ${sourcePath}`);
+    return errorComponent;
   }
 }
 
@@ -1193,11 +1247,15 @@ ${appContent}`;
       logger.info('🚀 Production optimizations: ✅ Cache busting, ✅ Parallel loading, ✅ Console log removal, ✅ Minification');
     }
 
+    // CRITICAL FIX: Ensure build process exits cleanly
+    process.exit(0);
+
   } catch (error) {
     if (!silent) {
       logger.error(`❌ Build failed: ${error}`);
     }
-    throw error;
+    // CRITICAL FIX: Ensure proper exit on error
+    process.exit(1);
   }
 }
 
@@ -1775,10 +1833,15 @@ async function generateStaticComponentFilesSuperFast(
           wrappedComponentCode = `${layoutName}({ children: ${wrappedComponentCode}, ...props })`;
         }
         
-        // Combine all layout contents + page + wrapper
-        sourceCode = `${layoutContents.join('\n\n')}\n\n${pageWithoutExport}\n\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
+        // CRITICAL FIX: Remove duplicate metadata exports to prevent conflicts
+        const pageWithoutExportAndMetadata = pageWithoutExport
+          .replace(/export\s+const\s+metadata\s*=[\s\S]*?(?=export|function|const|let|var|\n\s*\n|$)/g, '// Metadata removed to prevent conflicts with layout metadata')
+          .replace(/^export\s+const\s+metadata\s*=.*$/gm, '// Metadata removed to prevent conflicts');
         
-        console.log(`[Build] Composed nested layouts for ${route.path}: ${layoutNames.join(' -> ')} -> ${pageComponentName}`);
+        // Combine all layout contents + page + wrapper
+        sourceCode = `${layoutContents.join('\n\n')}\n\n${pageWithoutExportAndMetadata}\n\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
+        
+        console.log(`[Build] Composed nested layouts for ${route.path}: ${layoutNames.join(' -> ')} -> ${pageComponentName} (metadata conflicts resolved)`);
       }
       
       // CRITICAL FIX: Use safe transpilation

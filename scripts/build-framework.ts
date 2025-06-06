@@ -18,13 +18,16 @@ const consoleLogRemovalPlugin = {
     build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args: any) => {
       const contents = await Bun.file(args.path).text();
       
-      // Remove console.log statements but keep console.error and console.warn
+      // CRITICAL FIX: Only remove console.log statements, don't modify JSX
+      // Be very careful with regex to avoid breaking JSX syntax
       const processedContents = contents
-        .replace(/console\.log\([^;]*\);?/g, '/* console.log removed */;')
-        .replace(/console\.log\([^)]*\)/g, '/* console.log removed */')
-        // Also remove debug-style console statements
-        .replace(/console\.debug\([^;]*\);?/g, '/* console.debug removed */;')
-        .replace(/console\.debug\([^)]*\)/g, '/* console.debug removed */');
+        // Only match complete console.log statements with semicolons or line endings
+        .replace(/console\.log\([^)]*\);?(\r?\n|$)/g, '/* console.log removed */;\n')
+        // Also handle console.log without semicolons at end of lines
+        .replace(/console\.log\([^)]*\)(?=\s*[\r\n])/g, '/* console.log removed */')
+        // Handle debug statements
+        .replace(/console\.debug\([^)]*\);?(\r?\n|$)/g, '/* console.debug removed */;\n')
+        .replace(/console\.debug\([^)]*\)(?=\s*[\r\n])/g, '/* console.debug removed */');
       
       return {
         contents: processedContents,
@@ -243,7 +246,8 @@ async function buildFramework() {
         const hashedPath = join(distDir, `link-${hash}.js`);
         
         await Bun.write(hashedPath, content);
-        await Bun.write(outputPath, `export * from './link-${hash}.js';`);
+        // CRITICAL FIX: Re-export both named and default exports for Link
+        await Bun.write(outputPath, `export * from './link-${hash}.js';\nexport { default } from './link-${hash}.js';`);
         
         console.log(`✅ Built link-${hash}.js`);
       } else {
