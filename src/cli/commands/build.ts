@@ -1008,8 +1008,19 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     const discoveryTime = performance.now();
     log.info('🔍 Ultra-fast discovery...');
     
+    // CRITICAL FIX: Use single source of truth from dev-server
+    const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
+    
     const [discoveredRoutes, allComponents] = await Promise.all([
-      discoverRoutesSuperFast(projectPath),
+      (async () => {
+        const fullRoutes = discoverRoutesFromFileSystem(projectPath);
+        // Convert to simplified format for build compatibility
+        return fullRoutes.map(route => ({
+          path: route.path,
+          componentPath: route.componentPath,
+          layouts: route.layouts
+        }));
+      })(),
       discoverAllComponentsSuperFast(projectPath)
     ]);
     
@@ -1135,80 +1146,6 @@ async function loadConfigFast(projectPath: string, configPath?: string): Promise
 
   const results = await Promise.all(tasks);
   return results.find(config => config !== null) || {};
-}
-
-// 🚀 LIGHTNING-FAST ROUTE DISCOVERY WITH NESTED LAYOUT SUPPORT
-async function discoverRoutesSuperFast(projectPath: string): Promise<Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }>> {
-  const routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> = [];
-  const appDir = join(projectPath, 'app');
-  
-  if (!existsSync(appDir)) return routes;
-
-  const scanDirFast = async (dirPath: string, routePath: string = '', parentLayouts: Array<{ path: string; componentPath: string }> = []): Promise<void> => {
-    try {
-      const items = readdirSync(dirPath, { withFileTypes: true });
-      
-      // Check for layout file in current directory
-      const layoutFiles = items.filter(item => 
-        !item.isDirectory() && (item.name === 'layout.tsx' || item.name === 'layout.ts' || 
-                               item.name === 'layout.jsx' || item.name === 'layout.js')
-      );
-
-      // Build current layout hierarchy (parent layouts + current layout if exists)
-      const currentLayouts = [...parentLayouts];
-      if (layoutFiles.length > 0) {
-        const actualLayoutFile = layoutFiles[0].name;
-        const layoutComponentPath = join(dirPath, actualLayoutFile)
-          .replace(projectPath, '')
-          .replace(/\\/g, '/')
-          .replace(/\.(tsx|ts|jsx)$/, '.js');
-        
-        currentLayouts.push({ 
-          path: routePath || "/", 
-          componentPath: layoutComponentPath 
-        });
-        
-        console.log(`[Build] Found layout: ${routePath || "/"} -> ${layoutComponentPath} (source: ${actualLayoutFile})`);
-      }
-      
-      const tasks = items.map(async (item) => {
-        if (item.isDirectory() && !item.name.startsWith('.') && !item.name.startsWith('(')) {
-          const newRoutePath = routePath + '/' + item.name;
-          await scanDirFast(join(dirPath, item.name), newRoutePath, currentLayouts);
-        } else if (item.name === 'page.tsx' || item.name === 'page.ts' || item.name === 'page.jsx' || item.name === 'page.js') {
-          const fullRoutePath = routePath || '/';
-          const componentPath = join(dirPath, item.name)
-            .replace(projectPath, '')
-            .replace(/\\/g, '/')
-            .replace(/\.(tsx|ts|jsx)$/, '.js');
-          
-          routes.push({
-            path: fullRoutePath,
-            componentPath: componentPath,
-            layouts: currentLayouts
-          });
-          
-          console.log(`[Build] Found route: ${fullRoutePath} -> ${componentPath} with ${currentLayouts.length} layouts`);
-        }
-      });
-      
-      await Promise.all(tasks);
-    } catch (error) {
-      // Silent fail for individual directories
-      console.warn(`[Build] Error scanning directory ${dirPath}:`, error);
-    }
-  };
-
-  await scanDirFast(appDir);
-  
-  // Log layout hierarchy for debugging
-  routes.forEach(route => {
-    if (route.layouts.length > 0) {
-      console.log(`[Build] Route ${route.path} layout hierarchy: ${route.layouts.map(l => l.path).join(' -> ')}`);
-    }
-  });
-  
-  return routes;
 }
 
 // 🚀 ULTRA-FAST COMPONENT DISCOVERY WITH PARALLEL SCANNING
@@ -2249,7 +2186,14 @@ async function generateProductionHtmlFast(projectPath: string, outputPath: strin
   if (!existsSync(appDir)) return;
 
   // Get discovered routes for metadata extraction
-  const discoveredRoutes = await discoverRoutesSuperFast(projectPath);
+  const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
+  const fullRoutes = discoverRoutesFromFileSystem(projectPath);
+  // Convert to simplified format for HTML generation compatibility
+  const discoveredRoutes = fullRoutes.map(route => ({
+    path: route.path,
+    componentPath: route.componentPath,
+    layouts: route.layouts
+  }));
   
   const faviconLink = existsSync(join(projectPath, 'app/favicon.svg')) ? 
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' :
