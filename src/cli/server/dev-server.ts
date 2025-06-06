@@ -18,7 +18,7 @@ import {
   statSync,
   watch,
 } from "fs";
-import { dirname, join, resolve } from "path";
+import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tailwindV4Handler } from "../commands/utils/server/tailwind-v4";
 import { logger } from "../utils/logger";
@@ -525,14 +525,49 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
 
 /**
  * Server-side route discovery - scans the actual file system
- * Enhanced to support Next.js 15-style nested layouts
+ * Enhanced to support Next.js 15-style routing with full feature parity:
+ * - Dynamic routes: [slug], [id], etc.
+ * - Catch-all routes: [...slug], [[...slug]]
+ * - Route groups: (group) - don't affect URL structure
+ * - Nested layouts with proper hierarchy
+ * - Search params handling (both server and client)
  */
 export function discoverRoutesFromFileSystem(
   projectPath: string
-): Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> {
-  const routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }> = [];
+): Array<{ 
+  path: string; 
+  componentPath: string; 
+  layouts: Array<{ path: string; componentPath: string }>; 
+  isDynamic: boolean;
+  dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+  routeGroup?: string;
+  filePath?: string; // Track the actual file system path for conflict detection
+}> {
+  const routes: Array<{ 
+    path: string; 
+    componentPath: string; 
+    layouts: Array<{ path: string; componentPath: string }>; 
+    isDynamic: boolean;
+    dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+    routeGroup?: string;
+    filePath?: string;
+  }> = [];
 
-  function scanDirectory(dirPath: string, routePath: string = "", parentLayouts: Array<{ path: string; componentPath: string }> = []) {
+  // Track route conflicts: URL path -> array of file system sources
+  const routeConflicts = new Map<string, Array<{
+    filePath: string;
+    componentPath: string;
+    routeGroup?: string;
+    isGrouped: boolean;
+  }>>();
+
+  function scanDirectory(
+    dirPath: string, 
+    routePath: string = "", 
+    parentLayouts: Array<{ path: string; componentPath: string }> = [],
+    routeGroup?: string,
+    fileSystemPath: string = ""
+  ) {
     try {
       if (!existsSync(dirPath)) {
         return;
@@ -565,23 +600,43 @@ export function discoverRoutesFromFileSystem(
       );
 
       if (pageFiles.length > 0) {
-        // Found a page file, add route with its complete layout hierarchy
-        const route = routePath || "/";
+        // Found a page file, process the route path for Next.js patterns
+        const processedRoute = processRoutePattern(routePath || "/");
         const actualFile = pageFiles[0];
         const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
+        const fullFilePath = join(dirPath, actualFile);
+        const relativeFilePath = relative(projectPath, fullFilePath);
+        
+        // Track this route for conflict detection
+        const urlPath = processedRoute.path;
+        if (!routeConflicts.has(urlPath)) {
+          routeConflicts.set(urlPath, []);
+        }
+        
+        routeConflicts.get(urlPath)!.push({
+          filePath: relativeFilePath,
+          componentPath: componentPath,
+          routeGroup: routeGroup,
+          isGrouped: !!routeGroup
+        });
         
         routes.push({ 
-          path: route, 
+          path: processedRoute.path, 
           componentPath: componentPath,
-          layouts: currentLayouts // Include all layouts from root to current level
+          layouts: currentLayouts,
+          isDynamic: processedRoute.isDynamic,
+          dynamicSegments: processedRoute.dynamicSegments,
+          routeGroup: routeGroup,
+          filePath: relativeFilePath
         });
         
         logger.debug(
-          `Found route: ${route} -> ${componentPath} (source: ${actualFile}) with ${currentLayouts.length} layouts`
+          `Found route: ${processedRoute.path} -> ${componentPath} (source: ${actualFile}) ` +
+          `${processedRoute.isDynamic ? '[DYNAMIC]' : '[STATIC]'} with ${currentLayouts.length} layouts`
         );
       }
 
-      // Recursively scan subdirectories (but avoid infinite recursion)
+      // Recursively scan subdirectories with Next.js pattern handling
       const subdirs = items.filter((item: string) => {
         const itemPath = join(dirPath, item);
         try {
@@ -598,9 +653,18 @@ export function discoverRoutesFromFileSystem(
 
       for (const subdir of subdirs) {
         const subdirPath = join(dirPath, subdir);
+        
+        // Handle Next.js route groups: (group) - don't affect URL structure
+        if (subdir.startsWith('(') && subdir.endsWith(')')) {
+          const groupName = subdir.slice(1, -1);
+          logger.debug(`Found route group: ${groupName}`);
+          // Route groups don't affect the URL, so pass the same routePath
+          scanDirectory(subdirPath, routePath, currentLayouts, groupName, fileSystemPath + '(' + groupName + ')/');
+        } else {
+          // Normal directory - affects URL structure
         const subroutePath = routePath + "/" + subdir;
-        // Pass current layouts to children
-        scanDirectory(subdirPath, subroutePath, currentLayouts);
+          scanDirectory(subdirPath, subroutePath, currentLayouts, routeGroup, fileSystemPath + subdir + '/');
+        }
       }
     } catch (error) {
       logger.debug(`Error scanning directory ${dirPath}: ${error}`);
@@ -609,35 +673,242 @@ export function discoverRoutesFromFileSystem(
 
   // Scan app directory
   const appDir = join(projectPath, "app");
-  scanDirectory(appDir);
+  scanDirectory(appDir, "", [], undefined, "app/");
 
   // Also scan app/pages directory if it exists
   const pagesDir = join(projectPath, "app", "pages");
   if (existsSync(pagesDir)) {
-    scanDirectory(pagesDir);
+    scanDirectory(pagesDir, "", [], undefined, "app/pages/");
   }
 
-  // Sort routes by path length (more specific routes first)
+  // **ROUTE CONFLICT DETECTION & REPORTING**
+  const conflicts: Array<{
+    urlPath: string;
+    sources: Array<{
+      filePath: string;
+      componentPath: string;
+      routeGroup?: string;
+      isGrouped: boolean;
+    }>;
+    winner: string;
+  }> = [];
+
+  // Check for conflicts and determine winners
+  for (const [urlPath, sources] of routeConflicts.entries()) {
+    if (sources.length > 1) {
+      // CONFLICT DETECTED!
+      
+      // Determine winner based on precedence rules (similar to Next.js):
+      // 1. Non-grouped routes take precedence over grouped routes
+      // 2. If both are grouped or both are non-grouped, alphabetical order by file path
+      const sortedSources = [...sources].sort((a, b) => {
+        // Non-grouped routes win over grouped routes
+        if (!a.isGrouped && b.isGrouped) return -1;
+        if (a.isGrouped && !b.isGrouped) return 1;
+        
+        // If both are the same type, sort alphabetically by file path
+        return a.filePath.localeCompare(b.filePath);
+      });
+      
+      const winner = sortedSources[0];
+      
+      conflicts.push({
+        urlPath,
+        sources,
+        winner: winner.filePath
+      });
+
+      // Generate comprehensive error message
+      const conflictSources = sources.map(s => {
+        const groupInfo = s.isGrouped ? ` (route group: ${s.routeGroup})` : '';
+        return `  • ${s.filePath}${groupInfo}`;
+      }).join('\n');
+
+      const errorMessage = `Route Conflict Detected for "${urlPath}"
+
+Multiple files are trying to handle the same URL path:
+${conflictSources}
+
+🎯 Resolution: Using "${winner.filePath}" as the active route.
+
+🔧 How to Fix:
+  • Rename one of the conflicting page files
+  • Move one route to a different path structure  
+  • Use route groups (folders) to organize without affecting URLs
+  • Consider if you have both (group)/path/page.tsx AND path/page.tsx
+
+📚 Route Groups Info:
+  • (auth)/login/page.tsx → /login (URL not affected by group)
+  • auth/login/page.tsx → /auth/login 
+  • These would conflict if they resolved to the same path
+
+⚠️  Only the winning route will be accessible in your app.`;
+
+      // Log the conflict with appropriate styling
+      logger.warn(`\n${'='.repeat(60)}`);
+      logger.warn('🚨 ROUTE CONFLICT DETECTED');
+      logger.warn(`${'='.repeat(60)}`);
+      logger.warn(`URL Path: ${urlPath}`);
+      logger.warn(`Winner: ${winner.filePath}`);
+      logger.warn(`Conflicting files:`);
+      sources.forEach(source => {
+        const marker = source.filePath === winner.filePath ? '✅' : '❌';
+        const groupInfo = source.isGrouped ? ` (group: ${source.routeGroup})` : '';
+        logger.warn(`  ${marker} ${source.filePath}${groupInfo}`);
+      });
+      logger.warn(`${'='.repeat(60)}\n`);
+
+      // Send to error boundary for user-friendly display
+      if (typeof console !== 'undefined') {
+        console.error(errorMessage);
+      }
+    }
+  }
+
+  // Sort routes by specificity (static routes first, then by segment count)
   routes.sort((a, b) => {
-    if (a.path === "/") return 1; // Root route last
-    if (b.path === "/") return -1;
-    return b.path.length - a.path.length;
+    if (a.path === "/" && b.path !== "/") return 1; // Root route last
+    if (b.path === "/" && a.path !== "/") return -1;
+    
+    // Static routes before dynamic routes
+    if (!a.isDynamic && b.isDynamic) return -1;
+    if (a.isDynamic && !b.isDynamic) return 1;
+    
+    // More specific routes first (more segments = more specific)
+    const aSegments = a.path.split('/').filter(s => s).length;
+    const bSegments = b.path.split('/').filter(s => s).length;
+    return bSegments - aSegments;
   });
 
+  // Filter out losing routes from conflicts (only keep winners)
+  const filteredRoutes = routes.filter(route => {
+    const conflictForThisRoute = conflicts.find(c => c.urlPath === route.path);
+    if (conflictForThisRoute) {
+      // Only keep the winning route
+      return route.filePath === conflictForThisRoute.winner;
+    }
+    return true; // No conflict, keep the route
+  });
+
+  // Summary logging
+  const conflictSummary = conflicts.length > 0 
+    ? ` (${conflicts.length} conflicts resolved)`
+    : '';
+
   logger.info(
-    `Discovered ${routes.length} routes: ${routes.map((r) => r.path).join(", ")}`
+    `Discovered ${filteredRoutes.length} routes${conflictSummary}: ${filteredRoutes.map((r) => 
+      r.path + (r.isDynamic ? ' [DYNAMIC]' : '')
+    ).join(", ")}`
   );
   
-  // Log layout hierarchy for debugging
-  routes.forEach(route => {
+  // Log route details for debugging
+  filteredRoutes.forEach(route => {
     if (route.layouts.length > 0) {
       logger.debug(
         `Route ${route.path} layout hierarchy: ${route.layouts.map(l => l.path).join(' -> ')}`
       );
     }
+    if (route.isDynamic) {
+      logger.debug(
+        `Dynamic route ${route.path} segments: ${route.dynamicSegments.map(s => 
+          `${s.name}(${s.type})`
+        ).join(', ')}`
+      );
+    }
   });
+
+  // Add route conflict information to error boundary database
+  if (conflicts.length > 0 && typeof globalThis !== 'undefined') {
+    // Ensure the error tips database includes route conflict patterns
+    const errorTipsDB = (globalThis as any).ERROR_TIPS_DATABASE;
+    if (errorTipsDB) {
+      errorTipsDB.route_conflict = {
+        patterns: [
+          'Route Conflict Detected',
+          'Multiple files are trying to handle the same URL path',
+          'conflicting page files',
+          'route groups.*conflict'
+        ],
+        category: 'Route Configuration',
+        tips: [
+          'Rename one of the conflicting page files to use a different URL path',
+          'Move one route to a different folder structure',
+          'Use route groups (folders in parentheses) to organize files without affecting URLs',
+          'Check if you have both (group)/path/page.tsx AND path/page.tsx patterns',
+          'Only the "winning" route (first in precedence) will be accessible in your app'
+        ],
+        context: [
+          'Multiple files are trying to handle the same URL path',
+          'Route groups like (auth) don\'t affect the URL structure',
+          'The framework automatically picks a winner based on precedence rules'
+        ],
+        quickFixes: [
+          'Rename one of the conflicting files',
+          'Move conflicting routes to different paths',
+          'Review your route group usage',
+          'Check the dev server logs for which route won'
+        ]
+      };
+    }
+  }
   
-  return routes;
+  return filteredRoutes;
+}
+
+/**
+ * Process route pattern to handle Next.js dynamic routing
+ * Supports: [slug], [...slug], [[...slug]], and route groups (group)
+ */
+function processRoutePattern(routePath: string): {
+  path: string;
+  isDynamic: boolean;
+  dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+} {
+  const segments = routePath.split('/').filter(s => s);
+  const processedSegments: string[] = [];
+  const dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }> = [];
+  let isDynamic = false;
+
+  for (const segment of segments) {
+    // Handle optional catch-all routes: [[...slug]]
+    if (segment.startsWith('[[') && segment.endsWith(']]')) {
+      const paramName = segment.slice(5, -2); // Remove [[...]]
+      processedSegments.push(':' + paramName + '*'); // Express-style optional catch-all
+      dynamicSegments.push({ name: paramName, type: 'optionalCatchAll' });
+      isDynamic = true;
+    }
+    // Handle catch-all routes: [...slug]
+    else if (segment.startsWith('[...') && segment.endsWith(']')) {
+      const paramName = segment.slice(4, -1); // Remove [...] 
+      processedSegments.push(':' + paramName + '+'); // Express-style catch-all (one or more)
+      dynamicSegments.push({ name: paramName, type: 'catchAll' });
+      isDynamic = true;
+    }
+    // Handle dynamic segments: [slug]
+    else if (segment.startsWith('[') && segment.endsWith(']')) {
+      const paramName = segment.slice(1, -1); // Remove []
+      processedSegments.push(':' + paramName); // Express-style parameter
+      dynamicSegments.push({ name: paramName, type: 'dynamic' });
+      isDynamic = true;
+    }
+    // Handle route groups: (group) - these don't affect URL structure, so skip them
+    else if (segment.startsWith('(') && segment.endsWith(')')) {
+      // Skip route groups in URL generation
+      continue;
+    }
+    // Regular static segment
+    else {
+      processedSegments.push(segment);
+    }
+  }
+
+  const finalPath = '/' + processedSegments.join('/');
+  
+  return {
+    path: finalPath === '//' ? '/' : finalPath,
+    isDynamic,
+    dynamicSegments
+  };
 }
 
 // Component cache to prevent re-transpilation
@@ -954,11 +1225,17 @@ export function createDevServer(options: DevServerOptions): Server {
       }
 
       // Handle EventSource connections for live reload - PROPER STREAMING SSE
-      if (reqPath === "/__0x1_sse_live_reload" || reqPath === "/__0x1_live_reload") {
+      if (
+        reqPath === "/__0x1_sse_live_reload" ||
+        reqPath === "/__0x1_live_reload"
+      ) {
         logRequestStatus(200, reqPath, "SSE connection established");
         
         // CRITICAL FIX: Prevent connection flooding with rate limiting
-        const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+        const clientIP =
+          req.headers.get("x-forwarded-for") ||
+          req.headers.get("x-real-ip") ||
+          "unknown";
         const now = Date.now();
         const connectionKey = `${clientIP}_${reqPath}`;
         
@@ -966,13 +1243,17 @@ export function createDevServer(options: DevServerOptions): Server {
         if (lastSSEConnection.has(connectionKey)) {
           const lastTime = lastSSEConnection.get(connectionKey);
           if (lastTime && now - lastTime < SSE_RATE_LIMIT_MS) {
-            logRequestStatus(429, reqPath, `Rate limited - last connection ${now - lastTime}ms ago`);
+            logRequestStatus(
+              429,
+              reqPath,
+              `Rate limited - last connection ${now - lastTime}ms ago`
+            );
             return new Response("Rate limited - too many connections", { 
               status: 429,
               headers: {
                 "Retry-After": Math.ceil(SSE_RATE_LIMIT_MS / 1000).toString(),
-                "Content-Type": "text/plain"
-              }
+                "Content-Type": "text/plain",
+              },
             });
           }
         }
@@ -986,13 +1267,13 @@ export function createDevServer(options: DevServerOptions): Server {
             const initialMessage = `data: ${JSON.stringify({ 
               type: "connected", 
               timestamp: now,
-              server: "0x1-dev" 
+              server: "0x1-dev",
             })}\n\n`;
             
             try {
               controller.enqueue(encoder.encode(initialMessage));
             } catch (error) {
-              console.error('[0x1 SSE] Failed to send initial message:', error);
+              console.error("[0x1 SSE] Failed to send initial message:", error);
               return;
             }
             
@@ -1001,7 +1282,7 @@ export function createDevServer(options: DevServerOptions): Server {
               try {
                 const heartbeat = `data: ${JSON.stringify({ 
                   type: "heartbeat", 
-                  timestamp: Date.now() 
+                  timestamp: Date.now(),
                 })}\n\n`;
                 controller.enqueue(encoder.encode(heartbeat));
               } catch (error) {
@@ -1027,7 +1308,7 @@ export function createDevServer(options: DevServerOptions): Server {
             
             // Clean up when client disconnects
             if (req.signal) {
-              req.signal.addEventListener('abort', cleanup);
+              req.signal.addEventListener("abort", cleanup);
             }
             
             // Return cleanup function
@@ -1035,8 +1316,8 @@ export function createDevServer(options: DevServerOptions): Server {
           },
           cancel() {
             // Connection closed by client - just log, don't force actions
-            console.log('[0x1 SSE] Client disconnected cleanly');
-          }
+            console.log("[0x1 SSE] Client disconnected cleanly");
+          },
         });
 
         return new Response(stream, {
@@ -1044,24 +1325,27 @@ export function createDevServer(options: DevServerOptions): Server {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Connection": "keep-alive",
+            Connection: "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Cache-Control",
-            "X-Accel-Buffering": "no" // Disable nginx buffering
-          }
+            "X-Accel-Buffering": "no", // Disable nginx buffering
+          },
         });
       }
 
       // Handle ping endpoint for heartbeat monitoring
       if (reqPath === "/__0x1_ping") {
         logRequestStatus(200, reqPath, "Heartbeat ping");
-        return new Response(JSON.stringify({ 
-          status: 'ok', 
-          timestamp: Date.now() 
-        }), {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            timestamp: Date.now(),
+          }),
+          {
           status: 200,
-          headers: STANDARD_HEADERS.JSON
-        });
+            headers: STANDARD_HEADERS.JSON,
+          }
+        );
       }
 
       // Handle live reload script request
@@ -1070,23 +1354,28 @@ export function createDevServer(options: DevServerOptions): Server {
         
         // CRITICAL FIX: Always use TypeScript source and transpile it - no more .js fallback
         try {
-          const liveReloadTsPath = join(frameworkPath, "src", "browser", "live-reload.ts");
+          const liveReloadTsPath = join(
+            frameworkPath,
+            "src",
+            "browser",
+            "live-reload.ts"
+          );
           if (existsSync(liveReloadTsPath)) {
             // Transpile the TypeScript live-reload to JavaScript
             const transpiled = await Bun.build({
               entrypoints: [liveReloadTsPath],
-              target: 'browser',
-              format: 'iife', // Use IIFE format for immediate execution
+              target: "browser",
+              format: "iife", // Use IIFE format for immediate execution
               minify: false,
-              sourcemap: 'none',
+              sourcemap: "none",
               define: {
-                'process.env.NODE_ENV': JSON.stringify('development')
+                "process.env.NODE_ENV": JSON.stringify("development"),
               },
               external: [],
             });
             
             if (transpiled.success && transpiled.outputs.length > 0) {
-              let transpiledContent = '';
+              let transpiledContent = "";
               for (const output of transpiled.outputs) {
                 transpiledContent += await output.text();
               }
@@ -1099,7 +1388,9 @@ export function createDevServer(options: DevServerOptions): Server {
                 },
               });
             } else {
-              logger.error(`Live reload transpilation failed: ${transpiled.logs?.join('\n') || 'Unknown error'}`);
+              logger.error(
+                `Live reload transpilation failed: ${transpiled.logs?.join("\n") || "Unknown error"}`
+              );
             }
           }
         } catch (error) {
@@ -1107,13 +1398,16 @@ export function createDevServer(options: DevServerOptions): Server {
         }
         
         // If transpilation fails, return error instead of fallback
-        return new Response(`console.error('[0x1] Live reload failed to load - check server logs');`, {
+        return new Response(
+          `console.error('[0x1] Live reload failed to load - check server logs');`,
+          {
           status: 500,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8",
             "Cache-Control": "no-cache",
           },
-        });
+          }
+        );
       }
 
       // Handle server actions (Next15 style)
@@ -1173,7 +1467,11 @@ export function createDevServer(options: DevServerOptions): Server {
           // CRITICAL FIX: Use Bun's direct transpilation for TypeScript files
           const hooksPath = join(frameworkPath, "src", "core", "hooks.ts");
           if (existsSync(hooksPath)) {
-            logRequestStatus(200, reqPath, "Transpiling 0x1 Hooks using Bun transpiler");
+            logRequestStatus(
+              200,
+              reqPath,
+              "Transpiling 0x1 Hooks using Bun transpiler"
+            );
             
             // Use Bun's direct transpilation API for TypeScript files
             const sourceCode = await Bun.file(hooksPath).text();
@@ -1182,24 +1480,26 @@ export function createDevServer(options: DevServerOptions): Server {
               // Use Bun's transpiler directly for TypeScript to JavaScript
               const transpiled = await Bun.build({
                 entrypoints: [hooksPath],
-                target: 'browser',
-                format: 'esm',
+                target: "browser",
+                format: "esm",
                 minify: false,
-                sourcemap: 'none',
+                sourcemap: "none",
                 define: {
-                  'process.env.NODE_ENV': JSON.stringify('development')
+                  "process.env.NODE_ENV": JSON.stringify("development"),
                 },
                 external: [], // Don't externalize anything for hooks
               });
               
               if (transpiled.success && transpiled.outputs.length > 0) {
-                let transpiledContent = '';
+                let transpiledContent = "";
                 for (const output of transpiled.outputs) {
                   transpiledContent += await output.text();
                 }
                 
                 // CRITICAL FIX: Add production-ready browser compatibility without duplication
-                const enhancedContent = transpiledContent + `
+                const enhancedContent =
+                  transpiledContent +
+                  `
 
 // PRODUCTION-READY BROWSER COMPATIBILITY LAYER
 if (typeof window !== 'undefined') {
@@ -1246,10 +1546,12 @@ if (typeof globalThis !== 'undefined') {
                 
                 return new Response(enhancedContent, {
                   status: 200,
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 });
               } else {
-                logger.error(`Bun transpilation failed: ${transpiled.logs?.join('\n') || 'Unknown error'}`);
+                logger.error(
+                  `Bun transpilation failed: ${transpiled.logs?.join("\n") || "Unknown error"}`
+                );
               }
             } catch (transError) {
               logger.error(`Transpilation error: ${transError}`);
@@ -1263,7 +1565,7 @@ if (typeof globalThis !== 'undefined') {
             const hooksContent = readFileSync(hooksDistPath, "utf-8");
             return new Response(hooksContent, {
               status: 200,
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             });
           }
         } catch (error) {
@@ -1271,17 +1573,22 @@ if (typeof globalThis !== 'undefined') {
         }
 
         // CRITICAL: If hooks can't be loaded, this is a fatal error
-        logger.error('❌ Hooks system not available - this is required for the framework');
+        logger.error(
+          "❌ Hooks system not available - this is required for the framework"
+        );
         logRequestStatus(500, reqPath, "Hooks system not available");
-        return new Response(`
+        return new Response(
+          `
 // 0x1 Hooks - Fatal Error
 console.error('[0x1 Hooks] ❌ Hooks system not available - framework cannot function');
 console.error('[0x1 Hooks] Check your installation and run "bun run build:framework"');
 throw new Error('0x1 Hooks system not available - framework cannot function without hooks');
-`, {
+`,
+          {
           status: 500,
-          headers: STANDARD_HEADERS.JS_SIMPLE
-        });
+            headers: STANDARD_HEADERS.JS_SIMPLE,
+          }
+        );
       }
 
       // Handle 0x1 framework module requests
@@ -1452,13 +1759,183 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
 }`;
 
         return new Response(cleanFrameworkModule, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
+        });
+      }
+
+      // Handle 0x1 search params hooks (Next.js-style)
+      if (
+        reqPath === "/0x1/search-params.js" ||
+        reqPath === "/node_modules/0x1/search-params.js" ||
+        reqPath === "/0x1/navigation.js" ||
+        reqPath === "/node_modules/0x1/navigation.js"
+      ) {
+        logRequestStatus(
+          200,
+          reqPath,
+          "Serving Next.js-style search params hooks"
+        );
+
+        const searchParamsHooks = `
+// 0x1 Framework - Next.js 15-style Search Params & Navigation Hooks
+console.log('[0x1 Navigation] Loading Next.js-style navigation hooks...');
+
+// ===== SEARCH PARAMS MANAGEMENT =====
+let currentSearchParams = new URLSearchParams(window.location.search);
+let currentPathname = window.location.pathname;
+let searchParamsSubscribers = new Set();
+let pathnameSubscribers = new Set();
+
+// Update search params when URL changes
+function updateSearchParamsFromURL() {
+  const newSearchParams = new URLSearchParams(window.location.search);
+  const newPathname = window.location.pathname;
+  
+  if (newSearchParams.toString() !== currentSearchParams.toString()) {
+    currentSearchParams = newSearchParams;
+    searchParamsSubscribers.forEach(callback => {
+      try { callback(currentSearchParams); } catch (error) {
+        console.error('[0x1 Navigation] Error in search params subscriber:', error);
+      }
+    });
+  }
+  
+  if (newPathname !== currentPathname) {
+    currentPathname = newPathname;
+    pathnameSubscribers.forEach(callback => {
+      try { callback(currentPathname); } catch (error) {
+        console.error('[0x1 Navigation] Error in pathname subscriber:', error);
+      }
+    });
+  }
+}
+
+// Listen for URL changes
+window.addEventListener('popstate', updateSearchParamsFromURL);
+
+// Override history methods to trigger updates
+const originalPushState = window.history.pushState;
+const originalReplaceState = window.history.replaceState;
+
+window.history.pushState = function(...args) {
+  originalPushState.apply(this, args);
+  setTimeout(updateSearchParamsFromURL, 0);
+};
+
+window.history.replaceState = function(...args) {
+  originalReplaceState.apply(this, args);
+  setTimeout(updateSearchParamsFromURL, 0);
+};
+
+// ===== NEXT.JS-STYLE HOOKS =====
+
+function useSearchParams() {
+  const [searchParams, setSearchParams] = window.React?.useState ? 
+    window.React.useState(currentSearchParams) : 
+    [currentSearchParams, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      const updateParams = (newParams) => {
+        setSearchParams(new URLSearchParams(newParams.toString()));
+      };
+      searchParamsSubscribers.add(updateParams);
+      return () => searchParamsSubscribers.delete(updateParams);
+    }, []);
+  }
+  
+  return {
+    get: (key) => searchParams.get(key),
+    getAll: (key) => searchParams.getAll(key),
+    has: (key) => searchParams.has(key),
+    entries: () => searchParams.entries(),
+    keys: () => searchParams.keys(),
+    values: () => searchParams.values(),
+    toString: () => searchParams.toString(),
+    size: searchParams.size
+  };
+}
+
+function usePathname() {
+  const [pathname, setPathname] = window.React?.useState ? 
+    window.React.useState(currentPathname) : [currentPathname, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      pathnameSubscribers.add(setPathname);
+      return () => pathnameSubscribers.delete(setPathname);
+    }, []);
+  }
+  
+  return pathname;
+}
+
+function useRouter() {
+  return {
+    push: (href) => {
+      if (window.router?.navigate) {
+        window.router.navigate(href);
+      } else {
+        window.history.pushState(null, '', href);
+      }
+    },
+    replace: (href) => {
+      if (window.router?.navigate) {
+        window.router.navigate(href, false, true);
+      } else {
+        window.history.replaceState(null, '', href);
+      }
+    },
+    back: () => window.history.back(),
+    forward: () => window.history.forward(),
+    refresh: () => window.location.reload()
+  };
+}
+
+function useParams() {
+  const [params, setParams] = window.React?.useState ? 
+    window.React.useState({}) : [{}, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      const updateParams = () => {
+        if (window.router?.getCurrentParams) {
+          setParams(window.router.getCurrentParams());
+        }
+      };
+      updateParams();
+      window.addEventListener('routechange', updateParams);
+      return () => window.removeEventListener('routechange', updateParams);
+    }, []);
+  }
+  
+  return params;
+}
+
+// Make hooks globally available
+if (typeof window !== 'undefined') {
+  Object.assign(window, { useSearchParams, usePathname, useRouter, useParams });
+  if (window.React) {
+    Object.assign(window.React, { useSearchParams, usePathname, useRouter, useParams });
+  }
+}
+
+// ES Module exports
+export { useSearchParams, usePathname, useRouter, useParams };
+export default { useSearchParams, usePathname, useRouter, useParams };
+
+console.log('[0x1 Navigation] ✅ Next.js-style navigation hooks loaded');
+`;
+
+        return new Response(searchParamsHooks, {
+          status: 200,
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
       // ========================================
-      // 🚀 0x1 ULTRA-DYNAMIC POLYFILL ENGINE v5.0
-      // ZERO HARDCODING - PURE PATTERN DETECTION
+      // 🚀 0x1 DYNAMIC POLYFILL ENGINE v5.0
+      // NOW WITH PURE PATTERN DETECTION
       // ========================================
 
       // Handle ALL node_modules with intelligent polyfills
@@ -2208,39 +2685,47 @@ console.log('[0x1 🎯] Zero hardcoding - works with ANY npm package!');
                 Expires: "0",
                 ETag: `"router-${Date.now()}-${Math.random()}"`,
                 "Last-Modified": new Date().toUTCString(),
-              }
+              },
             });
           }
 
           // CRITICAL: If precompiled router doesn't exist, this is a build issue
-          logger.error('❌ Precompiled router not found - run "bun run build:framework" first');
+          logger.error(
+            '❌ Precompiled router not found - run "bun run build:framework" first'
+          );
           logRequestStatus(
             500,
             reqPath,
             "Router not built - run build:framework"
           );
           
-          return new Response(`
+          return new Response(
+            `
 // 0x1 Router - Build Error
 console.error('[0x1 Router] ❌ Precompiled router not found');
 console.error('[0x1 Router] Run "bun run build:framework" to build the router');
 throw new Error('0x1 Router not built - run "bun run build:framework" first');
-`, {
+`,
+            {
             status: 500,
-            headers: STANDARD_HEADERS.JS_SIMPLE
-          });
+              headers: STANDARD_HEADERS.JS_SIMPLE,
+            }
+          );
         } catch (error) {
           logger.error(`❌ Error serving precompiled router: ${error}`);
           logRequestStatus(500, reqPath, `Router error: ${error}`);
           
-          return new Response(`
+          return new Response(
+            `
 // 0x1 Router - Error
 console.error('[0x1 Router] ❌ Router loading failed: ${error}');
 throw new Error('0x1 Router failed to load: ${error}');
-`, {
+`,
+            {
             status: 500,
-            headers: STANDARD_HEADERS.JS_SIMPLE
-          });
+              headers: STANDARD_HEADERS.JS_SIMPLE,
+            }
+          );
         }
       }
 
@@ -2259,7 +2744,7 @@ throw new Error('0x1 Router failed to load: ${error}');
             const linkContent = readFileSync(linkPath, "utf-8");
             return new Response(linkContent, {
               status: 200,
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             });
           }
         } catch (error) {
@@ -2269,7 +2754,7 @@ throw new Error('0x1 Router failed to load: ${error}');
         // Fallback: Generate Link component dynamically
         logRequestStatus(200, reqPath, "Serving generated Link component");
         const linkComponent = `
-// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility
+// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility AND hash fragment handling
 function Link({ href, children, className, target, rel, ...props }) {
   // CRITICAL FIX: Properly handle children for 0x1 JSX runtime
   // Convert all children types to proper JSX elements
@@ -2293,11 +2778,55 @@ function Link({ href, children, className, target, rel, ...props }) {
         // Handle client-side navigation for internal links
         if (href.startsWith('/') && !target) {
           e.preventDefault();
+          
+          // CRITICAL FIX: Properly handle hash fragments
+          const [pathname, hash] = href.split('#');
+          
+          console.log('[0x1 Link] Navigating to:', { href, pathname, hash });
+          
+          // Navigate to the path first
           if (window.router) {
-            window.router.navigate(href);
+            window.router.navigate(pathname || '/');
           } else {
-            window.history.pushState(null, '', href);
+            window.history.pushState(null, '', pathname || '/');
             window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+          
+          // CRITICAL FIX: Handle hash scrolling after navigation
+          if (hash) {
+            // Use setTimeout to ensure the page has loaded before scrolling
+            setTimeout(() => {
+              const targetElement = document.getElementById(hash);
+              if (targetElement) {
+                console.log('[0x1 Link] Scrolling to element:', hash);
+                targetElement.scrollIntoView({ 
+                  behavior: 'smooth', 
+                  block: 'start' 
+                });
+                
+                // Update URL with hash
+                const fullUrl = (pathname || '/') + '#' + hash;
+                window.history.replaceState(null, '', fullUrl);
+              } else {
+                console.warn('[0x1 Link] Hash target not found:', hash);
+                
+                // Still update URL even if element not found
+                const fullUrl = (pathname || '/') + '#' + hash;
+                window.history.replaceState(null, '', fullUrl);
+                
+                // Try again after a longer delay in case content is still loading
+                setTimeout(() => {
+                  const delayedTarget = document.getElementById(hash);
+                  if (delayedTarget) {
+                    console.log('[0x1 Link] Found hash target on retry:', hash);
+                    delayedTarget.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'start' 
+                    });
+                  }
+                }, 500);
+              }
+            }, 100);
           }
         }
         // Call original onClick if provided
@@ -2340,7 +2869,7 @@ export { Link };
 
         return new Response(linkComponent, {
           status: 200,
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2412,7 +2941,7 @@ console.log('[0x1] useSyncExternalStoreWithSelector shim loaded successfully');
 
         return new Response(shimCode, {
           status: 200,
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2450,7 +2979,7 @@ module.exports = process;
 `;
 
         return new Response(browserPolyfill, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2498,7 +3027,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `;
 
         return new Response(scrollBarConstants, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2623,7 +3152,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `;
 
         return new Response(constantsPolyfill, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2758,7 +3287,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `,
           {
             status: 200,
-            headers: STANDARD_HEADERS.JS_SIMPLE
+            headers: STANDARD_HEADERS.JS_SIMPLE,
           }
         );
       }
@@ -2821,36 +3350,52 @@ if (typeof module !== 'undefined' && module.exports) {
           const urlParams = new URLSearchParams(url.search);
 
           // CRITICAL FIX: Handle source file requests for dependency analysis
-          if (urlParams.has('source') && urlParams.get('source') === 'true') {
+          if (urlParams.has("source") && urlParams.get("source") === "true") {
             // This is a request for the original source file, not transpiled
             const basePath = cleanPath.endsWith(".js")
               ? cleanPath.replace(".js", "")
               : cleanPath;
             
             // FIXED: Remove leading slash for proper path resolution
-            const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+            const relativePath = basePath.startsWith("/")
+              ? basePath.slice(1)
+              : basePath;
             
             // Convert .js request to source file (.tsx, .jsx, .ts, .js)
-            const possibleSourcePaths = generatePossiblePaths(projectPath, relativePath, SUPPORTED_EXTENSIONS);
+            const possibleSourcePaths = generatePossiblePaths(
+              projectPath,
+              relativePath,
+              SUPPORTED_EXTENSIONS
+            );
             
             // Find the actual source file
-            const sourcePath = possibleSourcePaths.find((path) => existsSync(path));
+            const sourcePath = possibleSourcePaths.find((path) =>
+              existsSync(path)
+            );
             
             if (sourcePath) {
-              logRequestStatus(200, reqPath, `Serving source file for analysis: ${sourcePath.replace(projectPath, "")}`);
+              logRequestStatus(
+                200,
+                reqPath,
+                `Serving source file for analysis: ${sourcePath.replace(projectPath, "")}`
+              );
               
               // Read and return the raw source file content
-              const sourceContent = readFileSync(sourcePath, 'utf-8');
+              const sourceContent = readFileSync(sourcePath, "utf-8");
               return new Response(sourceContent, {
                 status: 200,
                 headers: {
                   "Content-Type": "text/plain; charset=utf-8",
                   "Cache-Control": "no-cache",
-                }
+                },
               });
             } else {
               // Source file not found
-              logRequestStatus(404, reqPath, `Source file not found for analysis. Checked: ${possibleSourcePaths.map(p => p.replace(projectPath, '')).join(', ')}`);
+              logRequestStatus(
+                404,
+                reqPath,
+                `Source file not found for analysis. Checked: ${possibleSourcePaths.map((p) => p.replace(projectPath, "")).join(", ")}`
+              );
               return new Response("", { status: 404 });
             }
           }
@@ -2861,11 +3406,19 @@ if (typeof module !== 'undefined' && module.exports) {
             : cleanPath;
 
           // CRITICAL FIX: Better path resolution for components
-          const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
-          const possibleSourcePaths = generatePossiblePaths(projectPath, relativePath, SUPPORTED_EXTENSIONS);
+          const relativePath = basePath.startsWith("/")
+            ? basePath.slice(1)
+            : basePath;
+          const possibleSourcePaths = generatePossiblePaths(
+            projectPath,
+            relativePath,
+            SUPPORTED_EXTENSIONS
+          );
 
           // Find the actual source file
-          const sourcePath = possibleSourcePaths.find((path) => existsSync(path));
+          const sourcePath = possibleSourcePaths.find((path) =>
+            existsSync(path)
+          );
 
           if (sourcePath) {
             logRequestStatus(
@@ -2908,7 +3461,7 @@ export default function ErrorComponent(props) {
 `,
                 {
                   status: 200, // Return 200 to avoid infinite retries
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 }
               );
             }
@@ -2950,7 +3503,7 @@ export default function NotFoundComponent(props) {
 `,
               {
                 status: 200, // Return 200 to avoid infinite retries
-                headers: STANDARD_HEADERS.JS_SIMPLE
+                headers: STANDARD_HEADERS.JS_SIMPLE,
               }
             );
           }
@@ -2977,7 +3530,7 @@ export default function ComponentErrorFallback(props) {
 `,
             {
               status: 200, // Return 200 to avoid infinite retries
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             }
           );
         }
@@ -2990,7 +3543,7 @@ export default function ComponentErrorFallback(props) {
 
         return new Response(html, {
           status: 200,
-          headers: STANDARD_HEADERS.HTML
+          headers: STANDARD_HEADERS.HTML,
         });
       }
 
@@ -3021,8 +3574,16 @@ export default function ComponentErrorFallback(props) {
         const isInitialPageLoad = !isClientSideNavigation;
 
         const possiblePagePaths = [
-          ...generatePossiblePaths(projectPath, `app/${reqPath.slice(1)}/page`, SUPPORTED_EXTENSIONS),
-          ...generatePossiblePaths(projectPath, `app/pages/${reqPath.slice(1)}/page`, SUPPORTED_EXTENSIONS)
+          ...generatePossiblePaths(
+            projectPath,
+            `app/${reqPath.slice(1)}/page`,
+            SUPPORTED_EXTENSIONS
+          ),
+          ...generatePossiblePaths(
+            projectPath,
+            `app/pages/${reqPath.slice(1)}/page`,
+            SUPPORTED_EXTENSIONS
+          ),
         ];
 
         const pageExists = possiblePagePaths.some((path) => existsSync(path));
@@ -3038,7 +3599,7 @@ export default function ComponentErrorFallback(props) {
 
           return new Response(html, {
             status: 200,
-            headers: STANDARD_HEADERS.HTML
+            headers: STANDARD_HEADERS.HTML,
           });
         } else if (pageExists && isClientSideNavigation) {
           // This is client-side navigation - return 204 No Content to let the router handle it
@@ -3095,7 +3656,10 @@ export default function ComponentErrorFallback(props) {
               reqPath === "/processed-tailwind.css"
             ) {
               // Try multiple possible CSS file locations for v4
-              const possibleCssPaths = generateCssPaths(projectPath, "styles.css");
+              const possibleCssPaths = generateCssPaths(
+                projectPath,
+                "styles.css"
+              );
 
               for (const cssPath of possibleCssPaths) {
                 if (existsSync(cssPath)) {
@@ -3106,7 +3670,7 @@ export default function ComponentErrorFallback(props) {
                     `Serving Tailwind CSS v4 from ${cssPath.replace(projectPath, "")}`
                   );
                   return new Response(css, {
-                    headers: STANDARD_HEADERS.CSS
+                    headers: STANDARD_HEADERS.CSS,
                   });
                 }
               }
@@ -3121,7 +3685,7 @@ export default function ComponentErrorFallback(props) {
                   "Serving Tailwind CSS v4 source (unprocessed)"
                 );
                 return new Response(css, {
-                  headers: STANDARD_HEADERS.CSS
+                  headers: STANDARD_HEADERS.CSS,
                 });
               }
             }
@@ -3172,7 +3736,7 @@ export default function ComponentErrorFallback(props) {
   console.log('[0x1] Tailwind CSS v4 runtime loaded');
 })();`,
                 {
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 }
               );
             }
@@ -3274,7 +3838,7 @@ body {
 }
 `,
             {
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             }
           );
         } else {
@@ -3302,7 +3866,7 @@ if (document.readyState === 'loading') {
 }
 `,
             {
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             }
           );
         }
@@ -3325,7 +3889,7 @@ if (document.readyState === 'loading') {
             logRequestStatus(404, reqPath, "Invalid CSS path");
             return new Response("/* Invalid CSS path */", {
               status: 404,
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             });
           }
 
@@ -3348,7 +3912,7 @@ if (document.readyState === 'loading') {
               `Serving CSS from ${foundCssPath.replace(projectPath, "")}`
             );
             return new Response(css, {
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             });
           } else {
             // Generate a helpful CSS file if not found
@@ -3389,7 +3953,7 @@ body {
                 .join("\n")} */
 `,
               {
-                headers: STANDARD_HEADERS.CSS
+                headers: STANDARD_HEADERS.CSS,
               }
             );
           }
@@ -3398,7 +3962,7 @@ body {
             error instanceof Error ? error.message : String(error);
           logger.error(`CSS serving error: ${errorMessage}`);
           return new Response(`/* CSS Error: ${errorMessage} */`, {
-            headers: STANDARD_HEADERS.CSS
+            headers: STANDARD_HEADERS.CSS,
           });
         }
       }
@@ -3413,15 +3977,15 @@ body {
           let routesJson;
           try {
             // Sanitize route data before JSON.stringify
-            const sanitizedRoutes = discoveredRoutes.map(route => ({
+            const sanitizedRoutes = discoveredRoutes.map((route) => ({
               path: route.path,
               componentPath: route.componentPath,
-              layouts: route.layouts
+              layouts: route.layouts,
             }));
             routesJson = JSON.stringify(sanitizedRoutes, null, 2);
           } catch (jsonError) {
             logger.error(`Error serializing routes: ${jsonError}`);
-            routesJson = '[]'; // Fallback to empty array
+            routesJson = "[]"; // Fallback to empty array
           }
 
           // Generate a PRODUCTION-READY app.js with SEQUENCED LOADING
@@ -4133,7 +4697,7 @@ if (document.readyState === 'loading') {
               headers: {
                 "Content-Type": "application/javascript; charset=utf-8",
                 "Cache-Control": "no-cache",
-              }
+              },
             }
           );
         }

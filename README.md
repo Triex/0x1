@@ -67,6 +67,14 @@
 - **Special file conventions**: `page.tsx`, `layout.tsx`, `loading.tsx`, `not-found.tsx`, etc.
 - **Zero configuration**: Works out of the box
 
+### 🛣️ Advanced Routing System
+- **Dynamic routes**: `[slug]`, `[...slug]`, `[[...slug]]` patterns
+- **Route groups**: `(auth)` folders that don't affect URL structure
+- **Search params**: Next.js 15-style `useSearchParams`, `useParams`, `usePathname`
+- **Route conflict detection**: Automatic detection and resolution of conflicting routes
+- **Hash fragment navigation**: Proper `#anchor` link handling with auto-scroll
+- **Nested layouts**: Automatic composition of multiple layout levels
+
 ### 🔨 Developer Experience
 - **Bun-first architecture**: Fully optimized for Bun's capabilities
 - **Lightning-fast hot reload**: Sub-second refresh times using SSE + WebSocket
@@ -745,6 +753,11 @@ function Navigation() {
         Contact
       </Link>
       
+      {/* Hash fragment navigation */}
+      <Link href="/docs/api#hooks">
+        API Hooks Section
+      </Link>
+      
       {/* External links work normally */}
       <Link href="https://example.com" target="_blank">
         External Link
@@ -752,6 +765,100 @@ function Navigation() {
     </nav>
   );
 }
+```
+
+### Dynamic Routes
+
+0x1 supports Next15-style dynamic routing:
+
+```
+app/
+├── blog/
+│   ├── [slug]/
+│   │   └── page.tsx          # /blog/my-post
+│   └── [...tags]/
+│       └── page.tsx          # /blog/tag1/tag2/tag3
+├── shop/
+│   └── [[...categories]]/
+│       └── page.tsx          # /shop or /shop/electronics/phones
+└── (auth)/                   # Route group - doesn't affect URL
+    ├── login/
+    │   └── page.tsx          # /login (not /auth/login)
+    └── signup/
+        └── page.tsx          # /signup (not /auth/signup)
+```
+
+```tsx
+// app/blog/[slug]/page.tsx
+export default function BlogPost({ params }: { params: { slug: string } }) {
+  return <h1>Blog Post: {params.slug}</h1>;
+}
+
+// app/shop/[[...categories]]/page.tsx  
+export default function Shop({ params }: { params: { categories?: string[] } }) {
+  const categories = params.categories || [];
+  return (
+    <div>
+      <h1>Shop</h1>
+      {categories.length > 0 && (
+        <p>Categories: {categories.join(' > ')}</p>
+      )}
+    </div>
+  );
+}
+```
+
+### Search Parameters
+
+Use Next15-style search parameter hooks:
+
+```tsx
+import { useSearchParams, useParams, usePathname } from '0x1/router';
+
+function SearchResults() {
+  const searchParams = useSearchParams();
+  const params = useParams();
+  const pathname = usePathname();
+  
+  const query = searchParams.get('q');
+  const page = searchParams.get('page') || '1';
+  
+  return (
+    <div>
+      <h1>Search Results for: {query}</h1>
+      <p>Current path: {pathname}</p>
+      <p>Page: {page}</p>
+      
+      {/* Update search params */}
+      <button 
+        onClick={() => {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('page', String(Number(page) + 1));
+          router.navigate(`${pathname}?${newParams.toString()}`);
+        }}
+      >
+        Next Page
+      </button>
+    </div>
+  );
+}
+```
+
+### Route Groups and Organization
+
+Use route groups to organize files without affecting URLs:
+
+```
+app/
+├── (marketing)/
+│   ├── about/page.tsx        # URL: /about
+│   ├── contact/page.tsx      # URL: /contact  
+│   └── layout.tsx            # Shared layout for marketing pages
+├── (dashboard)/
+│   ├── analytics/page.tsx    # URL: /analytics
+│   ├── settings/page.tsx     # URL: /settings
+│   └── layout.tsx            # Shared layout for dashboard pages
+└── layout.tsx                # Root layout
 ```
 
 ### Programmatic Navigation
@@ -763,7 +870,14 @@ function MyComponent() {
   const router = useRouter();
 
   const handleNavigation = () => {
+    // Simple navigation
     router.navigate('/dashboard');
+    
+    // With search params
+    router.navigate('/search?q=typescript&page=1');
+    
+    // With hash fragment
+    router.navigate('/docs/api#useEffect');
   };
 
   return (
@@ -938,7 +1052,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.269)
+### Current State (v0.0.270)
 - ✅ Full React Hooks API compatibility
 - ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component
