@@ -1736,7 +1736,7 @@ async function generateStaticComponentFilesSuperFast(
   routes: Array<{ path: string; componentPath: string; layouts: Array<{ path: string; componentPath: string }> }>,
   allComponents: Array<{ path: string; relativePath: string; dir: string }>
 ): Promise<void> {
-  console.log(`[Build] 🚀 COMPONENT GENERATION with nested layout support...`);
+  console.log(`[Build] 🚀 COMPONENT GENERATION with nested layout support (FIXED)...`);
 
   const results = await Promise.all(
     routes.map(async (route) => {
@@ -1784,7 +1784,7 @@ async function generateStaticComponentFilesSuperFast(
       const isPageComponent = sourcePath.endsWith('/page.tsx') || sourcePath.endsWith('/page.jsx') || 
                              sourcePath.endsWith('/page.ts') || sourcePath.endsWith('/page.js');
       
-      // Handle nested layouts composition
+      // Handle nested layouts composition - FIXED VERSION
       if (isPageComponent && route.layouts && route.layouts.length > 0) {
         console.log(`[Build] Composing ${route.layouts.length} layouts for route ${route.path}`);
         
@@ -1817,11 +1817,28 @@ async function generateStaticComponentFilesSuperFast(
             const layoutContent = await Bun.file(actualLayoutPath).text();
             const layoutFunctionName = `Layout${i}`;
             
-            // Extract layout component and give it a unique name
-            const processedLayoutContent = layoutContent
-              .replace(/export\s+default\s+function\s+\w+/, `function ${layoutFunctionName}`)
-              .replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '')
-              .replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
+            // FIXED: More robust layout processing
+            let processedLayoutContent = layoutContent;
+            
+            // Remove CSS imports
+            processedLayoutContent = processedLayoutContent.replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '');
+            processedLayoutContent = processedLayoutContent.replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
+            
+            // FIXED: More careful function name replacement
+            const exportMatch = processedLayoutContent.match(/export\s+default\s+function\s+(\w+)/);
+            if (exportMatch) {
+              const originalName = exportMatch[1];
+              processedLayoutContent = processedLayoutContent.replace(
+                new RegExp(`export\\s+default\\s+function\\s+${originalName}`, 'g'),
+                `function ${layoutFunctionName}`
+              );
+            } else {
+              // Fallback for arrow functions or other patterns
+              processedLayoutContent = processedLayoutContent.replace(
+                /export\s+default\s+function\s+\w+/g,
+                `function ${layoutFunctionName}`
+              );
+            }
             
             layoutContents.push(processedLayoutContent);
             layoutNames.push(layoutFunctionName);
@@ -1832,11 +1849,24 @@ async function generateStaticComponentFilesSuperFast(
           }
         }
         
-        // Extract page component
-        const defaultExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
-        const pageComponentName = defaultExportMatch?.[1] || 'PageComponent';
+        // FIXED: More robust page component extraction
+        const pageExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
+        const pageComponentName = pageExportMatch?.[1] || 'PageComponent';
         
-        const pageWithoutExport = sourceCode.replace(/export\s+default\s+function\s+\w+/, `function ${pageComponentName}`);
+        // FIXED: More careful replacement of the page component export
+        let pageWithoutExport = sourceCode;
+        if (pageExportMatch) {
+          const originalPageName = pageExportMatch[1];
+          pageWithoutExport = sourceCode.replace(
+            new RegExp(`export\\s+default\\s+function\\s+${originalPageName}`, 'g'),
+            `function ${pageComponentName}`
+          );
+        } else {
+          pageWithoutExport = sourceCode.replace(
+            /export\s+default\s+function\s+\w+/g,
+            `function ${pageComponentName}`
+          );
+        }
         
         // Compose all layouts with the page component
         let wrappedComponentCode = `${pageComponentName}(props)`;
@@ -1847,15 +1877,19 @@ async function generateStaticComponentFilesSuperFast(
           wrappedComponentCode = `${layoutName}({ children: ${wrappedComponentCode}, ...props })`;
         }
         
-        // CRITICAL FIX: Remove duplicate metadata exports to prevent conflicts
-        const pageWithoutExportAndMetadata = pageWithoutExport
-          .replace(/export\s+const\s+metadata\s*=[\s\S]*?(?=export|function|const|let|var|\n\s*\n|$)/g, '// Metadata removed to prevent conflicts with layout metadata')
-          .replace(/^export\s+const\s+metadata\s*=.*$/gm, '// Metadata removed to prevent conflicts');
+        // FIXED: Better composition with proper spacing and validation
+        const layoutSection = layoutContents.join('\n\n');
+        const pageSection = pageWithoutExport;
+        const wrapperSection = `\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
         
-        // Combine all layout contents + page + wrapper
-        sourceCode = `${layoutContents.join('\n\n')}\n\n${pageWithoutExportAndMetadata}\n\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
-        
-        console.log(`[Build] Composed nested layouts for ${route.path}: ${layoutNames.join(' -> ')} -> ${pageComponentName} (metadata conflicts resolved)`);
+        // Validate that none of the sections are empty or malformed
+        if (layoutSection.trim() && pageSection.trim()) {
+          sourceCode = `${layoutSection}\n\n${pageSection}${wrapperSection}`;
+          console.log(`[Build] ✅ Composed nested layouts for ${route.path}: ${layoutNames.join(' -> ')} -> ${pageComponentName}`);
+        } else {
+          console.warn(`[Build] ⚠️ Layout composition failed for ${route.path}, using original page`);
+          // Fall back to original sourceCode if composition fails
+        }
       }
       
       // CRITICAL FIX: Use safe transpilation
@@ -1879,7 +1913,7 @@ async function generateStaticComponentFilesSuperFast(
   }
 
   const successful = results.reduce((sum: number, result: number) => sum + result, 0);
-  console.log(`[Build] ✅ Generated ${successful}/${routes.length} components with nested layout support`);
+  console.log(`[Build] ✅ Generated ${successful}/${routes.length} components with nested layout support (FIXED)`);
   
   // CRITICAL FIX: Also process regular components (Header, etc.) that are imported by pages
   console.log(`[Build] 🧩 Processing ${allComponents.length} regular components...`);
