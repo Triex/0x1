@@ -2087,23 +2087,70 @@ async function copy0x1FrameworkFilesFast(outputPath: string): Promise<void> {
     }
   }
   
-  // Also copy any chunk files from the 0x1-experimental/syntax-highlighter if they exist
-  const highlighterDistPath = join(frameworkRoot, '0x1-experimental', 'syntax-highlighter', 'dist');
-  if (existsSync(highlighterDistPath)) {
-    console.log('[Build] 🎨 Copying syntax highlighter files...');
-    const highlighterNodeModulesPath = join(outputPath, 'node_modules', '@0x1js', 'highlighter', 'dist');
-    await mkdir(highlighterNodeModulesPath, { recursive: true });
-    
-    const highlighterFiles = readdirSync(highlighterDistPath);
-    for (const file of highlighterFiles) {
-      const srcPath = join(highlighterDistPath, file);
-      const destPath = join(highlighterNodeModulesPath, file);
+  // REMOVED: Hardcoded syntax highlighter copy logic - let npm handle package resolution properly
+
+  // PROPER FIX: Copy installed npm packages from website's node_modules to dist
+  console.log('[Build] 📦 Copying installed npm packages...');
+  const projectPath = process.cwd();
+  const projectNodeModules = join(projectPath, 'node_modules');
+  
+  // List of scoped packages to copy (only copy what's actually used)
+  const packagesToCopy = ['@0x1js/highlighter'];
+  
+  for (const packageName of packagesToCopy) {
+    const srcPackagePath = join(projectNodeModules, packageName);
+    if (existsSync(srcPackagePath)) {
+      console.log(`[Build] 📋 Copying package: ${packageName}`);
       
-      if (statSync(srcPath).isFile()) {
-        const content = await Bun.file(srcPath).arrayBuffer();
-        await Bun.write(destPath, content);
-        console.log(`[Build] ✅ Copied highlighter file: ${file}`);
+      try {
+        // For scoped packages (@scope/package), we need to:
+        // 1. Create dist/node_modules/@scope directory
+        // 2. Copy the package to dist/node_modules/@scope/package
+        
+        if (packageName.startsWith('@')) {
+          const [scope, packageSubName] = packageName.split('/');
+          const scopeDir = join(outputPath, 'node_modules', scope);
+          
+          // Use mkdirSync synchronously for reliability
+          mkdirSync(scopeDir, { recursive: true });
+          console.log(`[Build] ✅ Created directory: ${scopeDir}`);
+          
+          // Use simple Bun.spawn with explicit arguments
+          const result = await Bun.spawn(['cp', '-r', srcPackagePath, scopeDir], {
+            cwd: projectPath,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+          
+          const exitCode = await result.exited;
+          if (exitCode === 0) {
+            console.log(`[Build] ✅ Copied npm package: ${packageName}`);
+          } else {
+            console.error(`[Build] ❌ Failed to copy package ${packageName}, exit code: ${exitCode}`);
+          }
+        } else {
+          // Non-scoped package
+          const destPackagePath = join(outputPath, 'node_modules', packageName);
+          const destDir = dirname(destPackagePath);
+          
+          mkdirSync(destDir, { recursive: true });
+          
+          const result = await Bun.spawn(['cp', '-r', srcPackagePath, destPackagePath], {
+            cwd: projectPath,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+          
+          const exitCode = await result.exited;
+          if (exitCode === 0) {
+            console.log(`[Build] ✅ Copied npm package: ${packageName}`);
+          } else {
+            console.error(`[Build] ❌ Failed to copy package ${packageName}, exit code: ${exitCode}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[Build] ❌ Failed to copy package ${packageName}: ${error}`);
       }
+    } else {
+      console.log(`[Build] ⚠️ Package not found (not installed?): ${packageName}`);
     }
   }
 
