@@ -1,6 +1,6 @@
 {
   "name": "@0x1js/highlighter",
-  "version": "0.1.12",
+  "version": "0.1.15",
   "description": "Lightweight, beautiful syntax highlighter for JavaScript, TypeScript, and Bash - Production Optimized",
   "main": "dist/index.cjs",
   "module": "dist/index.js",

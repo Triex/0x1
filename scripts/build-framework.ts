@@ -3,8 +3,8 @@
  * Builds only essential framework files for distribution with production optimizations
  */
 
-import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 // Generate cache-busting hash
 function generateHash(content: string): string {
@@ -49,16 +49,16 @@ async function buildFramework() {
     // Clean dist directory
     console.log("🧹 Cleaning dist directory...");
     if (existsSync("dist")) {
-      await Bun.$`rm -rf dist`;
+      await Bun.spawn(['rm', '-rf', 'dist']).exited;
     }
-    await Bun.$`mkdir -p dist`;
+    await Bun.spawn(['mkdir', '-p', 'dist']).exited;
 
     // Copy types directory to dist
     console.log("📝 Copying type definitions...");
     if (existsSync("types")) {
-      await Bun.$`cp -r types dist/`;
+      await Bun.spawn(['cp', '-r', 'types', 'dist/']).exited;
       // Also create React compatibility types in dist
-      await Bun.$`mkdir -p dist/react`;
+      await Bun.spawn(['mkdir', '-p', 'dist/react']).exited;
       await Bun.write(
         "dist/react/jsx-runtime.d.ts", 
         'export * from "../types/jsx-runtime.js";'
@@ -70,9 +70,9 @@ async function buildFramework() {
     }
 
     // Create minimal dist structure
-    Bun.spawnSync(["mkdir", "-p", distDir]);
-    Bun.spawnSync(["mkdir", "-p", join(distDir, "core")]);
-    Bun.spawnSync(["mkdir", "-p", join(distDir, "types")]);
+    Bun.spawn(["mkdir", "-p", distDir]);
+    Bun.spawn(["mkdir", "-p", join(distDir, "core")]);
+    Bun.spawn(["mkdir", "-p", join(distDir, "types")]);
 
     console.log("📦 Building core framework bundle with production optimizations...");
 
@@ -476,13 +476,6 @@ async function buildFramework() {
       console.warn("⚠️ 0x1-templates CJS build failed (ESM version available)");
     }
 
-    // Templates are now production-ready and available via 0x1-templates package
-    // The package includes:
-    // - minimal & standard templates (also bundled with CLI for offline use)
-    // - full template with modern UI components and advanced features
-    // - crypto-dash template with wallet integration and DeFi protocols
-    // All templates are built and tested for production use
-
     console.log("🔍 Final validation...");
 
     // Validate essential files exist
@@ -526,8 +519,13 @@ async function calculateTotalSize(dir: string): Promise<number> {
   let totalSize = 0;
   
   try {
-    const result = await Bun.$`find ${dir} -type f -exec stat -f%z {} +`.text();
-    const sizes = result.trim().split('\n').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
+    // Use a more compatible approach instead of Bun.spawn().text()
+    const result = await Bun.spawn(['find', dir, '-type', 'f', '-exec', 'stat', '-f%z', '{}', '+'], { 
+      stdout: 'pipe' 
+    });
+    
+    const output = await new Response(result.stdout).text();
+    const sizes = output.trim().split('\n').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
     totalSize = sizes.reduce((sum, size) => sum + size, 0);
   } catch {
     // Fallback calculation
