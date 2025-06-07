@@ -21,6 +21,9 @@ import { getLocalIP, isPortAvailable, openBrowser } from '../../cli/commands/uti
 import { notFoundHandler } from '../../cli/server/middleware/error-boundary';
 import { serveStaticFile } from '../../cli/server/middleware/static-files';
 
+// CRITICAL FIX: Import Tailwind v4 handler from working implementation
+import { tailwindV4Handler } from '../../cli/commands/utils/server/tailwind-v4';
+
 // WORKING: Import actual working handlers from dev-server.bak.ts
 
 // Route interface definition
@@ -878,85 +881,101 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   /**
-   * Handle CSS requests (styles.css, globals.css, etc.) - WORKING APPROACH FROM DEV-SERVER.BAK.TS
+   * Handle CSS requests with proper Tailwind v4 support - RESTORED FROM WORKING VERSION
    */
   private async handleCssRequest(reqPath: string): Promise<Response> {
     try {
-      // STEP 1: Try to serve processed CSS files from disk (like working dev-server)
-      const possibleCssPaths = [
-        join(this.options.projectPath, ".0x1", "public", "styles.css"),
-        join(this.options.projectPath, "dist", "styles.css"),
-        join(this.options.projectPath, "public", "styles.css"),
-        join(this.options.projectPath, "app", "globals.css"),
-        join(this.options.projectPath, "src", "styles.css"),
+      // CRITICAL FIX: Restore working Tailwind v4 processing from dev-server.bak.ts
+      if (reqPath === '/styles.css' || reqPath === '/dist/styles.css' || reqPath === '/globals.css') {
+        // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
+        const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
+        
+        if (isV4Available) {
+          if (!this.options.silent) {
+            logger.info(`🌈 Processing Tailwind CSS v4 from ${reqPath}`);
+          }
+
+          // Use working Tailwind v4 processing
+          let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
+          if (!inputFile) {
+            inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
+          }
+
+          // Start Tailwind v4 process (minimal logging)
+          try {
+            const tailwindProcess = await tailwindV4Handler.startProcess(
+              this.options.projectPath,
+              inputFile,
+              join(this.options.projectPath, 'dist', 'styles.css')
+            );
+
+            if (tailwindProcess && tailwindProcess.success) {
+              const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
+              if (existsSync(cssPath)) {
+                const cssContent = readFileSync(cssPath, 'utf-8');
+                
+                if (!this.options.silent) {
+                  logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
+                }
+
+                return new Response(cssContent, {
+                  headers: {
+                    'Content-Type': 'text/css; charset=utf-8',
+                    'Cache-Control': 'no-cache',
+                    'X-Framework': '0x1',
+                    'X-CSS-Engine': 'Tailwind-v4'
+                  }
+                });
+              }
+            }
+          } catch (tailwindError) {
+            if (this.options.debug) {
+              logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+            }
+          }
+        }
+      }
+
+      // Enhanced fallback CSS handling
+      const cssDirectories = [
+        join(this.options.projectPath, 'dist'),
+        join(this.options.projectPath, 'public'),
+        join(this.options.projectPath, 'app'),
+        join(this.options.projectPath, 'src')
       ];
 
-      // Check for processed CSS files first
-      for (const cssPath of possibleCssPaths) {
-        if (existsSync(cssPath)) {
-          const css = readFileSync(cssPath, 'utf-8');
-          const stats = statSync(cssPath);
-          const sizeKB = (stats.size / 1024).toFixed(1);
-          
-          if (!this.options.silent) {
-            logger.info(`✅ Serving CSS from ${cssPath.replace(this.options.projectPath, "")} (${sizeKB}KB)`);
+      for (const dir of cssDirectories) {
+        const possiblePaths = [
+          join(dir, 'styles.css'),
+          join(dir, 'globals.css'),
+          join(dir, 'global.css'),
+          join(dir, 'app.css'),
+          join(dir, 'main.css')
+        ];
+
+        for (const cssPath of possiblePaths) {
+          if (existsSync(cssPath)) {
+            const cssContent = readFileSync(cssPath, 'utf-8');
+            
+            if (!this.options.silent) {
+              logger.success(`✅ Serving CSS from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
+            }
+
+            return new Response(cssContent, {
+              headers: {
+                'Content-Type': 'text/css; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'X-Framework': '0x1'
+              }
+            });
           }
-          
-          return new Response(css, {
-            headers: {
-              'Content-Type': 'text/css; charset=utf-8',
-              'Cache-Control': 'no-cache',
-              'Access-Control-Allow-Origin': '*',
-            },
-          });
         }
       }
 
-      // STEP 2: If no processed CSS found, serve source CSS
-      const sourceCss = join(this.options.projectPath, "app", "globals.css");
-      if (existsSync(sourceCss)) {
-        const css = readFileSync(sourceCss, 'utf-8');
-        if (!this.options.silent) {
-          logger.info("✅ Serving source CSS (unprocessed)");
-        }
-        
-        return new Response(css, {
-          headers: {
-            'Content-Type': 'text/css; charset=utf-8',
-            'Cache-Control': 'no-cache',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      }
-
-      // STEP 3: Emergency fallback - MINIMAL CSS (not bloated)
-      const minimalCss = `/* 0x1 Framework - Emergency CSS */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: system-ui, sans-serif; }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.p-4 { padding: 1rem; }
-.text-center { text-align: center; }
-.text-white { color: #fff; }
-.bg-slate-900 { background-color: #0f172a; }
-.rounded-lg { border-radius: 0.5rem; }`;
-
-      if (!this.options.silent) {
-        logger.info("✅ Serving emergency minimal CSS");
-      }
-      
-      return new Response(minimalCss, {
-        headers: {
-          'Content-Type': 'text/css; charset=utf-8',
-          'Cache-Control': 'no-cache',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
+      return this.createNotFoundResponse('CSS file not found');
 
     } catch (error) {
-      logger.error(`[DevOrchestrator] CSS processing failed: ${error}`);
+      logger.error(`[DevOrchestrator] CSS request failed: ${error}`);
       return this.createErrorResponse(error);
     }
   }
