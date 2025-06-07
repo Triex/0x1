@@ -50,6 +50,18 @@
       "destination": "/api/$1"
     },
     {
+      "source": "/0x1/hooks.js",
+      "destination": "/0x1/hooks.js"
+    },
+    {
+      "source": "/0x1/jsx-runtime.js",
+      "destination": "/0x1/jsx-runtime.js"
+    },
+    {
+      "source": "/0x1/router.js",
+      "destination": "/0x1/router.js"
+    },
+    {
       "source": "/node_modules/0x1",
       "destination": "/0x1/index.js"
     },
