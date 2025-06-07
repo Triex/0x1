@@ -666,27 +666,46 @@ if (typeof window !== 'undefined') {
     try {
       const hooksPath = join(frameworkPath, 'src', 'core', 'hooks.ts');
       
-      if (existsSync(hooksPath)) {
-        const transpiled = await Bun.build({
-          entrypoints: [hooksPath],
-          target: 'browser',
-          format: 'esm',
-          minify: false,
-          sourcemap: 'none',
-          define: {
-            'process.env.NODE_ENV': JSON.stringify('development')
-          },
-          external: []
-        });
-        
-        if (transpiled.success && transpiled.outputs.length > 0) {
-          let content = '';
-          for (const output of transpiled.outputs) {
-            content += await output.text();
-          }
-          
-          // CRITICAL: Add DevOrchestrator's exact browser compatibility code
-          content += `
+      if (!this.options.silent) {
+        logger.info(`🔍 Looking for hooks at: ${hooksPath}`);
+      }
+      
+      if (!existsSync(hooksPath)) {
+        // CRITICAL: Framework MUST have hooks - this is a build failure, not a fallback scenario
+        throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksPath}. Framework installation is broken.`);
+      }
+      
+      if (!this.options.silent) {
+        logger.info(`✅ Found hooks source at: ${hooksPath}`);
+      }
+      
+      const transpiled = await Bun.build({
+        entrypoints: [hooksPath],
+        target: 'browser',
+        format: 'esm',
+        minify: false,
+        sourcemap: 'none',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('production')
+        },
+        external: []
+      });
+      
+      if (!transpiled.success || transpiled.outputs.length === 0) {
+        throw new Error(`CRITICAL: Failed to transpile 0x1 hooks. Transpilation errors: ${transpiled.logs?.map(l => l.message).join(', ')}`);
+      }
+      
+      let content = '';
+      for (const output of transpiled.outputs) {
+        content += await output.text();
+      }
+      
+      if (!content || content.length < 100) {
+        throw new Error(`CRITICAL: Hooks transpilation produced invalid output (${content.length} bytes)`);
+      }
+      
+      // CRITICAL: Add DevOrchestrator's exact browser compatibility code (SINGLE SOURCE OF TRUTH)
+      content += `
 if (typeof window !== 'undefined') {
   // Initialize React-compatible global context
   window.React = window.React || {};
@@ -711,18 +730,24 @@ if (typeof window !== 'undefined') {
     contextReady: true
   };
   
-  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
   
   // Component context ready flag
   window.__0x1_component_context_ready = true;
 }
 `;
-          
-          await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
-        }
+      
+      await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
+      
+      if (!this.options.silent) {
+        logger.success(`✅ Generated hooks.js: ${(content.length / 1024).toFixed(1)}KB (SINGLE SOURCE OF TRUTH)`);
       }
+      
     } catch (error) {
-      logger.warn(`Failed to generate hooks: ${error}`);
+      // CRITICAL: No fallbacks - this is a build failure that must be fixed
+      const errorMsg = `CRITICAL BUILD FAILURE: Hooks generation failed - ${error}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
     }
   }
 
@@ -1750,9 +1775,127 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
   }
 
   private getFrameworkPath(): string {
-    return process.cwd().includes('00-Dev/0x1') 
-      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
-      : join(process.cwd(), '../0x1');
+    // BULLETPROOF: Find the REAL 0x1 framework directory with comprehensive validation
+    
+    // Strategy 1: Check if we're inside the framework itself
+    if (this.isValid0x1Framework(process.cwd())) {
+      if (!this.options.silent) {
+        logger.info(`✅ Found 0x1 framework at current directory: ${process.cwd()}`);
+      }
+      return process.cwd();
+    }
+    
+    // Strategy 2: Development environment detection
+    const devPaths = [
+      process.cwd().includes('00-Dev/0x1') 
+        ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+        : null,
+      process.cwd().includes('0x1') 
+        ? process.cwd().split('0x1')[0] + '0x1'
+        : null
+    ].filter(Boolean) as string[];
+    
+    for (const path of devPaths) {
+      if (this.isValid0x1Framework(path)) {
+        if (!this.options.silent) {
+          logger.info(`✅ Found 0x1 framework at dev path: ${path}`);
+        }
+        return path;
+      }
+    }
+    
+    // Strategy 3: Relative navigation from project
+    const relativePaths = [
+      join(this.options.projectPath, '../'),
+      join(this.options.projectPath, '../../'),
+      join(process.cwd(), '../'),
+      join(process.cwd(), '../../')
+    ];
+    
+    for (const basePath of relativePaths) {
+      const frameworkPath = join(basePath, '0x1');
+      if (this.isValid0x1Framework(frameworkPath)) {
+        if (!this.options.silent) {
+          logger.info(`✅ Found 0x1 framework at relative path: ${frameworkPath}`);
+        }
+        return frameworkPath;
+      }
+    }
+    
+    // Strategy 4: Search parent directories recursively
+    let currentDir = this.options.projectPath;
+    for (let i = 0; i < 5; i++) { // Max 5 levels up
+      currentDir = join(currentDir, '..');
+      const frameworkPath = join(currentDir, '0x1');
+      if (this.isValid0x1Framework(frameworkPath)) {
+        if (!this.options.silent) {
+          logger.info(`✅ Found 0x1 framework via recursive search: ${frameworkPath}`);
+        }
+        return frameworkPath;
+      }
+    }
+    
+    // CRITICAL: If we can't find the framework, this is a build failure
+    const searchedPaths = [
+      process.cwd(),
+      ...devPaths,
+      ...relativePaths.map(p => join(p, '0x1'))
+    ];
+    
+    const errorMsg = `CRITICAL BUILD FAILURE: 0x1 framework not found in any expected location. Searched paths: ${searchedPaths.join(', ')}`;
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  
+  // BULLETPROOF: Validate that a directory is actually the 0x1 framework
+  private isValid0x1Framework(path: string): boolean {
+    if (!existsSync(path)) {
+      return false;
+    }
+    
+    // CRITICAL: Must have ALL characteristic 0x1 framework files (not just package.json)
+    const requiredFiles = [
+      join(path, 'src', 'core', 'hooks.ts'),
+      join(path, 'src', 'jsx-dev-runtime.ts')
+    ];
+    
+    const requiredDirectories = [
+      join(path, 'src'),
+      join(path, 'src', 'core'),
+      join(path, 'dist')  // Framework must have dist directory
+    ];
+    
+    // ALL required files must exist (not just some)
+    const hasAllRequiredFiles = requiredFiles.every(file => existsSync(file));
+    
+    // ALL required directories must exist
+    const hasAllRequiredDirs = requiredDirectories.every(dir => existsSync(dir));
+    
+    // Additional validation: check package.json is actually the framework
+    const packageJsonPath = join(path, 'package.json');
+    let isFrameworkPackage = false;
+    
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        // Must be named exactly "0x1" or similar, not just contain "0x1"
+        isFrameworkPackage = packageJson.name === '0x1' || 
+                           packageJson.name === '@0x1/framework' ||
+                           (packageJson.name && packageJson.name.startsWith('0x1') && !packageJson.name.includes('website') && !packageJson.name.includes('template'));
+      } catch (error) {
+        // Invalid package.json
+        isFrameworkPackage = false;
+      }
+    }
+    
+    // STRICT: Must have framework files AND be the framework package (not just a project using 0x1)
+    const isValid = hasAllRequiredFiles && hasAllRequiredDirs && isFrameworkPackage;
+    
+    if (!this.options.silent && !isValid) {
+      logger.debug(`❌ ${path} failed validation: files=${hasAllRequiredFiles}, dirs=${hasAllRequiredDirs}, package=${isFrameworkPackage}`);
+    }
+    
+    return isValid;
   }
 
   private createSuccessResult(buildTime: number): BuildResult {
