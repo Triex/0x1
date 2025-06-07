@@ -664,44 +664,56 @@ if (typeof window !== 'undefined') {
   // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
   private async generateHooksUsingDevOrchestratorLogic(frameworkPath: string, framework0x1Dir: string): Promise<void> {
     try {
-      const hooksPath = join(frameworkPath, 'src', 'core', 'hooks.ts');
+      const hooksSourcePath = join(frameworkPath, 'src', 'core', 'hooks.ts');
+      const hooksDistPath = join(frameworkPath, 'dist', 'hooks.js');
       
       if (!this.options.silent) {
-        logger.info(`🔍 Looking for hooks at: ${hooksPath}`);
-      }
-      
-      if (!existsSync(hooksPath)) {
-        // CRITICAL: Framework MUST have hooks - this is a build failure, not a fallback scenario
-        throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksPath}. Framework installation is broken.`);
-      }
-      
-      if (!this.options.silent) {
-        logger.info(`✅ Found hooks source at: ${hooksPath}`);
-      }
-      
-      const transpiled = await Bun.build({
-        entrypoints: [hooksPath],
-        target: 'browser',
-        format: 'esm',
-        minify: false,
-        sourcemap: 'none',
-        define: {
-          'process.env.NODE_ENV': JSON.stringify('production')
-        },
-        external: []
-      });
-      
-      if (!transpiled.success || transpiled.outputs.length === 0) {
-        throw new Error(`CRITICAL: Failed to transpile 0x1 hooks. Transpilation errors: ${transpiled.logs?.map(l => l.message).join(', ')}`);
+        logger.info(`🔍 Looking for hooks source: ${hooksSourcePath}`);
+        logger.info(`🔍 Looking for hooks dist: ${hooksDistPath}`);
       }
       
       let content = '';
-      for (const output of transpiled.outputs) {
-        content += await output.text();
+      
+      // DEVELOPMENT SCENARIO: Transpile from source
+      if (existsSync(hooksSourcePath)) {
+        if (!this.options.silent) {
+          logger.info(`✅ Found hooks source, transpiling from: ${hooksSourcePath}`);
+        }
+        
+        const transpiled = await Bun.build({
+          entrypoints: [hooksSourcePath],
+          target: 'browser',
+          format: 'esm',
+          minify: false,
+          sourcemap: 'none',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('production')
+          },
+          external: []
+        });
+        
+        if (!transpiled.success || transpiled.outputs.length === 0) {
+          throw new Error(`CRITICAL: Failed to transpile 0x1 hooks from source. Transpilation errors: ${transpiled.logs?.map(l => l.message).join(', ')}`);
+        }
+        
+        for (const output of transpiled.outputs) {
+          content += await output.text();
+        }
+        
+      // PRODUCTION SCENARIO: Copy from dist
+      } else if (existsSync(hooksDistPath)) {
+        if (!this.options.silent) {
+          logger.info(`✅ Found hooks dist, copying from: ${hooksDistPath}`);
+        }
+        
+        content = readFileSync(hooksDistPath, 'utf-8');
+        
+      } else {
+        throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksSourcePath} or ${hooksDistPath}. Framework installation is broken.`);
       }
       
       if (!content || content.length < 100) {
-        throw new Error(`CRITICAL: Hooks transpilation produced invalid output (${content.length} bytes)`);
+        throw new Error(`CRITICAL: Hooks generation produced invalid output (${content.length} bytes)`);
       }
       
       // CRITICAL: Add DevOrchestrator's exact browser compatibility code (SINGLE SOURCE OF TRUTH)
@@ -1777,7 +1789,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
   private getFrameworkPath(): string {
     // BULLETPROOF: Find the REAL 0x1 framework directory with comprehensive validation
     
-    // Strategy 1: Check if we're inside the framework itself
+    // Strategy 1: Check if we're inside the framework itself (development)
     if (this.isValid0x1Framework(process.cwd())) {
       if (!this.options.silent) {
         logger.info(`✅ Found 0x1 framework at current directory: ${process.cwd()}`);
@@ -1785,7 +1797,16 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       return process.cwd();
     }
     
-    // Strategy 2: Development environment detection
+    // Strategy 2: Check npm package installation (production/CI)
+    const nodeModulesFramework = join(this.options.projectPath, 'node_modules', '0x1');
+    if (this.isValid0x1Framework(nodeModulesFramework)) {
+      if (!this.options.silent) {
+        logger.info(`✅ Found 0x1 framework as npm package: ${nodeModulesFramework}`);
+      }
+      return nodeModulesFramework;
+    }
+    
+    // Strategy 3: Development environment detection
     const devPaths = [
       process.cwd().includes('00-Dev/0x1') 
         ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
@@ -1804,7 +1825,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       }
     }
     
-    // Strategy 3: Relative navigation from project
+    // Strategy 4: Relative navigation from project
     const relativePaths = [
       join(this.options.projectPath, '../'),
       join(this.options.projectPath, '../../'),
@@ -1822,7 +1843,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       }
     }
     
-    // Strategy 4: Search parent directories recursively
+    // Strategy 5: Search parent directories recursively
     let currentDir = this.options.projectPath;
     for (let i = 0; i < 5; i++) { // Max 5 levels up
       currentDir = join(currentDir, '..');
@@ -1838,6 +1859,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     // CRITICAL: If we can't find the framework, this is a build failure
     const searchedPaths = [
       process.cwd(),
+      nodeModulesFramework,
       ...devPaths,
       ...relativePaths.map(p => join(p, '0x1'))
     ];
@@ -1853,25 +1875,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       return false;
     }
     
-    // CRITICAL: Must have ALL characteristic 0x1 framework files (not just package.json)
-    const requiredFiles = [
-      join(path, 'src', 'core', 'hooks.ts'),
-      join(path, 'src', 'jsx-dev-runtime.ts')
-    ];
-    
-    const requiredDirectories = [
-      join(path, 'src'),
-      join(path, 'src', 'core'),
-      join(path, 'dist')  // Framework must have dist directory
-    ];
-    
-    // ALL required files must exist (not just some)
-    const hasAllRequiredFiles = requiredFiles.every(file => existsSync(file));
-    
-    // ALL required directories must exist
-    const hasAllRequiredDirs = requiredDirectories.every(dir => existsSync(dir));
-    
-    // Additional validation: check package.json is actually the framework
+    // Check package.json first to verify it's actually 0x1
     const packageJsonPath = join(path, 'package.json');
     let isFrameworkPackage = false;
     
@@ -1888,11 +1892,40 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       }
     }
     
-    // STRICT: Must have framework files AND be the framework package (not just a project using 0x1)
-    const isValid = hasAllRequiredFiles && hasAllRequiredDirs && isFrameworkPackage;
+    // Development scenario: Check for source files
+    const sourceFiles = [
+      join(path, 'src', 'core', 'hooks.ts'),
+      join(path, 'src', 'jsx-dev-runtime.ts')
+    ];
+    
+    const sourceDirs = [
+      join(path, 'src'),
+      join(path, 'src', 'core')
+    ];
+    
+    const hasSourceFiles = sourceFiles.every(file => existsSync(file));
+    const hasSourceDirs = sourceDirs.every(dir => existsSync(dir));
+    const isDevelopmentFramework = hasSourceFiles && hasSourceDirs;
+    
+    // Production scenario: Check for dist files
+    const distFiles = [
+      join(path, 'dist', 'hooks.js'),
+      join(path, 'dist', 'jsx-runtime.js')
+    ];
+    
+    const distDirs = [
+      join(path, 'dist')
+    ];
+    
+    const hasDistFiles = distFiles.some(file => existsSync(file)); // At least one dist file
+    const hasDistDirs = distDirs.every(dir => existsSync(dir));
+    const isProductionFramework = hasDistFiles && hasDistDirs;
+    
+    // Valid if it's either development OR production framework AND has correct package.json
+    const isValid = (isDevelopmentFramework || isProductionFramework) && isFrameworkPackage;
     
     if (!this.options.silent && !isValid) {
-      logger.debug(`❌ ${path} failed validation: files=${hasAllRequiredFiles}, dirs=${hasAllRequiredDirs}, package=${isFrameworkPackage}`);
+      logger.debug(`❌ ${path} failed validation: dev=${isDevelopmentFramework}, prod=${isProductionFramework}, package=${isFrameworkPackage}`);
     }
     
     return isValid;
