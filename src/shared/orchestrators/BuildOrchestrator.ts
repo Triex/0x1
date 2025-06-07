@@ -687,15 +687,15 @@ export class BuildOrchestrator {
     }
     
     // Determine the Router class (prioritize Router-like names)
-    let routerClassName = allClasses.find(name => 
-      name.toLowerCase().includes('router') || 
+    const routerClassName = allClasses.find(name => 
+      name?.toLowerCase().includes('router') || 
       name === 'Router' || 
       name === 'AppRouter'
     ) || allClasses[0]; // Fallback to first class
     
     // Determine the Link function (prioritize Link-like names)  
-    let linkFunctionName = allFunctions.find(name =>
-      name.toLowerCase().includes('link') ||
+    const linkFunctionName = allFunctions.find(name =>
+      name?.toLowerCase().includes('link') ||
       name === 'Link' ||
       name === 'AppLink'
     ) || allFunctions.find(name => name !== routerClassName); // Exclude router class
@@ -2251,6 +2251,12 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
   private getFrameworkPath(): string {
     // BULLETPROOF: Find the REAL 0x1 framework directory with comprehensive validation
     
+    if (!this.options.silent) {
+      logger.info(`🔍 [DEBUG] Starting framework detection...`);
+      logger.info(`🔍 [DEBUG] Project path: ${this.options.projectPath}`);
+      logger.info(`🔍 [DEBUG] Process cwd: ${process.cwd()}`);
+    }
+    
     // Strategy 1: Check if we're inside the framework itself (development)
     if (this.isValid0x1Framework(process.cwd())) {
       if (!this.options.silent) {
@@ -2261,6 +2267,11 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     
     // Strategy 2: Check npm package installation (production/CI)
     const nodeModulesFramework = join(this.options.projectPath, 'node_modules', '0x1');
+    if (!this.options.silent) {
+      logger.info(`🔍 [DEBUG] Checking npm package: ${nodeModulesFramework}`);
+      logger.info(`🔍 [DEBUG] Path exists: ${existsSync(nodeModulesFramework)}`);
+    }
+    
     if (this.isValid0x1Framework(nodeModulesFramework)) {
       if (!this.options.silent) {
         logger.info(`✅ Found 0x1 framework as npm package: ${nodeModulesFramework}`);
@@ -2277,6 +2288,10 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
         ? process.cwd().split('0x1')[0] + '0x1'
         : null
     ].filter(Boolean) as string[];
+    
+    if (!this.options.silent) {
+      logger.info(`🔍 [DEBUG] Dev paths to check: ${devPaths.join(', ')}`);
+    }
     
     for (const path of devPaths) {
       if (this.isValid0x1Framework(path)) {
@@ -2295,6 +2310,10 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       join(process.cwd(), '../../')
     ];
     
+    if (!this.options.silent) {
+      logger.info(`🔍 [DEBUG] Relative paths to check: ${relativePaths.map(p => join(p, '0x1')).join(', ')}`);
+    }
+    
     for (const basePath of relativePaths) {
       const frameworkPath = join(basePath, '0x1');
       if (this.isValid0x1Framework(frameworkPath)) {
@@ -2307,9 +2326,11 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     
     // Strategy 5: Search parent directories recursively
     let currentDir = this.options.projectPath;
+    const recursivePaths: string[] = [];
     for (let i = 0; i < 5; i++) { // Max 5 levels up
       currentDir = join(currentDir, '..');
       const frameworkPath = join(currentDir, '0x1');
+      recursivePaths.push(frameworkPath);
       if (this.isValid0x1Framework(frameworkPath)) {
         if (!this.options.silent) {
           logger.info(`✅ Found 0x1 framework via recursive search: ${frameworkPath}`);
@@ -2318,12 +2339,17 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       }
     }
     
+    if (!this.options.silent) {
+      logger.info(`🔍 [DEBUG] Recursive paths checked: ${recursivePaths.join(', ')}`);
+    }
+    
     // CRITICAL: If we can't find the framework, this is a build failure
     const searchedPaths = [
       process.cwd(),
       nodeModulesFramework,
       ...devPaths,
-      ...relativePaths.map(p => join(p, '0x1'))
+      ...relativePaths.map(p => join(p, '0x1')),
+      ...recursivePaths
     ];
     
     const errorMsg = `CRITICAL BUILD FAILURE: 0x1 framework not found in any expected location. Searched paths: ${searchedPaths.join(', ')}`;
@@ -2334,21 +2360,49 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
   // BULLETPROOF: Validate that a directory is actually the 0x1 framework
   private isValid0x1Framework(path: string): boolean {
     if (!existsSync(path)) {
+      if (!this.options.silent) {
+        logger.debug(`❌ [DEBUG] ${path} - does not exist`);
+      }
       return false;
+    }
+    
+    if (!this.options.silent) {
+      logger.debug(`🔍 [DEBUG] Validating framework at: ${path}`);
     }
     
     // Check package.json first to verify it's actually 0x1
     const packageJsonPath = join(path, 'package.json');
     let isFrameworkPackage = false;
     
+    if (!this.options.silent) {
+      logger.debug(`🔍 [DEBUG] Checking package.json: ${packageJsonPath}`);
+      logger.debug(`🔍 [DEBUG] Package.json exists: ${existsSync(packageJsonPath)}`);
+    }
+    
     if (existsSync(packageJsonPath)) {
       try {
         const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        if (!this.options.silent) {
+          logger.debug(`🔍 [DEBUG] Package name: ${packageJson.name}`);
+        }
+        
         // Must be named exactly "0x1" or similar, not just contain "0x1"
         isFrameworkPackage = packageJson.name === '0x1' || 
                            packageJson.name === '@0x1/framework' ||
                            (packageJson.name && packageJson.name.startsWith('0x1') && !packageJson.name.includes('website') && !packageJson.name.includes('template'));
+        
+        if (!this.options.silent) {
+          logger.debug(`🔍 [DEBUG] Is framework package: ${isFrameworkPackage}`);
+          logger.debug(`🔍 [DEBUG] Name check: exact='0x1': ${packageJson.name === '0x1'}`);
+          logger.debug(`🔍 [DEBUG] Name check: @0x1/framework: ${packageJson.name === '@0x1/framework'}`);
+          logger.debug(`🔍 [DEBUG] Name check: starts with 0x1: ${packageJson.name && packageJson.name.startsWith('0x1')}`);
+          logger.debug(`🔍 [DEBUG] Name check: excludes website: ${!packageJson.name?.includes('website')}`);
+          logger.debug(`🔍 [DEBUG] Name check: excludes template: ${!packageJson.name?.includes('template')}`);
+        }
       } catch (error) {
+        if (!this.options.silent) {
+          logger.debug(`❌ [DEBUG] Invalid package.json: ${error}`);
+        }
         // Invalid package.json
         isFrameworkPackage = false;
       }
@@ -2369,6 +2423,11 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     const hasSourceDirs = sourceDirs.every(dir => existsSync(dir));
     const isDevelopmentFramework = hasSourceFiles && hasSourceDirs;
     
+    if (!this.options.silent) {
+      logger.debug(`🔍 [DEBUG] Source files check: ${sourceFiles.map(f => `${f.split('/').pop()}: ${existsSync(f)}`).join(', ')}`);
+      logger.debug(`🔍 [DEBUG] Is development framework: ${isDevelopmentFramework}`);
+    }
+    
     // Production scenario: Check for dist files
     const distFiles = [
       join(path, 'dist', 'hooks.js'),
@@ -2383,11 +2442,16 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     const hasDistDirs = distDirs.every(dir => existsSync(dir));
     const isProductionFramework = hasDistFiles && hasDistDirs;
     
+    if (!this.options.silent) {
+      logger.debug(`🔍 [DEBUG] Dist files check: ${distFiles.map(f => `${f.split('/').pop()}: ${existsSync(f)}`).join(', ')}`);
+      logger.debug(`🔍 [DEBUG] Is production framework: ${isProductionFramework}`);
+    }
+    
     // Valid if it's either development OR production framework AND has correct package.json
     const isValid = (isDevelopmentFramework || isProductionFramework) && isFrameworkPackage;
     
-    if (!this.options.silent && !isValid) {
-      logger.debug(`❌ ${path} failed validation: dev=${isDevelopmentFramework}, prod=${isProductionFramework}, package=${isFrameworkPackage}`);
+    if (!this.options.silent) {
+      logger.debug(`🎯 [DEBUG] Final validation: dev=${isDevelopmentFramework}, prod=${isProductionFramework}, package=${isFrameworkPackage}, valid=${isValid}`);
     }
     
     return isValid;
