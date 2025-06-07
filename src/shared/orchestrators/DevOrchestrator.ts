@@ -15,6 +15,9 @@ import { transpilationEngine } from '../core/TranspilationEngine';
 
 import { logger } from '../../cli/utils/logger';
 
+// Import network utilities for beautiful UX
+import { getLocalIP, isPortAvailable, openBrowser } from '../../cli/commands/utils/server/network';
+
 // Import essential handlers (keep only what's needed)
 import { notFoundHandler } from '../../cli/server/middleware/error-boundary';
 import { serveStaticFile } from '../../cli/server/middleware/static-files';
@@ -39,6 +42,13 @@ export interface DevServerState {
   assets: Map<string, any>;
   clientConnections: Set<ServerWebSocket<unknown>>;
   isReady: boolean;
+  serverInfo: {
+    port: number;
+    host: string;
+    localIP: string;
+    serverUrl: string;
+    networkUrl: string;
+  };
 }
 
 export class DevOrchestrator {
@@ -49,12 +59,24 @@ export class DevOrchestrator {
 
   constructor(options: DevOrchestratorOptions) {
     this.options = options;
+    
+    // Initialize state with enhanced server info
+    const localIP = getLocalIP();
+    const serverInfo = {
+      port: options.port,
+      host: options.host,
+      localIP,
+      serverUrl: `http://${options.host}:${options.port}`,
+      networkUrl: `http://${localIP}:${options.port}`
+    };
+
     this.state = {
       routes: [],
       components: new Map(),
       assets: new Map(),
       clientConnections: new Set(),
-      isReady: false
+      isReady: false,
+      serverInfo
     };
 
     // Configure shared engines for development
@@ -62,30 +84,52 @@ export class DevOrchestrator {
   }
 
   /**
-   * Start the development server with unified orchestration
+   * Start the development server with unified orchestration and beautiful UX
    */
   async start(): Promise<Server> {
     try {
-      logger.info(`🚀 Starting development orchestrator on ${this.options.host}:${this.options.port}`);
+      // Beautiful startup sequence
+      if (!this.options.silent) {
+        logger.info(`💠 Starting development orchestrator on ${this.state.serverInfo.serverUrl}`);
+      }
 
-      // Phase 1: Parallel discovery using shared core
+      // Phase 0: Ensure port is available with fallback
+      const finalPort = await this.ensurePortAvailable();
+      this.updateServerInfo(finalPort);
+
+      // Use spinner for startup sequence
+      const startupSpin = this.options.silent ? null : logger.spinner("Initializing development server");
+
+      // Phase 1: Parallel discovery using shared core (optimized for <50ms)
+      const startTime = Date.now();
       const [routes, dependencies] = await Promise.all([
         this.discoverRoutes(),
         this.discoverDependencies()
       ]);
+      const discoveryTime = Date.now() - startTime;
 
       this.state.routes = routes;
       this.state.isReady = true;
+
+      if (startupSpin) {
+        startupSpin.stop("success", `Discovery completed in ${discoveryTime}ms`);
+      }
 
       // Phase 2: Create and configure server
       this.server = this.createServer();
 
       // Phase 3: Start file watching for live reload
-      if (this.options.liveReload) {
+      if (this.options.liveReload !== false) {
         this.startFileWatching();
       }
 
-      logger.success(`✅ Development server ready with ${routes.length} routes`);
+      // Phase 4: Display beautiful server info and open browser
+      await this.displayServerInfo();
+
+      if (this.options.open) {
+        await this.openBrowserSafely();
+      }
+
       return this.server;
 
     } catch (error) {
@@ -95,7 +139,97 @@ export class DevOrchestrator {
   }
 
   /**
-   * Discover routes using shared RouteDiscovery
+   * Ensure port is available with intelligent fallback
+   */
+  private async ensurePortAvailable(): Promise<number> {
+    let port = this.options.port;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (!(await isPortAvailable(port)) && attempts < maxAttempts) {
+      if (attempts === 0 && !this.options.silent) {
+        logger.warn(`💠 Port ${this.options.port} is in use, finding alternative...`);
+      }
+      port++;
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error(`Unable to find available port after ${maxAttempts} attempts starting from ${this.options.port}`);
+    }
+
+    if (port !== this.options.port && !this.options.silent) {
+      logger.info(`💠 Using port ${port} instead of ${this.options.port}`);
+    }
+
+    return port;
+  }
+
+  /**
+   * Update server info with new port
+   */
+  private updateServerInfo(port: number): void {
+    this.state.serverInfo = {
+      ...this.state.serverInfo,
+      port,
+      serverUrl: `http://${this.options.host}:${port}`,
+      networkUrl: `http://${this.state.serverInfo.localIP}:${port}`
+    };
+    this.options.port = port;
+  }
+
+  /**
+   * Display beautiful server information with box formatting
+   */
+  private async displayServerInfo(): Promise<void> {
+    if (this.options.silent) return;
+
+    const { serverUrl, networkUrl, localIP } = this.state.serverInfo;
+    const routeCount = this.state.routes.length;
+
+    logger.success(`✅ Development server ready with ${routeCount} routes`);
+    
+    // Beautiful server info box (like Next.js)
+    logger.spacer();
+    logger.box(
+      `🚀 0x1 Development Server
+
+Local:            ${logger.highlight(serverUrl)}
+Network:          ${logger.highlight(networkUrl)}
+
+Ready in development mode
+Routes discovered:  ${routeCount}
+Watching for changes...
+
+Powered by Bun    v${Bun.version}`
+    );
+    logger.spacer();
+
+    if (this.options.open) {
+      logger.info(`🌐 Opening ${logger.highlight(serverUrl)} in your browser`);
+    } else {
+      logger.info(`🌐 Open ${logger.highlight(serverUrl)} in your browser`);
+    }
+
+    logger.info("💠 Ready for development. Press Ctrl+C to stop.");
+  }
+
+  /**
+   * Safely open browser with error handling
+   */
+  private async openBrowserSafely(): Promise<void> {
+    try {
+      await openBrowser(this.state.serverInfo.serverUrl);
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`Failed to open browser automatically: ${error}`);
+        logger.info(`🌐 Please open ${this.state.serverInfo.serverUrl} manually`);
+      }
+    }
+  }
+
+  /**
+   * Optimized route discovery (targeting <30ms)
    */
   private async discoverRoutes(): Promise<Route[]> {
     return await routeDiscovery.discover(this.options.projectPath, {
@@ -105,10 +239,10 @@ export class DevOrchestrator {
   }
 
   /**
-   * Discover dependencies using shared ImportEngine
+   * Optimized dependency discovery (targeting <20ms)
    */
   private async discoverDependencies(): Promise<any> {
-    // Find all source files
+    // Find all source files (optimized scanning)
     const sourceFiles = await this.findSourceFiles();
     
     // Use shared import engine for dependency discovery
@@ -116,24 +250,28 @@ export class DevOrchestrator {
   }
 
   /**
-   * Find all source files for dependency analysis
+   * Ultra-optimized source file discovery (targeting <15ms)
    */
   private async findSourceFiles(): Promise<string[]> {
     const files: string[] = [];
     const extensions = ['.tsx', '.jsx', '.ts', '.js'];
     
-    const scanDirectory = (dir: string) => {
-      if (!existsSync(dir)) return;
+    // Use synchronous scanning for better performance
+    const scanDirectorySync = (dir: string, maxDepth: number = 3, currentDepth: number = 0) => {
+      if (!existsSync(dir) || currentDepth > maxDepth) return;
       
       try {
         const items = readdirSync(dir, { withFileTypes: true });
         
         for (const item of items) {
+          // Skip early for better performance
+          if (item.name.startsWith('.') || item.name === 'node_modules' || item.name === 'dist') continue;
+          
           const fullPath = join(dir, item.name);
           
-          if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
-            scanDirectory(fullPath);
-          } else if (item.isFile() && extensions.some(ext => item.name.endsWith(ext))) {
+          if (item.isDirectory()) {
+            scanDirectorySync(fullPath, maxDepth, currentDepth + 1);
+          } else if (extensions.some(ext => item.name.endsWith(ext))) {
             files.push(fullPath);
           }
         }
@@ -142,10 +280,12 @@ export class DevOrchestrator {
       }
     };
 
-    // Scan key directories
-    ['app', 'src', 'components', 'lib'].forEach(dir => {
-      scanDirectory(join(this.options.projectPath, dir));
-    });
+    // Scan only essential directories for faster discovery
+    const essentialDirs = ['app', 'src', 'components', 'lib'];
+    for (const dir of essentialDirs) {
+      const fullDir = join(this.options.projectPath, dir);
+      scanDirectorySync(fullDir, 2); // Limit depth for performance
+    }
 
     return files;
   }
@@ -195,6 +335,16 @@ export class DevOrchestrator {
         return this.handleLiveReloadEndpoint(reqPath, req);
       }
 
+      // Handle CSS requests (styles.css, globals.css, etc.)
+      if (this.isCssRequest(reqPath)) {
+        return await this.handleCssRequest(reqPath);
+      }
+
+      // Handle app.js bundle request (main app entry point)
+      if (reqPath === '/app.js') {
+        return await this.handleAppBundleRequest();
+      }
+
       // Handle framework core files
       if (this.isFrameworkRequest(reqPath)) {
         return await this.handleFrameworkRequest(reqPath);
@@ -215,6 +365,268 @@ export class DevOrchestrator {
 
     } catch (error) {
       logger.error(`[DevOrchestrator] Request error for ${reqPath}: ${error}`);
+      return this.createErrorResponse(error);
+    }
+  }
+
+  /**
+   * Handle CSS requests (styles.css, globals.css, etc.)
+   */
+  private async handleCssRequest(reqPath: string): Promise<Response> {
+    try {
+      const cssFileName = reqPath.split('/').pop() || 'styles.css';
+      
+      // Check multiple possible CSS locations
+      const possibleCssPaths = [
+        join(this.options.projectPath, '.0x1/public', cssFileName),
+        join(this.options.projectPath, 'dist', cssFileName),
+        join(this.options.projectPath, 'app', cssFileName),
+        join(this.options.projectPath, 'app/globals.css'),
+        join(this.options.projectPath, 'src', cssFileName),
+        join(this.options.projectPath, 'public', cssFileName),
+        join(this.options.projectPath, cssFileName)
+      ];
+
+      // Find existing CSS file
+      for (const cssPath of possibleCssPaths) {
+        if (existsSync(cssPath)) {
+          const css = readFileSync(cssPath, 'utf-8');
+          return new Response(css, {
+            headers: { 'Content-Type': 'text/css; charset=utf-8' }
+          });
+        }
+      }
+
+      // Generate minimal CSS fallback
+      const fallbackCss = `/* 0x1 Framework - CSS Fallback */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+body { 
+  line-height: 1.5; 
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+.dark { background-color: #0f172a; color: #f8fafc; }
+.p-4 { padding: 1rem; }
+.text-center { text-align: center; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.font-bold { font-weight: 700; }
+.mb-4 { margin-bottom: 1rem; }
+.bg-slate-900 { background-color: #0f172a; }
+.text-white { color: #f8fafc; }`;
+
+      return new Response(fallbackCss, {
+        headers: { 'Content-Type': 'text/css; charset=utf-8' }
+      });
+
+    } catch (error) {
+      logger.error(`[DevOrchestrator] CSS request failed: ${error}`);
+      return this.createErrorResponse(error);
+    }
+  }
+
+  /**
+   * Handle app.js bundle request - generate the main app entry point
+   */
+  private async handleAppBundleRequest(): Promise<Response> {
+    try {
+      // Generate routes JSON safely
+      const sanitizedRoutes = this.state.routes.map(route => ({
+        path: route.path,
+        componentPath: route.componentPath,
+        layouts: route.layouts || []
+      }));
+
+      const routesJson = JSON.stringify(sanitizedRoutes, null, 2);
+
+      // Generate the production-ready app.js with proper route handling
+      const appScript = `
+// 0x1 Framework App Bundle - Development Ready
+console.log('[0x1 App] Starting development app...');
+
+// Server-discovered routes
+const serverRoutes = ${routesJson};
+
+// ===== DEVELOPMENT APP INITIALIZATION =====
+async function initApp() {
+  try {
+    console.log('[0x1 App] 🚀 Starting development initialization...');
+    
+    // Step 1: Load essential dependencies
+    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    
+    const hooksScript = document.createElement('script');
+    hooksScript.type = 'module';
+    hooksScript.src = '/0x1/hooks.js';
+    
+    await new Promise((resolve, reject) => {
+      hooksScript.onload = () => {
+        console.log('[0x1 App] ✅ Hooks ready');
+        resolve();
+      };
+      hooksScript.onerror = reject;
+      document.head.appendChild(hooksScript);
+    });
+    
+    // Step 2: Create router
+    console.log('[0x1 App] Creating router...');
+    
+    const routerModule = await import('/0x1/router.js');
+    const { Router } = routerModule;
+    
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
+    }
+    
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    // Create 404 component
+    const notFoundComponent = () => ({
+      type: 'div',
+      props: { 
+        className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+      },
+      children: [
+        {
+          type: 'h1',
+          props: { className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4' },
+          children: ['404'],
+          key: null
+        },
+        {
+          type: 'h2',
+          props: { className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4' },
+          children: ['Page Not Found'],
+          key: null
+        },
+        {
+          type: 'p',
+          props: { className: 'text-lg text-gray-600 dark:text-gray-300 mb-8' },
+          children: ['The page you are looking for does not exist.'],
+          key: null
+        },
+        {
+          type: 'a',
+          props: {
+            href: '/',
+            className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+            onClick: (e) => {
+              e.preventDefault();
+              if (window.router && typeof window.router.navigate === 'function') {
+                window.router.navigate('/');
+              } else {
+                window.location.href = '/';
+              }
+            }
+          },
+          children: ['🏠 Back to Home'],
+          key: null
+        }
+      ],
+      key: null
+    });
+    
+    const router = new Router({
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/',
+      notFoundComponent: notFoundComponent
+    });
+    
+    window.__0x1_ROUTER__ = router;
+    window.__0x1_router = router;
+    window.router = router;
+    
+    console.log('[0x1 App] ✅ Router ready');
+    
+    // Step 3: Register routes
+    console.log('[0x1 App] 📝 Registering routes...');
+    
+    for (const route of serverRoutes) {
+      try {
+        const routeComponent = async (props) => {
+          console.log('[0x1 App] 🔍 Route component called for:', route.path);
+          
+          try {
+            const componentModule = await import(route.componentPath);
+            
+            if (componentModule && componentModule.default) {
+              console.log('[0x1 App] ✅ Route component resolved:', route.path);
+              return componentModule.default(props);
+            } else {
+              console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
+              return {
+                type: 'div',
+                props: { 
+                  className: 'p-8 text-center',
+                  style: 'color: #f59e0b;' 
+                },
+                children: ['Component loaded but has no default export: ' + route.path]
+              };
+            }
+          } catch (error) {
+            console.error('[0x1 App] ❌ Route component error:', route.path, error);
+            return {
+              type: 'div',
+              props: { 
+                className: 'p-8 text-center',
+                style: 'color: #ef4444;' 
+              },
+              children: ['❌ Failed to load component: ' + route.path]
+            };
+          }
+        };
+        
+        router.addRoute(route.path, routeComponent, { 
+          componentPath: route.componentPath 
+        });
+        
+        console.log('[0x1 App] ✅ Route registered:', route.path);
+        
+      } catch (error) {
+        console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+      }
+    }
+    
+    console.log('[0x1 App] 📊 All routes registered successfully');
+    
+    // Step 4: Start router
+    console.log('[0x1 App] 🎯 Starting router...');
+    
+    router.init();
+    router.navigate(window.location.pathname, false);
+    
+    console.log('[0x1 App] ✅ Development app initialized successfully!');
+    
+  } catch (error) {
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
+    }
+  }
+}
+
+// ===== START IMMEDIATELY =====
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+`;
+
+      return new Response(appScript, {
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+      });
+
+    } catch (error) {
+      logger.error(`[DevOrchestrator] App bundle generation failed: ${error}`);
       return this.createErrorResponse(error);
     }
   }
@@ -362,7 +774,7 @@ export class DevOrchestrator {
   }
 
   /**
-   * Generate the main HTML page
+   * Generate the main HTML page with live reload
    */
   private generateIndexHtml(): string {
     return `<!DOCTYPE html>
@@ -376,6 +788,10 @@ export class DevOrchestrator {
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
+  <script>
+    window.process={env:{NODE_ENV:'development'}};
+    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
+  </script>
   <script src="/app.js" type="module"></script>
   <script src="/__0x1_live_reload.js"></script>
 </body>
@@ -383,10 +799,12 @@ export class DevOrchestrator {
   }
 
   /**
-   * Start file watching for live reload
+   * Start file watching for live reload with intelligent debouncing
    */
   private startFileWatching(): void {
     if (this.fileWatcher) return;
+
+    let reloadTimeout: Timer | null = null;
 
     this.fileWatcher = watch(this.options.projectPath, { recursive: true }, (event, filename) => {
       if (!filename) return;
@@ -394,20 +812,27 @@ export class DevOrchestrator {
       const filenameStr = filename as string;
       
       // Ignore certain files/directories
-      const ignorePatterns = ['node_modules', '.git', 'dist', '.DS_Store', '.0x1-temp'];
+      const ignorePatterns = ['node_modules', '.git', 'dist', '.DS_Store', '.0x1-temp', '.0x1'];
       if (ignorePatterns.some(pattern => filenameStr.includes(pattern))) {
         return;
       }
 
-      if (this.options.debug) {
-        logger.debug(`[DevOrchestrator] File changed: ${filenameStr}`);
+      // Debounce rapid file changes
+      if (reloadTimeout) {
+        clearTimeout(reloadTimeout);
       }
 
-      // Clear component cache for changed files
-      this.invalidateCache(filenameStr);
+      reloadTimeout = setTimeout(() => {
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] File changed: ${filenameStr}`);
+        }
 
-      // Broadcast reload to connected clients
-      this.broadcastReload(filenameStr);
+        // Clear component cache for changed files
+        this.invalidateCache(filenameStr);
+
+        // Broadcast reload to connected clients
+        this.broadcastReload(filenameStr);
+      }, 100); // 100ms debounce
     });
   }
 
@@ -441,10 +866,14 @@ export class DevOrchestrator {
         // Client disconnected, will be cleaned up in close handler
       }
     }
+
+    if (!this.options.silent && filename) {
+      logger.info(`💠 Reloading due to: ${filename}`);
+    }
   }
 
   /**
-   * Request type detection methods
+   * Request type detection methods (optimized)
    */
   private isWebSocketUpgrade(path: string): boolean {
     return path === '/ws' || path === '/__0x1_ws' || path === '/__0x1_ws_live_reload';
@@ -452,6 +881,10 @@ export class DevOrchestrator {
 
   private isLiveReloadEndpoint(path: string): boolean {
     return path === '/__0x1_live_reload.js' || path === '/__0x1_sse_live_reload';
+  }
+
+  private isCssRequest(path: string): boolean {
+    return path.endsWith('.css') || path === '/styles.css' || path === '/globals.css';
   }
 
   private isFrameworkRequest(path: string): boolean {
@@ -556,19 +989,47 @@ export class DevOrchestrator {
   }
 
   /**
-   * Generate live reload script
+   * Generate enhanced live reload script
    */
   private generateLiveReloadScript(): string {
     return `
 console.log('[0x1] Live reload connected');
-const ws = new WebSocket('ws://localhost:${this.options.port}/__0x1_ws');
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === 'reload') {
-    console.log('[0x1] Reloading...', data.filename);
-    window.location.reload();
-  }
-};
+
+// Enhanced WebSocket connection with reconnection
+let ws;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+
+function connect() {
+  ws = new WebSocket('ws://localhost:${this.options.port}/__0x1_ws');
+  
+  ws.onopen = () => {
+    console.log('[0x1] Live reload ready');
+    reconnectAttempts = 0;
+  };
+  
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'reload') {
+      console.log('[0x1] Reloading...', data.filename || '');
+      window.location.reload();
+    }
+  };
+  
+  ws.onclose = () => {
+    if (reconnectAttempts < maxReconnectAttempts) {
+      reconnectAttempts++;
+      console.log('[0x1] Reconnecting live reload...', reconnectAttempts);
+      setTimeout(connect, 1000 * reconnectAttempts);
+    }
+  };
+  
+  ws.onerror = () => {
+    console.warn('[0x1] Live reload connection error');
+  };
+}
+
+connect();
 `;
   }
 
@@ -600,12 +1061,25 @@ ws.onmessage = (event) => {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources with comprehensive cleanup
    */
   async cleanup(): Promise<void> {
+    if (!this.options.silent) {
+      logger.info('🧹 Shutting down development server...');
+    }
+
     if (this.fileWatcher) {
       this.fileWatcher.close();
       this.fileWatcher = null;
+    }
+
+    // Close all WebSocket connections
+    for (const client of this.state.clientConnections) {
+      try {
+        client.close();
+      } catch (error) {
+        // Ignore errors during cleanup
+      }
     }
 
     if (this.server) {
@@ -616,6 +1090,8 @@ ws.onmessage = (event) => {
     this.state.clientConnections.clear();
     this.state.components.clear();
     
-    logger.info('🧹 Development orchestrator cleaned up');
+    if (!this.options.silent) {
+      logger.success('✅ Development server shutdown complete');
+    }
   }
 } 

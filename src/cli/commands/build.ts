@@ -26,7 +26,7 @@ export interface BuildOptions {
 export async function build(options: BuildOptions = {}): Promise<void> {
   const startTime = Date.now();
   const projectPath = process.cwd();
-  
+
   if (!options.silent) {
     logger.section("BUILD OPTIMIZATION");
     logger.spacer();
@@ -97,4 +97,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 }
 
 // Legacy export compatibility
-export default build; 
+export default build;
+
+// CLI compatibility - export the build function as buildProject
+export const buildProject = build; 

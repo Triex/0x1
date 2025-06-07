@@ -79,3 +79,6 @@ export async function dev(options: DevOptions = {}): Promise<Server> {
 
 // Legacy export compatibility
 export default dev;
+
+// CLI compatibility - export the dev function as runDevServer
+export const runDevServer = dev;
