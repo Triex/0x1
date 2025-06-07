@@ -730,6 +730,50 @@ if (typeof window !== 'undefined') {
           }
         }
         
+        // ROBUST: Validate the file actually contains the hooks we need
+        const requiredHooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'];
+        const missingHooks = requiredHooks.filter(hook => !content.includes(hook));
+        
+        if (missingHooks.length > 0) {
+          if (!this.options.silent) {
+            logger.warn(`❌ Hooks file missing required exports: ${missingHooks.join(', ')}`);
+            logger.warn(`📄 File content preview (first 500 chars): ${content.substring(0, 500)}`);
+          }
+          
+          // Try to find other hooks files in dist directory
+          const distDir = join(frameworkPath, 'dist');
+          const distFiles = existsSync(distDir) ? readdirSync(distDir).filter(file => 
+            file.includes('hook') && file.endsWith('.js')
+          ) : [];
+          
+          if (!this.options.silent) {
+            logger.info(`🔍 Available hooks files in dist: ${distFiles.join(', ')}`);
+          }
+          
+          // Try each hooks file until we find one with the required exports
+          for (const file of distFiles) {
+            const filePath = join(distDir, file);
+            const fileContent = readFileSync(filePath, 'utf-8');
+            const fileMissingHooks = requiredHooks.filter(hook => !fileContent.includes(hook));
+            
+            if (fileMissingHooks.length === 0) {
+              if (!this.options.silent) {
+                logger.success(`✅ Found complete hooks in: ${file}`);
+              }
+              content = fileContent;
+              break;
+            } else if (!this.options.silent) {
+              logger.debug(`❌ ${file} missing: ${fileMissingHooks.join(', ')}`);
+            }
+          }
+          
+          // Final validation
+          const finalMissingHooks = requiredHooks.filter(hook => !content.includes(hook));
+          if (finalMissingHooks.length > 0) {
+            throw new Error(`CRITICAL: No hooks file contains required exports: ${finalMissingHooks.join(', ')}. Available files: ${distFiles.join(', ')}`);
+          }
+        }
+        
       } else {
         throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksSourcePath} or ${hooksDistPath}. Framework installation is broken.`);
       }
