@@ -590,18 +590,23 @@ export class BuildOrchestrator {
       
       // CRITICAL FIX: Ensure Router class is properly exported
       // Parse the class definition and add Router export
-      let routerClassName = 'h'; // Default fallback // FIXME : WTF IS THIS FLAKEY SHIT? ISNT IT DIFF EVERY TIME IT COMPILES?!?!?!?!?
+      let routerClassName = null; // CRITICAL: No hardcoded fallback - detect or fail
       if (routerContent.includes('class ')) {
         // Find the main router class (usually the first/main class)
         const classMatch = routerContent.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
         if (classMatch) {
           const className = classMatch[1];
-          routerClassName = className; // Capture for later use
+          routerClassName = className; // CRITICAL: Use the ACTUAL detected name
+          
+          if (!this.options.silent) {
+            logger.info(`🎯 Detected router class: ${className} (minified name changes each build)`);
+          }
           
           // Add Router export to the existing exports
           const exportMatch = routerContent.match(/export\s*\{([^}]+)\}/);
           if (exportMatch) {
             const currentExports = exportMatch[1];
+            
             // Check if Router is already exported to avoid duplicates
             if (currentExports.includes('Router') || currentExports.includes(`${className} as Router`)) {
               if (!this.options.silent) {
@@ -624,18 +629,38 @@ export class BuildOrchestrator {
               logger.info(`✅ Added Router export as new export statement`);
             }
           }
+        } else {
+          if (!this.options.silent) {
+            logger.error(`❌ CRITICAL: Could not detect router class name in minified code`);
+          }
+        }
+      } else {
+        if (!this.options.silent) {
+          logger.error(`❌ CRITICAL: No class definition found in router content`);
         }
       }
-        
-        // CRITICAL: Expose the original Link function for the wrapper (same as DevOrchestrator)
+      
+      // CRITICAL: Only add global exposure if we successfully detected the class name
+      if (routerClassName) {
+        // CRITICAL: Expose the original Link function AND the detected Router class
         routerContent += `
 // Expose original Link function for wrapper
 if (typeof window !== 'undefined') {
   window.__0x1_RouterLink = F;
-  // CRITICAL: Also expose the Router class for framework module
+  // CRITICAL: Expose the ACTUAL detected Router class (${routerClassName})
   window.__0x1_Router = ${routerClassName};
 }
 `;
+        
+        if (!this.options.silent) {
+          logger.success(`✅ Router class exposed globally: window.__0x1_Router = ${routerClassName}`);
+        }
+      } else {
+        // CRITICAL: Fail fast if we can't detect the router class
+        const errorMsg = `CRITICAL BUILD FAILURE: Could not detect router class name in minified output. Router will not work.`;
+        logger.error(errorMsg);
+        throw new Error(errorMsg);
+      }
         
         await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
       await Bun.write(join(nodeModulesDir, 'router.js'), routerContent);
