@@ -538,7 +538,6 @@ if (typeof window !== 'undefined') {
                 'import { $1 } from "/components/$2.js"')
               .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
               .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
-              // CRITICAL: Fix 0x1 framework imports
               .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
                 'import { $1 } from "/0x1/jsx-runtime.js"')
               .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
@@ -549,7 +548,7 @@ if (typeof window !== 'undefined') {
                 'import { $1 } from "/node_modules/0x1/index.js"');
             
             return new Response(content, {
-              headers: { 
+              headers: {
                 'Content-Type': 'application/javascript; charset=utf-8',
                 'Cache-Control': 'no-cache'
               }
@@ -792,32 +791,34 @@ if (typeof window !== 'undefined') {
       return this.createErrorResponse('Router not built - run "bun run build:framework" first');
     }
 
-    // CRITICAL: Handle Link component specifically to fix class constructor error
+    // Handle dedicated Link component - Clean implementation
     if (reqPath === '/0x1/link' || reqPath === '/0x1/link.js') {
       const linkComponent = `
-// 0x1 Link Component - Fixed to use JSX runtime
+// 0x1 Link Component - Clean default export implementation
 import { jsx, jsxDEV } from "0x1/jsx-dev-runtime";
 
 export default function Link({ href, className, children, target, rel, onClick, ...props }) {
   const handleClick = (e) => {
+    // Custom click handler takes precedence
     if (onClick) {
       onClick(e);
       return;
     }
     
-    if (target === '_blank' || !href.startsWith('/')) {
-      // External link - let browser handle normally
+    // External links or target="_blank" - let browser handle
+    if (target === '_blank' || !href?.startsWith('/')) {
       return;
     }
     
     e.preventDefault();
     
-    // Internal navigation
+    // Internal navigation using router
     if (typeof window !== 'undefined') {
       const router = window.__0x1_ROUTER__ || window.__0x1_router || window.router;
       if (router && typeof router.navigate === 'function') {
         router.navigate(href);
       } else {
+        // Fallback to manual navigation
         window.history.pushState(null, '', href);
         window.dispatchEvent(new PopStateEvent('popstate'));
       }

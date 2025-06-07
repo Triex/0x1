@@ -73,8 +73,11 @@ export class TranspilationEngine {
         if (normalized.options.debug) {
           logger.debug(`[TranspilationEngine] Cache hit: ${normalized.sourcePath}`);
         }
+        console.log(`[TranspilationEngine] 📋 CACHE HIT for: ${normalized.sourcePath.split('/').pop()}`);
         return cached;
       }
+      
+      console.log(`[TranspilationEngine] 🔄 TRANSPILING: ${normalized.sourcePath.split('/').pop()}`);
       
       // 3. Process directives (skip for docs files)
       const withDirectives = await this.processDirectives(normalized);
@@ -85,7 +88,7 @@ export class TranspilationEngine {
       // 5. Transform imports for browser compatibility
       const withImports = await this.transformImports(withDirectives);
       
-      // 6. Transpile TypeScript/JSX if needed
+      // 6. Transpile TypeScript/JSX if needed (SIMPLIFIED - no preprocessing/postprocessing)
       const transpiled = await this.performTranspilation(withImports, jsxInfo);
       
       // 7. Post-process and optimize
@@ -130,7 +133,9 @@ export class TranspilationEngine {
    * Generate content hash for caching
    */
   private generateHash(content: string): string {
-    return Bun.hash(content).toString(16).slice(0, 8);
+    // CRITICAL: Include transpilation engine version to invalidate cache when logic changes
+    const TRANSPILATION_VERSION = 'v2.8.0-revert-to-build-bak-approach';
+    return Bun.hash(content + JSON.stringify(TRANSPILATION_VERSION)).toString(16).slice(0, 8);
   }
   
   /**
@@ -484,18 +489,31 @@ export class TranspilationEngine {
     }
     
     try {
+      if (input.options.debug) {
+        logger.debug(`[TranspilationEngine] Transpiling: ${input.sourcePath}`);
+      }
+      
+      // FIXED: Use EXACT same simple approach as working build.bak.ts (NO JSX config)
+      const isTsxOrJsx = input.sourcePath.endsWith('.tsx') || input.sourcePath.endsWith('.jsx');
+      
       const transpiler = new Bun.Transpiler({
-        loader: input.sourcePath.endsWith('.tsx') || input.sourcePath.endsWith('.jsx') ? 'tsx' : 'js',
-        target: input.options.target || 'browser',
+        loader: isTsxOrJsx ? 'tsx' : 'js', // Use tsx loader for .tsx/.jsx files
+        target: 'browser',
         define: {
           'process.env.NODE_ENV': JSON.stringify(input.options.mode === 'production' ? 'production' : 'development'),
           'global': 'globalThis'
         }
+        // NO tsconfig - this is exactly like working build.bak.ts
       });
       
+      // Use transform() like build.bak.ts (not transformSync)
       const transpiledContent = await transpiler.transform(input.sourceCode);
       
-      // Normalize JSX function calls and add runtime preamble
+      if (input.options.debug) {
+        logger.debug(`[TranspilationEngine] Transpilation successful: ${input.sourcePath} (${transpiledContent.length} bytes)`);
+      }
+      
+      // Normalize JSX function calls and add runtime preamble (like build.bak.ts)
       let finalCode = this.normalizeJsxFunctionCalls(transpiledContent);
       finalCode = this.insertJsxRuntimePreamble(finalCode);
       
