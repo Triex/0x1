@@ -700,20 +700,42 @@ if (typeof window !== 'undefined') {
           content += await output.text();
         }
         
-      // PRODUCTION SCENARIO: Copy from dist
+      // PRODUCTION SCENARIO: Copy from dist (with redirect resolution)
       } else if (existsSync(hooksDistPath)) {
         if (!this.options.silent) {
-          logger.info(`✅ Found hooks dist, copying from: ${hooksDistPath}`);
+          logger.info(`✅ Found hooks dist, reading from: ${hooksDistPath}`);
         }
         
         content = readFileSync(hooksDistPath, 'utf-8');
+        
+        // ROBUST: Handle npm package redirects (e.g., export * from './hooks-abc123.js')
+        if (content.length < 200 && content.includes('export') && content.includes('from')) {
+          const redirectMatch = content.match(/export\s*\*\s*from\s*['"]\.\/([^'"]+)['"];?/);
+          if (redirectMatch) {
+            const actualFileName = redirectMatch[1];
+            const actualFilePath = join(frameworkPath, 'dist', actualFileName);
+            
+            if (!this.options.silent) {
+              logger.info(`🔄 Resolving redirect to: ${actualFilePath}`);
+            }
+            
+            if (existsSync(actualFilePath)) {
+              content = readFileSync(actualFilePath, 'utf-8');
+              if (!this.options.silent) {
+                logger.success(`✅ Resolved hooks from: ${actualFileName}`);
+              }
+            } else {
+              throw new Error(`CRITICAL: Hooks redirect target not found: ${actualFilePath}`);
+            }
+          }
+        }
         
       } else {
         throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksSourcePath} or ${hooksDistPath}. Framework installation is broken.`);
       }
       
       if (!content || content.length < 100) {
-        throw new Error(`CRITICAL: Hooks generation produced invalid output (${content.length} bytes)`);
+        throw new Error(`CRITICAL: Hooks generation produced invalid output (${content.length} bytes). Content preview: ${content.substring(0, 100)}`);
       }
       
       // CRITICAL: Add DevOrchestrator's exact browser compatibility code (SINGLE SOURCE OF TRUTH)
