@@ -532,6 +532,22 @@ if (typeof window !== 'undefined') {
 }
 `;
             
+            // CRITICAL: Rewrite import paths to browser-resolvable URLs
+            content = content
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+                'import { $1 } from "/components/$2.js"')
+              .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+              .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+              // CRITICAL: Fix 0x1 framework imports
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+                'import { $1 } from "/0x1/jsx-runtime.js"')
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+                'import { $1 } from "/0x1/jsx-runtime.js"')
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+                'import { $1 } from "/0x1/router.js"')
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+                'import { $1 } from "/node_modules/0x1/index.js"');
+            
             return new Response(content, {
               headers: { 
                 'Content-Type': 'application/javascript; charset=utf-8',
@@ -573,22 +589,33 @@ if (typeof window !== 'undefined') {
             // Add essential browser compatibility
             content += `
 if (typeof window !== 'undefined') {
+  // Initialize React-compatible global context
+  window.React = window.React || {};
+  
+  // Make hooks available globally (no complex context checking)
   Object.assign(window, {
     useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
     useClickOutside, useFetch, useForm, useLocalStorage
   });
   
-  window.React = Object.assign(window.React || {}, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef
+  // Also make available in React namespace for compatibility
+  Object.assign(window.React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
   });
   
+  // Global hooks registry
   window.__0x1_hooks = {
     useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
     useClickOutside, useFetch, useForm, useLocalStorage,
-    isInitialized: true
+    isInitialized: true,
+    contextReady: true
   };
   
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+  
+  // Component context ready flag
+  window.__0x1_component_context_ready = true;
 }
 `;
             
@@ -655,6 +682,41 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
   }
   throw new Error('[0x1] JSX dev runtime not loaded');
 }
+
+// CRITICAL: Link component wrapper to fix class constructor error
+export function Link(props) {
+  // Get the actual Link function from the router
+  const RouterLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || null;
+  
+  if (!RouterLink) {
+    // Fallback if router not loaded yet
+    return jsx('a', {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        } else {
+          window.location.href = props.href;
+        }
+      },
+      children: props.children
+    });
+  }
+  
+  // Call the router Link and convert plain object to JSX
+  const linkResult = RouterLink(props);
+  
+  // If it returns a plain object, convert it to JSX
+  if (linkResult && typeof linkResult === 'object' && linkResult.type && linkResult.props) {
+    const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+    return jsx(linkResult.type, linkResult.props);
+  }
+  
+  return linkResult;
+}
 `;
 
       return new Response(frameworkModule, {
@@ -669,7 +731,56 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
     if (reqPath === '/0x1/router.js' || reqPath === '/node_modules/0x1/router.js') {
       const routerPath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
       if (existsSync(routerPath)) {
-        const content = readFileSync(routerPath, 'utf-8');
+        let content = readFileSync(routerPath, 'utf-8');
+        
+        // CRITICAL: Fix Link component to use JSX runtime instead of returning plain objects
+        // This fixes the "Class constructor K cannot be invoked without 'new'" error
+        content = content.replace(
+          /return\{type:"a",props:\{href:q,className:z,onClick:\(V\)=>\{[^}]+\},children:Q\}\}/,
+          `// Use JSX runtime to create element instead of plain object
+const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+return jsx("a", {
+  href: q,
+  className: z,
+  onClick: (V) => {
+    if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
+      let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
+    }else window.location.href=q
+  },
+  children: Q
+})`
+        );
+        
+        // BACKUP: If the regex didn't work, replace the entire Link function
+        if (!content.includes('Use JSX runtime')) {
+          content = content.replace(
+            /function F\(\{href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J\}\)\{[^}]+return\{type:"a"[^}]+\}\}/,
+            `function F({href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J}){
+  let X=$();if(G&&X)X.prefetch(q);let Y=J?"top":U;
+  // CRITICAL: Use JSX runtime instead of plain object to fix class constructor error
+  const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+  return jsx("a", {
+    href: q,
+    className: z,
+    onClick: (V) => {
+      if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
+        let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
+      }else window.location.href=q
+    },
+    children: Q
+  })
+}`
+          );
+        }
+        
+        // CRITICAL: Expose the original Link function for the wrapper
+        content += `
+// Expose original Link function for wrapper
+if (typeof window !== 'undefined') {
+  window.__0x1_RouterLink = F;
+}
+`;
+        
         return new Response(content, {
           headers: { 
             'Content-Type': 'application/javascript; charset=utf-8',
@@ -679,6 +790,62 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
       }
       
       return this.createErrorResponse('Router not built - run "bun run build:framework" first');
+    }
+
+    // CRITICAL: Handle Link component specifically to fix class constructor error
+    if (reqPath === '/0x1/link' || reqPath === '/0x1/link.js') {
+      const linkComponent = `
+// 0x1 Link Component - Fixed to use JSX runtime
+import { jsx, jsxDEV } from "0x1/jsx-dev-runtime";
+
+export default function Link({ href, className, children, target, rel, onClick, ...props }) {
+  const handleClick = (e) => {
+    if (onClick) {
+      onClick(e);
+      return;
+    }
+    
+    if (target === '_blank' || !href.startsWith('/')) {
+      // External link - let browser handle normally
+      return;
+    }
+    
+    e.preventDefault();
+    
+    // Internal navigation
+    if (typeof window !== 'undefined') {
+      const router = window.__0x1_ROUTER__ || window.__0x1_router || window.router;
+      if (router && typeof router.navigate === 'function') {
+        router.navigate(href);
+      } else {
+        window.history.pushState(null, '', href);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  };
+
+  // Use JSX runtime to create proper component
+  const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || 
+              ((type, props) => ({ type, props }));
+              
+  return jsx('a', {
+    href,
+    className,
+    target,
+    rel,
+    onClick: handleClick,
+    children,
+    ...props
+  });
+}
+`;
+
+      return new Response(linkComponent, {
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache'
+        }
+      });
     }
 
     return this.createNotFoundResponse(`Framework file not found: ${reqPath}`);
@@ -801,56 +968,118 @@ if (typeof module !== 'undefined' && module.exports) {
       const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
       const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
 
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Component request: ${reqPath} -> ${relativePath}`);
+      }
+
       // Find the source file
       const possiblePaths = this.generatePossiblePaths(relativePath);
+      
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Searching paths: ${possiblePaths.join(', ')}`);
+      }
+      
       const sourcePath = possiblePaths.find(path => existsSync(path));
 
       if (!sourcePath) {
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] No source file found for: ${basePath}`);
+        }
         return this.createNotFoundResponse(`Component not found: ${basePath}`);
+      }
+
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Found source file: ${sourcePath}`);
       }
 
       // Check cache first
       const cached = this.state.components.get(sourcePath);
       if (cached && await this.isFileUnchanged(sourcePath, cached.mtime)) {
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] Serving cached component: ${sourcePath}`);
+        }
         return new Response(cached.content, {
           headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
         });
       }
 
-      // Use Bun.build for proper transpilation (RESTORED FROM WORKING VERSION)
-      const transpiled = await Bun.build({
-        entrypoints: [sourcePath],
+      // FIXED: Use Bun.Transpiler with explicit JSX configuration for function components
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Transpiling: ${sourcePath}`);
+      }
+      
+      // Read source file
+      const sourceContent = readFileSync(sourcePath, 'utf-8');
+      
+      // Create Bun transpiler with explicit JSX configuration
+      const transpiler = new Bun.Transpiler({
+        loader: sourcePath.endsWith('.tsx') ? 'tsx' : 
+                sourcePath.endsWith('.jsx') ? 'jsx' :
+                sourcePath.endsWith('.ts') ? 'ts' : 'js',
         target: 'browser',
-        format: 'esm',
-        minify: false,
-        sourcemap: 'none',
         define: {
           'process.env.NODE_ENV': JSON.stringify('development')
         },
-        external: []
+        // CRITICAL: Explicit JSX configuration to ensure function components
+        tsconfig: JSON.stringify({
+          compilerOptions: {
+            jsx: 'react-jsx',
+            jsxImportSource: '0x1'
+          }
+        })
       });
 
-      if (transpiled.success && transpiled.outputs.length > 0) {
-        let content = '';
-        for (const output of transpiled.outputs) {
-          content += await output.text();
-        }
+      // Use transformSync for synchronous transpilation
+      let content = transpiler.transformSync(sourceContent);
 
-        // Cache the result
-        const stats = statSync(sourcePath);
-        this.state.components.set(sourcePath, {
-          content,
-          mtime: stats.mtimeMs
-        });
-
-        return new Response(content, {
-          headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-        });
-      } else {
-        const error = transpiled.logs?.join('\n') || 'Unknown transpilation error';
-        logger.error(`Component transpilation failed for ${sourcePath}: ${error}`);
-        return this.createErrorResponse(`Transpilation failed: ${error}`);
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Raw transpilation output length: ${content.length}`);
+        // Check first few lines to verify JSX runtime
+        const firstLines = content.split('\n').slice(0, 5).join('\n');
+        logger.debug(`[DevOrchestrator] First lines:\n${firstLines}`);
       }
+
+      // CRITICAL: Fix JSX runtime imports and function names
+      // Check if JSX is used but import is missing
+      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(');
+      const hasJSXImport = content.includes('from "0x1/jsx-dev-runtime"') || content.includes('from "0x1/jsx-runtime"');
+      
+      if (hasJSX && !hasJSXImport) {
+        // Add JSX runtime import at the top
+        const lines = content.split('\n');
+        const importIndex = lines.findIndex(line => line.startsWith('import ')) + 1 || 0;
+        lines.splice(importIndex, 0, 'import { jsxDEV } from "0x1/jsx-dev-runtime";');
+        content = lines.join('\n');
+      }
+
+      // CRITICAL: Replace mangled JSX function names with proper ones
+      content = content
+        .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+        .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+        .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+        .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+
+      // CRITICAL: Rewrite import paths to browser-resolvable URLs
+      content = content
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+          'import { $1 } from "/components/$2.js"')
+        .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+        .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized');
+
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Transpilation successful: ${sourcePath} (${content.length} bytes)`);
+      }
+
+      // Cache the result
+      const stats = statSync(sourcePath);
+      this.state.components.set(sourcePath, {
+        content,
+        mtime: stats.mtimeMs
+      });
+
+      return new Response(content, {
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+      });
 
     } catch (error) {
       logger.error(`[DevOrchestrator] Component transpilation failed: ${error}`);
@@ -859,13 +1088,31 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   /**
-   * Generate possible source file paths
+   * Generate possible source file paths - ENHANCED FOR LAYOUT FILES
    */
   private generatePossiblePaths(relativePath: string): string[] {
     const extensions = ['.tsx', '.jsx', '.ts', '.js'];
     const basePath = join(this.options.projectPath, relativePath);
-
-    return extensions.map(ext => `${basePath}${ext}`);
+    
+    // For layout and page files, we need to be extra careful about path resolution
+    const paths: string[] = [];
+    
+    // Standard extensions for the exact path
+    for (const ext of extensions) {
+      paths.push(`${basePath}${ext}`);
+    }
+    
+    // Special handling for app directory structure
+    if (relativePath.startsWith('app/')) {
+      const appRelativePath = relativePath.substring(4); // Remove 'app/' prefix
+      const appBasePath = join(this.options.projectPath, 'app', appRelativePath);
+      
+      for (const ext of extensions) {
+        paths.push(`${appBasePath}${ext}`);
+      }
+    }
+    
+    return paths;
   }
 
   /**
@@ -901,36 +1148,39 @@ if (typeof module !== 'undefined' && module.exports) {
             inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
           }
 
-          // Start Tailwind v4 process (minimal logging)
-          try {
-            const tailwindProcess = await tailwindV4Handler.startProcess(
-              this.options.projectPath,
-              inputFile,
-              join(this.options.projectPath, 'dist', 'styles.css')
-            );
+          // Only proceed if we have a valid input file
+          if (inputFile) {
+            // Start Tailwind v4 process (minimal logging)
+            try {
+              const tailwindProcess = await tailwindV4Handler.startProcess(
+                this.options.projectPath,
+                inputFile,
+                join(this.options.projectPath, 'dist', 'styles.css')
+              );
 
-            if (tailwindProcess && tailwindProcess.success) {
-              const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
-              if (existsSync(cssPath)) {
-                const cssContent = readFileSync(cssPath, 'utf-8');
-                
-                if (!this.options.silent) {
-                  logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
-                }
-
-                return new Response(cssContent, {
-                  headers: {
-                    'Content-Type': 'text/css; charset=utf-8',
-                    'Cache-Control': 'no-cache',
-                    'X-Framework': '0x1',
-                    'X-CSS-Engine': 'Tailwind-v4'
+              if (tailwindProcess && tailwindProcess.success) {
+                const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
+                if (existsSync(cssPath)) {
+                  const cssContent = readFileSync(cssPath, 'utf-8');
+                  
+                  if (!this.options.silent) {
+                    logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
                   }
-                });
+
+                  return new Response(cssContent, {
+                    headers: {
+                      'Content-Type': 'text/css; charset=utf-8',
+                      'Cache-Control': 'no-cache',
+                      'X-Framework': '0x1',
+                      'X-CSS-Engine': 'Tailwind-v4'
+                    }
+                  });
+                }
               }
-            }
-          } catch (tailwindError) {
-            if (this.options.debug) {
-              logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+            } catch (tailwindError) {
+              if (this.options.debug) {
+                logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+              }
             }
           }
         }
@@ -1006,17 +1256,49 @@ const serverRoutes = ${routesJson};
 async function loadLayoutHierarchy(layouts) {
   const loadedLayouts = [];
   
+  console.log('[0x1 App] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
+  
   for (const layout of layouts) {
     try {
+      console.log('[0x1 App] 📄 Loading layout:', layout.componentPath);
+      
+      // Ensure hook context is available before loading layout
+      if (typeof window.useState !== 'function') {
+        console.warn('[0x1 App] ⚠️ Hook context not available, waiting...');
+        
+        // Wait for hooks to be available
+        await new Promise((resolve) => {
+          const checkHooks = () => {
+            if (typeof window.useState === 'function') {
+              resolve();
+            } else {
+              setTimeout(checkHooks, 10);
+            }
+          };
+          checkHooks();
+        });
+      }
+      
       const layoutModule = await import(layout.componentPath);
       if (layoutModule && layoutModule.default) {
+        console.log('[0x1 App] ✅ Layout loaded successfully:', layout.componentPath);
         loadedLayouts.push(layoutModule.default);
+      } else {
+        console.warn('[0x1 App] ⚠️ Layout has no default export:', layout.componentPath);
       }
     } catch (error) {
-      console.error('[0x1] Failed to load layout:', layout.componentPath, error);
+      console.error('[0x1 App] ❌ Failed to load layout:', layout.componentPath, error);
+      
+      // Create fallback layout that just passes children through
+      const fallbackLayout = ({ children }) => {
+        console.warn('[0x1 App] Using fallback layout for:', layout.componentPath);
+        return children;
+      };
+      loadedLayouts.push(fallbackLayout);
     }
   }
   
+  console.log('[0x1 App] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
   return loadedLayouts;
 }
 
@@ -1052,18 +1334,53 @@ function composeNestedLayouts(pageComponent, layouts) {
 // ===== DEVELOPMENT APP INITIALIZATION =====
 async function initApp() {
   try {
-    // Step 1: Load essential dependencies
-    const hooksScript = document.createElement('script');
-    hooksScript.type = 'module';
-    hooksScript.src = '/0x1/hooks.js';
+    console.log('[0x1 App] 🚀 Starting development initialization...');
     
+    // Step 1: Load and initialize essential dependencies FIRST
+    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    
+    // Load hooks and ensure they're fully initialized
     await new Promise((resolve, reject) => {
-      hooksScript.onload = resolve;
+      const hooksScript = document.createElement('script');
+      hooksScript.type = 'module';
+      hooksScript.src = '/0x1/hooks.js';
+      hooksScript.onload = () => {
+        console.log('[0x1 App] ✅ Hooks system loaded');
+        
+        // Wait a tick to ensure hooks are fully initialized
+        setTimeout(() => {
+          // Verify hooks are available
+          if (typeof window.useState === 'function') {
+            console.log('[0x1 App] ✅ Hook context verified');
+            resolve();
+          } else {
+            reject(new Error('Hook system not properly initialized'));
+          }
+        }, 50); // Small delay to ensure initialization
+      };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
     
-    // Step 2: Create router
+    // Step 2: Initialize component context globals BEFORE loading any components
+    console.log('[0x1 App] 🔧 Setting up component context...');
+    
+    // Ensure React-compatible globals are available
+    if (!window.React) {
+      window.React = {};
+    }
+    
+    // Copy hooks to React namespace for compatibility
+    ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef'].forEach(hookName => {
+      if (typeof window[hookName] === 'function') {
+        window.React[hookName] = window[hookName];
+      }
+    });
+    
+    console.log('[0x1 App] ✅ Component context ready');
+    
+    // Step 3: Create router
+    console.log('[0x1 App] 🧭 Loading router...');
     const routerModule = await import('/0x1/router.js');
     const { Router } = routerModule;
     
@@ -1134,7 +1451,7 @@ async function initApp() {
     window.__0x1_router = router;
     window.router = router;
     
-    // Step 3: Register routes with nested layout support (minimal logging)
+    // Step 4: Register routes with nested layout support (minimal logging)
     for (const route of serverRoutes) {
       try {
         // Load all layouts for this route
@@ -1183,7 +1500,7 @@ async function initApp() {
       }
     }
     
-    // Step 4: Start router
+    // Step 5: Start router
     router.init();
     router.navigate(window.location.pathname, false);
     
@@ -1221,7 +1538,6 @@ if (document.readyState === 'loading') {
    * Handle route requests (serve main app HTML)
    */
   private async handleRouteRequest(reqPath: string): Promise<Response> {
-    // Check if this is a valid route
     const matchingRoute = this.state.routes.find(route => 
       route.path === reqPath || route.path === '/'
     );
@@ -1262,7 +1578,7 @@ if (document.readyState === 'loading') {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
   <link rel="stylesheet" href="/styles.css">
-  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js"}}</script>
+  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/link":"/0x1/link.js"}}</script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
@@ -1277,7 +1593,7 @@ if (document.readyState === 'loading') {
   }
 
   /**
-   * Start file watching for live reload with intelligent debouncing
+   * Start file watching for live reload
    */
   private startFileWatching(): void {
     if (this.fileWatcher) return;
@@ -1289,13 +1605,11 @@ if (document.readyState === 'loading') {
 
       const filenameStr = filename as string;
       
-      // Ignore certain files/directories
       const ignorePatterns = ['node_modules', '.git', 'dist', '.DS_Store', '.0x1-temp', '.0x1'];
       if (ignorePatterns.some(pattern => filenameStr.includes(pattern))) {
         return;
       }
 
-      // Debounce rapid file changes
       if (reloadTimeout) {
         clearTimeout(reloadTimeout);
       }
@@ -1305,31 +1619,18 @@ if (document.readyState === 'loading') {
           logger.debug(`[DevOrchestrator] File changed: ${filenameStr}`);
         }
 
-        // Clear component cache for changed files
         this.invalidateCache(filenameStr);
-
-        // Broadcast reload to connected clients
         this.broadcastReload(filenameStr);
-      }, 100); // 100ms debounce
+      }, 100);
     });
   }
 
-  /**
-   * Invalidate cached components when files change
-   */
   private invalidateCache(changedFile: string): void {
     const fullPath = resolve(this.options.projectPath, changedFile);
-    
-    // Remove from component cache
     this.state.components.delete(fullPath);
-    
-    // Clear transpilation engine cache
     transpilationEngine.clearCache();
   }
 
-  /**
-   * Broadcast reload message to connected clients
-   */
   private broadcastReload(filename?: string): void {
     const message = JSON.stringify({ 
       type: 'reload', 
@@ -1341,7 +1642,7 @@ if (document.readyState === 'loading') {
       try {
         client.send(message);
       } catch (error) {
-        // Client disconnected, will be cleaned up in close handler
+        // Client disconnected
       }
     }
 
@@ -1350,9 +1651,6 @@ if (document.readyState === 'loading') {
     }
   }
 
-  /**
-   * Request type detection methods - UPDATED
-   */
   private isWebSocketUpgrade(path: string): boolean {
     return path === '/ws' || path === '/__0x1_ws' || path === '/__0x1_ws_live_reload';
   }
@@ -1378,7 +1676,8 @@ if (document.readyState === 'loading') {
       path.includes('/components/') || 
       path.includes('/lib/') || 
       path.includes('/src/')
-    )) || path.startsWith('/components/') || path.startsWith('/lib/');
+    )) || path.startsWith('/components/') || path.startsWith('/lib/') ||
+    (path.includes('/layout.js') || path.includes('/page.js'));
   }
 
   private isRouteRequest(path: string): boolean {
@@ -1388,9 +1687,6 @@ if (document.readyState === 'loading') {
            !path.startsWith('/__0x1');
   }
 
-  /**
-   * WebSocket handlers
-   */
   private handleWebSocketMessage(ws: ServerWebSocket<any>, message: string | Uint8Array): void {
     try {
       const data = typeof message === 'string' ? JSON.parse(message) : JSON.parse(new TextDecoder().decode(message));
@@ -1422,9 +1718,6 @@ if (document.readyState === 'loading') {
     }
   }
 
-  /**
-   * Handle WebSocket upgrades
-   */
   private handleWebSocketUpgrade(req: Request, server: Server): Response {
     if (server.upgrade(req)) {
       return new Response(null, { status: 101 });
@@ -1432,53 +1725,11 @@ if (document.readyState === 'loading') {
     return new Response('WebSocket upgrade failed', { status: 400 });
   }
 
-  /**
-   * Handle live reload endpoints
-   */
   private handleLiveReloadEndpoint(path: string, req: Request): Response {
     if (path === '/__0x1_live_reload.js') {
-      const liveReloadScript = this.generateLiveReloadScript();
-      return new Response(liveReloadScript, {
-        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-      });
-    }
-
-    // SSE endpoint for live reload
-    const stream = new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder();
-        const message = `data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`;
-        controller.enqueue(encoder.encode(message));
-
-        const heartbeat = setInterval(() => {
-          try {
-            const ping = `data: ${JSON.stringify({ type: 'heartbeat', timestamp: Date.now() })}\n\n`;
-            controller.enqueue(encoder.encode(ping));
-          } catch (error) {
-            clearInterval(heartbeat);
-            controller.close();
-          }
-        }, 30000);
-      }
-    });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    });
-  }
-
-  /**
-   * Generate enhanced live reload script
-   */
-  private generateLiveReloadScript(): string {
-    return `
+      const liveReloadScript = `
 console.log('[0x1] Live reload connected');
 
-// Enhanced WebSocket connection with reconnection
 let ws;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
@@ -1514,20 +1765,20 @@ function connect() {
 
 connect();
 `;
+      return new Response(liveReloadScript, {
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+      });
+    }
+
+    return new Response('SSE not implemented', { status: 501 });
   }
 
-  /**
-   * Get framework path
-   */
   private getFrameworkPath(): string {
     return process.cwd().includes('00-Dev/0x1') 
       ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
       : join(process.cwd(), '../0x1');
   }
 
-  /**
-   * Error response helpers
-   */
   private createErrorResponse(error: any): Response {
     const message = error instanceof Error ? error.message : String(error);
     return new Response(`Error: ${message}`, {
@@ -1543,9 +1794,6 @@ connect();
     });
   }
 
-  /**
-   * Cleanup resources with comprehensive cleanup
-   */
   async cleanup(): Promise<void> {
     if (!this.options.silent) {
       logger.info('🧹 Shutting down development server...');
@@ -1556,7 +1804,6 @@ connect();
       this.fileWatcher = null;
     }
 
-    // Close all WebSocket connections
     for (const client of this.state.clientConnections) {
       try {
         client.close();
@@ -1577,4 +1824,4 @@ connect();
       logger.success('✅ Development server shutdown complete');
     }
   }
-} 
+}
