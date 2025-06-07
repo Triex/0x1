@@ -10,7 +10,6 @@ import { join, resolve } from 'node:path';
 
 // Import shared core utilities
 import { importEngine } from '../core/ImportEngine';
-import { routeDiscovery, type Route } from '../core/RouteDiscovery';
 import { transpilationEngine } from '../core/TranspilationEngine';
 
 import { logger } from '../../cli/utils/logger';
@@ -21,6 +20,17 @@ import { getLocalIP, isPortAvailable, openBrowser } from '../../cli/commands/uti
 // Import essential handlers (keep only what's needed)
 import { notFoundHandler } from '../../cli/server/middleware/error-boundary';
 import { serveStaticFile } from '../../cli/server/middleware/static-files';
+
+// WORKING: Import actual working handlers from dev-server.bak.ts
+
+// Route interface definition
+export interface Route {
+  path: string;
+  componentPath: string;
+  layouts?: Array<{ path: string; componentPath: string }>;
+  isDynamic?: boolean;
+  dynamicSegments?: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+}
 
 export interface DevOrchestratorOptions {
   port: number;
@@ -90,7 +100,7 @@ export class DevOrchestrator {
     try {
       // Beautiful startup sequence
       if (!this.options.silent) {
-        logger.info(`💠 Starting development orchestrator on ${this.state.serverInfo.serverUrl}`);
+        logger.info(`💠 💠 Starting development orchestrator on ${this.state.serverInfo.serverUrl}`);
       }
 
       // Phase 0: Ensure port is available with fallback
@@ -229,13 +239,115 @@ Powered by Bun    v${Bun.version}`
   }
 
   /**
-   * Optimized route discovery (targeting <30ms)
+   * Optimized route discovery - RESTORED FROM WORKING VERSION
    */
   private async discoverRoutes(): Promise<Route[]> {
-    return await routeDiscovery.discover(this.options.projectPath, {
-      mode: 'development',
-      debug: this.options.debug || false
+    return this.discoverRoutesFromFileSystem(this.options.projectPath);
+  }
+
+  /**
+   * Server-side route discovery - RESTORED WORKING VERSION
+   */
+  private discoverRoutesFromFileSystem(projectPath: string): Route[] {
+    const routes: Route[] = [];
+    
+    const scanDirectory = (
+      dirPath: string, 
+      routePath: string = "", 
+      parentLayouts: Array<{ path: string; componentPath: string }> = []
+    ) => {
+      try {
+        if (!existsSync(dirPath)) return;
+
+        const items = readdirSync(dirPath);
+
+        // Check for layout file in current directory
+        const layoutFiles = items.filter((item: string) =>
+          item.match(/^layout\.(tsx|jsx|ts|js)$/)
+        );
+
+        // Build current layout hierarchy
+        const currentLayouts = [...parentLayouts];
+        if (layoutFiles.length > 0) {
+          const actualLayoutFile = layoutFiles[0];
+          const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
+          currentLayouts.push({ 
+            path: routePath || "/", 
+            componentPath: layoutComponentPath 
+          });
+          
+          if (this.options.debug) {
+            logger.debug(`Found layout: ${routePath || "/"} -> ${layoutComponentPath}`);
+          }
+        }
+
+        // Check for page files in current directory
+        const pageFiles = items.filter((item: string) =>
+          item.match(/^page\.(tsx|jsx|ts|js)$/)
+        );
+
+        if (pageFiles.length > 0) {
+          const actualFile = pageFiles[0];
+          const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
+          
+          routes.push({ 
+            path: routePath || "/", 
+            componentPath: componentPath,
+            layouts: currentLayouts,
+            isDynamic: false,
+            dynamicSegments: []
+          });
+          
+          if (this.options.debug) {
+            logger.debug(`Found route: ${routePath || "/"} -> ${componentPath}`);
+          }
+        }
+
+        // Recursively scan subdirectories
+        const subdirs = items.filter((item: string) => {
+          const itemPath = join(dirPath, item);
+          try {
+            return (
+              statSync(itemPath).isDirectory() &&
+              !item.startsWith(".") &&
+              !item.startsWith("_") &&
+              item !== "node_modules"
+            );
+          } catch {
+            return false;
+          }
+        });
+
+        for (const subdir of subdirs) {
+          const subdirPath = join(dirPath, subdir);
+          const subroutePath = routePath + "/" + subdir;
+          scanDirectory(subdirPath, subroutePath, currentLayouts);
+        }
+      } catch (error) {
+        if (this.options.debug) {
+          logger.debug(`Error scanning directory ${dirPath}: ${error}`);
+        }
+      }
+    };
+
+    // Scan app directory
+    const appDir = join(projectPath, "app");
+    scanDirectory(appDir, "", []);
+
+    // Sort routes by specificity
+    routes.sort((a, b) => {
+      if (a.path === "/" && b.path !== "/") return 1;
+      if (b.path === "/" && a.path !== "/") return -1;
+      const aSegments = a.path.split('/').filter(s => s).length;
+      const bSegments = b.path.split('/').filter(s => s).length;
+      return bSegments - aSegments;
     });
+
+    if (!this.options.silent) {
+      logger.info(`Discovered ${routes.length} routes: ${routes.map(r => r.path).join(", ")}`);
+    }
+
+    return routes;
   }
 
   /**
@@ -325,42 +437,47 @@ Powered by Bun    v${Bun.version}`
     }
 
     try {
-      // Handle WebSocket upgrades
+      // 1. WebSocket upgrades
       if (this.isWebSocketUpgrade(reqPath)) {
         return this.handleWebSocketUpgrade(req, server);
       }
 
-      // Handle live reload endpoints
+      // 2. Live reload endpoints
       if (this.isLiveReloadEndpoint(reqPath)) {
         return this.handleLiveReloadEndpoint(reqPath, req);
       }
 
-      // Handle CSS requests (styles.css, globals.css, etc.)
-      if (this.isCssRequest(reqPath)) {
-        return await this.handleCssRequest(reqPath);
-      }
-
-      // Handle app.js bundle request (main app entry point)
-      if (reqPath === '/app.js') {
-        return await this.handleAppBundleRequest();
-      }
-
-      // Handle framework core files
+      // 3. Framework core files (CRITICAL - RESTORED FROM WORKING VERSION)
       if (this.isFrameworkRequest(reqPath)) {
         return await this.handleFrameworkRequest(reqPath);
       }
 
-      // Handle component requests using shared TranspilationEngine
+      // 4. Node modules polyfill system (CRITICAL - RESTORED)
+      if (reqPath.startsWith('/node_modules/')) {
+        return await this.handleNodeModulesRequest(reqPath);
+      }
+
+      // 5. CSS requests
+      if (this.isCssRequest(reqPath)) {
+        return await this.handleCssRequest(reqPath);
+      }
+
+      // 6. App bundle
+      if (reqPath === '/app.js') {
+        return await this.handleAppBundleRequest();
+      }
+
+      // 7. Component requests (CRITICAL - RESTORED PROPER TRANSPILATION)
       if (this.isComponentRequest(reqPath)) {
         return await this.handleComponentRequest(reqPath);
       }
 
-      // Handle route requests
+      // 8. Route requests (serve main app HTML)
       if (this.isRouteRequest(reqPath)) {
         return await this.handleRouteRequest(reqPath);
       }
 
-      // Handle static files
+      // 9. Static files
       return await this.handleStaticFileRequest(req);
 
     } catch (error) {
@@ -370,68 +487,486 @@ Powered by Bun    v${Bun.version}`
   }
 
   /**
-   * Handle CSS requests (styles.css, globals.css, etc.)
+   * Handle framework core requests - RESTORED FROM WORKING VERSION
    */
-  private async handleCssRequest(reqPath: string): Promise<Response> {
-    try {
-      const cssFileName = reqPath.split('/').pop() || 'styles.css';
-      
-      // Check multiple possible CSS locations
-      const possibleCssPaths = [
-        join(this.options.projectPath, '.0x1/public', cssFileName),
-        join(this.options.projectPath, 'dist', cssFileName),
-        join(this.options.projectPath, 'app', cssFileName),
-        join(this.options.projectPath, 'app/globals.css'),
-        join(this.options.projectPath, 'src', cssFileName),
-        join(this.options.projectPath, 'public', cssFileName),
-        join(this.options.projectPath, cssFileName)
-      ];
+  private async handleFrameworkRequest(reqPath: string): Promise<Response> {
+    const frameworkPath = this.getFrameworkPath();
 
-      // Find existing CSS file
-      for (const cssPath of possibleCssPaths) {
-        if (existsSync(cssPath)) {
-          const css = readFileSync(cssPath, 'utf-8');
-          return new Response(css, {
-            headers: { 'Content-Type': 'text/css; charset=utf-8' }
+    // Handle JSX runtime requests
+    if (reqPath === '/0x1/jsx-runtime.js' || reqPath === '/0x1/jsx-dev-runtime.js') {
+      try {
+        const isDevRuntime = reqPath.includes('dev');
+        const runtimePath = isDevRuntime 
+          ? join(frameworkPath, 'src', 'jsx-dev-runtime.ts')
+          : join(frameworkPath, 'src', 'jsx-runtime.ts');
+        
+        if (existsSync(runtimePath)) {
+          const transpiled = await Bun.build({
+            entrypoints: [runtimePath],
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('development')
+            },
+            external: []
           });
+          
+          if (transpiled.success && transpiled.outputs.length > 0) {
+            let content = '';
+            for (const output of transpiled.outputs) {
+              content += await output.text();
+            }
+            
+            // Add browser globals
+            content += `
+if (typeof window !== 'undefined') {
+  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
+  window.React = Object.assign(window.React || {}, {
+    createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
+  });
+}
+`;
+            
+            return new Response(content, {
+              headers: { 
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          }
         }
+      } catch (error) {
+        logger.error(`JSX runtime error: ${error}`);
+      }
+      
+      return this.createErrorResponse('JSX runtime not available');
+    }
+
+    // Handle hooks requests
+    if (reqPath === '/0x1/hooks.js' || reqPath.includes('hooks-') || reqPath === '/node_modules/0x1/core/hooks.js') {
+      try {
+        const hooksPath = join(frameworkPath, 'src', 'core', 'hooks.ts');
+        if (existsSync(hooksPath)) {
+          const transpiled = await Bun.build({
+            entrypoints: [hooksPath],
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            define: {
+              'process.env.NODE_ENV': JSON.stringify('development')
+            },
+            external: []
+          });
+          
+          if (transpiled.success && transpiled.outputs.length > 0) {
+            let content = '';
+            for (const output of transpiled.outputs) {
+              content += await output.text();
+            }
+            
+            // Add essential browser compatibility
+            content += `
+if (typeof window !== 'undefined') {
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
+  
+  window.React = Object.assign(window.React || {}, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef
+  });
+  
+  window.__0x1_hooks = {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage,
+    isInitialized: true
+  };
+  
+  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+}
+`;
+            
+            return new Response(content, {
+              headers: { 
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          }
+        }
+      } catch (error) {
+        logger.error(`Hooks error: ${error}`);
+      }
+      
+      return this.createErrorResponse('Hooks system not available');
+    }
+
+    // Handle 0x1 framework index
+    if (reqPath === '/node_modules/0x1/index.js' || reqPath === '/0x1/index.js') {
+      const frameworkModule = `
+// 0x1 Framework - Dynamic Runtime Hook Resolution
+console.log('[0x1] Framework module loaded');
+
+// Dynamic hook getters that resolve at runtime
+const createHookGetter = (hookName) => (...args) => {
+  if (typeof window !== 'undefined' && window.React && typeof window.React[hookName] === 'function') {
+    return window.React[hookName](...args);
+  }
+  if (typeof window !== 'undefined' && typeof window[hookName] === 'function') {
+    return window[hookName](...args);
+  }
+  throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+};
+
+export const useState = createHookGetter('useState');
+export const useEffect = createHookGetter('useEffect');
+export const useCallback = createHookGetter('useCallback');
+export const useMemo = createHookGetter('useMemo');
+export const useRef = createHookGetter('useRef');
+export const useClickOutside = createHookGetter('useClickOutside');
+export const useFetch = createHookGetter('useFetch');
+export const useForm = createHookGetter('useForm');
+export const useLocalStorage = createHookGetter('useLocalStorage');
+
+// JSX runtime delegation
+export function jsx(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsx) {
+    return window.jsx(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export function jsxs(type, props, key) {
+  if (typeof window !== 'undefined' && window.jsxs) {
+    return window.jsxs(type, props, key);
+  }
+  throw new Error('[0x1] JSX runtime not loaded');
+}
+
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  if (typeof window !== 'undefined' && window.jsxDEV) {
+    return window.jsxDEV(type, props, key, isStaticChildren, source, self);
+  }
+  throw new Error('[0x1] JSX dev runtime not loaded');
+}
+`;
+
+      return new Response(frameworkModule, {
+        headers: { 
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache'
+        }
+      });
+    }
+
+    // Handle router requests
+    if (reqPath === '/0x1/router.js' || reqPath === '/node_modules/0x1/router.js') {
+      const routerPath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
+      if (existsSync(routerPath)) {
+        const content = readFileSync(routerPath, 'utf-8');
+        return new Response(content, {
+          headers: { 
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
+      
+      return this.createErrorResponse('Router not built - run "bun run build:framework" first');
+    }
+
+    return this.createNotFoundResponse(`Framework file not found: ${reqPath}`);
+  }
+
+  /**
+   * Handle node_modules requests with intelligent polyfills - RESTORED
+   */
+  private async handleNodeModulesRequest(reqPath: string): Promise<Response> {
+    const packageMatch = reqPath.match(/\/node_modules\/(@?[^/]+(?:\/[^/]+)?)/);
+    const packageName = packageMatch?.[1] || 'unknown';
+
+    // Check if package exists first
+    const packageDir = join(this.options.projectPath, 'node_modules', packageName);
+    if (existsSync(packageDir)) {
+      try {
+        const packageJsonPath = join(packageDir, 'package.json');
+        if (existsSync(packageJsonPath)) {
+          const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+          const mainFile = packageJson.module || packageJson.main || 'index.js';
+          const mainPath = join(packageDir, mainFile);
+          
+          if (existsSync(mainPath)) {
+            const content = readFileSync(mainPath, 'utf-8');
+            return new Response(content, {
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          }
+        }
+      } catch (error) {
+        logger.debug(`Package.json parse error for ${packageName}: ${error}`);
+      }
+    }
+
+    // Generate intelligent polyfill for missing packages
+    const polyfillCode = `
+// 0x1 Intelligent Polyfill for ${packageName}
+console.log('[0x1] Auto-generating polyfill for:', '${packageName}');
+
+const intelligentNamespace = new Proxy({}, {
+  get(target, prop) {
+    if (typeof prop === 'symbol') {
+      if (prop === Symbol.toStringTag) return 'Module';
+      return undefined;
+    }
+    
+    if (prop === '__esModule') return true;
+    
+    if (!target[prop]) {
+      // Create intelligent export based on name patterns
+      const propName = String(prop);
+      
+      // React hooks pattern
+      if (/^use[A-Z]/.test(propName)) {
+        target[prop] = function(...args) {
+          console.log('[0x1 Hook]', propName, 'from', '${packageName}', args);
+          return { data: undefined, isLoading: false, isError: false, error: null };
+        };
+      }
+      // React components pattern
+      else if (/^[A-Z]/.test(propName)) {
+        target[prop] = function(props = {}) {
+          console.log('[0x1 Component]', propName, 'from', '${packageName}', props);
+          return {
+            type: 'div',
+            props: {
+              className: propName.toLowerCase() + ' polyfill-component',
+              'data-component': propName,
+              'data-package': '${packageName}'
+            },
+            children: [propName + ' (polyfill)'],
+            key: null
+          };
+        };
+      }
+      // Utility functions
+      else {
+        target[prop] = function(...args) {
+          console.log('[0x1 Utility]', propName, 'from', '${packageName}', args);
+          return args[0] || {};
+        };
+      }
+    }
+    
+    return target[prop];
+  }
+});
+
+// Make available globally
+if (typeof window !== 'undefined') {
+  window['${packageName}'] = intelligentNamespace;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis['${packageName}'] = intelligentNamespace;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = intelligentNamespace;
+  module.exports.default = intelligentNamespace;
+  module.exports.__esModule = true;
+}
+`;
+
+    return new Response(polyfillCode, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'no-cache'
+      }
+    });
+  }
+
+  /**
+   * Handle component requests using proper Bun transpilation - RESTORED
+   */
+  private async handleComponentRequest(reqPath: string): Promise<Response> {
+    try {
+      const cleanPath = reqPath.split('?')[0];
+      const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
+      const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+
+      // Find the source file
+      const possiblePaths = this.generatePossiblePaths(relativePath);
+      const sourcePath = possiblePaths.find(path => existsSync(path));
+
+      if (!sourcePath) {
+        return this.createNotFoundResponse(`Component not found: ${basePath}`);
       }
 
-      // Generate minimal CSS fallback
-      const fallbackCss = `/* 0x1 Framework - CSS Fallback */
-*, *::before, *::after { box-sizing: border-box; }
-* { margin: 0; }
-body { 
-  line-height: 1.5; 
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #0f172a;
-  color: #f8fafc;
-}
-.dark { background-color: #0f172a; color: #f8fafc; }
-.p-4 { padding: 1rem; }
-.text-center { text-align: center; }
-.text-2xl { font-size: 1.5rem; line-height: 2rem; }
-.font-bold { font-weight: 700; }
-.mb-4 { margin-bottom: 1rem; }
-.bg-slate-900 { background-color: #0f172a; }
-.text-white { color: #f8fafc; }`;
+      // Check cache first
+      const cached = this.state.components.get(sourcePath);
+      if (cached && await this.isFileUnchanged(sourcePath, cached.mtime)) {
+        return new Response(cached.content, {
+          headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+        });
+      }
 
-      return new Response(fallbackCss, {
-        headers: { 'Content-Type': 'text/css; charset=utf-8' }
+      // Use Bun.build for proper transpilation (RESTORED FROM WORKING VERSION)
+      const transpiled = await Bun.build({
+        entrypoints: [sourcePath],
+        target: 'browser',
+        format: 'esm',
+        minify: false,
+        sourcemap: 'none',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('development')
+        },
+        external: []
       });
 
+      if (transpiled.success && transpiled.outputs.length > 0) {
+        let content = '';
+        for (const output of transpiled.outputs) {
+          content += await output.text();
+        }
+
+        // Cache the result
+        const stats = statSync(sourcePath);
+        this.state.components.set(sourcePath, {
+          content,
+          mtime: stats.mtimeMs
+        });
+
+        return new Response(content, {
+          headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+        });
+      } else {
+        const error = transpiled.logs?.join('\n') || 'Unknown transpilation error';
+        logger.error(`Component transpilation failed for ${sourcePath}: ${error}`);
+        return this.createErrorResponse(`Transpilation failed: ${error}`);
+      }
+
     } catch (error) {
-      logger.error(`[DevOrchestrator] CSS request failed: ${error}`);
+      logger.error(`[DevOrchestrator] Component transpilation failed: ${error}`);
       return this.createErrorResponse(error);
     }
   }
 
   /**
-   * Handle app.js bundle request - generate the main app entry point
+   * Generate possible source file paths
+   */
+  private generatePossiblePaths(relativePath: string): string[] {
+    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+    const basePath = join(this.options.projectPath, relativePath);
+
+    return extensions.map(ext => `${basePath}${ext}`);
+  }
+
+  /**
+   * Check if file is unchanged since last cache
+   */
+  private async isFileUnchanged(filePath: string, cachedMtime: number): Promise<boolean> {
+    try {
+      const stats = statSync(filePath);
+      return stats.mtimeMs === cachedMtime;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Handle CSS requests (styles.css, globals.css, etc.) - WORKING APPROACH FROM DEV-SERVER.BAK.TS
+   */
+  private async handleCssRequest(reqPath: string): Promise<Response> {
+    try {
+      // STEP 1: Try to serve processed CSS files from disk (like working dev-server)
+      const possibleCssPaths = [
+        join(this.options.projectPath, ".0x1", "public", "styles.css"),
+        join(this.options.projectPath, "dist", "styles.css"),
+        join(this.options.projectPath, "public", "styles.css"),
+        join(this.options.projectPath, "app", "globals.css"),
+        join(this.options.projectPath, "src", "styles.css"),
+      ];
+
+      // Check for processed CSS files first
+      for (const cssPath of possibleCssPaths) {
+        if (existsSync(cssPath)) {
+          const css = readFileSync(cssPath, 'utf-8');
+          const stats = statSync(cssPath);
+          const sizeKB = (stats.size / 1024).toFixed(1);
+          
+          if (!this.options.silent) {
+            logger.info(`✅ Serving CSS from ${cssPath.replace(this.options.projectPath, "")} (${sizeKB}KB)`);
+          }
+          
+          return new Response(css, {
+            headers: {
+              'Content-Type': 'text/css; charset=utf-8',
+              'Cache-Control': 'no-cache',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+
+      // STEP 2: If no processed CSS found, serve source CSS
+      const sourceCss = join(this.options.projectPath, "app", "globals.css");
+      if (existsSync(sourceCss)) {
+        const css = readFileSync(sourceCss, 'utf-8');
+        if (!this.options.silent) {
+          logger.info("✅ Serving source CSS (unprocessed)");
+        }
+        
+        return new Response(css, {
+          headers: {
+            'Content-Type': 'text/css; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+      // STEP 3: Emergency fallback - MINIMAL CSS (not bloated)
+      const minimalCss = `/* 0x1 Framework - Emergency CSS */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: system-ui, sans-serif; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.p-4 { padding: 1rem; }
+.text-center { text-align: center; }
+.text-white { color: #fff; }
+.bg-slate-900 { background-color: #0f172a; }
+.rounded-lg { border-radius: 0.5rem; }`;
+
+      if (!this.options.silent) {
+        logger.info("✅ Serving emergency minimal CSS");
+      }
+      
+      return new Response(minimalCss, {
+        headers: {
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+
+    } catch (error) {
+      logger.error(`[DevOrchestrator] CSS processing failed: ${error}`);
+      return this.createErrorResponse(error);
+    }
+  }
+
+  /**
+   * Handle app.js bundle request - REDUCED LOGGING FOR CLEAN DEVELOPMENT
    */
   private async handleAppBundleRequest(): Promise<Response> {
     try {
-      // Generate routes JSON safely
+      // Generate routes JSON safely with layout information
       const sanitizedRoutes = this.state.routes.map(route => ({
         path: route.path,
         componentPath: route.componentPath,
@@ -440,38 +975,76 @@ body {
 
       const routesJson = JSON.stringify(sanitizedRoutes, null, 2);
 
-      // Generate the production-ready app.js with proper route handling
+      // Generate clean app.js with minimal, essential logging only
       const appScript = `
 // 0x1 Framework App Bundle - Development Ready
-console.log('[0x1 App] Starting development app...');
+console.log('[0x1] Starting development app...');
 
-// Server-discovered routes
+// Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
+
+// ===== LAYOUT LOADING AND COMPOSITION SYSTEM =====
+async function loadLayoutHierarchy(layouts) {
+  const loadedLayouts = [];
+  
+  for (const layout of layouts) {
+    try {
+      const layoutModule = await import(layout.componentPath);
+      if (layoutModule && layoutModule.default) {
+        loadedLayouts.push(layoutModule.default);
+      }
+    } catch (error) {
+      console.error('[0x1] Failed to load layout:', layout.componentPath, error);
+    }
+  }
+  
+  return loadedLayouts;
+}
+
+// ===== NESTED LAYOUT COMPOSITION =====
+function composeNestedLayouts(pageComponent, layouts) {
+  if (layouts.length === 0) {
+    return pageComponent;
+  }
+  
+  return (props) => {
+    let wrappedComponent = pageComponent(props);
+    
+    // Apply layouts in reverse order (innermost to outermost)
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const currentLayout = layouts[i];
+      const children = wrappedComponent;
+      
+      try {
+        wrappedComponent = currentLayout({ 
+          children: children,
+          ...props 
+        });
+      } catch (error) {
+        console.error('[0x1] Layout composition error at level', i, ':', error);
+        wrappedComponent = children;
+      }
+    }
+    
+    return wrappedComponent;
+  };
+}
 
 // ===== DEVELOPMENT APP INITIALIZATION =====
 async function initApp() {
   try {
-    console.log('[0x1 App] 🚀 Starting development initialization...');
-    
     // Step 1: Load essential dependencies
-    console.log('[0x1 App] 🎯 Loading essential dependencies...');
-    
     const hooksScript = document.createElement('script');
     hooksScript.type = 'module';
     hooksScript.src = '/0x1/hooks.js';
     
     await new Promise((resolve, reject) => {
-      hooksScript.onload = () => {
-        console.log('[0x1 App] ✅ Hooks ready');
-        resolve();
-      };
+      hooksScript.onload = resolve;
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
     
     // Step 2: Create router
-    console.log('[0x1 App] Creating router...');
-    
     const routerModule = await import('/0x1/router.js');
     const { Router } = routerModule;
     
@@ -542,24 +1115,23 @@ async function initApp() {
     window.__0x1_router = router;
     window.router = router;
     
-    console.log('[0x1 App] ✅ Router ready');
-    
-    // Step 3: Register routes
-    console.log('[0x1 App] 📝 Registering routes...');
-    
+    // Step 3: Register routes with nested layout support (minimal logging)
     for (const route of serverRoutes) {
       try {
+        // Load all layouts for this route
+        const layouts = route.layouts || [];
+        const loadedLayouts = await loadLayoutHierarchy(layouts);
+        
         const routeComponent = async (props) => {
-          console.log('[0x1 App] 🔍 Route component called for:', route.path);
-          
           try {
             const componentModule = await import(route.componentPath);
             
             if (componentModule && componentModule.default) {
-              console.log('[0x1 App] ✅ Route component resolved:', route.path);
-              return componentModule.default(props);
+              // Compose the page component with all its layouts
+              const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+              return composedComponent(props);
             } else {
-              console.warn('[0x1 App] ⚠️ Component has no default export:', route.path);
+              console.warn('[0x1] Component has no default export:', route.path);
               return {
                 type: 'div',
                 props: { 
@@ -570,7 +1142,7 @@ async function initApp() {
               };
             }
           } catch (error) {
-            console.error('[0x1 App] ❌ Route component error:', route.path, error);
+            console.error('[0x1] Route component error:', route.path, error);
             return {
               type: 'div',
               props: { 
@@ -583,28 +1155,23 @@ async function initApp() {
         };
         
         router.addRoute(route.path, routeComponent, { 
-          componentPath: route.componentPath 
+          componentPath: route.componentPath,
+          layouts: layouts
         });
         
-        console.log('[0x1 App] ✅ Route registered:', route.path);
-        
       } catch (error) {
-        console.error('[0x1 App] ❌ Failed to register route:', route.path, error);
+        console.error('[0x1] Failed to register route:', route.path, error);
       }
     }
     
-    console.log('[0x1 App] 📊 All routes registered successfully');
-    
     // Step 4: Start router
-    console.log('[0x1 App] 🎯 Starting router...');
-    
     router.init();
     router.navigate(window.location.pathname, false);
     
-    console.log('[0x1 App] ✅ Development app initialized successfully!');
+    console.log('[0x1] ✅ App initialized successfully');
     
   } catch (error) {
-    console.error('[0x1 App] ❌ Initialization failed:', error);
+    console.error('[0x1] ❌ Initialization failed:', error);
     
     const appElement = document.getElementById('app');
     if (appElement) {
@@ -629,114 +1196,6 @@ if (document.readyState === 'loading') {
       logger.error(`[DevOrchestrator] App bundle generation failed: ${error}`);
       return this.createErrorResponse(error);
     }
-  }
-
-  /**
-   * Handle component requests using shared TranspilationEngine
-   */
-  private async handleComponentRequest(reqPath: string): Promise<Response> {
-    try {
-      const cleanPath = reqPath.split('?')[0];
-      const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
-      const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
-
-      // Find the source file
-      const possiblePaths = this.generatePossiblePaths(relativePath);
-      const sourcePath = possiblePaths.find(path => existsSync(path));
-
-      if (!sourcePath) {
-        return this.createNotFoundResponse(`Component not found: ${basePath}`);
-      }
-
-      // Check cache first
-      const cached = this.state.components.get(sourcePath);
-      if (cached && await this.isFileUnchanged(sourcePath, cached.mtime)) {
-        return new Response(cached.content, {
-          headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-        });
-      }
-
-      // Use shared TranspilationEngine
-      const sourceCode = readFileSync(sourcePath, 'utf-8');
-      const result = await transpilationEngine.transpile({
-        sourceCode,
-        sourcePath,
-        options: {
-          mode: 'development',
-          sourcePath,
-          projectPath: this.options.projectPath,
-          debug: this.options.debug
-        }
-      });
-
-      if (result.errors.length > 0) {
-        logger.warn(`[DevOrchestrator] Transpilation warnings for ${sourcePath}: ${JSON.stringify(result.errors)}`);
-      }
-
-      // Cache the result
-      const stats = statSync(sourcePath);
-      this.state.components.set(sourcePath, {
-        content: result.code,
-        mtime: stats.mtimeMs
-      });
-
-      return new Response(result.code, {
-        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-      });
-
-    } catch (error) {
-      logger.error(`[DevOrchestrator] Component transpilation failed: ${error}`);
-      return this.createErrorResponse(error);
-    }
-  }
-
-  /**
-   * Generate possible source file paths
-   */
-  private generatePossiblePaths(relativePath: string): string[] {
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
-    const basePath = join(this.options.projectPath, relativePath);
-
-    return extensions.map(ext => `${basePath}${ext}`);
-  }
-
-  /**
-   * Check if file is unchanged since last cache
-   */
-  private async isFileUnchanged(filePath: string, cachedMtime: number): Promise<boolean> {
-    try {
-      const stats = statSync(filePath);
-      return stats.mtimeMs === cachedMtime;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Handle framework core requests (jsx-runtime, hooks, etc.)
-   */
-  private async handleFrameworkRequest(reqPath: string): Promise<Response> {
-    const frameworkPath = this.getFrameworkPath();
-    
-    // Map framework requests to actual files
-    const fileMap: Record<string, string> = {
-      '/0x1/jsx-runtime.js': join(frameworkPath, 'dist/jsx-runtime.js'),
-      '/0x1/jsx-dev-runtime.js': join(frameworkPath, 'dist/jsx-dev-runtime.js'),
-      '/0x1/hooks.js': join(frameworkPath, 'dist/hooks.js'),
-      '/0x1/router.js': join(frameworkPath, '0x1-router/dist/index.js'),
-      '/0x1/link.js': join(frameworkPath, 'dist/link.js'),
-      '/node_modules/0x1/index.js': join(frameworkPath, 'dist/index.js')
-    };
-
-    const filePath = fileMap[reqPath];
-    if (filePath && existsSync(filePath)) {
-      const content = readFileSync(filePath, 'utf-8');
-      return new Response(content, {
-        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-      });
-    }
-
-    return this.createNotFoundResponse(`Framework file not found: ${reqPath}`);
   }
 
   /**
@@ -873,7 +1332,7 @@ if (document.readyState === 'loading') {
   }
 
   /**
-   * Request type detection methods (optimized)
+   * Request type detection methods - UPDATED
    */
   private isWebSocketUpgrade(path: string): boolean {
     return path === '/ws' || path === '/__0x1_ws' || path === '/__0x1_ws_live_reload';
@@ -888,7 +1347,10 @@ if (document.readyState === 'loading') {
   }
 
   private isFrameworkRequest(path: string): boolean {
-    return path.startsWith('/0x1/') || path.startsWith('/node_modules/0x1/');
+    return path.startsWith('/0x1/') || 
+           path.startsWith('/node_modules/0x1/') || 
+           path.includes('hooks-') ||
+           path === '/node_modules/0x1/core/hooks.js';
   }
 
   private isComponentRequest(path: string): boolean {
@@ -901,8 +1363,10 @@ if (document.readyState === 'loading') {
   }
 
   private isRouteRequest(path: string): boolean {
-    return !path.includes('.') && !path.startsWith('/node_modules') && 
-           !path.startsWith('/0x1') && !path.startsWith('/__0x1');
+    return !path.includes('.') && 
+           !path.startsWith('/node_modules') && 
+           !path.startsWith('/0x1') && 
+           !path.startsWith('/__0x1');
   }
 
   /**
