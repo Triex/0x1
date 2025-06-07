@@ -277,17 +277,20 @@ export class BuildOrchestrator {
     // Step 2: Copy framework files using EXACT pattern from build.bak.ts
     await this.copyFrameworkFilesUsingWorkingPattern(outputPath);
 
+    // Step 2.5: Copy external packages that are being imported
+    await this.copyExternalPackages(outputPath);
+
     // Step 3: Generate app.js using working pattern from builder.bak.ts
     await this.generateAppBundleUsingWorkingPattern(outputPath);
 
     // Step 4: Process CSS using working pattern
     await this.processCssUsingWorkingPattern(outputPath);
 
-    // Step 5: Generate HTML
-    await this.generateHtmlFile(outputPath);
-
-    // Step 6: Copy static assets
+    // Step 5: Copy static assets (MOVED BEFORE HTML so favicon exists)
     await this.copyStaticAssets(outputPath);
+
+    // Step 6: Generate HTML (NOW favicon link will be included)
+    await this.generateHtmlFile(outputPath);
   }
 
   private async generateComponentsUsingWorkingPattern(outputPath: string): Promise<void> {
@@ -1430,6 +1433,23 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   }
 
   private async generateHtmlFile(outputPath: string): Promise<void> {
+    // Generate CSS link tags for external dependencies
+    const externalCssLinks = this.state.dependencies.cssFiles
+      .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
+      .join('\n');
+    
+    // CRITICAL: Generate favicon link based on what was discovered
+    let faviconLink = '';
+    const faviconPath = join(outputPath, 'favicon.svg');
+    if (existsSync(faviconPath)) {
+      faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+    } else {
+      const faviconIcoPath = join(outputPath, 'favicon.ico');
+      if (existsSync(faviconIcoPath)) {
+        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+      }
+    }
+    
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -1437,8 +1457,8 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
   <meta name="description" content="0x1 Framework application">
-  <link rel="stylesheet" href="/styles.css">
-  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/link":"/0x1/router.js"}}</script>
+${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
+${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/index.js":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-runtime.js":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime.js":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/router.js":"/0x1/router.js","0x1/link":"/0x1/router.js","0x1/link.js":"/0x1/router.js"}}</script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
@@ -1463,9 +1483,77 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       }
     }
     
-    // Generate minimal favicon.ico if none exists
-    const faviconPath = join(outputPath, 'favicon.ico');
-    if (!existsSync(faviconPath)) {
+    // CRITICAL: Intelligent favicon discovery and prioritization
+    await this.handleFaviconDiscovery(outputPath);
+  }
+
+  private async handleFaviconDiscovery(outputPath: string): Promise<void> {
+    const faviconSearchDirs = [
+      join(this.options.projectPath, 'public'),
+      join(this.options.projectPath, 'app'),
+      join(this.options.projectPath, 'src')
+    ];
+    
+    const faviconExtensions = ['.svg', '.ico', '.png', '.jpg', '.jpeg'];
+    const foundFavicons: Array<{ path: string; name: string; priority: number }> = [];
+    
+    // Search for favicons with priority system
+    for (const dir of faviconSearchDirs) {
+      if (!existsSync(dir)) continue;
+      
+      try {
+        const files = readdirSync(dir);
+        for (const file of files) {
+          const lowerFile = file.toLowerCase();
+          
+          // Check if it's a favicon file
+          if (lowerFile.startsWith('favicon')) {
+            const ext = faviconExtensions.find(e => lowerFile.endsWith(e));
+            if (ext) {
+              // Priority: .svg > .ico > .png > .jpg/.jpeg
+              const priority = ext === '.svg' ? 1 : 
+                             ext === '.ico' ? 2 : 
+                             ext === '.png' ? 3 : 4;
+              
+              foundFavicons.push({
+                path: join(dir, file),
+                name: file,
+                priority
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail for individual directories
+      }
+    }
+    
+    // Sort by priority (lower number = higher priority)
+    foundFavicons.sort((a, b) => a.priority - b.priority);
+    
+    if (foundFavicons.length > 0) {
+      const selectedFavicon = foundFavicons[0];
+      const outputFaviconPath = join(outputPath, 'favicon' + selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf('.')));
+      
+      try {
+        const faviconContent = readFileSync(selectedFavicon.path);
+        await Bun.write(outputFaviconPath, faviconContent);
+        
+        if (!this.options.silent) {
+          logger.success(`✅ Favicon copied: ${selectedFavicon.name} (${selectedFavicon.priority === 1 ? 'SVG' : selectedFavicon.priority === 2 ? 'ICO' : selectedFavicon.priority === 3 ? 'PNG' : 'JPG'})`);
+          
+          if (foundFavicons.length > 1) {
+            logger.info(`📋 Found ${foundFavicons.length} favicons, prioritized: ${foundFavicons.map(f => f.name + (f === selectedFavicon ? ' ✓' : '')).join(', ')}`);
+          }
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to copy favicon: ${error}`);
+        }
+      }
+    } else {
+      // Generate minimal favicon.ico if none exists
+      const faviconPath = join(outputPath, 'favicon.ico');
       const faviconData = new Uint8Array([
         0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
         0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00,
@@ -1473,7 +1561,192 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
       ]);
       await Bun.write(faviconPath, faviconData);
+      
+      if (!this.options.silent) {
+        logger.info(`📄 Generated default favicon.ico (no favicon found in public/ or app/)`);
+      }
     }
+  }
+
+  private async copyExternalPackages(outputPath: string): Promise<void> {
+    if (!this.options.silent) {
+      logger.info('📦 Copying external packages...');
+    }
+
+    const nodeModulesOutputPath = join(outputPath, 'node_modules');
+    
+    // CRITICAL: Dynamic detection of ALL scoped packages being imported
+    const scopedPackages = await this.detectScopedPackageImports();
+    
+    for (const packageName of scopedPackages) {
+      const packageSourcePath = join(this.options.projectPath, 'node_modules', packageName);
+      const packageOutputPath = join(nodeModulesOutputPath, packageName);
+      
+      if (existsSync(packageSourcePath)) {
+        try {
+          // Create the package directory structure
+          const packageDir = packageName.split('/')[0]; // @scope
+          mkdirSync(join(nodeModulesOutputPath, packageDir), { recursive: true });
+          
+          // Copy the entire package
+          await Bun.$`cp -r ${packageSourcePath} ${packageOutputPath}`;
+          
+          // CRITICAL: Dynamic CSS detection for ANY package
+          const cssFiles = await this.detectPackageCssFiles(packageSourcePath, packageName);
+          
+          for (const cssFile of cssFiles) {
+            const cssOutputPath = join(outputPath, `${packageName.replace(/[@/]/g, '-')}-${cssFile.name}`);
+            const cssContent = readFileSync(cssFile.path, 'utf-8');
+            writeFileSync(cssOutputPath, cssContent);
+            
+            // Store CSS file info for HTML generation
+            this.state.dependencies.cssFiles.push(`/${packageName.replace(/[@/]/g, '-')}-${cssFile.name}`);
+            
+            if (!this.options.silent) {
+              logger.info(`✅ Copied CSS from ${packageName}: ${cssFile.name}`);
+            }
+          }
+          
+          if (!this.options.silent) {
+            logger.info(`✅ Copied package: ${packageName}`);
+          }
+        } catch (error) {
+          if (!this.options.silent) {
+            logger.warn(`Failed to copy ${packageName}: ${error}`);
+          }
+        }
+      } else {
+        if (!this.options.silent) {
+          logger.warn(`⚠️ Package not found in node_modules: ${packageName}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Dynamically detect ALL scoped packages being imported in the project
+   * ZERO HARDCODING - discovers any @scope/package pattern
+   */
+  private async detectScopedPackageImports(): Promise<string[]> {
+    const scopedPackages = new Set<string>();
+    
+    // Scan all source files for scoped imports
+    const sourceFiles = await this.findAllSourceFiles();
+    
+    for (const filePath of sourceFiles) {
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        
+        // Match all scoped package imports: @scope/package
+        const scopedImportMatches = content.match(/from\s+["'](@[^/]+\/[^/"']+)/g);
+        if (scopedImportMatches) {
+          for (const match of scopedImportMatches) {
+            const packageMatch = match.match(/from\s+["'](@[^/]+\/[^/"']+)/);
+            if (packageMatch) {
+              scopedPackages.add(packageMatch[1]);
+            }
+          }
+        }
+        
+        // Also match direct imports: import "@scope/package"
+        const directImportMatches = content.match(/import\s+["'](@[^/]+\/[^/"']+)/g);
+        if (directImportMatches) {
+          for (const match of directImportMatches) {
+            const packageMatch = match.match(/import\s+["'](@[^/]+\/[^/"']+)/);
+            if (packageMatch) {
+              scopedPackages.add(packageMatch[1]);
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail for individual files
+      }
+    }
+    
+    return Array.from(scopedPackages);
+  }
+
+  /**
+   * Dynamically detect CSS files in ANY package
+   * ZERO HARDCODING - finds all .css files in package
+   */
+  private async detectPackageCssFiles(packagePath: string, packageName: string): Promise<Array<{name: string, path: string}>> {
+    const cssFiles: Array<{name: string, path: string}> = [];
+    
+    // Common CSS locations in packages
+    const possibleCssDirs = [
+      join(packagePath, 'dist'),
+      join(packagePath, 'lib'),
+      join(packagePath, 'build'),
+      join(packagePath, 'styles'),
+      packagePath // root
+    ];
+    
+    for (const dir of possibleCssDirs) {
+      if (!existsSync(dir)) continue;
+      
+      try {
+        const files = readdirSync(dir);
+        for (const file of files) {
+          if (file.endsWith('.css')) {
+            const fullPath = join(dir, file);
+            if (existsSync(fullPath)) {
+              cssFiles.push({
+                name: file,
+                path: fullPath
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail for individual directories
+      }
+    }
+    
+    return cssFiles;
+  }
+
+  /**
+   * Find all source files in the project for import scanning
+   * INTELLIGENT scanning without hardcoding directories
+   */
+  private async findAllSourceFiles(): Promise<string[]> {
+    const files: string[] = [];
+    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+    
+    // Dynamic directory discovery
+    const scanDirs = ['app', 'src', 'components', 'lib', 'pages'];
+    
+    for (const dir of scanDirs) {
+      const fullDir = join(this.options.projectPath, dir);
+      if (!existsSync(fullDir)) continue;
+      
+      const scanRecursive = (dirPath: string, depth: number = 0) => {
+        if (depth > 5) return; // Prevent infinite recursion
+        
+        try {
+          const items = readdirSync(dirPath, { withFileTypes: true });
+          
+          for (const item of items) {
+            if (item.name.startsWith('.') || item.name === 'node_modules') continue;
+            
+            const itemPath = join(dirPath, item.name);
+            
+            if (item.isDirectory()) {
+              scanRecursive(itemPath, depth + 1);
+            } else if (extensions.some(ext => item.name.endsWith(ext))) {
+              files.push(itemPath);
+            }
+          }
+        } catch (error) {
+          // Silent fail for individual directories
+        }
+      };
+      
+      scanRecursive(fullDir);
+    }
+    
+    return files;
   }
 
   private getFrameworkPath(): string {

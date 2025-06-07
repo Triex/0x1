@@ -6,10 +6,11 @@
 
 import { serve, ServerWebSocket, type Server } from 'bun';
 import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 // Import shared core utilities
 import { importEngine } from '../core/ImportEngine';
+import { ImportTransformer } from '../core/ImportTransformer';
 import { transpilationEngine } from '../core/TranspilationEngine';
 
 import { logger } from '../../cli/utils/logger';
@@ -460,6 +461,11 @@ Powered by Bun    v${Bun.version}`
         return await this.handleNodeModulesRequest(reqPath);
       }
 
+      // 4.5. External scoped packages (CRITICAL - MISSING FROM DEV)
+      if (this.isExternalScopedPackageRequest(reqPath)) {
+        return await this.handleExternalScopedPackageRequest(reqPath);
+      }
+
       // 5. CSS requests
       if (this.isCssRequest(reqPath)) {
         return await this.handleCssRequest(reqPath);
@@ -856,13 +862,57 @@ export default function Link({ href, className, children, target, rel, onClick, 
    * Handle node_modules requests with intelligent polyfills - RESTORED
    */
   private async handleNodeModulesRequest(reqPath: string): Promise<Response> {
-    const packageMatch = reqPath.match(/\/node_modules\/(@?[^/]+(?:\/[^/]+)?)/);
-    const packageName = packageMatch?.[1] || 'unknown';
+    // Extract the full package path from the request
+    // Example: /node_modules/@0x1js/highlighter/dist/index.js
+    const nodeModulesPrefix = '/node_modules/';
+    if (!reqPath.startsWith(nodeModulesPrefix)) {
+      return this.createNotFoundResponse('Invalid node_modules path');
+    }
+    
+    const packagePath = reqPath.substring(nodeModulesPrefix.length); // @0x1js/highlighter/dist/index.js
+    
+    // Handle scoped packages (@scope/package/...)
+    let packageName: string;
+    let filePath: string;
+    
+    if (packagePath.startsWith('@')) {
+      // Scoped package: @scope/package/file/path
+      const parts = packagePath.split('/');
+      if (parts.length < 2) {
+        return this.createNotFoundResponse('Invalid scoped package path');
+      }
+      packageName = `${parts[0]}/${parts[1]}`; // @scope/package
+      filePath = parts.slice(2).join('/'); // dist/index.js
+    } else {
+      // Regular package: package/file/path
+      const parts = packagePath.split('/');
+      packageName = parts[0];
+      filePath = parts.slice(1).join('/');
+    }
 
     // Check if package exists first
     const packageDir = join(this.options.projectPath, 'node_modules', packageName);
     if (existsSync(packageDir)) {
       try {
+        // Try to serve the exact requested file
+        const requestedFilePath = join(packageDir, filePath);
+        
+        if (existsSync(requestedFilePath)) {
+          const content = readFileSync(requestedFilePath, 'utf-8');
+          
+          if (!this.options.silent) {
+            logger.debug(`[DevOrchestrator] Serving: ${packageName}/${filePath}`);
+          }
+          
+          return new Response(content, {
+            headers: {
+              'Content-Type': requestedFilePath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
+              'Cache-Control': 'no-cache'
+            }
+          });
+        }
+        
+        // If exact file doesn't exist, try fallbacks
         const packageJsonPath = join(packageDir, 'package.json');
         if (existsSync(packageJsonPath)) {
           const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
@@ -871,6 +921,11 @@ export default function Link({ href, className, children, target, rel, onClick, 
           
           if (existsSync(mainPath)) {
             const content = readFileSync(mainPath, 'utf-8');
+            
+            if (!this.options.silent) {
+              logger.debug(`[DevOrchestrator] Serving main file for: ${packageName} -> ${mainFile}`);
+            }
+            
             return new Response(content, {
               headers: {
                 'Content-Type': 'application/javascript; charset=utf-8',
@@ -880,8 +935,61 @@ export default function Link({ href, className, children, target, rel, onClick, 
           }
         }
       } catch (error) {
-        logger.debug(`Package.json parse error for ${packageName}: ${error}`);
+        if (!this.options.silent) {
+          logger.error(`[DevOrchestrator] Error serving ${packageName}: ${error}`);
+        }
       }
+    }
+
+    // CRITICAL: Try to detect actual exports from the package dynamically
+    let detectedExports: string[] = [];
+    
+    // Try to read package.json to discover exports
+    try {
+      const packageJsonPath = join(this.options.projectPath, 'node_modules', packageName, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        
+        // Extract exports from package.json exports field
+        if (packageJson.exports) {
+          if (typeof packageJson.exports === 'object') {
+            detectedExports = Object.keys(packageJson.exports)
+              .filter(key => key !== '.' && !key.startsWith('./'))
+              .map(key => key.replace('./', ''));
+          }
+        }
+        
+        // Also try to detect from main/module files
+        const mainFiles = [packageJson.main, packageJson.module, packageJson.browser]
+          .filter(Boolean)
+          .map(file => join(this.options.projectPath, 'node_modules', packageName, file))
+          .filter(existsSync);
+          
+        for (const mainFile of mainFiles) {
+          try {
+            const content = readFileSync(mainFile, 'utf-8');
+            // Extract export statements dynamically
+            const exportMatches = content.match(/export\s+(?:const|function|class|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g);
+            if (exportMatches) {
+              const extractedNames = exportMatches.map(match => 
+                match.replace(/export\s+(?:const|function|class|let|var)\s+/, '')
+              );
+              detectedExports.push(...extractedNames);
+            }
+          } catch (error) {
+            // Silent fail for individual files
+          }
+        }
+      }
+    } catch (error) {
+      // Silent fail if package.json doesn't exist or can't be read
+    }
+    
+    // Remove duplicates and ensure we have some fallback exports
+    detectedExports = [...new Set(detectedExports)];
+    if (detectedExports.length === 0) {
+      // Fallback: common export patterns for any package
+      detectedExports = ['default'];
     }
 
     // Generate intelligent polyfill for missing packages
@@ -938,17 +1046,40 @@ const intelligentNamespace = new Proxy({}, {
   }
 });
 
+// DYNAMIC: Export everything from the namespace using Proxy magic
+export default intelligentNamespace;
+
+// FULLY DYNAMIC: Create named exports based on detected package structure
+${detectedExports.map(exportName => 
+  `export const ${exportName} = intelligentNamespace.${exportName};`
+).join('\n')}
+
+// DYNAMIC: Use Object.defineProperty for additional exports that might be imported
+const commonExportPatterns = [
+  // Add common patterns that might not be detected
+  'version', 'default'
+];
+
+commonExportPatterns.forEach(exportName => {
+  try {
+    if (typeof module !== 'undefined' && module.exports) {
+      Object.defineProperty(module.exports, exportName, {
+        get: () => intelligentNamespace[exportName],
+        enumerable: true,
+        configurable: true
+      });
+    }
+  } catch (e) {
+    // Fallback for environments that don't support defineProperty
+  }
+});
+
 // Make available globally
 if (typeof window !== 'undefined') {
   window['${packageName}'] = intelligentNamespace;
 }
 if (typeof globalThis !== 'undefined') {
   globalThis['${packageName}'] = intelligentNamespace;
-}
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = intelligentNamespace;
-  module.exports.default = intelligentNamespace;
-  module.exports.__esModule = true;
 }
 `;
 
@@ -1068,14 +1199,14 @@ if (typeof module !== 'undefined' && module.exports) {
           'import { $1 } from "/components/$2.js"')
         .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
         .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized');
-      // // CRITICAL: Use unified ImportTransformer for robust import handling
-      // // SINGLE SOURCE OF TRUTH for all import transformations (BuildOptimisation.md)
-      // content = ImportTransformer.transformImports(content, {
-      //   sourceFilePath: sourcePath,
-      //   projectPath: this.options.projectPath,
-      //   mode: 'development',
-      //   debug: this.options.debug
-      // });
+
+      // CRITICAL: Use unified ImportTransformer for robust import handling (SINGLE SOURCE OF TRUTH)
+      content = ImportTransformer.transformImports(content, {
+        sourceFilePath: sourcePath,
+        projectPath: this.options.projectPath,
+        mode: 'development',
+        debug: this.options.debug
+      });
 
       if (this.options.debug) {
         logger.debug(`[DevOrchestrator] Transpilation successful: ${sourcePath} (${content.length} bytes)`);
@@ -1143,6 +1274,89 @@ if (typeof module !== 'undefined' && module.exports) {
    */
   private async handleCssRequest(reqPath: string): Promise<Response> {
     try {
+      // CRITICAL: Handle external package CSS requests dynamically
+      if (reqPath.includes('-styles.css')) {
+        // Extract package name from CSS filename pattern: @scope-package-styles.css
+        const cssFileName = reqPath.substring(1); // Remove leading /
+        const packageName = this.extractPackageNameFromCssFile(cssFileName);
+        
+        if (packageName) {
+          // Look for CSS files in the package
+          const packageDir = join(this.options.projectPath, 'node_modules', packageName);
+          if (existsSync(packageDir)) {
+            // CRITICAL: Prioritize actual CSS files over wrapper files
+            const possibleCssPaths = [
+              // Try exact filename first (e.g., styles-7a9baf8b.css)
+              join(packageDir, 'dist', cssFileName.replace(`${packageName.replace('@', '').replace(/\//g, '-')}-`, '')),
+              // Try standard locations with prioritized actual content files
+              join(packageDir, 'dist', 'styles-*.css'), // Hashed files (actual content)
+              join(packageDir, 'dist', 'style-*.css'),
+              join(packageDir, 'lib', 'styles-*.css'),
+              join(packageDir, 'dist', 'styles.css'), // Wrapper files (lower priority)
+              join(packageDir, 'dist', 'style.css'),
+              join(packageDir, 'lib', 'styles.css'),
+              join(packageDir, 'styles.css'),
+              join(packageDir, 'style.css')
+            ];
+            
+            // Find the best CSS file (prioritize by size - actual content over wrappers)
+            let bestCssPath = null;
+            let bestSize = 0;
+            
+            for (const cssPattern of possibleCssPaths) {
+              if (cssPattern.includes('*')) {
+                // Handle glob patterns
+                const dir = dirname(cssPattern);
+                const pattern = basename(cssPattern);
+                if (existsSync(dir)) {
+                  const files = readdirSync(dir).filter(f => 
+                    pattern.replace('*', '').split('').every(char => f.includes(char))
+                  );
+                  for (const file of files) {
+                    const fullPath = join(dir, file);
+                    if (existsSync(fullPath)) {
+                      const size = statSync(fullPath).size;
+                      if (size > bestSize) {
+                        bestCssPath = fullPath;
+                        bestSize = size;
+                      }
+                    }
+                  }
+                }
+              } else if (existsSync(cssPattern)) {
+                const size = statSync(cssPattern).size;
+                if (size > bestSize) {
+                  bestCssPath = cssPattern;
+                  bestSize = size;
+                }
+              }
+            }
+            
+            if (bestCssPath) {
+              const cssContent = readFileSync(bestCssPath, 'utf-8');
+              
+              if (!this.options.silent) {
+                logger.success(`✅ Serving CSS from ${packageName} (${(cssContent.length / 1024).toFixed(1)}KB)`);
+              }
+
+              // CRITICAL: Rewrite relative CSS imports to absolute URLs for dev server
+              const rewrittenCss = this.rewriteCssImports(cssContent, packageName);
+
+              return new Response(rewrittenCss, {
+                headers: {
+                  'Content-Type': 'text/css; charset=utf-8',
+                  'Cache-Control': 'no-cache',
+                  'X-Framework': '0x1',
+                  'X-CSS-Source': packageName
+                }
+              });
+            }
+          }
+        }
+        
+        return this.createNotFoundResponse('External package CSS not found');
+      }
+      
       // CRITICAL FIX: Restore working Tailwind v4 processing from dev-server.bak.ts
       if (reqPath === '/styles.css' || reqPath === '/dist/styles.css' || reqPath === '/globals.css') {
         // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
@@ -1242,6 +1456,30 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   /**
+   * Extract package name from CSS filename pattern
+   * HANDLES CURRENT WRONG PATTERN: -scope-package-styles.css -> @scope/package
+   */
+  private extractPackageNameFromCssFile(cssFileName: string): string | null {
+    // Handle current pattern with extra dash: -scope-package-styles.css -> @scope/package
+    if (cssFileName.endsWith('-styles.css')) {
+      let withoutExtension = cssFileName.replace('-styles.css', '');
+      
+      // Remove leading dash if present (current bug in both orchestrators)
+      if (withoutExtension.startsWith('-')) {
+        withoutExtension = withoutExtension.substring(1);
+      }
+      
+      const parts = withoutExtension.split('-');
+      if (parts.length >= 2) {
+        const scope = `@${parts[0]}`; // Re-add @ prefix
+        const packageName = parts.slice(1).join('-'); // handle packages with hyphens
+        return `${scope}/${packageName}`;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Handle app.js bundle request - REDUCED LOGGING FOR CLEAN DEVELOPMENT
    */
   private async handleAppBundleRequest(): Promise<Response> {
@@ -1263,17 +1501,55 @@ console.log('[0x1] Starting development app...');
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
 
-// ===== LAYOUT LOADING AND COMPOSITION SYSTEM =====
+// ===== CACHED LAYOUT SYSTEM (PREVENTS DUPLICATION) =====
+const layoutCache = new Map();
+const hierarchyCache = new Map(); // CRITICAL: Add global hierarchy cache
+
+async function loadLayoutOnce(layoutPath) {
+  if (layoutCache.has(layoutPath)) {
+    return layoutCache.get(layoutPath);
+  }
+  
+  try {
+    console.log('[0x1 App] 📄 Loading layout:', layoutPath);
+    const layoutModule = await import(layoutPath);
+    
+    if (layoutModule && layoutModule.default) {
+      console.log('[0x1 App] ✅ Layout loaded successfully:', layoutPath);
+      layoutCache.set(layoutPath, layoutModule.default);
+      return layoutModule.default;
+    } else {
+      console.warn('[0x1 App] ⚠️ Layout has no default export:', layoutPath);
+      const fallbackLayout = ({ children }) => {
+        console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+        return children;
+      };
+      layoutCache.set(layoutPath, fallbackLayout);
+      return fallbackLayout;
+    }
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to load layout:', layoutPath, error);
+    const fallbackLayout = ({ children }) => {
+      console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+      return children;
+    };
+    layoutCache.set(layoutPath, fallbackLayout);
+    return fallbackLayout;
+  }
+}
+
 async function loadLayoutHierarchy(layouts) {
-  const loadedLayouts = [];
+  // CRITICAL: Create cache key from layout paths to avoid duplicate loading
+  const cacheKey = layouts.map(l => l.componentPath).join('|');
+  
+  if (hierarchyCache.has(cacheKey)) {
+    console.log('[0x1 App] ✅ Using cached layout hierarchy:', layouts.length, 'layouts');
+    return hierarchyCache.get(cacheKey);
+  }
   
   console.log('[0x1 App] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
   
-  for (const layout of layouts) {
-    try {
-      console.log('[0x1 App] 📄 Loading layout:', layout.componentPath);
-      
-      // Ensure hook context is available before loading layout
+  // Ensure hook context is available before loading any layouts
       if (typeof window.useState !== 'function') {
         console.warn('[0x1 App] ⚠️ Hook context not available, waiting...');
         
@@ -1290,24 +1566,14 @@ async function loadLayoutHierarchy(layouts) {
         });
       }
       
-      const layoutModule = await import(layout.componentPath);
-      if (layoutModule && layoutModule.default) {
-        console.log('[0x1 App] ✅ Layout loaded successfully:', layout.componentPath);
-        loadedLayouts.push(layoutModule.default);
-      } else {
-        console.warn('[0x1 App] ⚠️ Layout has no default export:', layout.componentPath);
-      }
-    } catch (error) {
-      console.error('[0x1 App] ❌ Failed to load layout:', layout.componentPath, error);
-      
-      // Create fallback layout that just passes children through
-      const fallbackLayout = ({ children }) => {
-        console.warn('[0x1 App] Using fallback layout for:', layout.componentPath);
-        return children;
-      };
-      loadedLayouts.push(fallbackLayout);
-    }
+  const loadedLayouts = [];
+  for (const layout of layouts) {
+    const loadedLayout = await loadLayoutOnce(layout.componentPath);
+    loadedLayouts.push(loadedLayout);
   }
+  
+  // CRITICAL: Cache the loaded hierarchy
+  hierarchyCache.set(cacheKey, loadedLayouts);
   
   console.log('[0x1 App] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
   return loadedLayouts;
@@ -1566,6 +1832,14 @@ if (document.readyState === 'loading') {
    * Handle static file requests
    */
   private async handleStaticFileRequest(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    const reqPath = url.pathname;
+    
+    // CRITICAL: Handle favicon requests specifically
+    if (reqPath === '/favicon.ico' || reqPath === '/favicon.svg' || reqPath === '/favicon.png') {
+      return await this.handleFaviconRequest(reqPath);
+    }
+    
     const staticDirs = ['public', 'dist', 'app'];
     
     for (const dir of staticDirs) {
@@ -1579,17 +1853,207 @@ if (document.readyState === 'loading') {
   }
 
   /**
+   * Handle favicon requests with intelligent discovery
+   */
+  private async handleFaviconRequest(reqPath: string): Promise<Response> {
+    const faviconSearchDirs = [
+      join(this.options.projectPath, 'public'),
+      join(this.options.projectPath, 'app'),
+      join(this.options.projectPath, 'src')
+    ];
+    
+    const faviconExtensions = ['.svg', '.ico', '.png', '.jpg', '.jpeg'];
+    const foundFavicons: Array<{ path: string; name: string; priority: number }> = [];
+    
+    // Search for favicons with priority system
+    for (const dir of faviconSearchDirs) {
+      if (!existsSync(dir)) continue;
+      
+      try {
+        const files = readdirSync(dir);
+        for (const file of files) {
+          const lowerFile = file.toLowerCase();
+          
+          // Check if it's a favicon file
+          if (lowerFile.startsWith('favicon')) {
+            const ext = faviconExtensions.find(e => lowerFile.endsWith(e));
+            if (ext) {
+              // Priority: .svg > .ico > .png > .jpg/.jpeg
+              const priority = ext === '.svg' ? 1 : 
+                             ext === '.ico' ? 2 : 
+                             ext === '.png' ? 3 : 4;
+              
+              foundFavicons.push({
+                path: join(dir, file),
+                name: file,
+                priority
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail for individual directories
+      }
+    }
+    
+    // Sort by priority (lower number = higher priority)
+    foundFavicons.sort((a, b) => a.priority - b.priority);
+    
+    if (foundFavicons.length > 0) {
+      const selectedFavicon = foundFavicons[0];
+      
+      try {
+        const faviconContent = readFileSync(selectedFavicon.path);
+        const ext = selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf('.'));
+        
+        const contentType = ext === '.svg' ? 'image/svg+xml' :
+                           ext === '.ico' ? 'image/x-icon' :
+                           ext === '.png' ? 'image/png' :
+                           'image/jpeg';
+        
+        if (!this.options.silent) {
+          logger.debug(`[DevOrchestrator] Serving favicon: ${selectedFavicon.name}`);
+        }
+        
+        return new Response(faviconContent, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000'
+          }
+        });
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to serve favicon: ${error}`);
+        }
+      }
+    }
+    
+    // Generate minimal favicon.ico as fallback
+    const faviconData = new Uint8Array([
+      0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
+      0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00,
+      0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
+    ]);
+    
+    return new Response(faviconData, {
+      headers: {
+        'Content-Type': 'image/x-icon',
+        'Cache-Control': 'public, max-age=31536000'
+      }
+    });
+  }
+
+  /**
    * Generate the main HTML page with live reload
    */
   private generateIndexHtml(): string {
+    // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
+    const externalCssLinks: string[] = [];
+    const externalImports: Record<string, string> = {};
+    
+    // Scan node_modules for any scoped packages that have CSS files
+    const nodeModulesPath = join(this.options.projectPath, 'node_modules');
+    if (existsSync(nodeModulesPath)) {
+      try {
+        const items = readdirSync(nodeModulesPath, { withFileTypes: true });
+        
+        for (const item of items) {
+          if (item.isDirectory() && item.name.startsWith('@')) {
+            // This is a scope directory like @0x1js
+            const scopePath = join(nodeModulesPath, item.name);
+            try {
+              const scopeItems = readdirSync(scopePath, { withFileTypes: true });
+              
+              for (const scopeItem of scopeItems) {
+                if (scopeItem.isDirectory()) {
+                  const packageName = `${item.name}/${scopeItem.name}`;
+                  const packageDistPath = join(scopePath, scopeItem.name, 'dist');
+                  
+                  // Add to import map for browser resolution
+                  externalImports[packageName] = `/${packageName}/dist/index.js`;
+                  
+                  // Check for CSS files in the package
+                  if (existsSync(packageDistPath)) {
+                    try {
+                      const distFiles = readdirSync(packageDistPath);
+                      const cssFiles = distFiles.filter(file => file.endsWith('.css'));
+                      
+                      for (const cssFile of cssFiles) {
+                        // FIXED: Remove @ and replace / with - (not replace both with -)
+                        const cssFileName = `${packageName.replace('@', '').replace(/\//g, '-')}-${cssFile}`;
+                        externalCssLinks.push(`  <link rel="stylesheet" href="/${cssFileName}">`);
+                        
+                        if (!this.options.silent) {
+                          logger.debug(`[DevOrchestrator] Generated CSS link: ${cssFileName} from package: ${packageName}`);
+                        }
+                      }
+                    } catch (error) {
+                      // Silent fail for individual packages
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              // Silent fail for individual scope directories
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail if node_modules doesn't exist or can't be read
+      }
+    }
+    
+    const externalCssHtml = externalCssLinks.length > 0 ? '\n' + externalCssLinks.join('\n') : '';
+    
+    // Build complete import map with external packages
+    const importMap = {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/index.js": "/node_modules/0x1/index.js",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/router": "/0x1/router.js",
+      "0x1/router.js": "/0x1/router.js",
+      "0x1/link": "/0x1/router.js",
+      "0x1/link.js": "/0x1/router.js",
+      ...externalImports
+    };
+    
+    // CRITICAL: Generate favicon link based on what's available
+    let faviconLink = '';
+    const faviconSearchDirs = [
+      join(this.options.projectPath, 'public'),
+      join(this.options.projectPath, 'app'),
+      join(this.options.projectPath, 'src')
+    ];
+    
+    for (const dir of faviconSearchDirs) {
+      const faviconSvg = join(dir, 'favicon.svg');
+      const faviconIco = join(dir, 'favicon.ico');
+      const faviconPng = join(dir, 'favicon.png');
+      
+      if (existsSync(faviconSvg)) {
+        faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+        break;
+      } else if (existsSync(faviconIco)) {
+        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        break;
+      } else if (existsSync(faviconPng)) {
+        faviconLink = '  <link rel="icon" href="/favicon.png" type="image/png">';
+        break;
+      }
+    }
+    
     return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/link":"/0x1/link.js"}}</script>
+${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">${externalCssHtml}
+  <script type="importmap">{"imports":${JSON.stringify(importMap)}}</script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
@@ -1671,7 +2135,11 @@ if (document.readyState === 'loading') {
   }
 
   private isCssRequest(path: string): boolean {
-    return path.endsWith('.css') || path === '/styles.css' || path === '/globals.css';
+    return path.endsWith('.css') || 
+           path === '/styles.css' || 
+           path === '/globals.css' ||
+           // FIXED: Detect scoped package CSS patterns: /scope-package-styles.css (matches BuildOrchestrator)
+           path.includes('-styles.css');
   }
 
   private isFrameworkRequest(path: string): boolean {
@@ -1805,6 +2273,89 @@ connect();
     });
   }
 
+  /**
+   * Check if request is for an external scoped package
+   */
+  private isExternalScopedPackageRequest(path: string): boolean {
+    // Check for imports like /@0x1js/highlighter/... pattern
+    return path.match(/^\/@[^/]+\/[^/]+/) !== null;
+  }
+
+  /**
+   * Handle external scoped package requests
+   */
+  private async handleExternalScopedPackageRequest(reqPath: string): Promise<Response> {
+    try {
+      // Extract package name from path like /@0x1js/highlighter/dist/index.js
+      const packageMatch = reqPath.match(/^\/(@[^/]+\/[^/]+)/);
+      if (!packageMatch) {
+        return this.createNotFoundResponse('Invalid scoped package path');
+      }
+      
+      const packageName = packageMatch[1];
+      const packagePath = reqPath.substring(packageName.length + 1); // Remove /@scope/package
+      
+      // Find the actual file in node_modules
+      const fullPackagePath = join(this.options.projectPath, 'node_modules', packageName);
+      const requestedFilePath = join(fullPackagePath, packagePath);
+      
+      if (!existsSync(requestedFilePath)) {
+        // Try common fallbacks
+        const fallbacks = [
+          join(fullPackagePath, 'dist', 'index.js'),
+          join(fullPackagePath, 'lib', 'index.js'),
+          join(fullPackagePath, 'index.js'),
+          join(fullPackagePath, 'dist', packagePath),
+          join(fullPackagePath, 'lib', packagePath)
+        ];
+        
+        let foundPath = null;
+        for (const fallback of fallbacks) {
+          if (existsSync(fallback)) {
+            foundPath = fallback;
+            break;
+          }
+        }
+        
+        if (!foundPath) {
+          if (!this.options.silent) {
+            logger.warn(`External package file not found: ${reqPath}`);
+          }
+          return this.createNotFoundResponse(`External package file not found: ${reqPath}`);
+        }
+        
+        // Serve the fallback file
+        const content = readFileSync(foundPath, 'utf-8');
+        return new Response(content, {
+          headers: {
+            'Content-Type': foundPath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
+      
+      // Serve the requested file
+      const content = readFileSync(requestedFilePath, 'utf-8');
+      
+      if (!this.options.silent) {
+        logger.debug(`[DevOrchestrator] Serving external package: ${packageName}${packagePath}`);
+      }
+      
+      return new Response(content, {
+        headers: {
+          'Content-Type': requestedFilePath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.error(`[DevOrchestrator] External package error: ${error}`);
+      }
+      return this.createErrorResponse(error);
+    }
+  }
+
   async cleanup(): Promise<void> {
     if (!this.options.silent) {
       logger.info('🧹 Shutting down development server...');
@@ -1834,5 +2385,20 @@ connect();
     if (!this.options.silent) {
       logger.success('✅ Development server shutdown complete');
     }
+  }
+
+  /**
+   * Rewrite relative CSS imports to absolute URLs for dev server
+   */
+  private rewriteCssImports(cssContent: string, packageName: string): string {
+    // Convert relative imports like @import './styles-7a9baf8b.css' to absolute URLs
+    return cssContent.replace(
+      /@import\s+['"]\.\/([^'"]+)['"];?/g,
+      (match, filename) => {
+        // Generate the absolute URL for the imported CSS file
+        const absoluteUrl = `/${packageName.replace('@', '').replace(/\//g, '-')}-${filename}`;
+        return `@import '${absoluteUrl}';`;
+      }
+    );
   }
 }

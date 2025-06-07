@@ -10,8 +10,9 @@
   position: relative;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: all 0.2s ease;
-  padding-top: 5px;
-  padding-bottom: 5px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 6px;
 }
 
 .syntax-highlighter:hover {
@@ -33,12 +34,12 @@
 .line-number {
   user-select: none;
   text-align: right;
-  padding: 0 16px 0 12px;
+  padding: 0 16px 0 12px; /* FIXME: 6px Next ver */
   min-width: 3em;
   font-size: 12px;
   opacity: 0.6;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
-  margin-right: 16px;
+  margin-right: 10px; /* FIXME: 16px Next ver */
 }
 
 .line-content {
