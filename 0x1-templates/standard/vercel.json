@@ -62,6 +62,50 @@
       "destination": "/0x1/router.js"
     },
     {
+      "source": "/0x1/index.js",
+      "destination": "/0x1/index.js"
+    },
+    {
+      "source": "/0x1/component.js",
+      "destination": "/0x1/component.js"
+    },
+    {
+      "source": "/0x1/directives.js",
+      "destination": "/0x1/directives.js"
+    },
+    {
+      "source": "/0x1/error-boundary.js",
+      "destination": "/0x1/error-boundary.js"
+    },
+    {
+      "source": "/0x1/head.js",
+      "destination": "/0x1/head.js"
+    },
+    {
+      "source": "/0x1/link.js",
+      "destination": "/0x1/link.js"
+    },
+    {
+      "source": "/0x1/live-reload.js",
+      "destination": "/0x1/live-reload.js"
+    },
+    {
+      "source": "/0x1/metadata.js",
+      "destination": "/0x1/metadata.js"
+    },
+    {
+      "source": "/0x1/navigation.js",
+      "destination": "/0x1/navigation.js"
+    },
+    {
+      "source": "/0x1/pwa.js",
+      "destination": "/0x1/pwa.js"
+    },
+    {
+      "source": "/0x1/runtime.js",
+      "destination": "/0x1/runtime.js"
+    },
+    {
       "source": "/node_modules/0x1",
       "destination": "/0x1/index.js"
     },
@@ -110,4 +154,4 @@
       "destination": "/index.html"
     }
   ]
-} 
+}
