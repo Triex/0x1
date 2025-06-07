@@ -4,7 +4,7 @@
  * Uses working patterns with shared core utilities
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../../cli/utils/logger';
 
@@ -78,7 +78,7 @@ export class BuildOrchestrator {
 
   async build(): Promise<BuildResult> {
     try {
-      this.startTime = Date.now();
+    this.startTime = Date.now();
       const outputPath = join(this.options.projectPath, this.options.outDir!);
     
       if (!this.options.silent) {
@@ -291,34 +291,26 @@ export class BuildOrchestrator {
 
   private async generateComponentsUsingWorkingPattern(outputPath: string): Promise<void> {
     if (!this.options.silent) {
-      logger.info('🧩 Generating components using working transpilation pattern...');
+      logger.info('🧩 Generating components using DevOrchestrator exact logic...');
     }
 
-    // Process routes
+    // CRITICAL FIX: Follow DevOrchestrator pattern exactly - generate ONLY standalone components
+    // No layout composition at build time - let runtime handle it like DevOrchestrator
+
+    // 1. Generate ALL route page components as standalone files (NO EMBEDDING)
     for (const route of this.state.routes) {
       try {
-        const sourcePath = this.findRouteSourceFile(route);
-        if (!sourcePath) continue;
-
-        let sourceCode = readFileSync(sourcePath, 'utf-8');
+        await this.generateComponentUsingDevOrchestratorLogic(route.componentPath, outputPath);
         
-        // Compose layouts if they exist
-        if (route.layouts && route.layouts.length > 0) {
-          sourceCode = await this.composeLayoutsUsingWorkingPattern(sourceCode, route, sourcePath);
+        if (!this.options.silent) {
+          logger.debug(`Generated route: ${route.componentPath}`);
         }
-
-        // Transpile using working pattern (same as build.bak.ts)
-        const transpiledContent = await this.transpileComponentSafely(sourceCode, sourcePath);
-        
-        const outputComponentPath = join(outputPath, route.componentPath.replace(/^\//, ''));
-        await Bun.write(outputComponentPath, transpiledContent);
-        
       } catch (error) {
-        logger.warn(`Failed to process route ${route.path}: ${error}`);
+        logger.warn(`Failed to generate route ${route.componentPath}: ${error}`);
       }
     }
 
-    // CRITICAL FIX: Generate standalone layout files that are referenced but not embedded
+    // 2. Generate ALL layout components as standalone files
     const layoutPaths = new Set<string>();
     for (const route of this.state.routes) {
       if (route.layouts && route.layouts.length > 0) {
@@ -328,41 +320,59 @@ export class BuildOrchestrator {
       }
     }
 
-    // Generate standalone layout files
     for (const layoutPath of layoutPaths) {
       try {
-        const layoutSourcePath = this.findLayoutSourceFile(layoutPath);
-        if (!layoutSourcePath) continue;
-
-        const sourceCode = readFileSync(layoutSourcePath, 'utf-8');
-        const transpiledContent = await this.transpileComponentSafely(sourceCode, layoutSourcePath);
-        
-        const outputLayoutPath = join(outputPath, layoutPath.replace(/^\//, ''));
-        await Bun.write(outputLayoutPath, transpiledContent);
+        await this.generateComponentUsingDevOrchestratorLogic(layoutPath, outputPath);
         
         if (!this.options.silent) {
-          logger.debug(`Generated standalone layout: ${layoutPath}`);
+          logger.debug(`Generated layout: ${layoutPath}`);
         }
       } catch (error) {
-        logger.warn(`Failed to process standalone layout ${layoutPath}: ${error}`);
+        logger.warn(`Failed to generate layout ${layoutPath}: ${error}`);
       }
     }
 
-    // Process regular components
+    // 3. Generate ALL standalone components
     for (const component of this.state.components) {
       try {
-        const sourceCode = readFileSync(component.path, 'utf-8');
-        const transpiledContent = await this.transpileComponentSafely(sourceCode, component.path);
-        
-        const outputComponentPath = join(outputPath, component.relativePath.replace(/\.(tsx|ts|jsx)$/, '.js'));
-        await Bun.write(outputComponentPath, transpiledContent);
-
+        const componentUrlPath = `/${component.relativePath.replace(/\.(tsx|ts|jsx)$/, '.js')}`;
+        await this.generateComponentUsingDevOrchestratorLogic(componentUrlPath, outputPath);
+    
+        if (!this.options.silent) {
+          logger.debug(`Generated component: ${componentUrlPath}`);
+        }
       } catch (error) {
-        logger.warn(`Failed to process component ${component.relativePath}: ${error}`);
+        logger.warn(`Failed to generate component ${component.relativePath}: ${error}`);
       }
     }
   }
 
+  // CRITICAL: Generate route components with layout composition (restored from working version)
+  private async generateRouteWithLayoutComposition(route: Route, outputPath: string): Promise<void> {
+    try {
+      // Find the route source file
+        const sourcePath = this.findRouteSourceFile(route);
+        if (!sourcePath) {
+        logger.warn(`No source file found for route: ${route.componentPath}`);
+        return;
+        }
+
+        const sourceCode = readFileSync(sourcePath, 'utf-8');
+
+      // CRITICAL: No layout composition at build time - generate standalone component only
+      const transpiledContent = await this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
+      
+      // Write to output
+        const outputComponentPath = join(outputPath, route.componentPath.replace(/^\//, ''));
+      mkdirSync(join(outputComponentPath, '..'), { recursive: true });
+      writeFileSync(outputComponentPath, transpiledContent);
+
+      } catch (error) {
+      logger.warn(`Failed to generate route component ${route.componentPath}: ${error}`);
+    }
+  }
+
+  // Helper method to find route source files (restored)
   private findRouteSourceFile(route: Route): string | null {
     const basePath = join(this.options.projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, ''));
     const extensions = ['.tsx', '.jsx', '.ts', '.js'];
@@ -377,23 +387,288 @@ export class BuildOrchestrator {
     return null;
   }
 
-  private findLayoutSourceFile(layoutPath: string): string | null {
-    const basePath = join(this.options.projectPath, layoutPath.replace(/^\//, '').replace(/\.js$/, ''));
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+  // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
+  private async transpileUsingDevOrchestratorLogic(sourceCode: string, sourcePath: string): Promise<string> {
+    try {
+      // EXACT same logic as DevOrchestrator.handleComponentRequest
+      const transpiler = new Bun.Transpiler({
+        loader: sourcePath.endsWith('.tsx') ? 'tsx' : 
+                sourcePath.endsWith('.jsx') ? 'jsx' :
+                sourcePath.endsWith('.ts') ? 'ts' : 'js',
+        target: 'browser',
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('development')
+        },
+        // CRITICAL: Explicit JSX configuration to ensure function components (same as DevOrchestrator)
+        tsconfig: JSON.stringify({
+          compilerOptions: {
+            jsx: 'react-jsx',
+            jsxImportSource: '0x1'
+          }
+        })
+      });
+
+      // Use transformSync for synchronous transpilation (same as DevOrchestrator)
+      let content = transpiler.transformSync(sourceCode);
+
+      // CRITICAL: Apply EXACT same fixes as DevOrchestrator
+      // Check if JSX is used but import is missing
+      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(');
+      const hasJSXImport = content.includes('from "0x1/jsx-dev-runtime"') || content.includes('from "0x1/jsx-runtime"');
+      
+      if (hasJSX && !hasJSXImport) {
+        // Add JSX runtime import at the top
+        const lines = content.split('\n');
+        const importIndex = lines.findIndex(line => line.startsWith('import ')) + 1 || 0;
+        lines.splice(importIndex, 0, 'import { jsxDEV } from "0x1/jsx-dev-runtime";');
+        content = lines.join('\n');
+      }
+
+      // CRITICAL: Replace mangled JSX function names with proper ones (same as DevOrchestrator)
+      content = content
+        .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+        .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+        .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+        .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+
+      // CRITICAL: COMPREHENSIVE import transformation (FIXED from working dev server)
+      content = this.transformImportsComprehensively(content, sourcePath);
+
+      return content;
+      
+    } catch (error) {
+      logger.warn(`DevOrchestrator-style transpilation failed for ${sourcePath}: ${error}`);
+      
+      // Return error component
+      return this.generateErrorComponent(sourcePath, String(error));
+    }
+  }
+
+  // CRITICAL: Comprehensive import transformation to fix 404 errors
+  private transformImportsComprehensively(content: string, sourcePath: string): string {
+    const lines = content.split('\n');
+    const transformedLines: string[] = [];
     
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      
+      // CRITICAL FIX: Check for CSS imports FIRST (before general import filtering)
+      // CSS imports don't have 'from' and may not have spaces: import"./style.css"
+      if (/import\s*['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(trimmed)) {
+        transformedLines.push('// CSS import removed for browser compatibility');
+        continue;
+      }
+      
+      // Skip non-import lines
+      if (!trimmed.startsWith('import ') || !trimmed.includes(' from ')) {
+        transformedLines.push(line);
+        continue;
+      }
+      
+      // Skip if it's inside a comment or string
+      if (this.isImportInComment(line, lines, i)) {
+        transformedLines.push(line);
+        continue;
+      }
+      
+      let transformedLine = line;
+      
+      // 2. Transform 0x1 framework imports
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']0x1["']/,
+        '$1"/node_modules/0x1/index.js"'
+      );
+      
+      // 3. Transform 0x1 submodule imports
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']0x1\/(link|router|jsx-runtime|jsx-dev-runtime|hooks)["']/,
+        (match, importPart, module) => {
+          const moduleMap: Record<string, string> = {
+            'link': '/0x1/link.js',
+            'router': '/0x1/router.js',
+            'jsx-runtime': '/0x1/jsx-runtime.js',
+            'jsx-dev-runtime': '/0x1/jsx-runtime.js',
+            'hooks': '/0x1/hooks.js'
+          };
+          return `${importPart}"${moduleMap[module]}"`;
+        }
+      );
+      
+      // 4. CRITICAL FIX: Transform relative imports (./component → /components/component.js)
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']\.\/([^"']+)["']/,
+        (match, importPart, path) => {
+          // Determine the correct base path based on file location
+          let basePath = '/components/';
+          if (sourcePath.includes('/lib/')) {
+            basePath = '/lib/';
+          } else if (sourcePath.includes('/app/')) {
+            basePath = '/components/'; // Components are typically in /components/
+          }
+          
+          const normalizedPath = this.normalizeComponentPath(path, basePath);
+          return `${importPart}"${normalizedPath}"`;
+        }
+      );
+      
+      // 5. CRITICAL FIX: Transform parent directory imports (../component → /components/component.js)
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']\.\.\/([^"']+)["']/,
+        (match, importPart, path) => {
+          const normalizedPath = this.normalizeComponentPath(path, '/components/');
+          return `${importPart}"${normalizedPath}"`;
+        }
+      );
+      
+      // 6. CRITICAL FIX: Transform absolute imports that need normalization
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']\/([^"']+)["']/,
+        (match, importPart, path) => {
+          if (path.startsWith('node_modules/') || path.startsWith('0x1/')) {
+            return match; // Already correct
+          }
+          const normalizedPath = this.normalizeComponentPath(path, '/');
+          return `${importPart}"${normalizedPath}"`;
+        }
+      );
+      
+      // 7. Transform npm package imports for browser compatibility
+      transformedLine = transformedLine.replace(
+        /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/,
+        (match, importPart, packageName) => {
+          const skipPackages = ['react', 'react-dom', '0x1'];
+          if (skipPackages.includes(packageName) || packageName.startsWith('0x1/')) {
+            return match;
+          }
+          return `${importPart}"/node_modules/${packageName}"`;
+        }
+      );
+      
+      transformedLines.push(transformedLine);
+    }
+    
+    return transformedLines.join('\n');
+  }
+
+  // Helper to normalize component paths and ensure .js extensions
+  private normalizeComponentPath(path: string, basePath: string): string {
+    let normalized = path;
+    
+    // Handle different directory structures
+    if (path.includes('components/')) {
+      normalized = path.replace(/^.*?components\//, 'components/');
+    } else if (path.includes('lib/')) {
+      normalized = path.replace(/^.*?lib\//, 'lib/');
+    } else if (path.includes('utils/')) {
+      normalized = path.replace(/^.*?utils\//, 'utils/');
+    } else if (path.includes('hooks/')) {
+      normalized = path.replace(/^.*?hooks\//, 'hooks/');
+    } else {
+      // Default: assume it's a component if no specific directory
+      normalized = basePath.replace(/\/$/, '') + '/' + path;
+    }
+    
+    // Ensure it starts with /
+    if (!normalized.startsWith('/')) {
+      normalized = '/' + normalized;
+    }
+    
+    // CRITICAL: Add .js extension if needed
+    if (!normalized.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
+      normalized += '.js';
+    } else if (normalized.match(/\.(ts|tsx|jsx)$/)) {
+      normalized = normalized.replace(/\.(ts|tsx|jsx)$/, '.js');
+    }
+    
+    return normalized;
+  }
+
+  // Helper to detect imports in comments
+  private isImportInComment(line: string, allLines: string[], lineIndex: number): boolean {
+    const trimmed = line.trim();
+    
+    // Check for obvious comment patterns
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+      return true;
+    }
+    
+    // Check for JSX text content patterns
+    const jsxPatterns = [
+      /^\s*["'`].*?import.*?["'`]/, // String literals containing import
+      /children:\s*\[/, // JSX children arrays
+      /className\s*=/, // JSX className props
+      /<code[^>]*>.*import/, // Code examples in JSX
+      /<pre[^>]*>.*import/, // Preformatted code blocks
+    ];
+    
+    return jsxPatterns.some(pattern => pattern.test(line));
+  }
+
+  // CRITICAL: Mirror DevOrchestrator's handleComponentRequest EXACTLY
+  private async generateComponentUsingDevOrchestratorLogic(reqPath: string, outputPath: string): Promise<void> {
+    try {
+      // EXACT same logic as DevOrchestrator.handleComponentRequest
+      const cleanPath = reqPath.split('?')[0];
+      const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
+      const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+
+      // Find the source file (same as DevOrchestrator.generatePossiblePaths)
+      const possiblePaths = this.generatePossiblePathsLikeDevOrchestrator(relativePath);
+      const sourcePath = possiblePaths.find(path => existsSync(path));
+
+      if (!sourcePath) {
+        if (!this.options.silent) {
+          logger.debug(`No source file found for: ${reqPath}`);
+        }
+        return;
+      }
+
+      // Read source file
+      const sourceCode = readFileSync(sourcePath, 'utf-8');
+
+      // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
+      const content = await this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
+
+      // Write to output (ensuring directory exists)
+      const outputFilePath = join(outputPath, reqPath.replace(/^\//, ''));
+      mkdirSync(join(outputFilePath, '..'), { recursive: true });
+      writeFileSync(outputFilePath, content);
+
+    } catch (error) {
+      logger.warn(`Failed to generate component using DevOrchestrator logic for ${reqPath}: ${error}`);
+    }
+  }
+
+  // EXACT same logic as DevOrchestrator.generatePossiblePaths
+  private generatePossiblePathsLikeDevOrchestrator(relativePath: string): string[] {
+    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+    const basePath = join(this.options.projectPath, relativePath);
+    
+    // For layout and page files, we need to be extra careful about path resolution
+    const paths: string[] = [];
+    
+    // Standard extensions for the exact path
     for (const ext of extensions) {
-      const sourcePath = basePath + ext;
-      if (existsSync(sourcePath)) {
-        return sourcePath;
+      paths.push(`${basePath}${ext}`);
+    }
+    
+    // Special handling for app directory structure
+    if (relativePath.startsWith('app/')) {
+      const appRelativePath = relativePath.substring(4); // Remove 'app/' prefix
+      const appBasePath = join(this.options.projectPath, 'app', appRelativePath);
+      
+      for (const ext of extensions) {
+        paths.push(`${appBasePath}${ext}`);
       }
     }
     
-    return null;
+    return paths;
   }
 
   private async copyFrameworkFilesUsingWorkingPattern(outputPath: string): Promise<void> {
     if (!this.options.silent) {
-      logger.info('📦 Copying framework files using working pattern...');
+      logger.info('📦 Copying framework files using DevOrchestrator working pattern...');
     }
 
     const frameworkPath = this.getFrameworkPath();
@@ -403,8 +678,7 @@ export class BuildOrchestrator {
     const framework0x1Dir = join(outputPath, '0x1');
     const nodeModulesDir = join(outputPath, 'node_modules', '0x1');
     
-    // CRITICAL FIX: Copy ALL framework files including hashed versions
-    // This ensures both redirect files (hooks.js) and actual files (hooks-d2be986e.js) are copied
+    // CRITICAL FIX: Copy ALL framework files including hashed versions (same as DevOrchestrator)
     if (existsSync(frameworkDistPath)) {
       const allFrameworkFiles = readdirSync(frameworkDistPath).filter(file => 
         file.endsWith('.js') || file.endsWith('.css')
@@ -430,20 +704,197 @@ export class BuildOrchestrator {
       }
     }
 
-    // Copy router from 0x1-router package
-    const routerSourcePath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
-    if (existsSync(routerSourcePath)) {
-      const routerContent = readFileSync(routerSourcePath, 'utf-8');
-      await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
+    // CRITICAL: Generate JSX runtime using DevOrchestrator's exact logic
+    await this.generateJsxRuntimeUsingDevOrchestratorLogic(frameworkPath, framework0x1Dir);
+
+    // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
+    await this.generateHooksUsingDevOrchestratorLogic(frameworkPath, framework0x1Dir);
+
+    // CRITICAL: Copy router with DevOrchestrator's exact Link component fixes
+      const routerSourcePath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
+      if (existsSync(routerSourcePath)) {
+      let routerContent = readFileSync(routerSourcePath, 'utf-8');
+      
+      // CRITICAL: Apply DevOrchestrator's exact Link component fixes
+      // This fixes the "Class constructor K cannot be invoked without 'new'" error
+      routerContent = routerContent.replace(
+        /return\{type:"a",props:\{href:q,className:z,onClick:\(V\)=>\{[^}]+\},children:Q\}\}/,
+        `// Use JSX runtime to create element instead of plain object
+const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+return jsx("a", {
+  href: q,
+  className: z,
+  onClick: (V) => {
+    if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
+      let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
+    }else window.location.href=q
+  },
+  children: Q
+})`
+      );
+      
+      // BACKUP: If the regex didn't work, replace the entire Link function (same as DevOrchestrator)
+      if (!routerContent.includes('Use JSX runtime')) {
+        routerContent = routerContent.replace(
+          /function F\(\{href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J\}\)\{[^}]+return\{type:"a"[^}]+\}\}/,
+          `function F({href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J}){
+  let X=$();if(G&&X)X.prefetch(q);let Y=J?"top":U;
+  // CRITICAL: Use JSX runtime instead of plain object to fix class constructor error
+  const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+  return jsx("a", {
+    href: q,
+    className: z,
+    onClick: (V) => {
+      if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
+        let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
+      }else window.location.href=q
+    },
+    children: Q
+  })
+}`
+        );
+      }
+      
+      // CRITICAL: Expose the original Link function for the wrapper (same as DevOrchestrator)
+      routerContent += `
+// Expose original Link function for wrapper
+if (typeof window !== 'undefined') {
+  window.__0x1_RouterLink = F;
+}
+`;
+      
+        await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
       await Bun.write(join(nodeModulesDir, 'router.js'), routerContent);
     }
 
-    // Generate browser-compatible 0x1 entry point
-    await this.generateBrowserEntry(nodeModulesDir);
+    // Generate browser-compatible 0x1 entry point (same as DevOrchestrator)
+    await this.generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir, framework0x1Dir);
   }
 
-  private async generateBrowserEntry(nodeModulesDir: string): Promise<void> {
-    // Use EXACT same pattern as build.bak.ts
+  // CRITICAL: Generate JSX runtime using DevOrchestrator's exact logic
+  private async generateJsxRuntimeUsingDevOrchestratorLogic(frameworkPath: string, framework0x1Dir: string): Promise<void> {
+    try {
+      const runtimePath = join(frameworkPath, 'src', 'jsx-dev-runtime.ts');
+      
+      if (existsSync(runtimePath)) {
+        const transpiled = await Bun.build({
+          entrypoints: [runtimePath],
+          target: 'browser',
+          format: 'esm',
+          minify: false,
+          sourcemap: 'none',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('development')
+          },
+          external: []
+        });
+        
+        if (transpiled.success && transpiled.outputs.length > 0) {
+          let content = '';
+          for (const output of transpiled.outputs) {
+            content += await output.text();
+          }
+          
+          // Add browser globals (same as DevOrchestrator)
+          content += `
+if (typeof window !== 'undefined') {
+  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
+  window.React = Object.assign(window.React || {}, {
+    createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
+  });
+}
+`;
+          
+          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
+          content = content
+            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+              'import { $1 } from "/components/$2.js"')
+            .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+            .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+              'import { $1 } from "/0x1/jsx-runtime.js"')
+            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+              'import { $1 } from "/0x1/jsx-runtime.js"')
+            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+              'import { $1 } from "/0x1/router.js"')
+            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+              'import { $1 } from "/node_modules/0x1/index.js"');
+          
+          await Bun.write(join(framework0x1Dir, 'jsx-runtime.js'), content);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to generate JSX runtime: ${error}`);
+    }
+  }
+
+  // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
+  private async generateHooksUsingDevOrchestratorLogic(frameworkPath: string, framework0x1Dir: string): Promise<void> {
+    try {
+      const hooksPath = join(frameworkPath, 'src', 'core', 'hooks.ts');
+      
+      if (existsSync(hooksPath)) {
+        const transpiled = await Bun.build({
+          entrypoints: [hooksPath],
+          target: 'browser',
+          format: 'esm',
+          minify: false,
+          sourcemap: 'none',
+          define: {
+            'process.env.NODE_ENV': JSON.stringify('development')
+          },
+          external: []
+        });
+        
+        if (transpiled.success && transpiled.outputs.length > 0) {
+          let content = '';
+          for (const output of transpiled.outputs) {
+            content += await output.text();
+          }
+          
+          // CRITICAL: Add DevOrchestrator's exact browser compatibility code
+          content += `
+if (typeof window !== 'undefined') {
+  // Initialize React-compatible global context
+  window.React = window.React || {};
+  
+  // Make hooks available globally (no complex context checking)
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
+  
+  // Also make available in React namespace for compatibility
+  Object.assign(window.React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
+  
+  // Global hooks registry
+  window.__0x1_hooks = {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage,
+    isInitialized: true,
+    contextReady: true
+  };
+  
+  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+  
+  // Component context ready flag
+  window.__0x1_component_context_ready = true;
+}
+`;
+          
+          await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to generate hooks: ${error}`);
+    }
+  }
+
+  private async generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir: string, framework0x1Dir: string): Promise<void> {
+    // Use EXACT same pattern as DevOrchestrator's framework module
     const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
 console.log('[0x1] Framework module loaded - dynamic runtime version');
 
@@ -504,12 +955,47 @@ export const Fragment = (() => {
   return Symbol.for('react.fragment');
 })();
 
+// CRITICAL: Link component wrapper to fix class constructor error (same as DevOrchestrator)
+export function Link(props) {
+  // Get the actual Link function from the router
+  const RouterLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || null;
+  
+  if (!RouterLink) {
+    // Fallback if router not loaded yet
+    return jsx('a', {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        } else {
+          window.location.href = props.href;
+        }
+      },
+      children: props.children
+    });
+  }
+  
+  // Call the router Link and convert plain object to JSX
+  const linkResult = RouterLink(props);
+  
+  // If it returns a plain object, convert it to JSX
+  if (linkResult && typeof linkResult === 'object' && linkResult.type && linkResult.props) {
+    const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+    return jsx(linkResult.type, linkResult.props);
+  }
+  
+  return linkResult;
+}
+
 export const version = '0.1.0';
 
 export default {
   useState, useEffect, useCallback, useMemo, useRef,
   useClickOutside, useFetch, useForm, useLocalStorage,
-  jsx, jsxs, jsxDEV, createElement, Fragment, version
+  jsx, jsxs, jsxDEV, createElement, Fragment, Link, version
 };
 `;
 
@@ -518,47 +1004,172 @@ export default {
 
   private async generateAppBundleUsingWorkingPattern(outputPath: string): Promise<void> {
     if (!this.options.silent) {
-      logger.info('📱 Generating app bundle using working pattern...');
+      logger.info('📱 Generating app bundle using DevOrchestrator working pattern...');
     }
 
-    // Use EXACT same pattern as builder.bak.ts
+    // Use EXACT same pattern as DevOrchestrator (with layout composition)
     const routesJson = JSON.stringify(
       this.state.routes.map(route => ({
-        path: route.path,
-        componentPath: route.componentPath,
-        layouts: route.layouts || []
+      path: route.path,
+      componentPath: route.componentPath,
+      layouts: route.layouts || []
       })), 
       null, 
       2
     );
 
-    // Generate app.js using EXACT pattern from builder.bak.ts
-    const appScript = `// 0x1 Framework App Bundle - Production Ready
+    // Generate app.js using EXACT pattern from DevOrchestrator (FIXED layout loading)
+    const appScript = `// 0x1 Framework App Bundle - Production Ready with Fixed Layout Loading
 console.log('[0x1 App] Starting production app...');
 
-// Server-discovered routes
+// Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
 
-// Production-ready initialization
+// ===== CACHED LAYOUT SYSTEM (PREVENTS DUPLICATION) =====
+const layoutCache = new Map();
+
+async function loadLayoutOnce(layoutPath) {
+  if (layoutCache.has(layoutPath)) {
+    return layoutCache.get(layoutPath);
+  }
+  
+  try {
+    console.log('[0x1 App] 📄 Loading layout:', layoutPath);
+    const layoutModule = await import(layoutPath);
+    
+    if (layoutModule && layoutModule.default) {
+      console.log('[0x1 App] ✅ Layout loaded successfully:', layoutPath);
+      layoutCache.set(layoutPath, layoutModule.default);
+      return layoutModule.default;
+    } else {
+      console.warn('[0x1 App] ⚠️ Layout has no default export:', layoutPath);
+      const fallbackLayout = ({ children }) => {
+        console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+        return children;
+      };
+      layoutCache.set(layoutPath, fallbackLayout);
+      return fallbackLayout;
+    }
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to load layout:', layoutPath, error);
+    const fallbackLayout = ({ children }) => {
+      console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+      return children;
+    };
+    layoutCache.set(layoutPath, fallbackLayout);
+    return fallbackLayout;
+  }
+}
+
+async function loadLayoutHierarchy(layouts) {
+  console.log('[0x1 App] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
+  
+  // Ensure hook context is available before loading any layouts
+  if (typeof window.useState !== 'function') {
+    console.warn('[0x1 App] ⚠️ Hook context not available, waiting...');
+    
+    // Wait for hooks to be available
+    await new Promise((resolve) => {
+      const checkHooks = () => {
+        if (typeof window.useState === 'function') {
+          resolve();
+        } else {
+          setTimeout(checkHooks, 10);
+        }
+      };
+      checkHooks();
+    });
+  }
+  
+  const loadedLayouts = [];
+  for (const layout of layouts) {
+    const loadedLayout = await loadLayoutOnce(layout.componentPath);
+    loadedLayouts.push(loadedLayout);
+  }
+  
+  console.log('[0x1 App] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
+  return loadedLayouts;
+}
+
+// ===== NESTED LAYOUT COMPOSITION (from DevOrchestrator) =====
+function composeNestedLayouts(pageComponent, layouts) {
+  if (layouts.length === 0) {
+    return pageComponent;
+  }
+  
+  return (props) => {
+    let wrappedComponent = pageComponent(props);
+    
+    // Apply layouts in reverse order (innermost to outermost)
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const currentLayout = layouts[i];
+      const children = wrappedComponent;
+      
+      try {
+        wrappedComponent = currentLayout({ 
+          children: children,
+          ...props 
+        });
+      } catch (error) {
+        console.error('[0x1] Layout composition error at level', i, ':', error);
+        wrappedComponent = children;
+      }
+    }
+    
+    return wrappedComponent;
+  };
+}
+
+// Production-ready initialization (same as DevOrchestrator)
 async function initApp() {
   try {
-    console.log('[0x1 App] Loading framework...');
+    console.log('[0x1 App] 🚀 Starting production initialization...');
     
-    // Load hooks
+    // Step 1: Load and initialize essential dependencies FIRST
+    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    
+    // Load hooks and ensure they're fully initialized
+    await new Promise((resolve, reject) => {
     const hooksScript = document.createElement('script');
     hooksScript.type = 'module';
     hooksScript.src = '/0x1/hooks.js';
-    
-    await new Promise((resolve, reject) => {
       hooksScript.onload = () => {
-        console.log('[0x1 App] Hooks loaded');
-        resolve();
+        console.log('[0x1 App] ✅ Hooks system loaded');
+        
+        // Wait a tick to ensure hooks are fully initialized
+        setTimeout(() => {
+          // Verify hooks are available
+          if (typeof window.useState === 'function') {
+            console.log('[0x1 App] ✅ Hook context verified');
+            resolve();
+          } else {
+            reject(new Error('Hook system not properly initialized'));
+          }
+        }, 50); // Small delay to ensure initialization
       };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
     
-    // Load router
+    // Step 2: Initialize component context globals BEFORE loading any components
+    console.log('[0x1 App] 🔧 Setting up component context...');
+    
+    // Ensure React-compatible globals are available
+    if (!window.React) {
+      window.React = {};
+    }
+    
+    // Copy hooks to React namespace for compatibility
+    ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef'].forEach(hookName => {
+      if (typeof window[hookName] === 'function') {
+        window.React[hookName] = window[hookName];
+      }
+    });
+    
+    console.log('[0x1 App] ✅ Component context ready');
+    
+    // Step 3: Create router
+    console.log('[0x1 App] 🧭 Loading router...');
     const routerModule = await import('/0x1/router.js');
     const { Router } = routerModule;
     
@@ -571,98 +1182,121 @@ async function initApp() {
       throw new Error('App container element not found');
     }
     
+    // Create 404 component
+    const notFoundComponent = () => ({
+      type: 'div',
+      props: { 
+        className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+      },
+      children: [
+        {
+          type: 'h1',
+          props: { className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4' },
+          children: ['404'],
+          key: null
+        },
+        {
+          type: 'h2',
+          props: { className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4' },
+          children: ['Page Not Found'],
+          key: null
+        },
+        {
+          type: 'p',
+          props: { className: 'text-lg text-gray-600 dark:text-gray-300 mb-8' },
+          children: ['The page you are looking for does not exist.'],
+          key: null
+        },
+        {
+          type: 'a',
+          props: {
+            href: '/',
+            className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+            onClick: (e) => {
+              e.preventDefault();
+              if (window.router && typeof window.router.navigate === 'function') {
+                window.router.navigate('/');
+              } else {
+                window.location.href = '/';
+              }
+            }
+          },
+          children: ['🏠 Back to Home'],
+          key: null
+        }
+      ],
+      key: null
+    });
+    
     const router = new Router({
       rootElement: appElement,
       mode: 'history',
       debug: false,
       base: '/',
-      notFoundComponent: () => ({
-        type: 'div',
-        props: { className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4' },
-        children: [
-          {
-            type: 'h1',
-            props: { className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4' },
-            children: ['404'],
-            key: null
-          },
-          {
-            type: 'h2', 
-            props: { className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4' },
-            children: ['Page Not Found'],
-            key: null
-          },
-          {
-            type: 'a',
-            props: {
-              href: '/',
-              className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
-              onClick: (e) => {
-                e.preventDefault();
-                if (window.router && typeof window.router.navigate === 'function') {
-                  window.router.navigate('/');
-                } else {
-                  window.location.href = '/';
-                }
-              }
-            },
-            children: ['🏠 Back to Home'],
-            key: null
-          }
-        ],
-        key: null
-      })
+      notFoundComponent: notFoundComponent
     });
     
     window.__0x1_ROUTER__ = router;
     window.__0x1_router = router;
     window.router = router;
     
-    console.log('[0x1 App] Router ready');
-    
-    // Register routes
+    // Step 4: Register routes with cached layout loading (FIXED duplication)
     for (const route of serverRoutes) {
       try {
-        const routeComponent = async (props) => {
+        // Load all layouts for this route ONCE using cache
+        const layouts = route.layouts || [];
+        const loadedLayouts = await loadLayoutHierarchy(layouts);
+        
+      const routeComponent = async (props) => {
           try {
-            const componentModule = await import(route.componentPath);
+        const componentModule = await import(route.componentPath);
             
             if (componentModule && componentModule.default) {
-              return componentModule.default(props);
+              // Compose the page component with all its layouts
+              const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+              return composedComponent(props);
             } else {
+              console.warn('[0x1] Component has no default export:', route.path);
               return {
                 type: 'div',
-                props: { className: 'p-8 text-center', style: 'color: #f59e0b;' },
+                props: { 
+                  className: 'p-8 text-center',
+                  style: 'color: #f59e0b;' 
+                },
                 children: ['Component loaded but has no default export: ' + route.path]
               };
             }
           } catch (error) {
-            console.error('[0x1 App] Route component error:', route.path, error);
+            console.error('[0x1] Route component error:', route.path, error);
             return {
               type: 'div',
-              props: { className: 'p-8 text-center', style: 'color: #ef4444;' },
-              children: ['Failed to load component: ' + route.path]
+              props: { 
+                className: 'p-8 text-center',
+                style: 'color: #ef4444;' 
+              },
+              children: ['❌ Failed to load component: ' + route.path]
             };
           }
         };
         
         router.addRoute(route.path, routeComponent, { 
-          componentPath: route.componentPath 
+          componentPath: route.componentPath,
+          layouts: layouts
         });
         
       } catch (error) {
-        console.error('[0x1 App] Failed to register route:', route.path, error);
+        console.error('[0x1] Failed to register route:', route.path, error);
       }
     }
     
-    // Start router
+    // Step 5: Start router
     router.init();
     router.navigate(window.location.pathname, false);
     
-    console.log('[0x1 App] App initialized successfully');
+    console.log('[0x1] ✅ App initialized successfully');
     
   } catch (error) {
-    console.error('[0x1 App] ❌ Initialization failed:', error);
+    console.error('[0x1] ❌ Initialization failed:', error);
     
     const appElement = document.getElementById('app');
     if (appElement) {
@@ -689,10 +1323,9 @@ if (document.readyState === 'loading') {
 
     try {
       // CRITICAL FIX: Use EXACT same Tailwind v4 processing as DevOrchestrator (SINGLE SOURCE OF TRUTH)
-      // Dynamic import like in build.bak.ts
       const { tailwindV4Handler } = await import('../../cli/commands/utils/server/tailwind-v4');
       
-      // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
+      // Check if Tailwind v4 is available first
       const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
       
       if (isV4Available) {
@@ -700,7 +1333,7 @@ if (document.readyState === 'loading') {
           logger.info(`🌈 Processing Tailwind CSS v4 for production build`);
         }
 
-        // Use working Tailwind v4 processing (EXACT same logic as DevOrchestrator)
+        // Use working Tailwind v4 processing
         let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
         if (!inputFile) {
           inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
@@ -708,37 +1341,73 @@ if (document.readyState === 'loading') {
 
         // Only proceed if we have a valid input file
         if (inputFile) {
-          // Start Tailwind v4 process (same as DevOrchestrator)
           try {
+            const expectedCssPath = join(this.options.projectPath, 'dist', 'styles.css');
+            
+            if (!this.options.silent) {
+              logger.debug(`🔍 Tailwind v4 expected output: ${expectedCssPath}`);
+            }
+            
             const tailwindProcess = await tailwindV4Handler.startProcess(
               this.options.projectPath,
               inputFile,
-              join(this.options.projectPath, 'dist', 'styles.css')
+              expectedCssPath
             );
 
             if (tailwindProcess && tailwindProcess.success) {
-              const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
-              if (existsSync(cssPath)) {
-                const cssContent = readFileSync(cssPath, 'utf-8');
+              // Check if the CSS file was actually created
+              if (existsSync(expectedCssPath)) {
+                const cssContent = readFileSync(expectedCssPath, 'utf-8');
                 
-                // Copy the generated CSS to build output
-                await Bun.write(join(outputPath, 'styles.css'), cssContent);
-                
-                if (!this.options.silent) {
-                  logger.success(`✅ Tailwind CSS v4 processed successfully: ${(cssContent.length / 1024).toFixed(1)}KB`);
+                // Verify it's actually Tailwind v4 CSS (should start with /*! tailwindcss)
+                if (cssContent.includes('tailwindcss v4') || cssContent.includes('tailwindcss v3') || cssContent.includes('@layer')) {
+                  // CRITICAL: Copy PURE Tailwind CSS only - no additions
+                  await Bun.write(join(outputPath, 'styles.css'), cssContent);
+                  
+                  if (!this.options.silent) {
+                    logger.success(`✅ Tailwind CSS v4 processed successfully: ${(cssContent.length / 1024).toFixed(1)}KB (PURE)`);
+                  }
+                  
+                  // CRITICAL: Return immediately to prevent any fallback processing
+                  return;
+                } else {
+                  if (!this.options.silent) {
+                    logger.warn(`⚠️ CSS file found but doesn't appear to be Tailwind v4 output`);
+                  }
                 }
-                return;
+              } else {
+                if (!this.options.silent) {
+                  logger.warn(`⚠️ Tailwind v4 reported success but no CSS file found at ${expectedCssPath}`);
+                }
+              }
+            } else {
+              if (!this.options.silent) {
+                logger.warn(`⚠️ Tailwind v4 process failed or returned no success flag`);
               }
             }
           } catch (tailwindError) {
             if (!this.options.silent) {
               logger.warn(`Tailwind v4 process failed: ${tailwindError}`);
             }
+            // Continue to fallback only if Tailwind v4 fails
           }
+        } else {
+          if (!this.options.silent) {
+            logger.warn(`⚠️ No Tailwind v4 input file found or created`);
+          }
+        }
+      } else {
+        if (!this.options.silent) {
+          logger.info('💠 Tailwind v4 not available, using fallback CSS');
         }
       }
 
-      // Enhanced fallback CSS handling (same as DevOrchestrator)
+      // FALLBACK: Only reached if Tailwind v4 is not available or failed
+      if (!this.options.silent) {
+        logger.info('💠 Using CSS fallback processing');
+      }
+
+      // Enhanced fallback CSS handling - RESTORED dist directory but with exclusions
       const cssDirectories = [
         join(this.options.projectPath, 'dist'),
         join(this.options.projectPath, 'public'),
@@ -757,10 +1426,24 @@ if (document.readyState === 'loading') {
 
         for (const cssPath of possiblePaths) {
           if (existsSync(cssPath)) {
-            let cssContent = readFileSync(cssPath, 'utf-8');
+            const cssContent = readFileSync(cssPath, 'utf-8');
             
-            // Process CSS to remove problematic imports that cause 404s in production
-            cssContent = cssContent
+            // If this is a Tailwind v4 file that we missed above, use it pure
+            if (cssContent.includes('tailwindcss v4') || (cssContent.includes('@layer') && cssContent.includes('tailwindcss'))) {
+              if (!this.options.silent) {
+                logger.success(`✅ Found Tailwind CSS in fallback: ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB) - using PURE`);
+              }
+              
+              // Use the pure Tailwind CSS without adding utilities
+              await Bun.write(join(outputPath, 'styles.css'), cssContent);
+              return;
+            }
+            
+            // Process regular CSS files
+            let processedCss = cssContent;
+            
+            // Process CSS to remove problematic imports
+            processedCss = processedCss
               .replace(/@import\s+["']tailwindcss[""];?/g, '/* Tailwind CSS processed */')
               .replace(/@import\s+["']tailwindcss\/base[""];?/g, '/* Tailwind base processed */')
               .replace(/@import\s+["']tailwindcss\/components[""];?/g, '/* Tailwind components processed */')
@@ -768,236 +1451,219 @@ if (document.readyState === 'loading') {
               .replace(/@import\s+["'][^"']*node_modules[^"']*[""];?/g, '/* Node modules import removed */')
               .replace(/@import\s+["']([^"'/][^"']*)[""];?/g, '/* Package import removed: $1 */');
             
-            // Add comprehensive Tailwind utilities for production
-            cssContent += this.getComprehensiveTailwindUtilities();
+            // Add essential utilities only for true fallback CSS
+            processedCss += this.getEssentialTailwindUtilities();
             
-            await Bun.write(join(outputPath, 'styles.css'), cssContent);
+            await Bun.write(join(outputPath, 'styles.css'), processedCss);
             
             if (!this.options.silent) {
-              logger.success(`✅ CSS processed with Tailwind utilities: ${(cssContent.length / 1024).toFixed(1)}KB`);
+              logger.success(`✅ CSS processed with essential utilities: ${(processedCss.length / 1024).toFixed(1)}KB`);
             }
             return;
           }
         }
       }
 
-      // Generate comprehensive CSS fallback if no input found
-      const fallbackCss = this.getMinimalProductionCss() + this.getComprehensiveTailwindUtilities();
+      // Generate minimal CSS fallback only if no other CSS found
+      const fallbackCss = this.getMinimalProductionCss();
       await Bun.write(join(outputPath, 'styles.css'), fallbackCss);
       
       if (!this.options.silent) {
-        logger.info(`✅ Generated comprehensive CSS with Tailwind utilities`);
+        logger.info(`✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`);
       }
 
     } catch (error) {
       logger.warn(`CSS processing failed: ${error}`);
       
-      // Fallback to minimal CSS
-      const fallbackCss = this.getMinimalProductionCss() + this.getComprehensiveTailwindUtilities();
+      // Final fallback
+      const fallbackCss = this.getMinimalProductionCss();
       await Bun.write(join(outputPath, 'styles.css'), fallbackCss);
       
       if (!this.options.silent) {
-        logger.info(`✅ Generated fallback CSS with Tailwind utilities`);
+        logger.info(`✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`);
       }
     }
   }
 
-  private async composeLayoutsUsingWorkingPattern(sourceCode: string, route: Route, sourcePath: string): Promise<string> {
-    if (!route.layouts || route.layouts.length === 0) {
-      return sourceCode;
-    }
+  private getEssentialTailwindUtilities(): string {
+    return `
 
-    // Load all layout contents (same pattern as build.bak.ts)
-    const layoutContents: string[] = [];
-    const layoutNames: string[] = [];
-    
-    for (let i = 0; i < route.layouts.length; i++) {
-      const layout = route.layouts[i];
-      const layoutSourcePath = join(this.options.projectPath, layout.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx'));
-      
-      let actualLayoutPath = layoutSourcePath;
-      if (!existsSync(layoutSourcePath)) {
-        const alternatives = [
-          layoutSourcePath.replace('.tsx', '.ts'),
-          layoutSourcePath.replace('.tsx', '.jsx'),
-          layoutSourcePath.replace('.tsx', '.js')
-        ];
-        
-        for (const alt of alternatives) {
-          if (existsSync(alt)) {
-            actualLayoutPath = alt;
-            break;
-          }
-        }
-      }
-      
-      if (existsSync(actualLayoutPath)) {
-        const layoutContent = readFileSync(actualLayoutPath, 'utf-8');
-        const layoutFunctionName = `Layout${i}`;
-        
-        // Process layout content
-        let processedLayoutContent = layoutContent;
-        
-        // Remove CSS imports
-        processedLayoutContent = processedLayoutContent.replace(/import\s+["']\.\/globals\.css[""];?\s*\n?/g, '');
-        processedLayoutContent = processedLayoutContent.replace(/import\s+["'][^"']*\.css[""];?\s*\n?/g, '');
-        
-        // Replace function name
-        const exportMatch = processedLayoutContent.match(/export\s+default\s+function\s+(\w+)/);
-        if (exportMatch) {
-          const originalName = exportMatch[1];
-          processedLayoutContent = processedLayoutContent.replace(
-            new RegExp(`export\\s+default\\s+function\\s+${originalName}`, 'g'),
-            `function ${layoutFunctionName}`
-          );
-        }
-        
-        layoutContents.push(processedLayoutContent);
-        layoutNames.push(layoutFunctionName);
-      }
-    }
-    
-    // Extract page component
-    const pageExportMatch = sourceCode.match(/export\s+default\s+function\s+(\w+)/);
-    const pageComponentName = pageExportMatch?.[1] || 'PageComponent';
-    
-    let pageWithoutExport = sourceCode;
-    if (pageExportMatch) {
-      const originalPageName = pageExportMatch[1];
-      pageWithoutExport = sourceCode.replace(
-        new RegExp(`export\\s+default\\s+function\\s+${originalPageName}`, 'g'),
-        `function ${pageComponentName}`
-      );
-    }
-    
-    // Compose all layouts with the page component
-    let wrappedComponentCode = `${pageComponentName}(props)`;
-    
-    // Apply layouts from innermost to outermost (reverse order)
-    for (let i = layoutNames.length - 1; i >= 0; i--) {
-      const layoutName = layoutNames[i];
-      wrappedComponentCode = `${layoutName}({ children: ${wrappedComponentCode}, ...props })`;
-    }
-    
-    // Build final composed content
-    const layoutSection = layoutContents.join('\n\n');
-    const pageSection = pageWithoutExport;
-    const wrapperSection = `\nexport default function WrappedPage(props) {\n  return ${wrappedComponentCode};\n}`;
-    
-    return `${layoutSection}\n\n${pageSection}${wrapperSection}`;
+/* 0x1 Framework - Essential Production Utilities Only */
+/* Flex Layout */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-4 { gap: 1rem; }
+
+/* Basic Spacing */
+.p-2 { padding: 0.5rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.mb-4 { margin-bottom: 1rem; }
+
+/* Essential Colors */
+.bg-slate-900 { background-color: #0f172a; }
+.bg-white { background-color: #fff; }
+.bg-violet-600 { background-color: #7c3aed; }
+.bg-violet-700 { background-color: #6d28d9; }
+.bg-muted { background-color: #f1f5f9; }
+.text-white { color: #fff; }
+.text-gray-900 { color: #111827; }
+.text-gray-800 { color: #1f2937; }
+.text-gray-600 { color: #4b5563; }
+.text-violet-600 { color: #7c3aed; }
+.text-violet-400 { color: #a78bfa; }
+.text-foreground { color: #0f172a; }
+
+/* Essential Typography */
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.font-bold { font-weight: 700; }
+.font-medium { font-weight: 500; }
+.text-center { text-align: center; }
+
+/* Essential Effects */
+.rounded-lg { border-radius: 0.5rem; }
+.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+.hover\\:bg-violet-700:hover { background-color: #6d28d9; }
+.hover\\:bg-muted:hover { background-color: #f1f5f9; }
+.transition-all { transition: all 0.15s ease; }
+.duration-200 { transition-duration: 0.2s; }
+.inline-block { display: inline-block; }
+
+/* Dark mode */
+.dark .dark\\:text-white { color: #fff; }
+.dark .dark\\:text-violet-400 { color: #a78bfa; }
+.dark .dark\\:text-gray-300 { color: #d1d5db; }
+.dark .dark\\:bg-gray-800 { background-color: #1f2937; }
+.dark .dark\\:hover\\:bg-secondary:hover { background-color: #374151; }
+`;
   }
 
-  private async transpileComponentSafely(sourceCode: string, sourcePath: string): Promise<string> {
-    try {
-      // Use same transpilation pattern as build.bak.ts
-      const isTsxOrJsx = sourcePath.endsWith('.tsx') || sourcePath.endsWith('.jsx');
-      
-      if (!isTsxOrJsx) {
-        // Just transform imports for non-JSX files
-        let processedCode = sourceCode;
-        
-        // Transform imports for browser compatibility
-        processedCode = this.transformImportsForBrowser(processedCode);
-        
-        // Add JSX runtime preamble in case needed
-        processedCode = this.insertJsxRuntimePreamble(processedCode);
-        
-        return processedCode;
+  private getMinimalProductionCss(): string {
+    return `/* 0x1 Framework - Production CSS with Tailwind Utilities */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;border:0 solid}
+html{line-height:1.5;font-family:ui-sans-serif,system-ui,sans-serif;height:100%}
+body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
+
+/* Essential Layout */
+.container{width:100%;max-width:1200px;margin:0 auto;padding:0 1rem}
+.flex{display:flex}.flex-col{flex-direction:column}
+.items-center{align-items:center}.justify-center{justify-content:center}
+.justify-between{justify-content:space-between}
+.grid{display:grid}.gap-4{gap:1rem}.gap-6{gap:1.5rem}
+
+/* Essential Colors */
+.bg-slate-900{background-color:#0f172a}.bg-white{background-color:#fff}
+.bg-violet-600{background-color:#7c3aed}.bg-violet-700{background-color:#6d28d9}
+.text-white{color:#fff}.text-gray-900{color:#111827}
+.text-gray-800{color:#1f2937}.text-violet-600{color:#7c3aed}
+
+/* Essential Spacing */
+.p-2{padding:0.5rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.p-8{padding:2rem}
+.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}
+.mb-2{margin-bottom:0.5rem}.mb-4{margin-bottom:1rem}.mb-8{margin-bottom:2rem}
+
+/* Essential Typography */
+.text-9xl{font-size:8rem;line-height:1}.text-3xl{font-size:1.875rem;line-height:2.25rem}
+.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:0.875rem;line-height:1.25rem}
+.font-bold{font-weight:700}.font-medium{font-weight:500}.text-center{text-align:center}
+
+/* Essential Effects */
+.rounded-lg{border-radius:0.5rem}.shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
+.transition-all{transition:all 0.15s ease}.hover\\:bg-violet-700:hover{background-color:#6d28d9}
+.inline-block{display:inline-block}.min-h-\\[60vh\\]{min-height:60vh}
+
+/* Dark mode */
+.dark .dark\\:text-white{color:#fff}.dark .dark\\:text-violet-400{color:#a78bfa}
+.dark .dark\\:text-gray-300{color:#d1d5db}
+`;
+  }
+
+  private async generateHtmlFile(outputPath: string): Promise<void> {
+    const html = `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0x1 App</title>
+  <meta name="description" content="0x1 Framework application">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/link":"/0x1/router.js"}}</script>
+</head>
+<body class="bg-slate-900 text-white">
+  <div id="app"></div>
+  <script>
+    window.process={env:{NODE_ENV:'production'}};
+    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
+  </script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>`;
+
+    await Bun.write(join(outputPath, 'index.html'), html);
+  }
+
+  private async copyStaticAssets(outputPath: string): Promise<void> {
+    const publicDir = join(this.options.projectPath, 'public');
+    if (existsSync(publicDir)) {
+      try {
+        await Bun.$`cp -r ${publicDir}/* ${outputPath}/`;
+      } catch (error) {
+        // Silent fail if no assets to copy
       }
-
-      // For JSX files, use Bun transpiler
-      const transpiler = new Bun.Transpiler({
-        loader: 'tsx',
-        target: 'browser',
-        define: {
-          'process.env.NODE_ENV': JSON.stringify('production'),
-          'global': 'globalThis'
-        }
-      });
-
-      let transpiledContent = await transpiler.transform(sourceCode);
-      
-      // Fix JSX function calls
-      transpiledContent = this.normalizeJsxFunctionCalls(transpiledContent);
-      
-      // Transform imports
-      transpiledContent = this.transformImportsForBrowser(transpiledContent);
-      
-      // Add JSX runtime preamble
-      transpiledContent = this.insertJsxRuntimePreamble(transpiledContent);
-      
-      return transpiledContent;
-      
-    } catch (error) {
-      logger.warn(`Transpilation failed for ${sourcePath}: ${error}`);
-      
-      // Return error component
-      return this.generateErrorComponent(sourcePath, String(error));
+    }
+    
+    // Generate minimal favicon.ico if none exists
+    const faviconPath = join(outputPath, 'favicon.ico');
+    if (!existsSync(faviconPath)) {
+      const faviconData = new Uint8Array([
+        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
+        0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
+      ]);
+      await Bun.write(faviconPath, faviconData);
     }
   }
 
-  private transformImportsForBrowser(content: string): string {
-    const lines = content.split('\n');
-    
-    return lines.map(line => {
-      const trimmed = line.trim();
-      
-      // Skip non-import lines
-      if (!trimmed.startsWith('import ') || !trimmed.includes(' from ')) {
-        return line;
-      }
-      
-      // Remove CSS imports
-      if (/import\s+['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(line)) {
-        return '// CSS import removed for browser compatibility';
-      }
-      
-      // Transform 0x1 framework imports
-      if (line.includes('from "0x1"') || line.includes("from '0x1'")) {
-        return line.replace(/["']0x1["']/, '"/node_modules/0x1/index.js"');
-      }
-      
-      // Transform 0x1 submodule imports
-      const submoduleMatch = line.match(/from\s+["']0x1\/([\w-]+)["']/);
-      if (submoduleMatch) {
-        const module = submoduleMatch[1];
-        const moduleMap: Record<string, string> = {
-          'jsx-runtime': '/0x1/jsx-runtime.js',
-          'jsx-dev-runtime': '/0x1/jsx-runtime.js',
-          'hooks': '/0x1/hooks.js',
-          'router': '/0x1/router.js'
-        };
-        
-        if (moduleMap[module]) {
-          return line.replace(/["']0x1\/[\w-]+["']/, `"${moduleMap[module]}"`);
-        }
-      }
-      
-      // Transform relative imports
-      if (line.includes('from "./') || line.includes('from "../')) {
-        return line.replace(
-          /from\s+["'](\.\.?\/[^"']+)["']/,
-          (match, path) => {
-            let normalizedPath = path;
-            if (path.startsWith('./')) {
-              normalizedPath = path.replace('./', '/components/');
-            } else if (path.startsWith('../')) {
-              normalizedPath = path.replace(/^\.\.\//, '/');
-            }
-            
-            if (!normalizedPath.match(/\.(js|ts|tsx|jsx|json|css)$/)) {
-              normalizedPath += '.js';
-            } else if (normalizedPath.match(/\.(ts|tsx|jsx)$/)) {
-              normalizedPath = normalizedPath.replace(/\.(ts|tsx|jsx)$/, '.js');
-            }
-            
-            return `from "${normalizedPath}"`;
-          }
-        );
-      }
-      
-      return line;
-    }).join('\n');
+  private getFrameworkPath(): string {
+    return process.cwd().includes('00-Dev/0x1') 
+      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+      : join(process.cwd(), '../0x1');
+  }
+
+  private createSuccessResult(buildTime: number): BuildResult {
+    return {
+      success: true,
+      outputPath: join(this.options.projectPath, this.options.outDir!),
+      buildTime,
+      routes: this.state.routes.length,
+      components: this.state.components.length,
+      assets: this.state.assets.size,
+      errors: [],
+      warnings: []
+    };
+  }
+
+  private createErrorResult(error: any): BuildResult {
+    return {
+      success: false,
+      outputPath: join(this.options.projectPath, this.options.outDir!),
+      buildTime: Date.now() - this.startTime,
+      routes: 0,
+      components: 0,
+      assets: 0,
+      errors: [error instanceof Error ? error.message : String(error)],
+      warnings: []
+    };
   }
 
   private normalizeJsxFunctionCalls(content: string): string {
@@ -1070,214 +1736,7 @@ export default function ErrorComponent(props) {
 }
 `;
   }
-
-  private getComprehensiveTailwindUtilities(): string {
-    return `
-
-/* 0x1 Framework - Essential Tailwind v4 Utilities */
-/* Reset & Base */
-*, ::before, ::after { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.5; }
-
-/* Layout Essentials */
-.container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.grid { display: grid; }
-.gap-4 { gap: 1rem; }
-.gap-6 { gap: 1.5rem; }
-
-/* Spacing */
-.p-2 { padding: 0.5rem; }
-.p-4 { padding: 1rem; }
-.p-6 { padding: 1.5rem; }
-.p-8 { padding: 2rem; }
-.px-4 { padding-left: 1rem; padding-right: 1rem; }
-.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
-.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-.m-4 { margin: 1rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-8 { margin-bottom: 2rem; }
-
-/* Colors */
-.bg-slate-900 { background-color: #0f172a; }
-.bg-white { background-color: #fff; }
-.bg-violet-600 { background-color: #7c3aed; }
-.bg-violet-700 { background-color: #6d28d9; }
-.bg-red-50 { background-color: #fef2f2; }
-.bg-muted { background-color: #f1f5f9; }
-.text-white { color: #fff; }
-.text-gray-900 { color: #111827; }
-.text-gray-800 { color: #1f2937; }
-.text-gray-600 { color: #4b5563; }
-.text-gray-300 { color: #d1d5db; }
-.text-violet-600 { color: #7c3aed; }
-.text-violet-400 { color: #a78bfa; }
-.text-foreground { color: #0f172a; }
-
-/* Typography */
-.text-9xl { font-size: 8rem; line-height: 1; }
-.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
-.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
-.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-.font-bold { font-weight: 700; }
-.font-medium { font-weight: 500; }
-.text-center { text-align: center; }
-
-/* Borders & Effects */
-.border { border-width: 1px; }
-.border-red-200 { border-color: #fecaca; }
-.rounded-lg { border-radius: 0.5rem; }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
-.shadow-xl { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
-
-/* Interactions */
-.hover\\:bg-violet-700:hover { background-color: #6d28d9; }
-.hover\\:shadow-xl:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
-.hover\\:text-foreground:hover { color: #0f172a; }
-.hover\\:bg-muted:hover { background-color: #f1f5f9; }
-.transition-all { transition: all 0.15s ease; }
-.transition-colors { transition: color 0.15s ease, background-color 0.15s ease; }
-.duration-200 { transition-duration: 0.2s; }
-
-/* Layout Controls */
-.inline-block { display: inline-block; }
-.min-h-\\[60vh\\] { min-height: 60vh; }
-.focus\\:outline-none:focus { outline: none; }
-.focus\\:ring-2:focus { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5); }
-.focus\\:ring-offset-2:focus { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(59, 130, 246, 0.5); }
-
-/* Dark mode support */
-.dark .dark\\:text-white { color: #fff; }
-.dark .dark\\:text-violet-400 { color: #a78bfa; }
-.dark .dark\\:text-gray-300 { color: #d1d5db; }
-.dark .dark\\:bg-gray-800 { background-color: #1f2937; }
-.dark .dark\\:hover\\:bg-secondary:hover { background-color: #374151; }
-`;
-  }
-
-  private getMinimalProductionCss(): string {
-    return `/* 0x1 Framework - Production CSS with Tailwind Utilities */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;border:0 solid}
-html{line-height:1.5;font-family:ui-sans-serif,system-ui,sans-serif;height:100%}
-body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
-
-/* Essential Layout */
-.container{width:100%;max-width:1200px;margin:0 auto;padding:0 1rem}
-.flex{display:flex}.flex-col{flex-direction:column}
-.items-center{align-items:center}.justify-center{justify-content:center}
-.justify-between{justify-content:space-between}
-.grid{display:grid}.gap-4{gap:1rem}.gap-6{gap:1.5rem}
-
-/* Essential Colors */
-.bg-slate-900{background-color:#0f172a}.bg-white{background-color:#fff}
-.bg-violet-600{background-color:#7c3aed}.bg-violet-700{background-color:#6d28d9}
-.text-white{color:#fff}.text-gray-900{color:#111827}
-.text-gray-800{color:#1f2937}.text-violet-600{color:#7c3aed}
-
-/* Essential Spacing */
-.p-2{padding:0.5rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.p-8{padding:2rem}
-.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}
-.mb-2{margin-bottom:0.5rem}.mb-4{margin-bottom:1rem}.mb-8{margin-bottom:2rem}
-
-/* Essential Typography */
-.text-9xl{font-size:8rem;line-height:1}.text-3xl{font-size:1.875rem;line-height:2.25rem}
-.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:0.875rem;line-height:1.25rem}
-.font-bold{font-weight:700}.font-medium{font-weight:500}.text-center{text-align:center}
-
-/* Essential Effects */
-.rounded-lg{border-radius:0.5rem}.shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
-.transition-all{transition:all 0.15s ease}.hover\\:bg-violet-700:hover{background-color:#6d28d9}
-.inline-block{display:inline-block}.min-h-\\[60vh\\]{min-height:60vh}
-
-/* Dark mode */
-.dark .dark\\:text-white{color:#fff}.dark .dark\\:text-violet-400{color:#a78bfa}
-.dark .dark\\:text-gray-300{color:#d1d5db}
-`;
-  }
-
-  private async generateHtmlFile(outputPath: string): Promise<void> {
-    const html = `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
-  <meta name="description" content="0x1 Framework application">
-  <link rel="stylesheet" href="/styles.css">
-  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/link":"/0x1/router.js"}}</script>
-</head>
-<body class="bg-slate-900 text-white">
-  <div id="app"></div>
-  <script>
-    window.process={env:{NODE_ENV:'production'}};
-    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
-  </script>
-  <script src="/app.js" type="module"></script>
-</body>
-</html>`;
-
-    await Bun.write(join(outputPath, 'index.html'), html);
-  }
-
-  private async copyStaticAssets(outputPath: string): Promise<void> {
-    const publicDir = join(this.options.projectPath, 'public');
-    if (existsSync(publicDir)) {
-      try {
-        await Bun.$`cp -r ${publicDir}/* ${outputPath}/`;
-      } catch (error) {
-        // Silent fail if no assets to copy
-      }
-    }
-    
-    // Generate minimal favicon.ico if none exists
-    const faviconPath = join(outputPath, 'favicon.ico');
-    if (!existsSync(faviconPath)) {
-      const faviconData = new Uint8Array([
-        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
-        0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00,
-        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
-      ]);
-      await Bun.write(faviconPath, faviconData);
-    }
-  }
-
-  private getFrameworkPath(): string {
-    return process.cwd().includes('00-Dev/0x1') 
-      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
-      : join(process.cwd(), '../0x1');
-  }
-
-  private createSuccessResult(buildTime: number): BuildResult {
-    return {
-      success: true,
-      outputPath: join(this.options.projectPath, this.options.outDir!),
-      buildTime,
-      routes: this.state.routes.length,
-      components: this.state.components.length,
-      assets: this.state.assets.size,
-      errors: [],
-      warnings: []
-    };
-  }
-
-  private createErrorResult(error: any): BuildResult {
-    return {
-      success: false,
-      outputPath: join(this.options.projectPath, this.options.outDir!),
-      buildTime: Date.now() - this.startTime,
-      routes: 0,
-      components: 0,
-      assets: 0,
-      errors: [error instanceof Error ? error.message : String(error)],
-      warnings: []
-    };
-  }
 } 
+
+
 
