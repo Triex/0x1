@@ -1,14 +1,11 @@
 /**
- * 0x1 Framework dev command - OPTIMIZED WITH SHARED CORE
+ * 0x1 Framework dev command
  * Starts the development server with hot reload and beautiful logging
- * Uses unified route discovery for consistency with build
  */
 
 import type { Server, Subprocess } from 'bun';
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-
-// QUICK WIN 1: Import shared route discovery
 
 // Server imports
 import {
@@ -25,7 +22,6 @@ import {
 // Utility imports
 import { createDevServer } from '../server/dev-server';
 import { logger } from "../utils/logger";
-import { routeDiscovery } from "../utils/route-discovery";
 
 /**
  * Options for the dev command
@@ -404,7 +400,7 @@ async function buildAppBundleWithStatus(projectPath: string): Promise<void> {
 }
 
 /**
- * Main dev server function with beautiful output - OPTIMIZED WITH SHARED CORE
+ * Main dev server function with beautiful output
  */
 export async function dev(options: DevOptions = {}): Promise<Server> {
   try {
@@ -422,26 +418,13 @@ export async function dev(options: DevOptions = {}): Promise<Server> {
       process.exit(1);
     }
 
-    // QUICK WIN 1: Use shared route discovery for validation
-    const discoveredRoutes = await routeDiscovery.discover(projectPath, { 
-      mode: 'development',
-      debug: options.debug 
-    });
+    // Check for main page file
+    const pageFiles = ["page.tsx", "page.jsx", "index.tsx", "index.jsx"];
+    const hasPageFile = pageFiles.some(file => existsSync(join(appPath, file)));
     
-    if (discoveredRoutes.length === 0) {
-      logger.error("❌ No valid routes found in app/ directory.");
-      logger.info("💡 Create app/page.tsx or app/page.jsx to get started.");
+    if (!hasPageFile) {
+      logger.error(`❌ No main page file found in app/. Expected one of: ${pageFiles.join(", ")}`);
       process.exit(1);
-    }
-    
-    // Log discovered routes for developer feedback
-    logger.info(`📍 Discovered ${discoveredRoutes.length} routes: ${discoveredRoutes.map(r => r.path).join(', ')}`);
-    if (options.debug) {
-      discoveredRoutes.forEach(route => {
-        if (route.layouts.length > 0) {
-          logger.debug(`Route ${route.path} has ${route.layouts.length} layouts: ${route.layouts.map(l => l.path).join(' -> ')}`);
-        }
-      });
     }
 
     // Find available port

@@ -1,6 +1,6 @@
 /**
- * 0x1 CLI - Build Command - OPTIMIZED WITH SHARED CORE
- * Builds the application for production using unified transpilation engine
+ * 0x1 CLI - Build Command - ULTRA-FAST OPTIMIZED WITH COMPONENT IMPORT FIXES
+ * Builds the application for production using Bun's full potential
  * Target: <100ms build times with parallel processing and smart caching
  */
 
@@ -8,12 +8,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { logger } from '../utils/logger';
-
-// QUICK WIN 2: Import shared transpilation engine
-// QUICK WIN 1: Import shared route discovery
-import { Route, routeDiscovery } from '../../shared/core/RouteDiscovery';
-// QUICK WIN 3: Import shared import engine
-import { importEngine } from '../../shared/core/ImportEngine';
 
 // Import the proper metadata system
 import { extractMetadataFromFile } from '../../core/metadata';
@@ -1053,7 +1047,7 @@ export default function ErrorComponent(props) {
 const buildCache = new BuildCache();
 
 /**
- * Build the application for production - OPTIMIZED WITH SHARED CORE
+ * Build the application for production - ULTRA-FAST OPTIMIZED
  */
 export async function build(options: BuildOptions = {}): Promise<void> {
   const startTime = Date.now();
@@ -1078,11 +1072,14 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     // Load configuration
     const buildConfig = await loadConfigFast(projectPath, config);
     
-    // QUICK WIN 1: Use shared route discovery instead of dev-server import
-    const discoveredRoutes = await routeDiscovery.discover(projectPath, { 
-      mode: 'production',
-      debug: !silent 
-    });
+    // Discover all routes for the application
+    const { discoverRoutesFromFileSystem } = await import('../server/dev-server');
+    const fullRoutes = discoverRoutesFromFileSystem(projectPath);
+    const discoveredRoutes = fullRoutes.map(route => ({
+      path: route.path,
+      componentPath: route.componentPath,
+      layouts: route.layouts || []
+    }));
 
     if (!silent) {
       logger.success(`Discovered ${discoveredRoutes.length} routes`);
@@ -1095,9 +1092,9 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       logger.info(`Found ${allComponents.length} components to compile`);
     }
 
-    // QUICK WIN 3: Use shared import engine for dependency discovery
+    // DYNAMIC DEPENDENCY DISCOVERY: Analyze entire codebase for imports
     const allSourceFiles = [
-      ...discoveredRoutes.map((route: Route) => {
+      ...discoveredRoutes.map(route => {
         const possiblePaths = [
           join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.tsx')),
           join(projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, '.ts')),
@@ -1108,11 +1105,11 @@ export async function build(options: BuildOptions = {}): Promise<void> {
       ...allComponents.map(comp => comp.path)
     ].filter(existsSync);
 
-    console.log('[Build] 🔍 Discovering dependencies using shared import engine...');
-    await importEngine.discoverDependencies(projectPath, allSourceFiles);
+    console.log('[Build] 🔍 Discovering dependencies across entire codebase...');
+    await importManager.discoverDependencies(projectPath, allSourceFiles);
     
-    const discoveredPackages = importEngine.getDiscoveredPackages();
-    const discoveredCssFiles = importEngine.getCssDependencies();
+    const discoveredPackages = importManager.getDiscoveredPackages();
+    const discoveredCssFiles = importManager.getCssDependencies();
     
     console.log(`[Build] 📊 Auto-discovered: ${discoveredPackages.length} packages, ${discoveredCssFiles.length} CSS files`);
     if (!silent && discoveredPackages.length > 0) {
@@ -1120,7 +1117,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
     }
 
     // Apply discovered CSS dependencies to tracker
-    discoveredCssFiles.forEach((cssFile: string) => {
+    discoveredCssFiles.forEach(cssFile => {
       cssDependencyTracker.addDependency(cssFile);
     });
 

@@ -18,7 +18,7 @@ import {
   statSync,
   watch,
 } from "fs";
-import { dirname, join, resolve } from "path";
+import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tailwindV4Handler } from "../commands/utils/server/tailwind-v4";
 import { logger } from "../utils/logger";
@@ -223,7 +223,7 @@ function broadcastReload(
 /**
  * Generate HTML template for index page with proper app initialization
  */
-function generateIndexHtml(projectPath: string): string {
+function generateIndexHtml(projectPath: string, detectedFavicon?: { path: string; format: string; location: string } | null): string {
   // Check if we have an app/page.tsx or similar
   const possibleAppDirPaths = [
     join(projectPath, "app/page.tsx"),
@@ -242,6 +242,7 @@ function generateIndexHtml(projectPath: string): string {
         includeImportMap: true,
         includeAppScript: true,
         projectPath: projectPath,
+        detectedFavicon: detectedFavicon,
       })
     );
   } else {
@@ -517,22 +518,56 @@ throw new Error('0x1 JSX runtime not available - framework cannot function witho
   }
 
   // Handle component transpilation using the component handler
-  return handleComponentRequest(
-    reqPath,
-    projectPath,
-    reqPath.replace(/^\//, "")
-  );
+  // CRITICAL FIX: Don't handle ALL requests here - only JSX runtime requests
+  // Let other handlers process non-JSX requests (like the root route "/")
+  return null;
 }
 
 /**
  * Server-side route discovery - scans the actual file system
+ * Enhanced to support Next15-style routing with full feature parity:
+ * - Dynamic routes: [slug], [id], etc.
+ * - Catch-all routes: [...slug], [[...slug]]
+ * - Route groups: (group) - don't affect URL structure
+ * - Nested layouts with proper hierarchy
+ * - Search params handling (both server and client)
  */
-function discoverRoutesFromFileSystem(
+export function discoverRoutesFromFileSystem(
   projectPath: string
-): Array<{ path: string; componentPath: string }> {
-  const routes: Array<{ path: string; componentPath: string }> = [];
+): Array<{ 
+  path: string; 
+  componentPath: string; 
+  layouts: Array<{ path: string; componentPath: string }>; 
+  isDynamic: boolean;
+  dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+  routeGroup?: string;
+  filePath?: string; // Track the actual file system path for conflict detection
+}> {
+  const routes: Array<{ 
+    path: string; 
+    componentPath: string; 
+    layouts: Array<{ path: string; componentPath: string }>; 
+    isDynamic: boolean;
+    dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+    routeGroup?: string;
+    filePath?: string;
+  }> = [];
 
-  function scanDirectory(dirPath: string, routePath: string = "") {
+  // Track route conflicts: URL path -> array of file system sources
+  const routeConflicts = new Map<string, Array<{
+    filePath: string;
+    componentPath: string;
+    routeGroup?: string;
+    isGrouped: boolean;
+  }>>();
+
+  function scanDirectory(
+    dirPath: string, 
+    routePath: string = "", 
+    parentLayouts: Array<{ path: string; componentPath: string }> = [],
+    routeGroup?: string,
+    fileSystemPath: string = ""
+  ) {
     try {
       if (!existsSync(dirPath)) {
         return;
@@ -540,24 +575,68 @@ function discoverRoutesFromFileSystem(
 
       const items = readdirSync(dirPath);
 
+      // Check for layout file in current directory
+      const layoutFiles = items.filter((item: string) =>
+        item.match(/^layout\.(tsx|jsx|ts|js)$/)
+      );
+
+      // Build current layout hierarchy (parent layouts + current layout if exists)
+      const currentLayouts = [...parentLayouts];
+      if (layoutFiles.length > 0) {
+        const actualLayoutFile = layoutFiles[0];
+        const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
+        currentLayouts.push({ 
+          path: routePath || "/", 
+          componentPath: layoutComponentPath 
+        });
+        logger.debug(
+          `Found layout: ${routePath || "/"} -> ${layoutComponentPath} (source: ${actualLayoutFile})`
+        );
+      }
+
       // Check for page files in current directory
       const pageFiles = items.filter((item: string) =>
         item.match(/^page\.(tsx|jsx|ts|js)$/)
       );
 
       if (pageFiles.length > 0) {
-        // Found a page file, add route
-        const route = routePath || "/";
-        // Use the actual file extension found, but serve as .js (transpiled)
+        // Found a page file, process the route path for Next.js patterns
+        const processedRoute = processRoutePattern(routePath || "/");
         const actualFile = pageFiles[0];
         const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
-        routes.push({ path: route, componentPath });
+        const fullFilePath = join(dirPath, actualFile);
+        const relativeFilePath = relative(projectPath, fullFilePath);
+        
+        // Track this route for conflict detection
+        const urlPath = processedRoute.path;
+        if (!routeConflicts.has(urlPath)) {
+          routeConflicts.set(urlPath, []);
+        }
+        
+        routeConflicts.get(urlPath)!.push({
+          filePath: relativeFilePath,
+          componentPath: componentPath,
+          routeGroup: routeGroup,
+          isGrouped: !!routeGroup
+        });
+        
+        routes.push({ 
+          path: processedRoute.path, 
+          componentPath: componentPath,
+          layouts: currentLayouts,
+          isDynamic: processedRoute.isDynamic,
+          dynamicSegments: processedRoute.dynamicSegments,
+          routeGroup: routeGroup,
+          filePath: relativeFilePath
+        });
+        
         logger.debug(
-          `Found route: ${route} -> ${componentPath} (source: ${actualFile})`
+          `Found route: ${processedRoute.path} -> ${componentPath} (source: ${actualFile}) ` +
+          `${processedRoute.isDynamic ? '[DYNAMIC]' : '[STATIC]'} with ${currentLayouts.length} layouts`
         );
       }
 
-      // Recursively scan subdirectories (but avoid infinite recursion)
+      // Recursively scan subdirectories with Next.js pattern handling
       const subdirs = items.filter((item: string) => {
         const itemPath = join(dirPath, item);
         try {
@@ -574,8 +653,18 @@ function discoverRoutesFromFileSystem(
 
       for (const subdir of subdirs) {
         const subdirPath = join(dirPath, subdir);
+        
+        // Handle Next.js route groups: (group) - don't affect URL structure
+        if (subdir.startsWith('(') && subdir.endsWith(')')) {
+          const groupName = subdir.slice(1, -1);
+          logger.debug(`Found route group: ${groupName}`);
+          // Route groups don't affect the URL, so pass the same routePath
+          scanDirectory(subdirPath, routePath, currentLayouts, groupName, fileSystemPath + '(' + groupName + ')/');
+        } else {
+          // Normal directory - affects URL structure
         const subroutePath = routePath + "/" + subdir;
-        scanDirectory(subdirPath, subroutePath);
+          scanDirectory(subdirPath, subroutePath, currentLayouts, routeGroup, fileSystemPath + subdir + '/');
+        }
       }
     } catch (error) {
       logger.debug(`Error scanning directory ${dirPath}: ${error}`);
@@ -584,25 +673,242 @@ function discoverRoutesFromFileSystem(
 
   // Scan app directory
   const appDir = join(projectPath, "app");
-  scanDirectory(appDir);
+  scanDirectory(appDir, "", [], undefined, "app/");
 
   // Also scan app/pages directory if it exists
   const pagesDir = join(projectPath, "app", "pages");
   if (existsSync(pagesDir)) {
-    scanDirectory(pagesDir);
+    scanDirectory(pagesDir, "", [], undefined, "app/pages/");
   }
 
-  // Sort routes by path length (more specific routes first)
+  // **ROUTE CONFLICT DETECTION & REPORTING**
+  const conflicts: Array<{
+    urlPath: string;
+    sources: Array<{
+      filePath: string;
+      componentPath: string;
+      routeGroup?: string;
+      isGrouped: boolean;
+    }>;
+    winner: string;
+  }> = [];
+
+  // Check for conflicts and determine winners
+  for (const [urlPath, sources] of routeConflicts.entries()) {
+    if (sources.length > 1) {
+      // CONFLICT DETECTED!
+      
+      // Determine winner based on precedence rules (similar to Next.js):
+      // 1. Non-grouped routes take precedence over grouped routes
+      // 2. If both are grouped or both are non-grouped, alphabetical order by file path
+      const sortedSources = [...sources].sort((a, b) => {
+        // Non-grouped routes win over grouped routes
+        if (!a.isGrouped && b.isGrouped) return -1;
+        if (a.isGrouped && !b.isGrouped) return 1;
+        
+        // If both are the same type, sort alphabetically by file path
+        return a.filePath.localeCompare(b.filePath);
+      });
+      
+      const winner = sortedSources[0];
+      
+      conflicts.push({
+        urlPath,
+        sources,
+        winner: winner.filePath
+      });
+
+      // Generate comprehensive error message
+      const conflictSources = sources.map(s => {
+        const groupInfo = s.isGrouped ? ` (route group: ${s.routeGroup})` : '';
+        return `  • ${s.filePath}${groupInfo}`;
+      }).join('\n');
+
+      const errorMessage = `Route Conflict Detected for "${urlPath}"
+
+Multiple files are trying to handle the same URL path:
+${conflictSources}
+
+🎯 Resolution: Using "${winner.filePath}" as the active route.
+
+🔧 How to Fix:
+  • Rename one of the conflicting page files
+  • Move one route to a different path structure  
+  • Use route groups (folders) to organize without affecting URLs
+  • Consider if you have both (group)/path/page.tsx AND path/page.tsx
+
+📚 Route Groups Info:
+  • (auth)/login/page.tsx → /login (URL not affected by group)
+  • auth/login/page.tsx → /auth/login 
+  • These would conflict if they resolved to the same path
+
+⚠️  Only the winning route will be accessible in your app.`;
+
+      // Log the conflict with appropriate styling
+      logger.warn(`\n${'='.repeat(60)}`);
+      logger.warn('🚨 ROUTE CONFLICT DETECTED');
+      logger.warn(`${'='.repeat(60)}`);
+      logger.warn(`URL Path: ${urlPath}`);
+      logger.warn(`Winner: ${winner.filePath}`);
+      logger.warn(`Conflicting files:`);
+      sources.forEach(source => {
+        const marker = source.filePath === winner.filePath ? '✅' : '❌';
+        const groupInfo = source.isGrouped ? ` (group: ${source.routeGroup})` : '';
+        logger.warn(`  ${marker} ${source.filePath}${groupInfo}`);
+      });
+      logger.warn(`${'='.repeat(60)}\n`);
+
+      // Send to error boundary for user-friendly display
+      if (typeof console !== 'undefined') {
+        console.error(errorMessage);
+      }
+    }
+  }
+
+  // Sort routes by specificity (static routes first, then by segment count)
   routes.sort((a, b) => {
-    if (a.path === "/") return 1; // Root route last
-    if (b.path === "/") return -1;
-    return b.path.length - a.path.length;
+    if (a.path === "/" && b.path !== "/") return 1; // Root route last
+    if (b.path === "/" && a.path !== "/") return -1;
+    
+    // Static routes before dynamic routes
+    if (!a.isDynamic && b.isDynamic) return -1;
+    if (a.isDynamic && !b.isDynamic) return 1;
+    
+    // More specific routes first (more segments = more specific)
+    const aSegments = a.path.split('/').filter(s => s).length;
+    const bSegments = b.path.split('/').filter(s => s).length;
+    return bSegments - aSegments;
   });
 
+  // Filter out losing routes from conflicts (only keep winners)
+  const filteredRoutes = routes.filter(route => {
+    const conflictForThisRoute = conflicts.find(c => c.urlPath === route.path);
+    if (conflictForThisRoute) {
+      // Only keep the winning route
+      return route.filePath === conflictForThisRoute.winner;
+    }
+    return true; // No conflict, keep the route
+  });
+
+  // Summary logging
+  const conflictSummary = conflicts.length > 0 
+    ? ` (${conflicts.length} conflicts resolved)`
+    : '';
+
   logger.info(
-    `Discovered ${routes.length} routes: ${routes.map((r) => r.path).join(", ")}`
+    `Discovered ${filteredRoutes.length} routes${conflictSummary}: ${filteredRoutes.map((r) => 
+      r.path + (r.isDynamic ? ' [DYNAMIC]' : '')
+    ).join(", ")}`
   );
-  return routes;
+  
+  // Log route details for debugging
+  filteredRoutes.forEach(route => {
+    if (route.layouts.length > 0) {
+      logger.debug(
+        `Route ${route.path} layout hierarchy: ${route.layouts.map(l => l.path).join(' -> ')}`
+      );
+    }
+    if (route.isDynamic) {
+      logger.debug(
+        `Dynamic route ${route.path} segments: ${route.dynamicSegments.map(s => 
+          `${s.name}(${s.type})`
+        ).join(', ')}`
+      );
+    }
+  });
+
+  // Add route conflict information to error boundary database
+  if (conflicts.length > 0 && typeof globalThis !== 'undefined') {
+    // Ensure the error tips database includes route conflict patterns
+    const errorTipsDB = (globalThis as any).ERROR_TIPS_DATABASE;
+    if (errorTipsDB) {
+      errorTipsDB.route_conflict = {
+        patterns: [
+          'Route Conflict Detected',
+          'Multiple files are trying to handle the same URL path',
+          'conflicting page files',
+          'route groups.*conflict'
+        ],
+        category: 'Route Configuration',
+        tips: [
+          'Rename one of the conflicting page files to use a different URL path',
+          'Move one route to a different folder structure',
+          'Use route groups (folders in parentheses) to organize files without affecting URLs',
+          'Check if you have both (group)/path/page.tsx AND path/page.tsx patterns',
+          'Only the "winning" route (first in precedence) will be accessible in your app'
+        ],
+        context: [
+          'Multiple files are trying to handle the same URL path',
+          'Route groups like (auth) don\'t affect the URL structure',
+          'The framework automatically picks a winner based on precedence rules'
+        ],
+        quickFixes: [
+          'Rename one of the conflicting files',
+          'Move conflicting routes to different paths',
+          'Review your route group usage',
+          'Check the dev server logs for which route won'
+        ]
+      };
+    }
+  }
+  
+  return filteredRoutes;
+}
+
+/**
+ * Process route pattern to handle Next.js dynamic routing
+ * Supports: [slug], [...slug], [[...slug]], and route groups (group)
+ */
+function processRoutePattern(routePath: string): {
+  path: string;
+  isDynamic: boolean;
+  dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }>;
+} {
+  const segments = routePath.split('/').filter(s => s);
+  const processedSegments: string[] = [];
+  const dynamicSegments: Array<{ name: string; type: 'dynamic' | 'catchAll' | 'optionalCatchAll' }> = [];
+  let isDynamic = false;
+
+  for (const segment of segments) {
+    // Handle optional catch-all routes: [[...slug]]
+    if (segment.startsWith('[[') && segment.endsWith(']]')) {
+      const paramName = segment.slice(5, -2); // Remove [[...]]
+      processedSegments.push(':' + paramName + '*'); // Express-style optional catch-all
+      dynamicSegments.push({ name: paramName, type: 'optionalCatchAll' });
+      isDynamic = true;
+    }
+    // Handle catch-all routes: [...slug]
+    else if (segment.startsWith('[...') && segment.endsWith(']')) {
+      const paramName = segment.slice(4, -1); // Remove [...] 
+      processedSegments.push(':' + paramName + '+'); // Express-style catch-all (one or more)
+      dynamicSegments.push({ name: paramName, type: 'catchAll' });
+      isDynamic = true;
+    }
+    // Handle dynamic segments: [slug]
+    else if (segment.startsWith('[') && segment.endsWith(']')) {
+      const paramName = segment.slice(1, -1); // Remove []
+      processedSegments.push(':' + paramName); // Express-style parameter
+      dynamicSegments.push({ name: paramName, type: 'dynamic' });
+      isDynamic = true;
+    }
+    // Handle route groups: (group) - these don't affect URL structure, so skip them
+    else if (segment.startsWith('(') && segment.endsWith(')')) {
+      // Skip route groups in URL generation
+      continue;
+    }
+    // Regular static segment
+    else {
+      processedSegments.push(segment);
+    }
+  }
+
+  const finalPath = '/' + processedSegments.join('/');
+  
+  return {
+    path: finalPath === '//' ? '/' : finalPath,
+    isDynamic,
+    dynamicSegments
+  };
 }
 
 // Component cache to prevent re-transpilation
@@ -633,7 +939,7 @@ export function createDevServer(options: DevServerOptions): Server {
   
   // SSE Connection management with proper rate limiting
   const lastSSEConnection = new Map<string, number>();
-  const SSE_RATE_LIMIT_MS = 2000; // Reduced to 2 seconds - more reasonable for development
+  const SSE_RATE_LIMIT_MS = 5000; // Increased to 5 seconds to prevent 429 errors in dev
   
   // Component transpilation cache to prevent duplicate work
   const transpilationCache = new Map<string, { content: string; mtime: number }>();
@@ -919,11 +1225,17 @@ export function createDevServer(options: DevServerOptions): Server {
       }
 
       // Handle EventSource connections for live reload - PROPER STREAMING SSE
-      if (reqPath === "/__0x1_sse_live_reload" || reqPath === "/__0x1_live_reload") {
+      if (
+        reqPath === "/__0x1_sse_live_reload" ||
+        reqPath === "/__0x1_live_reload"
+      ) {
         logRequestStatus(200, reqPath, "SSE connection established");
         
         // CRITICAL FIX: Prevent connection flooding with rate limiting
-        const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+        const clientIP =
+          req.headers.get("x-forwarded-for") ||
+          req.headers.get("x-real-ip") ||
+          "unknown";
         const now = Date.now();
         const connectionKey = `${clientIP}_${reqPath}`;
         
@@ -931,13 +1243,17 @@ export function createDevServer(options: DevServerOptions): Server {
         if (lastSSEConnection.has(connectionKey)) {
           const lastTime = lastSSEConnection.get(connectionKey);
           if (lastTime && now - lastTime < SSE_RATE_LIMIT_MS) {
-            logRequestStatus(429, reqPath, `Rate limited - last connection ${now - lastTime}ms ago`);
+            logRequestStatus(
+              429,
+              reqPath,
+              `Rate limited - last connection ${now - lastTime}ms ago`
+            );
             return new Response("Rate limited - too many connections", { 
               status: 429,
               headers: {
                 "Retry-After": Math.ceil(SSE_RATE_LIMIT_MS / 1000).toString(),
-                "Content-Type": "text/plain"
-              }
+                "Content-Type": "text/plain",
+              },
             });
           }
         }
@@ -951,13 +1267,13 @@ export function createDevServer(options: DevServerOptions): Server {
             const initialMessage = `data: ${JSON.stringify({ 
               type: "connected", 
               timestamp: now,
-              server: "0x1-dev" 
+              server: "0x1-dev",
             })}\n\n`;
             
             try {
               controller.enqueue(encoder.encode(initialMessage));
             } catch (error) {
-              console.error('[0x1 SSE] Failed to send initial message:', error);
+              console.error("[0x1 SSE] Failed to send initial message:", error);
               return;
             }
             
@@ -966,7 +1282,7 @@ export function createDevServer(options: DevServerOptions): Server {
               try {
                 const heartbeat = `data: ${JSON.stringify({ 
                   type: "heartbeat", 
-                  timestamp: Date.now() 
+                  timestamp: Date.now(),
                 })}\n\n`;
                 controller.enqueue(encoder.encode(heartbeat));
               } catch (error) {
@@ -992,7 +1308,7 @@ export function createDevServer(options: DevServerOptions): Server {
             
             // Clean up when client disconnects
             if (req.signal) {
-              req.signal.addEventListener('abort', cleanup);
+              req.signal.addEventListener("abort", cleanup);
             }
             
             // Return cleanup function
@@ -1000,8 +1316,8 @@ export function createDevServer(options: DevServerOptions): Server {
           },
           cancel() {
             // Connection closed by client - just log, don't force actions
-            console.log('[0x1 SSE] Client disconnected cleanly');
-          }
+            console.log("[0x1 SSE] Client disconnected cleanly");
+          },
         });
 
         return new Response(stream, {
@@ -1009,24 +1325,27 @@ export function createDevServer(options: DevServerOptions): Server {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Connection": "keep-alive",
+            Connection: "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Cache-Control",
-            "X-Accel-Buffering": "no" // Disable nginx buffering
-          }
+            "X-Accel-Buffering": "no", // Disable nginx buffering
+          },
         });
       }
 
       // Handle ping endpoint for heartbeat monitoring
       if (reqPath === "/__0x1_ping") {
         logRequestStatus(200, reqPath, "Heartbeat ping");
-        return new Response(JSON.stringify({ 
-          status: 'ok', 
-          timestamp: Date.now() 
-        }), {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            timestamp: Date.now(),
+          }),
+          {
           status: 200,
-          headers: STANDARD_HEADERS.JSON
-        });
+            headers: STANDARD_HEADERS.JSON,
+          }
+        );
       }
 
       // Handle live reload script request
@@ -1035,23 +1354,28 @@ export function createDevServer(options: DevServerOptions): Server {
         
         // CRITICAL FIX: Always use TypeScript source and transpile it - no more .js fallback
         try {
-          const liveReloadTsPath = join(frameworkPath, "src", "browser", "live-reload.ts");
+          const liveReloadTsPath = join(
+            frameworkPath,
+            "src",
+            "browser",
+            "live-reload.ts"
+          );
           if (existsSync(liveReloadTsPath)) {
             // Transpile the TypeScript live-reload to JavaScript
             const transpiled = await Bun.build({
               entrypoints: [liveReloadTsPath],
-              target: 'browser',
-              format: 'iife', // Use IIFE format for immediate execution
+              target: "browser",
+              format: "iife", // Use IIFE format for immediate execution
               minify: false,
-              sourcemap: 'none',
+              sourcemap: "none",
               define: {
-                'process.env.NODE_ENV': JSON.stringify('development')
+                "process.env.NODE_ENV": JSON.stringify("development"),
               },
               external: [],
             });
             
             if (transpiled.success && transpiled.outputs.length > 0) {
-              let transpiledContent = '';
+              let transpiledContent = "";
               for (const output of transpiled.outputs) {
                 transpiledContent += await output.text();
               }
@@ -1064,7 +1388,9 @@ export function createDevServer(options: DevServerOptions): Server {
                 },
               });
             } else {
-              logger.error(`Live reload transpilation failed: ${transpiled.logs?.join('\n') || 'Unknown error'}`);
+              logger.error(
+                `Live reload transpilation failed: ${transpiled.logs?.join("\n") || "Unknown error"}`
+              );
             }
           }
         } catch (error) {
@@ -1072,13 +1398,16 @@ export function createDevServer(options: DevServerOptions): Server {
         }
         
         // If transpilation fails, return error instead of fallback
-        return new Response(`console.error('[0x1] Live reload failed to load - check server logs');`, {
+        return new Response(
+          `console.error('[0x1] Live reload failed to load - check server logs');`,
+          {
           status: 500,
           headers: {
             "Content-Type": "application/javascript; charset=utf-8",
             "Cache-Control": "no-cache",
           },
-        });
+          }
+        );
       }
 
       // Handle server actions (Next15 style)
@@ -1138,7 +1467,11 @@ export function createDevServer(options: DevServerOptions): Server {
           // CRITICAL FIX: Use Bun's direct transpilation for TypeScript files
           const hooksPath = join(frameworkPath, "src", "core", "hooks.ts");
           if (existsSync(hooksPath)) {
-            logRequestStatus(200, reqPath, "Transpiling 0x1 Hooks using Bun transpiler");
+            logRequestStatus(
+              200,
+              reqPath,
+              "Transpiling 0x1 Hooks using Bun transpiler"
+            );
             
             // Use Bun's direct transpilation API for TypeScript files
             const sourceCode = await Bun.file(hooksPath).text();
@@ -1147,24 +1480,26 @@ export function createDevServer(options: DevServerOptions): Server {
               // Use Bun's transpiler directly for TypeScript to JavaScript
               const transpiled = await Bun.build({
                 entrypoints: [hooksPath],
-                target: 'browser',
-                format: 'esm',
+                target: "browser",
+                format: "esm",
                 minify: false,
-                sourcemap: 'none',
+                sourcemap: "none",
                 define: {
-                  'process.env.NODE_ENV': JSON.stringify('development')
+                  "process.env.NODE_ENV": JSON.stringify("development"),
                 },
                 external: [], // Don't externalize anything for hooks
               });
               
               if (transpiled.success && transpiled.outputs.length > 0) {
-                let transpiledContent = '';
+                let transpiledContent = "";
                 for (const output of transpiled.outputs) {
                   transpiledContent += await output.text();
                 }
                 
                 // CRITICAL FIX: Add production-ready browser compatibility without duplication
-                const enhancedContent = transpiledContent + `
+                const enhancedContent =
+                  transpiledContent +
+                  `
 
 // PRODUCTION-READY BROWSER COMPATIBILITY LAYER
 if (typeof window !== 'undefined') {
@@ -1211,10 +1546,12 @@ if (typeof globalThis !== 'undefined') {
                 
                 return new Response(enhancedContent, {
                   status: 200,
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 });
               } else {
-                logger.error(`Bun transpilation failed: ${transpiled.logs?.join('\n') || 'Unknown error'}`);
+                logger.error(
+                  `Bun transpilation failed: ${transpiled.logs?.join("\n") || "Unknown error"}`
+                );
               }
             } catch (transError) {
               logger.error(`Transpilation error: ${transError}`);
@@ -1228,7 +1565,7 @@ if (typeof globalThis !== 'undefined') {
             const hooksContent = readFileSync(hooksDistPath, "utf-8");
             return new Response(hooksContent, {
               status: 200,
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             });
           }
         } catch (error) {
@@ -1236,17 +1573,22 @@ if (typeof globalThis !== 'undefined') {
         }
 
         // CRITICAL: If hooks can't be loaded, this is a fatal error
-        logger.error('❌ Hooks system not available - this is required for the framework');
+        logger.error(
+          "❌ Hooks system not available - this is required for the framework"
+        );
         logRequestStatus(500, reqPath, "Hooks system not available");
-        return new Response(`
+        return new Response(
+          `
 // 0x1 Hooks - Fatal Error
 console.error('[0x1 Hooks] ❌ Hooks system not available - framework cannot function');
 console.error('[0x1 Hooks] Check your installation and run "bun run build:framework"');
 throw new Error('0x1 Hooks system not available - framework cannot function without hooks');
-`, {
+`,
+          {
           status: 500,
-          headers: STANDARD_HEADERS.JS_SIMPLE
-        });
+            headers: STANDARD_HEADERS.JS_SIMPLE,
+          }
+        );
       }
 
       // Handle 0x1 framework module requests
@@ -1277,6 +1619,7 @@ console.log('[0x1] Framework module loaded - dynamic runtime version');
 // =====================================================
 
 // Create dynamic getters that resolve hooks at import time, not module load time
+if (!globalThis.hasOwnProperty('__0x1_hooks_getter')) {
 Object.defineProperty(globalThis, '__0x1_hooks_getter', {
   value: function(hookName) {
     // Check window.React first (set by hooks module)
@@ -1310,8 +1653,10 @@ Object.defineProperty(globalThis, '__0x1_hooks_getter', {
   writable: false,
   enumerable: false
 });
+}
 
 // Create runtime hook getters - these resolve the actual hooks when first accessed
+if (!globalThis.hasOwnProperty('__0x1_useState')) {
 Object.defineProperty(globalThis, '__0x1_useState', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useState');
@@ -1321,7 +1666,9 @@ Object.defineProperty(globalThis, '__0x1_useState', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useEffect')) {
 Object.defineProperty(globalThis, '__0x1_useEffect', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useEffect');
@@ -1330,7 +1677,9 @@ Object.defineProperty(globalThis, '__0x1_useEffect', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useCallback')) {
 Object.defineProperty(globalThis, '__0x1_useCallback', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useCallback');
@@ -1339,7 +1688,9 @@ Object.defineProperty(globalThis, '__0x1_useCallback', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useMemo')) {
 Object.defineProperty(globalThis, '__0x1_useMemo', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useMemo');
@@ -1348,7 +1699,9 @@ Object.defineProperty(globalThis, '__0x1_useMemo', {
   },
   configurable: true
 });
+}
 
+if (!globalThis.hasOwnProperty('__0x1_useRef')) {
 Object.defineProperty(globalThis, '__0x1_useRef', {
   get() {
     const hook = globalThis.__0x1_hooks_getter('useRef');
@@ -1357,6 +1710,7 @@ Object.defineProperty(globalThis, '__0x1_useRef', {
   },
   configurable: true
 });
+}
 
 // Export the dynamic hooks - CRITICAL FIX: Add useEffect export
 export const useState = (...args) => globalThis.__0x1_useState(...args);
@@ -1405,13 +1759,183 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
 }`;
 
         return new Response(cleanFrameworkModule, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
+        });
+      }
+
+      // Handle 0x1 search params hooks (Next.js-style)
+      if (
+        reqPath === "/0x1/search-params.js" ||
+        reqPath === "/node_modules/0x1/search-params.js" ||
+        reqPath === "/0x1/navigation.js" ||
+        reqPath === "/node_modules/0x1/navigation.js"
+      ) {
+        logRequestStatus(
+          200,
+          reqPath,
+          "Serving Next.js-style search params hooks"
+        );
+
+        const searchParamsHooks = `
+// 0x1 Framework - Next15-style Search Params & Navigation Hooks
+console.log('[0x1 Navigation] Loading Next.js-style navigation hooks...');
+
+// ===== SEARCH PARAMS MANAGEMENT =====
+let currentSearchParams = new URLSearchParams(window.location.search);
+let currentPathname = window.location.pathname;
+let searchParamsSubscribers = new Set();
+let pathnameSubscribers = new Set();
+
+// Update search params when URL changes
+function updateSearchParamsFromURL() {
+  const newSearchParams = new URLSearchParams(window.location.search);
+  const newPathname = window.location.pathname;
+  
+  if (newSearchParams.toString() !== currentSearchParams.toString()) {
+    currentSearchParams = newSearchParams;
+    searchParamsSubscribers.forEach(callback => {
+      try { callback(currentSearchParams); } catch (error) {
+        console.error('[0x1 Navigation] Error in search params subscriber:', error);
+      }
+    });
+  }
+  
+  if (newPathname !== currentPathname) {
+    currentPathname = newPathname;
+    pathnameSubscribers.forEach(callback => {
+      try { callback(currentPathname); } catch (error) {
+        console.error('[0x1 Navigation] Error in pathname subscriber:', error);
+      }
+    });
+  }
+}
+
+// Listen for URL changes
+window.addEventListener('popstate', updateSearchParamsFromURL);
+
+// Override history methods to trigger updates
+const originalPushState = window.history.pushState;
+const originalReplaceState = window.history.replaceState;
+
+window.history.pushState = function(...args) {
+  originalPushState.apply(this, args);
+  setTimeout(updateSearchParamsFromURL, 0);
+};
+
+window.history.replaceState = function(...args) {
+  originalReplaceState.apply(this, args);
+  setTimeout(updateSearchParamsFromURL, 0);
+};
+
+// ===== NEXT.JS-STYLE HOOKS =====
+
+function useSearchParams() {
+  const [searchParams, setSearchParams] = window.React?.useState ? 
+    window.React.useState(currentSearchParams) : 
+    [currentSearchParams, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      const updateParams = (newParams) => {
+        setSearchParams(new URLSearchParams(newParams.toString()));
+      };
+      searchParamsSubscribers.add(updateParams);
+      return () => searchParamsSubscribers.delete(updateParams);
+    }, []);
+  }
+  
+  return {
+    get: (key) => searchParams.get(key),
+    getAll: (key) => searchParams.getAll(key),
+    has: (key) => searchParams.has(key),
+    entries: () => searchParams.entries(),
+    keys: () => searchParams.keys(),
+    values: () => searchParams.values(),
+    toString: () => searchParams.toString(),
+    size: searchParams.size
+  };
+}
+
+function usePathname() {
+  const [pathname, setPathname] = window.React?.useState ? 
+    window.React.useState(currentPathname) : [currentPathname, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      pathnameSubscribers.add(setPathname);
+      return () => pathnameSubscribers.delete(setPathname);
+    }, []);
+  }
+  
+  return pathname;
+}
+
+function useRouter() {
+  return {
+    push: (href) => {
+      if (window.router?.navigate) {
+        window.router.navigate(href);
+      } else {
+        window.history.pushState(null, '', href);
+      }
+    },
+    replace: (href) => {
+      if (window.router?.navigate) {
+        window.router.navigate(href, false, true);
+      } else {
+        window.history.replaceState(null, '', href);
+      }
+    },
+    back: () => window.history.back(),
+    forward: () => window.history.forward(),
+    refresh: () => window.location.reload()
+  };
+}
+
+function useParams() {
+  const [params, setParams] = window.React?.useState ? 
+    window.React.useState({}) : [{}, () => {}];
+  
+  if (window.React?.useEffect) {
+    window.React.useEffect(() => {
+      const updateParams = () => {
+        if (window.router?.getCurrentParams) {
+          setParams(window.router.getCurrentParams());
+        }
+      };
+      updateParams();
+      window.addEventListener('routechange', updateParams);
+      return () => window.removeEventListener('routechange', updateParams);
+    }, []);
+  }
+  
+  return params;
+}
+
+// Make hooks globally available
+if (typeof window !== 'undefined') {
+  Object.assign(window, { useSearchParams, usePathname, useRouter, useParams });
+  if (window.React) {
+    Object.assign(window.React, { useSearchParams, usePathname, useRouter, useParams });
+  }
+}
+
+// ES Module exports
+export { useSearchParams, usePathname, useRouter, useParams };
+export default { useSearchParams, usePathname, useRouter, useParams };
+
+console.log('[0x1 Navigation] ✅ Next.js-style navigation hooks loaded');
+`;
+
+        return new Response(searchParamsHooks, {
+          status: 200,
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
       // ========================================
-      // 🚀 0x1 ULTRA-DYNAMIC POLYFILL ENGINE v5.0
-      // ZERO HARDCODING - PURE PATTERN DETECTION
+      // 🚀 0x1 DYNAMIC POLYFILL ENGINE v5.0
+      // NOW WITH PURE PATTERN DETECTION
       // ========================================
 
       // Handle ALL node_modules with intelligent polyfills
@@ -1925,6 +2449,7 @@ function createIntelligentExport(name, packageContext) {
         console.log('[0x1 AI] Enhanced ' + nameStr + ' with intelligent sub-components: ' + intelligentSubComponents.join(', '));
       }
       
+      }
       return componentFunction;
     }
     
@@ -2160,39 +2685,47 @@ console.log('[0x1 🎯] Zero hardcoding - works with ANY npm package!');
                 Expires: "0",
                 ETag: `"router-${Date.now()}-${Math.random()}"`,
                 "Last-Modified": new Date().toUTCString(),
-              }
+              },
             });
           }
 
           // CRITICAL: If precompiled router doesn't exist, this is a build issue
-          logger.error('❌ Precompiled router not found - run "bun run build:framework" first');
+          logger.error(
+            '❌ Precompiled router not found - run "bun run build:framework" first'
+          );
           logRequestStatus(
             500,
             reqPath,
             "Router not built - run build:framework"
           );
           
-          return new Response(`
+          return new Response(
+            `
 // 0x1 Router - Build Error
 console.error('[0x1 Router] ❌ Precompiled router not found');
 console.error('[0x1 Router] Run "bun run build:framework" to build the router');
 throw new Error('0x1 Router not built - run "bun run build:framework" first');
-`, {
+`,
+            {
             status: 500,
-            headers: STANDARD_HEADERS.JS_SIMPLE
-          });
+              headers: STANDARD_HEADERS.JS_SIMPLE,
+            }
+          );
         } catch (error) {
           logger.error(`❌ Error serving precompiled router: ${error}`);
           logRequestStatus(500, reqPath, `Router error: ${error}`);
           
-          return new Response(`
+          return new Response(
+            `
 // 0x1 Router - Error
 console.error('[0x1 Router] ❌ Router loading failed: ${error}');
 throw new Error('0x1 Router failed to load: ${error}');
-`, {
+`,
+            {
             status: 500,
-            headers: STANDARD_HEADERS.JS_SIMPLE
-          });
+              headers: STANDARD_HEADERS.JS_SIMPLE,
+            }
+          );
         }
       }
 
@@ -2211,7 +2744,7 @@ throw new Error('0x1 Router failed to load: ${error}');
             const linkContent = readFileSync(linkPath, "utf-8");
             return new Response(linkContent, {
               status: 200,
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             });
           }
         } catch (error) {
@@ -2221,7 +2754,7 @@ throw new Error('0x1 Router failed to load: ${error}');
         // Fallback: Generate Link component dynamically
         logRequestStatus(200, reqPath, "Serving generated Link component");
         const linkComponent = `
-// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility
+// 0x1 Framework Link Component - Enhanced for proper JSX runtime compatibility AND hash fragment handling
 function Link({ href, children, className, target, rel, ...props }) {
   // CRITICAL FIX: Properly handle children for 0x1 JSX runtime
   // Convert all children types to proper JSX elements
@@ -2245,11 +2778,55 @@ function Link({ href, children, className, target, rel, ...props }) {
         // Handle client-side navigation for internal links
         if (href.startsWith('/') && !target) {
           e.preventDefault();
+          
+          // CRITICAL FIX: Properly handle hash fragments
+          const [pathname, hash] = href.split('#');
+          
+          console.log('[0x1 Link] Navigating to:', { href, pathname, hash });
+          
+          // Navigate to the path first
           if (window.router) {
-            window.router.navigate(href);
+            window.router.navigate(pathname || '/');
           } else {
-            window.history.pushState(null, '', href);
+            window.history.pushState(null, '', pathname || '/');
             window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+          
+          // CRITICAL FIX: Handle hash scrolling after navigation
+          if (hash) {
+            // Use setTimeout to ensure the page has loaded before scrolling
+            setTimeout(() => {
+              const targetElement = document.getElementById(hash);
+              if (targetElement) {
+                console.log('[0x1 Link] Scrolling to element:', hash);
+                targetElement.scrollIntoView({ 
+                  behavior: 'smooth', 
+                  block: 'start' 
+                });
+                
+                // Update URL with hash
+                const fullUrl = (pathname || '/') + '#' + hash;
+                window.history.replaceState(null, '', fullUrl);
+              } else {
+                console.warn('[0x1 Link] Hash target not found:', hash);
+                
+                // Still update URL even if element not found
+                const fullUrl = (pathname || '/') + '#' + hash;
+                window.history.replaceState(null, '', fullUrl);
+                
+                // Try again after a longer delay in case content is still loading
+                setTimeout(() => {
+                  const delayedTarget = document.getElementById(hash);
+                  if (delayedTarget) {
+                    console.log('[0x1 Link] Found hash target on retry:', hash);
+                    delayedTarget.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'start' 
+                    });
+                  }
+                }, 500);
+              }
+            }, 100);
           }
         }
         // Call original onClick if provided
@@ -2292,7 +2869,7 @@ export { Link };
 
         return new Response(linkComponent, {
           status: 200,
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2364,7 +2941,7 @@ console.log('[0x1] useSyncExternalStoreWithSelector shim loaded successfully');
 
         return new Response(shimCode, {
           status: 200,
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2402,7 +2979,7 @@ module.exports = process;
 `;
 
         return new Response(browserPolyfill, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2450,7 +3027,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `;
 
         return new Response(scrollBarConstants, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2575,7 +3152,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `;
 
         return new Response(constantsPolyfill, {
-          headers: STANDARD_HEADERS.JS_SIMPLE
+          headers: STANDARD_HEADERS.JS_SIMPLE,
         });
       }
 
@@ -2710,7 +3287,7 @@ if (typeof module !== 'undefined' && module.exports) {
 `,
           {
             status: 200,
-            headers: STANDARD_HEADERS.JS_SIMPLE
+            headers: STANDARD_HEADERS.JS_SIMPLE,
           }
         );
       }
@@ -2773,36 +3350,52 @@ if (typeof module !== 'undefined' && module.exports) {
           const urlParams = new URLSearchParams(url.search);
 
           // CRITICAL FIX: Handle source file requests for dependency analysis
-          if (urlParams.has('source') && urlParams.get('source') === 'true') {
+          if (urlParams.has("source") && urlParams.get("source") === "true") {
             // This is a request for the original source file, not transpiled
             const basePath = cleanPath.endsWith(".js")
               ? cleanPath.replace(".js", "")
               : cleanPath;
             
             // FIXED: Remove leading slash for proper path resolution
-            const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+            const relativePath = basePath.startsWith("/")
+              ? basePath.slice(1)
+              : basePath;
             
             // Convert .js request to source file (.tsx, .jsx, .ts, .js)
-            const possibleSourcePaths = generatePossiblePaths(projectPath, relativePath, SUPPORTED_EXTENSIONS);
+            const possibleSourcePaths = generatePossiblePaths(
+              projectPath,
+              relativePath,
+              SUPPORTED_EXTENSIONS
+            );
             
             // Find the actual source file
-            const sourcePath = possibleSourcePaths.find((path) => existsSync(path));
+            const sourcePath = possibleSourcePaths.find((path) =>
+              existsSync(path)
+            );
             
             if (sourcePath) {
-              logRequestStatus(200, reqPath, `Serving source file for analysis: ${sourcePath.replace(projectPath, "")}`);
+              logRequestStatus(
+                200,
+                reqPath,
+                `Serving source file for analysis: ${sourcePath.replace(projectPath, "")}`
+              );
               
               // Read and return the raw source file content
-              const sourceContent = readFileSync(sourcePath, 'utf-8');
+              const sourceContent = readFileSync(sourcePath, "utf-8");
               return new Response(sourceContent, {
                 status: 200,
                 headers: {
                   "Content-Type": "text/plain; charset=utf-8",
                   "Cache-Control": "no-cache",
-                }
+                },
               });
             } else {
               // Source file not found
-              logRequestStatus(404, reqPath, `Source file not found for analysis. Checked: ${possibleSourcePaths.map(p => p.replace(projectPath, '')).join(', ')}`);
+              logRequestStatus(
+                404,
+                reqPath,
+                `Source file not found for analysis. Checked: ${possibleSourcePaths.map((p) => p.replace(projectPath, "")).join(", ")}`
+              );
               return new Response("", { status: 404 });
             }
           }
@@ -2812,8 +3405,15 @@ if (typeof module !== 'undefined' && module.exports) {
             ? cleanPath.replace(".js", "")
             : cleanPath;
 
-          // Convert .js request to source file (.tsx, .jsx, .ts, .js)
-          const possibleSourcePaths = generatePossiblePaths(projectPath, basePath, SUPPORTED_EXTENSIONS);
+          // CRITICAL FIX: Better path resolution for components
+          const relativePath = basePath.startsWith("/")
+            ? basePath.slice(1)
+            : basePath;
+          const possibleSourcePaths = generatePossiblePaths(
+            projectPath,
+            relativePath,
+            SUPPORTED_EXTENSIONS
+          );
 
           // Find the actual source file
           const sourcePath = possibleSourcePaths.find((path) =>
@@ -2829,7 +3429,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
             // Use the component handler to transpile and serve
             const componentBasePath = basePath.replace(/^\//, ""); // Remove leading slash
-            const result = handleComponentRequest(
+            const result = await handleComponentRequest(
               cleanPath, // Use clean path without query params
               projectPath,
               componentBasePath
@@ -2861,7 +3461,7 @@ export default function ErrorComponent(props) {
 `,
                 {
                   status: 200, // Return 200 to avoid infinite retries
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 }
               );
             }
@@ -2882,15 +3482,20 @@ export default function NotFoundComponent(props) {
   container.className = 'component-not-found p-4 border border-yellow-400 bg-yellow-50 rounded';
   container.innerHTML = \`
     <div class="text-yellow-800">
-      <h3 class="font-bold">Component Not Found</h3>
-      <p>Could not find component: <code>${basePath}</code></p>
-      <p class="text-sm mt-2">Expected one of:</p>
-      <ul class="text-xs mt-1 ml-4">
+      <h3 class="font-bold mb-2">Component Not Found</h3>
+      <p class="mb-2">Could not find component: <code>${basePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Searched Paths</summary>
+        <ul class="mt-2 ml-4 text-xs">
         <li>${basePath}.tsx</li>
         <li>${basePath}.jsx</li>
         <li>${basePath}.ts</li>
         <li>${basePath}.js</li>
       </ul>
+      </details>
+      <p class="text-xs mt-2 opacity-75">
+        💡 Create one of these files to resolve this error
+      </p>
     </div>
   \`;
   return container;
@@ -2898,7 +3503,7 @@ export default function NotFoundComponent(props) {
 `,
               {
                 status: 200, // Return 200 to avoid infinite retries
-                headers: STANDARD_HEADERS.JS_SIMPLE
+                headers: STANDARD_HEADERS.JS_SIMPLE,
               }
             );
           }
@@ -2925,7 +3530,7 @@ export default function ComponentErrorFallback(props) {
 `,
             {
               status: 200, // Return 200 to avoid infinite retries
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             }
           );
         }
@@ -2934,11 +3539,11 @@ export default function ComponentErrorFallback(props) {
       // Handle index.html requests (root route)
       if (reqPath === "/" || reqPath === "/index.html") {
         logRequestStatus(200, reqPath, "Serving index.html");
-        const html = generateIndexHtml(projectPath);
+        const html = generateIndexHtml(projectPath, detectedFavicon);
 
         return new Response(html, {
           status: 200,
-          headers: STANDARD_HEADERS.HTML
+          headers: STANDARD_HEADERS.HTML,
         });
       }
 
@@ -2969,8 +3574,16 @@ export default function ComponentErrorFallback(props) {
         const isInitialPageLoad = !isClientSideNavigation;
 
         const possiblePagePaths = [
-          ...generatePossiblePaths(projectPath, `app/${reqPath.slice(1)}/page`, SUPPORTED_EXTENSIONS),
-          ...generatePossiblePaths(projectPath, `app/pages/${reqPath.slice(1)}/page`, SUPPORTED_EXTENSIONS)
+          ...generatePossiblePaths(
+            projectPath,
+            `app/${reqPath.slice(1)}/page`,
+            SUPPORTED_EXTENSIONS
+          ),
+          ...generatePossiblePaths(
+            projectPath,
+            `app/pages/${reqPath.slice(1)}/page`,
+            SUPPORTED_EXTENSIONS
+          ),
         ];
 
         const pageExists = possiblePagePaths.some((path) => existsSync(path));
@@ -2982,11 +3595,11 @@ export default function ComponentErrorFallback(props) {
             reqPath,
             "Serving app page route (initial load)"
           );
-          const html = generateIndexHtml(projectPath);
+          const html = generateIndexHtml(projectPath, detectedFavicon);
 
           return new Response(html, {
             status: 200,
-            headers: STANDARD_HEADERS.HTML
+            headers: STANDARD_HEADERS.HTML,
           });
         } else if (pageExists && isClientSideNavigation) {
           // This is client-side navigation - return 204 No Content to let the router handle it
@@ -3043,7 +3656,10 @@ export default function ComponentErrorFallback(props) {
               reqPath === "/processed-tailwind.css"
             ) {
               // Try multiple possible CSS file locations for v4
-              const possibleCssPaths = generateCssPaths(projectPath, "styles.css");
+              const possibleCssPaths = generateCssPaths(
+                projectPath,
+                "styles.css"
+              );
 
               for (const cssPath of possibleCssPaths) {
                 if (existsSync(cssPath)) {
@@ -3054,7 +3670,7 @@ export default function ComponentErrorFallback(props) {
                     `Serving Tailwind CSS v4 from ${cssPath.replace(projectPath, "")}`
                   );
                   return new Response(css, {
-                    headers: STANDARD_HEADERS.CSS
+                    headers: STANDARD_HEADERS.CSS,
                   });
                 }
               }
@@ -3069,7 +3685,7 @@ export default function ComponentErrorFallback(props) {
                   "Serving Tailwind CSS v4 source (unprocessed)"
                 );
                 return new Response(css, {
-                  headers: STANDARD_HEADERS.CSS
+                  headers: STANDARD_HEADERS.CSS,
                 });
               }
             }
@@ -3120,7 +3736,7 @@ export default function ComponentErrorFallback(props) {
   console.log('[0x1] Tailwind CSS v4 runtime loaded');
 })();`,
                 {
-                  headers: STANDARD_HEADERS.JS_SIMPLE
+                  headers: STANDARD_HEADERS.JS_SIMPLE,
                 }
               );
             }
@@ -3222,7 +3838,7 @@ body {
 }
 `,
             {
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             }
           );
         } else {
@@ -3250,7 +3866,7 @@ if (document.readyState === 'loading') {
 }
 `,
             {
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: STANDARD_HEADERS.JS_SIMPLE,
             }
           );
         }
@@ -3259,7 +3875,7 @@ if (document.readyState === 'loading') {
       // ========================================
       // 🎨 ULTRA-DYNAMIC CSS & GLOBALS HANDLER
       // Intelligent CSS discovery and serving
-      // Works with Next.js 15, Vite, any framework!
+      // Works with Next15, Vite, any framework!
       // ========================================
 
       // Handle globals.css and any CSS file requests
@@ -3273,7 +3889,7 @@ if (document.readyState === 'loading') {
             logRequestStatus(404, reqPath, "Invalid CSS path");
             return new Response("/* Invalid CSS path */", {
               status: 404,
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             });
           }
 
@@ -3296,7 +3912,7 @@ if (document.readyState === 'loading') {
               `Serving CSS from ${foundCssPath.replace(projectPath, "")}`
             );
             return new Response(css, {
-              headers: STANDARD_HEADERS.CSS
+              headers: STANDARD_HEADERS.CSS,
             });
           } else {
             // Generate a helpful CSS file if not found
@@ -3337,7 +3953,7 @@ body {
                 .join("\n")} */
 `,
               {
-                headers: STANDARD_HEADERS.CSS
+                headers: STANDARD_HEADERS.CSS,
               }
             );
           }
@@ -3346,7 +3962,7 @@ body {
             error instanceof Error ? error.message : String(error);
           logger.error(`CSS serving error: ${errorMessage}`);
           return new Response(`/* CSS Error: ${errorMessage} */`, {
-            headers: STANDARD_HEADERS.CSS
+            headers: STANDARD_HEADERS.CSS,
           });
         }
       }
@@ -3361,56 +3977,334 @@ body {
           let routesJson;
           try {
             // Sanitize route data before JSON.stringify
-            const sanitizedRoutes = discoveredRoutes.map(route => ({
+            const sanitizedRoutes = discoveredRoutes.map((route) => ({
               path: route.path,
-              componentPath: route.componentPath
+              componentPath: route.componentPath,
+              layouts: route.layouts,
             }));
             routesJson = JSON.stringify(sanitizedRoutes, null, 2);
           } catch (jsonError) {
             logger.error(`Error serializing routes: ${jsonError}`);
-            routesJson = '[]'; // Fallback to empty array
+            routesJson = "[]"; // Fallback to empty array
           }
 
-          // Generate a dynamic app.js that loads and renders the app components
+          // Generate a PRODUCTION-READY app.js with SEQUENCED LOADING
           const appScript = `
-// 0x1 Framework App Bundle - Production Ready
-console.log('[0x1 App] Starting production-ready app...');
+// 0x1 Framework App Bundle - PRODUCTION-READY with SEQUENCED LOADING
+console.log('[0x1 App] Starting production-ready app with proper sequencing...');
 
-// Import the production router
-import { createRouter } from '/0x1/router.js';
-
-// Server-discovered routes - CRITICAL FIX: Safely serialized
+// Server-discovered routes
 const serverRoutes = ${routesJson};
 
-// Wait for JSX runtime to be ready
-function waitForJsxRuntime() {
-  return new Promise((resolve) => {
-    const checkRuntime = () => {
-      if (window.jsx && window.jsxs && window.Fragment && window.createElement) {
-        resolve();
-      } else {
-        setTimeout(checkRuntime, 10);
+// ===== PRODUCTION-READY POLYFILL SYSTEM =====
+const polyfillCache = new Map();
+const polyfillQueue = new Map(); // Prevent duplicate loading
+
+async function loadPolyfillOnDemand(polyfillName) {
+  if (polyfillCache.has(polyfillName)) {
+    return polyfillCache.get(polyfillName);
+  }
+  
+  // Check if already being loaded
+  if (polyfillQueue.has(polyfillName)) {
+    return polyfillQueue.get(polyfillName);
+  }
+  
+  console.log('[0x1 App] Loading polyfill:', polyfillName);
+  
+  const promise = (async () => {
+    try {
+      const polyfillScript = document.createElement('script');
+      polyfillScript.type = 'module';
+      polyfillScript.src = '/node_modules/' + polyfillName + '?t=' + Date.now();
+      
+      await new Promise((resolve, reject) => {
+        polyfillScript.onload = resolve;
+        polyfillScript.onerror = reject;
+        document.head.appendChild(polyfillScript);
+      });
+      
+      // Wait for polyfill to be available globally
+      let retries = 0;
+      const maxRetries = 20;
+      
+      while (retries < maxRetries) {
+        const isAvailable = checkPolyfillAvailability(polyfillName);
+        if (isAvailable) {
+          console.log('[0x1 App] ✅ Polyfill verified:', polyfillName);
+          break;
+        }
+        
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
-    };
-    checkRuntime();
-  });
+      
+      if (retries >= maxRetries) {
+        console.warn('[0x1 App] ⚠️ Polyfill verification timeout:', polyfillName);
+      }
+      
+      return true;
+  } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfillName, error);
+    throw error;
+  }
+  })();
+  
+  polyfillQueue.set(polyfillName, promise);
+  polyfillCache.set(polyfillName, promise);
+  
+  try {
+    await promise;
+    return promise;
+  } finally {
+    polyfillQueue.delete(polyfillName);
+  }
 }
 
-// Preload essential dependencies to make them globally available
-async function preloadDependencies() {
-  console.log('[0x1 App] 🚀 PURE DYNAMIC: Only loading discovered dependencies!');
+function checkPolyfillAvailability(polyfillName) {
+  const checks = {
+    '@rainbow-me/rainbowkit': () => 
+      window.rainbowkit || window.RainbowKit || window['@rainbow-me/rainbowkit'] ||
+      (window.ConnectButton && typeof window.ConnectButton === 'function'),
+    'wagmi': () => 
+      window.wagmi || window.WAGMI || window.useAccount,
+    'viem': () => 
+      window.viem || window.createPublicClient,
+    '@tanstack/react-query': () => 
+      window.ReactQuery || window.useQuery || window['@tanstack/react-query'],
+    'zustand': () => 
+      window.zustand || window.create
+  };
   
-  // CRITICAL FIX: Remove duplicate polyfill loading - let sortedDeps handle it
-  // This prevents polyfills from being loaded multiple times causing conflicts
-  console.log('[0x1 App] 🔧 Polyfills will be loaded dynamically with other dependencies');
+  const checker = checks[polyfillName];
+  return checker ? checker() : true; // Assume available if no specific check
+}
+
+// ===== PRODUCTION-READY DEPENDENCY ANALYSIS =====
+async function analyzeComponentDependencies(componentPath) {
+  const packageNames = new Set(); // FIXED: Proper scoping
+  const analyzedFiles = new Set(); // Prevent infinite recursion
   
-  // Dynamically discover all component dependencies by analyzing the discovered routes
-  const dependencyGraph = new Map();
-  const loadedDependencies = new Set();
-  const requiredPolyfills = new Set(); // Track required polyfill patterns
+  async function analyzeFile(filePath, depth = 0) {
+    // Prevent infinite recursion and limit depth
+    if (analyzedFiles.has(filePath) || depth > 3) {
+      return;
+    }
+    analyzedFiles.add(filePath);
+    
+    try {
+      console.log('[0x1 App] 🔍 Analyzing dependencies for:', filePath, 'depth:', depth);
+      
+      const response = await fetch(filePath + '?source=true&t=' + Date.now());
+      if (!response.ok) return;
+      
+      const sourceCode = await response.text();
+      const localComponentPaths = [];
+      
+      try {
+        // ULTIMATE STRING-BASED DETECTION - No regex, just string operations
+        const lines = sourceCode.split('\\n');
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          
+          // Detect import statements
+          if (trimmedLine.startsWith('import ') && (trimmedLine.includes(' from ') || trimmedLine.includes('import('))) {
+            // Extract package name from import statements
+            const extractPackageFromImport = (importLine) => {
+              // Handle: import ... from 'package'
+              if (importLine.includes(' from ')) {
+                const fromIndex = importLine.lastIndexOf(' from ');
+                const afterFrom = importLine.substring(fromIndex + 6).trim();
+                const quote = afterFrom.charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterFrom.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterFrom.substring(1, endQuote);
+  }
+}
+              }
+              
+              // Handle: import('package')
+              const importParenIndex = importLine.indexOf('import(');
+              if (importParenIndex >= 0) {
+                const afterParen = importLine.substring(importParenIndex + 7);
+                const quote = afterParen.trim().charAt(0);
+                if (quote === '"' || quote === "'") {
+                  const endQuote = afterParen.indexOf(quote, 1);
+                  if (endQuote > 0) {
+                    return afterParen.substring(1, endQuote);
+  }
+                }
+              }
+              
+              return null;
+            };
+            
+            const packageName = extractPackageFromImport(trimmedLine);
+            if (packageName) {
+              // Check if it's a local component (starts with ./ or ../ or absolute path)
+              if (packageName.startsWith('./') || packageName.startsWith('../') || packageName.startsWith('/')) {
+                // Convert relative path to absolute component path for analysis
+                let componentPath;
+                if (packageName.startsWith('./') || packageName.startsWith('../')) {
+                  // TRULY DYNAMIC: Resolve relative path based on current file location
+                  const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
+                  const resolvedPath = new URL(packageName, 'file://' + currentDir + '/').pathname;
+                  // Remove the leading slash if present and add .js extension if needed
+                  componentPath = resolvedPath.endsWith('.js') ? resolvedPath : resolvedPath + '.js';
+                  console.log('[0x1 App] 🧠 Dynamic path resolution:', filePath, '+', packageName, '->', componentPath);
+                } else {
+                  // Handle absolute component paths
+                  componentPath = packageName.endsWith('.js') ? packageName : packageName + '.js';
+                }
+                
+                localComponentPaths.push(componentPath);
+                console.log('[0x1 App] 📄 Found local component import:', packageName, '->', componentPath);
+              } else if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
+                // It's an external package
+                const rootPackage = packageName.startsWith('@') 
+                  ? packageName.split('/').slice(0, 2).join('/')
+                  : packageName.split('/')[0];
+                
+                if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
+                  packageNames.add(rootPackage);
+                  console.log('[0x1 App] 📦 Detected import:', rootPackage);
+                }
+              }
+            }
+          }
+          
+          // Detect require statements
+          if (trimmedLine.includes('require(')) {
+            const requireIndex = trimmedLine.indexOf('require(');
+            const afterRequire = trimmedLine.substring(requireIndex + 8);
+            const quote = afterRequire.trim().charAt(0);
+            if (quote === '"' || quote === "'") {
+              const endQuote = afterRequire.indexOf(quote, 1);
+              if (endQuote > 0) {
+                const packageName = afterRequire.substring(1, endQuote);
+                if (packageName && !packageName.startsWith('.') && !packageName.startsWith('/')) {
+                  const rootPackage = packageName.startsWith('@')
+                    ? packageName.split('/').slice(0, 2).join('/')
+                    : packageName.split('/')[0];
+                  
+                  if (rootPackage !== 'react' && rootPackage !== 'react-dom' && rootPackage.trim() !== '') {
+                    packageNames.add(rootPackage);
+                    console.log('[0x1 App] 📦 Detected require:', rootPackage);
+                  }
+                }
+              }
+            }
+          }
+          
+          // Detect component usage patterns
+          if (trimmedLine.includes('<ConnectButton')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected ConnectButton usage -> @rainbow-me/rainbowkit');
+          }
+          if (trimmedLine.includes('<QueryClient') || trimmedLine.includes('QueryClient')) {
+            packageNames.add('@tanstack/react-query');
+            console.log('[0x1 App] 📦 Detected QueryClient usage -> @tanstack/react-query');
+    }
+          if (trimmedLine.includes('<WagmiConfig') || trimmedLine.includes('WagmiConfig')) {
+            packageNames.add('wagmi');
+            console.log('[0x1 App] 📦 Detected WagmiConfig usage -> wagmi');
+    }
+          if (trimmedLine.includes('<RainbowKitProvider') || trimmedLine.includes('RainbowKitProvider')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected RainbowKitProvider usage -> @rainbow-me/rainbowkit');
+    }
+          
+          // Detect hook usage patterns
+          if (trimmedLine.includes('useAccount') || trimmedLine.includes('useConnect') || trimmedLine.includes('useDisconnect')) {
+            packageNames.add('wagmi');
+            console.log('[0x1 App] 📦 Detected wagmi hook usage -> wagmi');
+          }
+          if (trimmedLine.includes('useQuery') || trimmedLine.includes('useMutation')) {
+            packageNames.add('@tanstack/react-query');
+            console.log('[0x1 App] 📦 Detected react-query hook usage -> @tanstack/react-query');
+    }
+          if (trimmedLine.includes('useConnectModal')) {
+            packageNames.add('@rainbow-me/rainbowkit');
+            console.log('[0x1 App] 📦 Detected RainbowKit hook usage -> @rainbow-me/rainbowkit');
+          }
+        }
+        
+        // RECURSIVE ANALYSIS: Analyze imported local components
+        for (const localPath of localComponentPaths) {
+          console.log('[0x1 App] 🔄 Recursively analyzing:', localPath);
+          await analyzeFile(localPath, depth + 1);
+        }
+        
+      } catch (analysisError) {
+        console.warn('[0x1 App] Dependency analysis failed for', filePath, ':', analysisError.message);
+    }
+  } catch (error) {
+      console.warn('[0x1 App] Could not analyze dependencies for:', filePath, error);
+    }
+  }
   
-  // CRITICAL FIX: Always load hooks system FIRST, before any dependency analysis
-  console.log('[0x1 App] 🎯 Loading essential hooks system first...');
+  // Start analysis with the main component
+  await analyzeFile(componentPath, 0);
+  
+  console.log('[0x1 App] 🔍 RECURSIVE Total dependencies found:', Array.from(packageNames));
+  return packageNames;
+}
+
+// ===== SEQUENTIAL POLYFILL LOADING =====
+async function loadPolyfillsSequentially(packageNames) {
+  const polyfillsNeeded = Array.from(packageNames);
+  
+  if (polyfillsNeeded.length === 0) {
+    console.log('[0x1 App] 📦 No polyfills needed');
+    return;
+  }
+  
+  console.log('[0x1 App] 🔍 Loading polyfills sequentially:', polyfillsNeeded);
+    
+  // Load critical polyfills first (order matters!)
+  const criticalFirst = ['@tanstack/react-query', 'wagmi', 'viem', '@rainbow-me/rainbowkit'];
+  const orderedPolyfills = [
+    ...criticalFirst.filter(p => polyfillsNeeded.includes(p)),
+    ...polyfillsNeeded.filter(p => !criticalFirst.includes(p))
+  ];
+  
+  for (const polyfill of orderedPolyfills) {
+    try {
+      await loadPolyfillOnDemand(polyfill);
+      console.log('[0x1 App] ✅ Loaded polyfill:', polyfill);
+  } catch (error) {
+      console.error('[0x1 App] ❌ Failed to load polyfill:', polyfill, error);
+  }
+  }
+  
+  console.log('[0x1 App] ✅ All polyfills loaded');
+}
+
+// ===== MINIMAL INDICATOR =====
+function showMinimalIndicator() {
+  console.log('[0x1 App] 🚀 INSTANT: Minimal loading indicator');
+  
+  const indicator = document.createElement('div');
+  indicator.id = '0x1-loading-indicator';
+  indicator.innerHTML = '⚡';
+  indicator.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; font-size: 16px; opacity: 0.7; transition: opacity 0.3s ease; pointer-events: none; color: #3b82f6;';
+  document.body.appendChild(indicator);
+  
+  setTimeout(() => {
+    const existingIndicator = document.getElementById('0x1-loading-indicator');
+    if (existingIndicator) {
+      existingIndicator.style.opacity = '0';
+      setTimeout(() => existingIndicator.remove(), 300);
+    }
+  }, 2000);
+}
+
+// ===== ESSENTIAL DEPENDENCIES =====
+async function loadEssentialDependencies() {
+  console.log('[0x1 App] 🎯 Loading essential dependencies...');
+  
   try {
     const hooksScript = document.createElement('script');
     hooksScript.type = 'module';
@@ -3418,901 +4312,369 @@ async function preloadDependencies() {
     
     await new Promise((resolve, reject) => {
       hooksScript.onload = () => {
-        loadedDependencies.add('/0x1/hooks.js');
-        console.log('[0x1 App] ✅ Hooks system loaded first');
+        console.log('[0x1 App] ✅ Hooks ready');
         resolve();
       };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
-    
-    // Wait for hooks to fully initialize
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
+      
     // Verify hooks are available
     if (typeof window !== 'undefined' && window.React && window.React.useState) {
-      console.log('[0x1 App] ✅ window.React.useState verified and ready');
-    } else {
-      console.warn('[0x1 App] ⚠️ window.React.useState not available after hooks loading');
+      console.log('[0x1 App] ✅ React hooks verified');
     }
-  } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load hooks system:', error);
-  }
-  
-  // Continue with dependency analysis for remaining components
-  console.log('[0x1 App] 🔍 Analyzing remaining component dependencies...');
-  
-  // Function to extract imports from a component
-  async function analyzeDependencies(componentPath, visited = new Set()) {
-    try {
-      console.log('[0x1 App] Analyzing dependencies for:', JSON.stringify(componentPath));
-      
-      // Prevent infinite recursion
-      if (visited.has(componentPath)) {
-        return { dependencies: [], polyfillPatterns: [] };
-      }
-      visited.add(componentPath);
-      
-      // CRITICAL FIX: Analyze original TypeScript source instead of transpiled JavaScript
-      // Convert .js path back to original source file path
-      const sourcePath = componentPath.replace('.js', '');
-      
-      // Try different source extensions to find the original file
-      const possibleExtensions = ['.tsx', '.jsx', '.ts', '.js'];
-      let sourceCode = null;
-      let actualSourcePath = null;
-      
-      for (const ext of possibleExtensions) {
-        const potentialPath = sourcePath + ext;
-        try {
-          // Try to fetch the source file directly from the file system approach
-          const response = await fetch(potentialPath + '?source=true&t=' + Date.now());
-          if (response.ok) {
-            sourceCode = await response.text();
-            actualSourcePath = potentialPath;
-            console.log('[0x1 App] Found source file:', JSON.stringify(actualSourcePath));
-            break;
-          }
-        } catch (error) {
-          // SILENT: Expected 404s during discovery - don't log as errors
-          continue;
-        }
-      }
-      
-      // Fallback: if we can't find source, analyze transpiled code
-      if (!sourceCode) {
-        console.warn('[0x1 App] Could not find source file, analyzing transpiled code');
-        const response = await fetch(componentPath + '?analyze=true&t=' + Date.now());
-        sourceCode = await response.text();
-        actualSourcePath = componentPath;
-      }
-      
-      // Extract import statements and usage patterns from source code
-      const lines = sourceCode.split('\\n');
-      const dependencies = new Set();
-      const polyfillPatterns = new Set(); // Track what polyfills are needed
-      const nestedComponents = new Set(); // Track components to analyze recursively
-      
-      // Look for import statements and usage patterns in original source
-      lines.forEach(line => {
-        const trimmedLine = line.trim();
-        
-        // Method 1: Extract from import statements in original source
-        if (trimmedLine.startsWith('import ')) {
-          const fromMatch = trimmedLine.match(/from ['"]([^'"]+)['"]/);
-          if (fromMatch) {
-            const importPath = fromMatch[1];
-            dependencies.add(importPath);
-            
-            // CRITICAL FIX: Add nested component analysis for relative imports
-            if (importPath.startsWith('../') || importPath.startsWith('./') || importPath.startsWith('/components/') || importPath.startsWith('/lib/')) {
-              // Convert relative path to absolute component path
-              let absolutePath = importPath;
-              if (importPath.startsWith('../')) {
-                // Handle relative imports like '../components/WalletConnect'
-                const currentDir = componentPath.split('/').slice(0, -1).join('/');
-                const relativeParts = importPath.split('/');
-                let resolvedPath = currentDir;
-                for (const part of relativeParts) {
-                  if (part === '..') {
-                    resolvedPath = resolvedPath.split('/').slice(0, -1).join('/');
-                  } else if (part !== '.') {
-                    resolvedPath += '/' + part;
-                  }
-                }
-                absolutePath = resolvedPath;
-              } else if (importPath.startsWith('./')) {
-                // Handle same-directory imports like './WalletConnect'
-                const currentDir = componentPath.split('/').slice(0, -1).join('/');
-                absolutePath = currentDir + '/' + importPath.slice(2);
-              }
-              
-              // Add .js extension for component analysis
-              const componentPathForAnalysis = absolutePath + '.js';
-              nestedComponents.add(componentPathForAnalysis);
-              console.log('[0x1 App] 🔗 Will analyze nested component:', JSON.stringify(componentPathForAnalysis));
-            }
-          }
-        }
-        
-        // Method 2: Extract from export statements
-        if (trimmedLine.startsWith('export ') && trimmedLine.includes('from ')) {
-          const fromMatch = trimmedLine.match(/from ['"]([^'"]+)['"]/);
-          if (fromMatch) {
-            dependencies.add(fromMatch[1]);
-          }
-        }
-        
-        // FIXME: WHAT THE FUCK IS THIS SHIT - WHY IS IT HARDCODED?!?!?!?
-        // CRITICAL FIX: Detect crypto/wallet component usage patterns in SOURCE CODE
-        // RainbowKit pattern detection
-        if (trimmedLine.includes('ConnectButton') || 
-            trimmedLine.includes('RainbowKitProvider') ||
-            trimmedLine.includes('@rainbow-me/rainbowkit') ||
-            trimmedLine.includes("from '@rainbow-me/rainbowkit'")) {
-          polyfillPatterns.add('rainbowkit');
-          console.log('[0x1 App] 🎯 DETECTED RainbowKit pattern in:', JSON.stringify(actualSourcePath));
-        }
-        
-        // Wagmi pattern detection
-        if (trimmedLine.includes('useAccount') || 
-            trimmedLine.includes('useConnect') ||
-            trimmedLine.includes('useDisconnect') ||
-            trimmedLine.includes('useBalance') ||
-            trimmedLine.includes('useEnsName') ||
-            trimmedLine.includes('wagmi') ||
-            trimmedLine.includes("from 'wagmi'")) {
-          polyfillPatterns.add('wagmi');
-          console.log('[0x1 App] 🎯 DETECTED Wagmi pattern in:', JSON.stringify(actualSourcePath));
-        }
-        
-        // Viem pattern detection
-        if (trimmedLine.includes('createPublicClient') ||
-            trimmedLine.includes('createWalletClient') ||
-            trimmedLine.includes('viem') ||
-            trimmedLine.includes("from 'viem'")) {
-          polyfillPatterns.add('viem');
-          console.log('[0x1 App] 🎯 DETECTED Viem pattern in:', JSON.stringify(actualSourcePath));
-        }
-        
-        // React Query pattern detection
-        if (trimmedLine.includes('useQuery') ||
-            trimmedLine.includes('QueryClient') ||
-            trimmedLine.includes('@tanstack/react-query') ||
-            trimmedLine.includes("from '@tanstack/react-query'")) {
-          polyfillPatterns.add('react-query');
-          console.log('[0x1 App] 🎯 DETECTED React Query pattern in:', JSON.stringify(actualSourcePath));
-        }
-      });
-      
-      // CRITICAL FIX: Recursively analyze nested components
-      for (const nestedComponent of nestedComponents) {
-        try {
-          console.log('[0x1 App] 🔍 Recursively analyzing:', JSON.stringify(nestedComponent));
-          const nestedAnalysis = await analyzeDependencies(nestedComponent, visited);
-          // Merge nested dependencies and patterns
-          nestedAnalysis.dependencies.forEach(dep => dependencies.add(dep));
-          nestedAnalysis.polyfillPatterns.forEach(pattern => polyfillPatterns.add(pattern));
-        } catch (nestedError) {
-          console.warn('[0x1 App] ⚠️ Failed to analyze nested component:', JSON.stringify(nestedComponent), nestedError);
-        }
-      }
-      
-      // CRITICAL FIX: Check if any imports are from '0x1' package (which contains hooks)
-      let needsHooksSystem = false;
-      dependencies.forEach(dep => {
-        if (dep === '0x1') {
-          needsHooksSystem = true;
-          dependencies.delete('0x1'); // Remove the generic import
-          dependencies.add('/0x1/hooks.js'); // Add specific hooks dependency
-          dependencies.add('/0x1/jsx-runtime.js'); // Ensure JSX runtime is also loaded
-        }
-      });
-      
-      // Convert to array and filter for our framework dependencies only
-      const dependencyArray = Array.from(dependencies).filter(dep => {
-        // Only include paths that are part of the user's project or 0x1 framework
-        return dep.startsWith('/0x1/') || 
-               dep.startsWith('/components/') || 
-               dep.startsWith('/lib/') || 
-               dep.startsWith('/src/') ||
-               dep.startsWith('/utils/') ||
-               dep.startsWith('/pages/') ||
-               dep.startsWith('/app/') ||
-               dep.startsWith('/node_modules/');
-      });
-      
-      console.log('[0x1 App] Discovered dependencies for', JSON.stringify(componentPath), ':', dependencyArray);
-      console.log('[0x1 App] 🚀 DETECTED polyfill patterns for', JSON.stringify(componentPath), ':', Array.from(polyfillPatterns));
-      
-      if (needsHooksSystem) {
-        console.log('[0x1 App] 🎯 CRITICAL: Component uses hooks from 0x1 - hooks system will be loaded first');
-      }
-      
-      // Return both dependencies and polyfill patterns
-      return { dependencies: dependencyArray, polyfillPatterns: Array.from(polyfillPatterns) };
     } catch (error) {
-      console.warn('[0x1 App] Failed to analyze dependencies for:', JSON.stringify(componentPath), error);
-      return { dependencies: [], polyfillPatterns: [] };
-    }
+    console.error('[0x1 App] ❌ Failed to load hooks:', error);
   }
-  
-  // Build dependency graph for all routes
-  for (const route of serverRoutes) {
-    const analysis = await analyzeDependencies(route.componentPath);
-    dependencyGraph.set(route.componentPath, analysis.dependencies);
-    // Collect polyfill patterns from this route
-    analysis.polyfillPatterns.forEach(pattern => requiredPolyfills.add(pattern));
-  }
-  
-  // Also analyze layout component dependencies
-  const layoutComponentPath = '/app/layout.js';
-  const layoutAnalysis = await analyzeDependencies(layoutComponentPath);
-  dependencyGraph.set(layoutComponentPath, layoutAnalysis.dependencies);
-  // Collect polyfill patterns from layout
-  layoutAnalysis.polyfillPatterns.forEach(pattern => requiredPolyfills.add(pattern));
-  
-  // CRITICAL FIX: Discover and load polyfills from dependencies
-  const allDependencies = new Set();
-  
-  for (const deps of dependencyGraph.values()) {
-    deps.forEach(dep => {
-      // Convert relative imports to absolute paths
-      if (dep.startsWith('/')) {
-        // For 0x1 framework modules, don't add .js extension
-        if (dep.startsWith('/0x1/') || dep.startsWith('/node_modules/0x1/')) {
-          allDependencies.add(dep);
-        } else {
-          // For user components, add .js if not present
-          allDependencies.add(dep.endsWith('.js') ? dep : dep + '.js');
-        }
-      } else if (dep.startsWith('./') || dep.startsWith('../')) {
-        // Handle relative imports - convert to absolute
-        let cleanDep = dep;
-        if (cleanDep.startsWith('./')) {
-          cleanDep = cleanDep.slice(2);
-        } else if (cleanDep.startsWith('../')) {
-          cleanDep = cleanDep.slice(3);
-        }
-        allDependencies.add('/' + cleanDep + '.js');
-      }
-    });
-  }
-  
-  // CRITICAL: Load polyfills FIRST before any components
-  console.log('[0x1 App] 🎯 Loading required polyfills first...', Array.from(requiredPolyfills));
-  for (const polyfillPattern of requiredPolyfills) {
-    try {
-      // Map polyfill patterns to actual polyfill URLs
-      let polyfillPath = '';
-      switch (polyfillPattern) {
-        case 'rainbowkit':
-          polyfillPath = '/node_modules/@rainbow-me/rainbowkit';
-          break;
-        case 'wagmi':
-          polyfillPath = '/node_modules/wagmi';
-          break;
-        case 'viem':
-          polyfillPath = '/node_modules/viem';
-          break;
-        case 'react-query':
-          polyfillPath = '/node_modules/@tanstack/react-query';
-          break;
-        default:
-          continue; // Skip unknown patterns
-      }
-      
-      console.log('[0x1 App] Loading polyfill:', JSON.stringify(polyfillPath));
-      
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = polyfillPath + '?t=' + Date.now();
-      
-      await new Promise((resolve, reject) => {
-        script.onload = () => {
-          console.log('[0x1 App] ✅ Polyfill loaded:', JSON.stringify(polyfillPath));
-          resolve();
-        };
-        script.onerror = (error) => {
-          console.warn('[0x1 App] ⚠️ Polyfill failed to load:', JSON.stringify(polyfillPattern), error);
-          resolve(); // Continue even if polyfill fails
-        };
-        document.head.appendChild(script);
-      });
-      
-      // Wait for polyfill to be available globally
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-    } catch (error) {
-      console.warn('[0x1 App] ⚠️ Failed to load polyfill:', JSON.stringify(polyfillPattern), error);
-    }
-  }
-  
-  console.log('[0x1 App] 🎉 Polyfills ready! Available polyfills:', 
-    Object.keys(globalThis).filter(k => k.includes('__0x1_polyfill')));
-  
-  // Collect all unique framework and component dependencies
-  const sortedDeps = Array.from(allDependencies).sort((a, b) => {
-    // CRITICAL FIX: Hooks system must be loaded FIRST
-    const aIsHooks = a.includes('/hooks.js');
-    const bIsHooks = b.includes('/hooks.js');
-    if (aIsHooks && !bIsHooks) return -1;
-    if (!aIsHooks && bIsHooks) return 1;
-    
-    // JSX runtime should be loaded after hooks but before components
-    const aIsJsxRuntime = a.includes('/jsx-runtime.js');
-    const bIsJsxRuntime = b.includes('/jsx-runtime.js');
-    if (aIsJsxRuntime && !bIsJsxRuntime && !bIsHooks) return -1;
-    if (!aIsJsxRuntime && bIsJsxRuntime && !aIsHooks) return 1;
-    
-    const aIs0x1 = a.startsWith('/0x1/');
-    const bIs0x1 = b.startsWith('/0x1/');
-    if (aIs0x1 && !bIs0x1) return -1;
-    if (!aIs0x1 && bIs0x1) return 1;
-    return a.localeCompare(b);
-  });
-  
-  console.log('[0x1 App] 🚀 ZERO HARDCODING: Loading', sortedDeps.length, 'discovered dependencies');
-  
-  // Load each dependency
-  for (const dep of sortedDeps) {
-    if (loadedDependencies.has(dep)) continue;
-    
-    try {
-      console.log('[0x1 App] Loading discovered dependency:', JSON.stringify(dep));
-      
-      // Create script tag to load the dependency
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = dep + '?t=' + Date.now();
-      
-      // Wait for script to load
-      await new Promise((resolve, reject) => {
-        script.onload = () => {
-          loadedDependencies.add(dep);
-          resolve();
-        };
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-      
-      console.log('[0x1 App] ✅ Loaded:', JSON.stringify(dep));
-      
-      // CRITICAL FIX: Extra delay for hooks system to fully initialize
-      if (dep.includes('/hooks.js')) {
-        console.log('[0x1 App] 🎯 Hooks system loaded - waiting for full initialization...');
-        await new Promise(resolve => setTimeout(resolve, 200)); // Longer delay for hooks
-        
-        // Verify hooks are available
-        if (typeof window !== 'undefined' && window.__0x1_hooks) {
-          console.log('[0x1 App] ✅ Hooks system verified and ready');
-        } else {
-          console.warn('[0x1 App] ⚠️ Hooks system not fully initialized yet');
-        }
-      } else {
-        // Small delay to allow global assignments to complete
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-    } catch (error) {
-      console.warn('[0x1 App] ⚠️ Failed to load dependency:', JSON.stringify(dep), error);
-    }
-  }
-  
-  console.log('[0x1 App] 🎉 Dynamic dependency loading complete!');
-  console.log('[0x1 App] Loaded', loadedDependencies.size, 'dependencies');
-  
-  // CRITICAL FIX: Enhanced polyfill notification system for waiting components
-  console.log('[0x1 App] 🔄 Notifying all waiting components that polyfills are ready...');
-  
-  // Method 1: Global polyfill ready callback (for components waiting for specific polyfills)
-  if (typeof window !== 'undefined' && window.__0x1_polyfillLoadedCallback) {
-    console.log('[0x1 App] 🔄 Triggering global polyfill callback');
-    window.__0x1_polyfillLoadedCallback();
-  }
-  
-  // Method 2: Component-specific retry callbacks (for components in loading states)
-  if (typeof window !== 'undefined' && window.__0x1_componentRetryCallbacks) {
-    console.log('[0x1 App] 🔄 Executing ' + window.__0x1_componentRetryCallbacks.length + ' component retry callbacks');
-    window.__0x1_componentRetryCallbacks.forEach((callback, index) => {
-      try {
-        console.log('[0x1 App] 🔄 Executing retry callback ' + (index + 1));
-        callback();
-      } catch (error) {
-        console.error('[0x1 App] Error in retry callback ' + (index + 1) + ':', error);
-      }
-    });
-    // Clear callbacks after execution
-    window.__0x1_componentRetryCallbacks = [];
-  }
-  
-  // Method 3: Force hooks system to update all components
-  console.log('[0x1 App] 🔄 Forcing hooks system to update all components');
-  if (typeof window !== 'undefined' && window.__0x1_hooksSystem?.forceUpdateAll) {
-    window.__0x1_hooksSystem.forceUpdateAll();
-  }
-  
-  // Method 4: Dispatch polyfills-ready event for event-based components
-  console.log('[0x1 App] 🔄 Dispatching polyfills-ready event');
-  if (typeof window !== 'undefined') {
-    const event = new CustomEvent('polyfillsReady', { 
-      detail: { 
-        polyfills: loadedDependencies,
-        timestamp: Date.now()
-      } 
-    });
-    window.dispatchEvent(event);
-  }
-  
-  // Method 5: CRITICAL - Set global ready flags for late-mounting components
-  console.log('[0x1 App] 🎯 Set global ready flags');
-  if (typeof window !== 'undefined') {
-    window.__0x1_polyfillsReady = true;
-    window.__0x1_polyfillsLoaded = true;
-    window.__0x1_dependenciesReady = true;
-  }
-  
-  // Method 6: ENHANCED - Force immediate re-render of all DOM components
-  console.log('[0x1 App] 🔄 Force re-rendering all mounted DOM components');
-  if (typeof window !== 'undefined') {
-    // Find all components in the DOM and trigger their re-render
-    const allComponents = document.querySelectorAll('[data-component-id]');
-    console.log('[0x1 App] Found ' + allComponents.length + ' components in DOM to re-render');
-    
-    allComponents.forEach((element, index) => {
-      const componentId = element.getAttribute('data-component-id');
-      const componentName = element.getAttribute('data-component-name');
-      
-      if (componentId && componentName) {
-        console.log('[0x1 App] 🔄 Re-rendering component ' + (index + 1) + ': ' + componentName + ' (' + componentId + ')');
-        
-        // Method 6a: Try to trigger component update via hooks system
-        if (window.__0x1_hooksSystem?.triggerUpdate) {
-          window.__0x1_hooksSystem.triggerUpdate(componentId);
-        }
-        
-        // Method 6b: Try to trigger component function re-execution
-        if (window.__0x1_components && window.__0x1_components[componentName]) {
-          try {
-            // Set up hooks context
-            if (window.__0x1_hooksSystem?.setComponentContext) {
-              window.__0x1_hooksSystem.setComponentContext(componentId);
-            }
-            
-            // Re-execute component function
-            const componentFunction = window.__0x1_components[componentName];
-            const props = element.getAttribute('data-component-props');
-            const parsedProps = props ? JSON.parse(props) : {};
-            
-            console.log('[0x1 App] 🔄 Re-executing component function for ' + componentName);
-            const newResult = componentFunction(parsedProps);
-            
-            // Clear hooks context
-            if (window.__0x1_hooksSystem?.clearComponentContext) {
-              window.__0x1_hooksSystem.clearComponentContext();
-            }
-            
-            // If component returns new JSX, replace the element
-            if (newResult && typeof newResult === 'object') {
-              console.log('[0x1 App] ✅ Component ' + componentName + ' re-rendered successfully');
-            }
-          } catch (error) {
-            console.error('[0x1 App] Error re-rendering component ' + componentName + ':', error);
-          }
-        }
-      }
-    });
-  }
-  
-  console.log('[0x1 App] 🎉 All polyfill notifications sent - components should exit loading state now');
 }
 
-// Dynamic component loader function
-async function loadComponent(componentPath) {
+// ===== ROUTER CREATION =====
+async function createAppRouter() {
+  console.log('[0x1 App] Creating router...');
+  
   try {
-    console.log('[0x1 App] Fetching component:', JSON.stringify(componentPath));
-    const url = componentPath + '?t=' + Date.now();
-    const module = await import(url);
+    const routerModule = await import('/0x1/router.js');
+    const { Router } = routerModule;
     
-    if (module && (module.default || module)) {
-      console.log('[0x1 App] Component loaded successfully:', JSON.stringify(componentPath));
-      return module;
-    } else {
-      console.warn('[0x1 App] Component has no exports:', JSON.stringify(componentPath));
-      return null;
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
     }
-  } catch (error) {
-    console.error('[0x1 App] Failed to load component:', JSON.stringify(componentPath), error);
+    
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+      throw new Error('App container element not found');
+    }
+    
+    // Create beautiful 404 component for the router
+    const notFoundComponent = (props) => {
+      console.log('[0x1 Router] 🏠 Rendering beautiful 404 page for:', window.location.pathname);
+      
+      return {
+              type: 'div',
+              props: { 
+          className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
+              },
+              children: [
+                {
+                  type: 'div',
+            props: {
+              className: 'mb-8'
+            },
+            children: [
+              {
+                type: 'h1',
+                props: {
+                  className: 'text-9xl font-bold text-violet-600 dark:text-violet-400 mb-4'
+                },
+                children: ['404'],
+                key: null
+              }
+            ],
+            key: null
+          },
+          {
+                  type: 'div',
+            props: {
+              className: 'max-w-md mx-auto'
+            },
+            children: [
+              {
+                type: 'h2',
+                props: {
+                  className: 'text-3xl font-bold text-gray-800 dark:text-white mb-4'
+                },
+                children: ['Page Not Found'],
+                key: null
+              },
+              {
+                type: 'p',
+                props: {
+                  className: 'text-lg text-gray-600 dark:text-gray-300 mb-8'
+                },
+                children: ['The page you\\'re looking for doesn\\'t exist or has been moved.'],
+                key: null
+              },
+              {
+                type: 'div',
+                props: {
+                  className: 'space-y-4'
+                },
+                children: [
+                  {
+                    type: 'a',
+                    props: {
+                      href: '/',
+                      className: 'inline-block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all duration-200 shadow-lg hover:shadow-xl font-medium',
+                      onClick: (e) => {
+                        e.preventDefault();
+                        if (window.router && typeof window.router.navigate === 'function') {
+                          window.router.navigate('/');
+                        } else {
+                          window.location.href = '/';
+                        }
+                      }
+                    },
+                    children: ['🏠 Back to Home'],
+                    key: null
+                  }
+                ],
+                key: null
+              }
+            ],
+            key: null
+          }
+        ],
+        key: null
+      };
+    };
+    
+    const router = new Router({
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/',
+      notFoundComponent: notFoundComponent
+    });
+    
+    window.__0x1_ROUTER__ = router;
+    window.__0x1_router = router;
+    window.router = router;
+    
+    console.log('[0x1 App] ✅ Router ready with beautiful 404 handling');
+    return router;
+    
+        } catch (error) {
+    console.error('[0x1 App] ❌ Router creation failed:', error);
     throw error;
   }
 }
 
-// Enhanced route loading
-async function loadRoutes() {
-  const loadedRoutes = [];
+// ===== COMPONENT LOADING WITH PROPER CACHING =====
+async function loadComponent(componentPath) {
+  try {
+    console.log('[0x1 App] Loading component:', componentPath);
+    const url = componentPath + '?t=' + Date.now();
+    const module = await import(url);
+    
+    if (module && (module.default || module)) {
+      console.log('[0x1 App] ✅ Component loaded:', componentPath);
+      return module;
+    } else {
+      console.warn('[0x1 App] ⚠️ Component has no exports:', componentPath);
+      return null;
+    }
+  } catch (error) {
+    console.error('[0x1 App] ❌ Failed to load component:', componentPath, error);
+    throw error;
+  }
+}
+
+// ===== LAYOUT LOADING WITH NESTED LAYOUT SUPPORT =====
+async function loadLayoutHierarchy(layouts) {
+  const loadedLayouts = [];
   
-  const routePromises = serverRoutes.map(async (route) => {
+  for (const layout of layouts) {
     try {
-      console.log('[0x1 App] Loading route:', JSON.stringify(route.path));
-      const componentModule = await loadComponent(route.componentPath);
+      console.log('[0x1 App] Loading layout for path: ' + layout.path + ' from ' + layout.componentPath);
       
-      if (componentModule && componentModule.default) {
-        console.log('[0x1 App] Route loaded successfully:', JSON.stringify(route.path));
-        return {
-          path: route.path,
-          component: componentModule.default,
-          metadata: componentModule.metadata || {}
-        };
+      const layoutModule = await loadComponent(layout.componentPath);
+      if (layoutModule && layoutModule.default) {
+        loadedLayouts.push(layoutModule.default);
+        console.log('[0x1 App] Layout loaded for: ' + layout.path);
       } else {
-        return null;
+        console.warn('[0x1 App] Layout has no default export: ' + layout.componentPath);
       }
     } catch (error) {
-      console.error('[0x1 App] Failed to load route:', JSON.stringify(route.path), error);
-      return {
-        path: route.path,
-        component: () => {
-          const container = document.createElement('div');
-          container.className = 'route-error p-8 text-center';
-          container.innerHTML = '<div class="max-w-md mx-auto"><h2 class="text-2xl font-bold text-red-600 mb-4">Route Failed to Load</h2><p class="text-gray-600 mb-4">Path: <code class="bg-gray-100 px-2 py-1 rounded">' + route.path + '</code></p><button onclick="window.location.reload()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Reload Page</button></div>';
-          return container;
-        },
-        metadata: { title: 'Route Error' }
-      };
+      console.error('[0x1 App] Failed to load layout: ' + layout.componentPath, error);
     }
-  });
-  
-  const results = await Promise.allSettled(routePromises);
-  
-  results.forEach((result, index) => {
-    if (result.status === 'fulfilled' && result.value) {
-      loadedRoutes.push(result.value);
-    } else {
-      console.error('[0x1 App] Route loading failed:', JSON.stringify(serverRoutes[index].path), result.reason);
-    }
-  });
-  
-  console.log('[0x1 App] Loaded', loadedRoutes.length, 'out of', serverRoutes.length, 'routes');
-  return loadedRoutes;
-}
-
-// CRITICAL FIX: Enhanced polyfill waiting system
-async function waitForPolyfillsReady() {
-  console.log('[0x1 App] 🎯 Checking for polyfills...');
-  
-  const expectedPolyfills = [
-    '__0x1_polyfill__rainbow_me_rainbowkit',
-    '__0x1_polyfill_wagmi', 
-    '__0x1_polyfill_viem',
-    '__0x1_polyfill__tanstack_react_query'
-  ];
-  
-  const maxWaitTime = 3000; // Reduced to 3 seconds max
-  const checkInterval = 100; // Check every 100ms
-  let waited = 0;
-  
-  while (waited < maxWaitTime) {
-    const availablePolyfills = Object.keys(globalThis).filter(k => k.includes('__0x1_polyfill'));
-    const readyCount = expectedPolyfills.filter(polyfill => globalThis[polyfill] !== undefined).length;
-    
-    console.log('[0x1 App] Polyfill status:', readyCount, '/', expectedPolyfills.length, 'ready');
-    
-    if (readyCount > 0 || waited > 1000) {
-      // Continue if we have some polyfills or after 1 second
-      console.log('[0x1 App] ✅ Proceeding with', readyCount, 'polyfills ready');
-      console.log('[0x1 App] Available polyfills:', availablePolyfills);
-      return true;
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, checkInterval));
-    waited += checkInterval;
   }
   
-  console.log('[0x1 App] ⚠️ Proceeding without waiting for polyfills - they will load dynamically');
-  return false;
+  return loadedLayouts;
 }
 
-// Enhanced init function with better polyfill coordination
-async function initApp() {
-  try {
-    console.log('[0x1 App] Initializing application...');
+// ===== NESTED LAYOUT COMPOSITION =====
+function composeNestedLayouts(pageComponent, layouts) {
+  if (layouts.length === 0) {
+    return pageComponent;
+  }
+  
+  // Compose layouts from innermost (page) to outermost (root layout)
+  // layouts[0] = root layout, layouts[1] = nested layout, etc.
+  return (props) => {
+    let wrappedComponent = pageComponent(props);
     
-    if (document.readyState === 'loading') {
-      await new Promise(resolve => {
-        document.addEventListener('DOMContentLoaded', resolve);
+    // Apply layouts in reverse order (innermost to outermost)
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const currentLayout = layouts[i];
+      const children = wrappedComponent;
+      
+      try {
+        wrappedComponent = currentLayout({ 
+          children: children,
+          ...props 
+        });
+      } catch (error) {
+        console.error('[0x1 App] Layout composition error at level ' + i + ':', error);
+        // Fallback to previous level
+        wrappedComponent = children;
+      }
+    }
+    
+    return wrappedComponent;
+  };
+}
+
+// ===== ROUTE REGISTRATION WITH PROPER SEQUENCING =====
+async function registerRoutes(router) {
+  console.log('[0x1 App] 📝 Registering routes with nested layout support...');
+  
+  for (const route of serverRoutes) {
+    try {
+      console.log('[0x1 App] Processing route: ' + route.path + ' with ' + (route.layouts?.length || 0) + ' layouts');
+      
+      // Load all layouts for this route
+      const layouts = route.layouts || [];
+      const loadedLayouts = await loadLayoutHierarchy(layouts);
+      
+      // Pre-load the page component during registration
+      const componentModule = await loadComponentWithDependencies(route.componentPath);
+      
+      const routeComponent = (props) => {
+        console.log('[0x1 App] 🔍 Route component called for:', route.path);
+          
+          if (componentModule && componentModule.default) {
+          console.log('[0x1 App] ✅ Route component resolved:', route.path);
+          
+          // Compose the page component with all its layouts
+          const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+          
+          return composedComponent(props);
+          } else {
+          console.warn('[0x1 App] Component has no default export:', route.path);
+            return {
+              type: 'div',
+            props: { 
+              className: 'p-8 text-center',
+              style: 'color: #f59e0b;' 
+            },
+            children: ['Component loaded but has no default export'],
+            key: null
+          };
+        }
+      };
+      
+      // Add route to router without layout (since we handle layouts internally)
+      router.addRoute(route.path, routeComponent, { 
+        componentPath: route.componentPath,
+        layouts: layouts
+      });
+      
+      console.log('[0x1 App] Route registered:', route.path);
+      
+    } catch (error) {
+      console.error('[0x1 App] Failed to register route:', route.path, error);
+      
+      // Create error component for failed routes
+      const errorComponent = (props) => {
+        return {
+      type: 'div',
+          props: { 
+            className: 'p-8 text-center',
+            style: 'color: #ef4444;' 
+          },
+          children: ['Error loading component: ' + error.message],
+          key: null
+        };
+      };
+      
+      router.addRoute(route.path, errorComponent, { 
+        componentPath: route.componentPath 
       });
     }
-    
-    await waitForJsxRuntime();
-    await preloadDependencies();
-    
-    // CRITICAL FIX: Wait for polyfills to be fully ready before loading components
-    await waitForPolyfillsReady();
-    
-    const appContainer = document.getElementById('app');
-    if (!appContainer) {
-      throw new Error('App container element not found');
-    }
-    
-    let layoutModule = null;
-    try {
-      layoutModule = await loadComponent('/app/layout.js');
-      console.log('[0x1 App] Layout component loaded successfully');
-    } catch (error) {
-      console.log('[0x1 App] No layout component found (this is optional)');
-    }
+  }
+  
+  console.log('[0x1 App] All routes registered successfully');
+}
 
-    const router = createRouter({
-      rootElement: appContainer,
-      mode: 'history',
-      debug: false,
-      base: '/'
-    });
-    console.log('[0x1 App] Router initialized');
-    
-    // CRITICAL FIX: Override router to use layout component
-    if (layoutModule && layoutModule.default) {
-      console.log('[0x1 App] 🎨 Applying layout wrapper to all routes');
-      
-      // Store the layout component globally
-      window.__0x1_layoutComponent = layoutModule.default;
-      
-      // Override the router's renderCurrentRoute method
-      const originalRenderCurrentRoute = router.renderCurrentRoute;
-      router.renderCurrentRoute = function() {
-        if (this.isServer) return;
-        
-        const rootElement = this.options?.rootElement;
-        if (!rootElement) {
-          console.warn('[0x1 Router] No root element specified for rendering');
-          return;
-        }
-        
-        const matchedRoute = this.matchRoute(this.currentPath);
-        if (matchedRoute) {
-          try {
-            console.log('[0x1 App] 🖼️ Rendering with layout:', this.currentPath);
-            
-            // Get the page component and render it THROUGH the router's component system
-            let pageComponent = matchedRoute.route.component;
-            const pageProps = { params: matchedRoute.params };
-            
-            // CRITICAL FIX: Use router's renderComponentWithHookContext for proper metadata
-            const router = window.__0x1_router;
-            if (!router || typeof router.renderComponentWithHookContext !== 'function') {
-              console.warn('[0x1 App] Router renderComponentWithHookContext not available, using fallback');
-              // Fallback to direct component call
-              const pageContent = pageComponent(pageProps);
-              const layoutComponent = window.__0x1_layoutComponent;
-              const layoutProps = { children: pageContent };
-              const fullContent = layoutComponent(layoutProps);
-              
-              // Render to DOM
-              requestAnimationFrame(() => {
-                console.log('[0x1 DEBUG] Starting DOM render process...');
-                console.log('[0x1 DEBUG] rootElement:', rootElement);
-                console.log('[0x1 DEBUG] fullContent:', fullContent);
-                
-                while (rootElement.firstChild) {
-                  rootElement.removeChild(rootElement.firstChild);
-                }
-                
-                // Use the router's existing jsxToDom method
-                if (fullContent && typeof fullContent === 'object' && (fullContent.type || fullContent.__isVNode)) {
-                  console.log('[0x1 DEBUG] Rendering JSX object, calling jsxToDom...');
-                  const domElement = this.jsxToDom(fullContent);
-                  console.log('[0x1 DEBUG] jsxToDom result:', domElement);
-                  
-                  if (domElement) {
-                    console.log('[0x1 DEBUG] Appending domElement to rootElement...');
-                    rootElement.appendChild(domElement);
-                    console.log('[0x1 DEBUG] DOM append complete. Root innerHTML:', rootElement.innerHTML);
-                  } else {
-                    console.warn('[0x1 DEBUG] jsxToDom returned null/undefined - trying fallback renderToDOM...');
-                    if (typeof window.renderToDOM === 'function') {
-                      const fallbackElement = window.renderToDOM(fullContent);
-                      if (fallbackElement) {
-                        rootElement.appendChild(fallbackElement);
-                        console.log('[0x1 DEBUG] Fallback renderToDOM worked!');
-                      } else {
-                        console.error('[0x1 DEBUG] Both jsxToDom and renderToDOM failed!');
-                      }
-                    }
-                  }
-                } else if (fullContent instanceof HTMLElement) {
-                  console.log('[0x1 DEBUG] Appending HTMLElement directly...');
-                  rootElement.appendChild(fullContent);
-                } else if (typeof fullContent === 'string') {
-                  console.log('[0x1 DEBUG] Setting innerHTML with string...');
-                  rootElement.innerHTML = fullContent;
-                } else {
-                  console.error('[0x1 DEBUG] Unknown fullContent type:', typeof fullContent, fullContent);
-                }
-                
-                console.log('[0x1 DEBUG] Final rootElement.innerHTML:', rootElement.innerHTML);
-                console.log('[0x1 DEBUG] Final rootElement.children.length:', rootElement.children.length);
-                
-                // Smooth transition
-                rootElement.style.opacity = '0';
-                rootElement.style.transition = 'opacity 0.15s ease-in-out';
-                setTimeout(() => {
-                  rootElement.style.opacity = '1';
-                  console.log('[0x1 DEBUG] Opacity animation complete - should be visible now!');
-                }, 10);
-              });
-              return;
-            }
-            
-            // Use router instance method with proper context
-            const pageContent = router.renderComponentWithHookContext(pageComponent, pageProps);
-            
-            // Wrap in layout component ALSO through the router's component system
-            const layoutComponent = window.__0x1_layoutComponent;
-            const layoutProps = { children: pageContent };
-            const fullContent = router.renderComponentWithHookContext(layoutComponent, layoutProps);
-            
-            // CRITICAL FIX: Extract body content from full HTML structure
-            let renderContent = fullContent;
-            if (fullContent && typeof fullContent === 'object' && fullContent.type === 'html') {
-              console.log('[0x1 DEBUG] Detected full HTML structure, extracting body content...');
-              // Find the body element in the structure
-              const bodyElement = fullContent.children.find(child => 
-                child && typeof child === 'object' && child.type === 'body'
-              );
-              if (bodyElement) {
-                console.log('[0x1 DEBUG] Extracted body content from full HTML');
-                renderContent = {
-                  type: 'div',
-                  props: { className: bodyElement.props.className },
-                  children: bodyElement.children,
-                  key: null
-                };
-              }
-            }
-            
-            // Render to DOM
-            requestAnimationFrame(() => {
-              console.log('[0x1 DEBUG] Starting DOM render process...');
-              console.log('[0x1 DEBUG] rootElement:', rootElement);
-              console.log('[0x1 DEBUG] renderContent:', renderContent);
-              
-              while (rootElement.firstChild) {
-                rootElement.removeChild(rootElement.firstChild);
-              }
-              
-              // Use the router's existing jsxToDom method
-              if (renderContent && typeof renderContent === 'object' && (renderContent.type || renderContent.__isVNode)) {
-                console.log('[0x1 DEBUG] Rendering JSX object, calling jsxToDom...');
-                const domElement = this.jsxToDom(renderContent);
-                console.log('[0x1 DEBUG] jsxToDom result:', domElement);
-                
-                if (domElement) {
-                  console.log('[0x1 DEBUG] Appending domElement to rootElement...');
-                  rootElement.appendChild(domElement);
-                  console.log('[0x1 DEBUG] DOM append complete. Root innerHTML:', rootElement.innerHTML);
-                } else {
-                  console.warn('[0x1 DEBUG] jsxToDom returned null/undefined - trying fallback renderToDOM...');
-                  if (typeof window.renderToDOM === 'function') {
-                    const fallbackElement = window.renderToDOM(renderContent);
-                    if (fallbackElement) {
-                      rootElement.appendChild(fallbackElement);
-                      console.log('[0x1 DEBUG] Fallback renderToDOM worked!');
-                    } else {
-                      console.error('[0x1 DEBUG] Both jsxToDom and renderToDOM failed!');
-                    }
-                  }
-                }
-              } else if (renderContent instanceof HTMLElement) {
-                console.log('[0x1 DEBUG] Appending HTMLElement directly...');
-                rootElement.appendChild(renderContent);
-              } else if (typeof renderContent === 'string') {
-                console.log('[0x1 DEBUG] Setting innerHTML with string...');
-                rootElement.innerHTML = renderContent;
-              } else {
-                console.error('[0x1 DEBUG] Unknown renderContent type:', typeof renderContent, renderContent);
-              }
-              
-              console.log('[0x1 DEBUG] Final rootElement.innerHTML:', rootElement.innerHTML);
-              console.log('[0x1 DEBUG] Final rootElement.children.length:', rootElement.children.length);
-              
-              // Smooth transition
-              rootElement.style.opacity = '0';
-              rootElement.style.transition = 'opacity 0.15s ease-in-out';
-              setTimeout(() => {
-                rootElement.style.opacity = '1';
-                console.log('[0x1 DEBUG] Opacity animation complete - should be visible now!');
-              }, 10);
-            });
-          } catch (error) {
-            console.error('[0x1 Router] Error rendering route with layout:', error);
-            // Fallback to original rendering without layout
-            originalRenderCurrentRoute.call(this);
-          }
-        } else {
-          // No route found - render 404 in layout if available
-          if (window.__0x1_layoutComponent) {
-            const notFoundContent = '<div class="not-found p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-600 rounded-lg">' +
-              '<h3 class="text-lg font-bold text-yellow-700 dark:text-yellow-300 mb-2">404 - Page Not Found</h3>' +
-              '<p class="text-yellow-600 dark:text-yellow-400 text-sm">The requested route "' + this.currentPath + '" could not be found.</p>' +
-            '</div>';
-            
-            // CRITICAL FIX: Use router's renderComponentWithHookContext for proper metadata
-            const router = window.__0x1_router;
-            if (router && typeof router.renderComponentWithHookContext === 'function') {
-              const layoutComponent = window.__0x1_layoutComponent;
-              const layoutProps = { children: notFoundContent };
-              const fullContent = router.renderComponentWithHookContext(layoutComponent, layoutProps);
-              const domElement = this.jsxToDom(fullContent);
-              
-              while (rootElement.firstChild) {
-                rootElement.removeChild(rootElement.firstChild);
-              }
-              if (domElement) {
-                rootElement.appendChild(domElement);
-              }
-            } else {
-              // Fallback without router hook context
-              const layoutComponent = window.__0x1_layoutComponent;
-              const layoutProps = { children: notFoundContent };
-              const fullContent = layoutComponent(layoutProps);
-              const domElement = this.jsxToDom(fullContent);
-              
-              while (rootElement.firstChild) {
-                rootElement.removeChild(rootElement.firstChild);
-              }
-              if (domElement) {
-                rootElement.appendChild(domElement);
-              }
-            }
-          } else {
-            // No layout component, just show 404
-            rootElement.innerHTML = '<div class="not-found p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-600 rounded-lg">' +
-              '<h3 class="text-lg font-bold text-yellow-700 dark:text-yellow-300 mb-2">404 - Page Not Found</h3>' +
-              '<p class="text-yellow-600 dark:text-yellow-400 text-sm">The requested route "' + this.currentPath + '" could not be found.</p>' +
-            '</div>';
-          }
-        }
-      };
+// ===== COMPONENT LOADING WITH DEPENDENCIES =====
+async function loadComponentWithDependencies(componentPath) {
+  try {
+    const cacheKey = componentPath;
+    if (!window.__0x1_componentCache) {
+      window.__0x1_componentCache = new Map();
     }
     
-    window.__0x1_router = router;
+    if (window.__0x1_componentCache.has(cacheKey)) {
+      console.log('[0x1 App] 📦 Component cached:', componentPath);
+      return window.__0x1_componentCache.get(cacheKey);
+    }
+  
+    console.log('[0x1 App] 🔄 Loading component with dependencies:', componentPath);
     
-    console.log('[0x1 App] Loading routes...');
-    const loadedRoutes = await loadRoutes();
+    // Analyze and load dependencies
+    const componentDeps = await analyzeComponentDependencies(componentPath);
+    await loadPolyfillsSequentially(componentDeps);
     
-    loadedRoutes.forEach((route) => {
-      try {
-        if (route && route.path && route.component) {
-          console.log('[0x1 App] Registering route:', route.path);
-          
-          if (typeof router.addRoute === 'function') {
-            router.addRoute(route.path, route.component, route.metadata || {});
-            console.log('[0x1 App] Route registered successfully:', route.path);
-          } else {
-            console.warn('[0x1 App] Router.addRoute method not available');
-          }
-        }
-      } catch (error) {
-        console.error('[0x1 App] Error registering route:', route?.path, error);
-      }
-    });
+    // Load the component
+    const componentModule = await loadComponent(componentPath);
     
-    router.navigate(window.location.pathname, false);
+    // Cache successful result
+    if (componentModule) {
+      window.__0x1_componentCache.set(cacheKey, componentModule);
+    }
     
-    console.log('[0x1 App] 🚀 ULTRA-DYNAMIC app initialized with', serverRoutes.length, 'routes');
-    
+    return componentModule;
   } catch (error) {
-    console.error('[0x1 App] Failed to initialize application:', error);
-    
-    const appContainer = document.getElementById('app') || document.body;
-    appContainer.innerHTML = '<div class="error-fallback" style="display: flex; flex-direction: column; border: 7px solid #ff6262; border-radius: 80px; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; text-align: center; background: linear-gradient(135deg, #4f4780 0%, #000000 100%);"><h1 style="color: #f11717; margin-bottom: 1rem;">App Initialization Failed</h1><p style="color: #ff8080; margin-bottom: 2rem;">The application failed to start. Please check the console for details.</p><button onclick="window.location.reload()" style="background: #f11717; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">Reload Page</button></div>';
+    console.error('[0x1 App] ❌ Component loading failed:', componentPath, error);
+    throw error;
   }
 }
 
-// Start the app
-initApp();
+// ===== MAIN INITIALIZATION =====
+async function initApp() {
+  try {
+    console.log('[0x1 App] 🚀 Starting production-ready initialization...');
+    
+    // Step 1: Show minimal indicator
+    showMinimalIndicator();
+    
+    // Step 2: Load essential dependencies
+    await loadEssentialDependencies();
+    
+    // Step 3: Create router
+    const router = await createAppRouter();
+    
+    // Step 4: Register routes with proper dependency loading
+    await registerRoutes(router);
+    
+    // Step 5: Start router
+    console.log('[0x1 App] 🎯 Starting router...');
+    router.init();
+    
+    // Step 6: Navigate to current path
+    router.navigate(window.location.pathname, false);
+    
+    console.log('[0x1 App] ✅ Production-ready app initialized successfully!');
+    
+  } catch (error) {
+    console.error('[0x1 App] ❌ Initialization failed:', error);
+    
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details></div>';
+    }
+  }
+}
+
+// ===== START IMMEDIATELY =====
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 `;
 
-          logRequestStatus(200, reqPath, "Serving ultra-dynamic app bundle");
+          logRequestStatus(200, reqPath, "Serving production-ready app bundle");
           return new Response(appScript, {
             status: 200,
             headers: {
@@ -4332,7 +4694,10 @@ initApp();
             `console.error('Failed to load app bundle: ${errorMessage}');`,
             {
               status: 500,
-              headers: STANDARD_HEADERS.JS_SIMPLE
+              headers: {
+                "Content-Type": "application/javascript; charset=utf-8",
+                "Cache-Control": "no-cache",
+              },
             }
           );
         }
@@ -4488,12 +4853,13 @@ function generatePossiblePaths(projectPath: string, basePath: string, extensions
 
 function generateCssPaths(projectPath: string, fileName: string): string[] {
   return [
+    // PRIORITY: Build/dist directories where processed CSS is stored
+    join(projectPath, ".0x1", "public", fileName),
+    join(projectPath, "dist", fileName),
     // Direct path in project
     join(projectPath, fileName.replace(/^\//, "")),
     // Standard directories
     ...STANDARD_DIRECTORIES.map(dir => join(projectPath, dir, fileName)),
-    // Build/dist directories
-    join(projectPath, ".0x1", "public", fileName),
   ];
 }
 
@@ -4523,3 +4889,88 @@ const STANDARD_HEADERS = {
     "Cache-Control": "no-cache",
   }
 } as const;
+
+/**
+ * Generate error fallback component for transpilation failures
+ */
+function generateComponentErrorFallback(componentPath: string, errorMessage: string): string {
+  const safePath = componentPath.replace(/'/g, "\\'");
+  const safeError = errorMessage.replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  
+  return `
+// Component error fallback: ${safePath}
+console.error('[0x1 Dev] Component error:', '${safeError}');
+
+export default function ComponentErrorFallback(props) {
+  const container = document.createElement('div');
+  container.className = 'component-error p-4 border border-red-400 bg-red-50 rounded m-4';
+  container.innerHTML = \`
+    <div class="text-red-800">
+      <h3 class="font-bold mb-2">Component Error</h3>
+      <p class="mb-2">Failed to load: <code>${safePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Error Details</summary>
+        <pre class="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">${safeError}</pre>
+      </details>
+    </div>
+  \`;
+  return container;
+}
+
+// Make error component available globally for debugging
+if (typeof window !== 'undefined') {
+  window.__0x1_lastComponentError = {
+    path: '${safePath}',
+    error: '${safeError}',
+    timestamp: new Date().toISOString()
+  };
+}
+`;
+}
+
+/**
+ * Generate not found fallback component when source files don't exist
+ */
+function generateComponentNotFoundFallback(basePath: string, possiblePaths: string[], projectPath: string): string {
+  const safePath = basePath.replace(/'/g, "\\'");
+  const checkedPaths = possiblePaths.map(p => p.replace(projectPath, '')).join('", "');
+  
+  return `
+// Component not found fallback: ${safePath}
+console.warn('[0x1 Dev] Component not found: ${safePath}');
+console.warn('[0x1 Dev] Checked paths:', ["${checkedPaths}"]);
+
+export default function NotFoundComponent(props) {
+  const container = document.createElement('div');
+  container.className = 'component-not-found p-4 border border-yellow-400 bg-yellow-50 rounded m-4';
+  container.innerHTML = \`
+    <div class="text-yellow-800">
+      <h3 class="font-bold mb-2">Component Not Found</h3>
+      <p class="mb-2">Could not find component: <code>${safePath}</code></p>
+      <details class="text-sm">
+        <summary class="cursor-pointer font-medium">Searched Paths</summary>
+        <ul class="mt-2 ml-4 text-xs">
+          <li>${basePath}.tsx</li>
+          <li>${basePath}.jsx</li>
+          <li>${basePath}.ts</li>
+          <li>${basePath}.js</li>
+        </ul>
+      </details>
+      <p class="text-xs mt-2 opacity-75">
+        💡 Create one of these files to resolve this error
+      </p>
+    </div>
+  \`;
+  return container;
+}
+
+// Make available for debugging
+if (typeof window !== 'undefined') {
+  window.__0x1_lastNotFound = {
+    path: '${safePath}',
+    checkedPaths: ["${checkedPaths}"],
+    timestamp: new Date().toISOString()
+  };
+}
+`;
+}
