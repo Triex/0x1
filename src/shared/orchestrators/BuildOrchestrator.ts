@@ -587,12 +587,53 @@ export class BuildOrchestrator {
         }
         // Continue with original content if transformation fails
       }
+      
+      // CRITICAL FIX: Ensure Router class is properly exported
+      // Parse the class definition and add Router export
+      let routerClassName = 'h'; // Default fallback // FIXME : WTF IS THIS FLAKEY SHIT? ISNT IT DIFF EVERY TIME IT COMPILES?!?!?!?!?
+      if (routerContent.includes('class ')) {
+        // Find the main router class (usually the first/main class)
+        const classMatch = routerContent.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+        if (classMatch) {
+          const className = classMatch[1];
+          routerClassName = className; // Capture for later use
+          
+          // Add Router export to the existing exports
+          const exportMatch = routerContent.match(/export\s*\{([^}]+)\}/);
+          if (exportMatch) {
+            const currentExports = exportMatch[1];
+            // Check if Router is already exported to avoid duplicates
+            if (currentExports.includes('Router') || currentExports.includes(`${className} as Router`)) {
+              if (!this.options.silent) {
+                logger.info(`✅ Router export already exists, skipping duplicate`);
+              }
+              // Don't return here - we still need to continue with global exposure
+            } else {
+              const newExports = `${currentExports},${className} as Router`;
+              routerContent = routerContent.replace(/export\s*\{[^}]+\}/, `export{${newExports}}`);
+              
+              if (!this.options.silent) {
+                logger.info(`✅ Added Router export (${className} as Router)`);
+              }
+            }
+          } else {
+            // No existing exports, add new export
+            routerContent += `\nexport{${className} as Router};\n`;
+            
+            if (!this.options.silent) {
+              logger.info(`✅ Added Router export as new export statement`);
+            }
+          }
+        }
+      }
         
         // CRITICAL: Expose the original Link function for the wrapper (same as DevOrchestrator)
         routerContent += `
 // Expose original Link function for wrapper
 if (typeof window !== 'undefined') {
   window.__0x1_RouterLink = F;
+  // CRITICAL: Also expose the Router class for framework module
+  window.__0x1_Router = ${routerClassName};
 }
 `;
         
@@ -922,6 +963,15 @@ export const Fragment = (() => {
   return Symbol.for('react.fragment');
 })();
 
+// CRITICAL: Router class delegation
+export function Router(...args) {
+  // Try to get Router from the router module
+  if (typeof window !== 'undefined' && window.__0x1_Router) {
+    return new window.__0x1_Router(...args);
+  }
+  throw new Error('[0x1] Router not loaded - router module may not be loaded yet');
+}
+
 // CRITICAL: Link component wrapper to fix class constructor error (same as DevOrchestrator)
 export function Link(props) {
   // Get the actual Link function from the router
@@ -962,7 +1012,7 @@ export const version = '0.1.0';
 export default {
   useState, useEffect, useCallback, useMemo, useRef,
   useClickOutside, useFetch, useForm, useLocalStorage,
-  jsx, jsxs, jsxDEV, createElement, Fragment, Link, version
+  jsx, jsxs, jsxDEV, createElement, Fragment, Link, Router, version
 };
 `;
 
