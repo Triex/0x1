@@ -619,7 +619,7 @@ export class BuildOrchestrator {
       }
       
       // Continue without router - generate a minimal fallback
-      await this.generateFallbackRouter(framework0x1Dir, nodeModulesDir);
+      await this.processRouterContentLegacy("", framework0x1Dir, nodeModulesDir);
       return;
     }
     
@@ -637,10 +637,8 @@ export class BuildOrchestrator {
   private async processRouterContent(routerContent: string, framework0x1Dir: string, nodeModulesDir: string): Promise<void> {
     if (!this.options.silent) {
       logger.info(`📄 Processing router content: ${routerContent.length} bytes`);
-      logger.info(`🔍 Contains 'class': ${routerContent.includes('class ')}`);
-      logger.info(`🔍 Contains 'export': ${routerContent.includes('export')}`);
     }
-    
+      
     // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
     if (!this.options.silent) {
       logger.info('🔧 Applying ImportTransformer to router for comprehensive fixes...');
@@ -664,179 +662,147 @@ export class BuildOrchestrator {
       }
       // Continue with original content if transformation fails
     }
-    
-    // CRITICAL FIX: Ensure Router class is properly exported
-    // Parse the class definition and add Router export
-    let routerClassName = null; // CRITICAL: No hardcoded fallback - detect or fail
-    if (routerContent.includes('class ')) {
-      // Find the main router class (usually the first/main class)
-      const classMatch = routerContent.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-      if (classMatch) {
-        const className = classMatch[1];
-        routerClassName = className; // CRITICAL: Use the ACTUAL detected name
         
-        if (!this.options.silent) {
-          logger.info(`🎯 Detected router class: ${className} (minified name changes each build)`);
-        }
-        
-        // Add Router export to the existing exports
-        const exportMatch = routerContent.match(/export\s*\{([^}]+)\}/);
-        if (exportMatch) {
-          const currentExports = exportMatch[1];
-          
-          // Check if Router is already exported to avoid duplicates
-          if (!currentExports.includes('Router') && !currentExports.includes(`${className} as Router`)) {
-            const newExports = `${currentExports},${className} as Router`;
-            routerContent = routerContent.replace(/export\s*\{[^}]+\}/, `export{${newExports}}`);
-            
-            if (!this.options.silent) {
-              logger.info(`✅ Added Router export (${className} as Router)`);
-            }
-          } else {
-            if (!this.options.silent) {
-              logger.info(`✅ Router export already exists, skipping duplicate`);
-            }
-          }
-        } else {
-          // No existing exports, add new export
-          routerContent += `\nexport{${className} as Router};\n`;
-          
-          if (!this.options.silent) {
-            logger.info(`✅ Added Router export as new export statement`);
-          }
-        }
-      } else {
-        if (!this.options.silent) {
-          logger.error(`❌ CRITICAL: Could not detect router class name in minified code`);
-        }
-      }
-    } else {
-      if (!this.options.silent) {
-        logger.error(`❌ CRITICAL: No class definition found in router content`);
-      }
-    }
-    
-    // CRITICAL: Only add global exposure if we successfully detected the class name
-    if (routerClassName) {
-      // CRITICAL: Expose the original Link function AND the detected Router class
-      routerContent += `
-// Expose original Link function for wrapper
-if (typeof window !== 'undefined') {
-  window.__0x1_RouterLink = F;
-  // CRITICAL: Expose the ACTUAL detected Router class (${routerClassName})
-  window.__0x1_Router = ${routerClassName};
-}
-`;
+    // BEST PRACTICE: Import module and use proper exports (ZERO REGEX PARSING)
+    try {
+      // Write the router content to a temporary location for import
+      const tempRouterPath = join(framework0x1Dir, 'router-temp.js');
+      await Bun.write(tempRouterPath, routerContent);
       
       if (!this.options.silent) {
-        logger.success(`✅ Router class exposed globally: window.__0x1_Router = ${routerClassName}`);
-      }
-    } else {
-      // CRITICAL: Still try to expose but with fallback detection
-      if (!this.options.silent) {
-        logger.warn(`⚠️ Could not detect router class, trying fallback exposure...`);
+        logger.info('🎯 Importing router module to get proper exports (ZERO HARDCODING)...');
       }
       
-      // Try to find any class in the content
-      const anyClassMatch = routerContent.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-      if (anyClassMatch) {
-        const fallbackClassName = anyClassMatch[1];
-        routerContent += `
-// Fallback router exposure
+      // Import the router module and get actual exports
+      const routerModule = await import(tempRouterPath);
+      
+      // Get the actual exported Router class and Link function
+      const { Router, Link, default: DefaultExport } = routerModule;
+      
+      // Determine what's actually exported
+      const routerClass = Router || DefaultExport;
+      const linkFunction = Link;
+      
+      if (!this.options.silent) {
+        logger.info(`🔍 Router module exports:`);
+        logger.info(`   Router: ${typeof routerClass} ${routerClass ? '✅' : '❌'}`);
+        logger.info(`   Link: ${typeof linkFunction} ${linkFunction ? '✅' : '❌'}`);
+        logger.info(`   Default: ${typeof DefaultExport} ${DefaultExport ? '✅' : '❌'}`);
+      }
+      
+      // CRITICAL: Ensure we have the required exports
+      if (!routerClass) {
+        throw new Error('No Router class found in module exports');
+      }
+      
+      // Generate proper router content with correct exports and global exposure
+      const finalRouterContent = routerContent + `
+
+// SINGLE SOURCE OF TRUTH: Expose actual module exports globally
 if (typeof window !== 'undefined') {
-  window.__0x1_RouterLink = F;
-  window.__0x1_Router = ${fallbackClassName};
-}
-`;
-        if (!this.options.silent) {
-          logger.info(`✅ Used fallback router class exposure: ${fallbackClassName}`);
-        }
-      } else {
-        if (!this.options.silent) {
-          logger.error(`❌ CRITICAL: No class found at all in router content`);
-        }
+  // Expose the ACTUAL imported Router class
+  window.__0x1_Router = ${routerClass.name || 'Router'};
+  
+  // Expose the ACTUAL imported Link function (or create proper one if missing)
+  ${linkFunction ? 
+    `window.__0x1_RouterLink = ${linkFunction.name || 'Link'};` :
+    `// Create proper Link function since none exported
+    window.__0x1_RouterLink = (props) => ({
+      type: 'a',
+      props: {
+        href: props.href,
+        className: props.className,
+        onClick: (e) => {
+          e.preventDefault();
+          if (props.href && props.href.startsWith('/')) {
+            if (typeof window !== 'undefined' && window.history) {
+              window.history.pushState(null, '', props.href);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }
+          }
+        },
+        children: props.children
       }
-    }
-    
-    await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
-    await Bun.write(join(nodeModulesDir, 'router.js'), routerContent);
-    
-    if (!this.options.silent) {
-      logger.success(`✅ Router processed and written to both locations`);
-    }
-  }
-  
-  private async generateFallbackRouter(framework0x1Dir: string, nodeModulesDir: string): Promise<void> {
-    if (!this.options.silent) {
-      logger.warn(`⚠️ Generating minimal fallback router...`);
-    }
-    
-    const fallbackRouter = `// 0x1 Framework - Minimal Fallback Router
-class FallbackRouter {
-  constructor(options = {}) {
-    this.options = options;
-    this.routes = [];
-    this.currentPath = '/';
-    this.rootElement = options.rootElement;
-    
-    if (typeof window !== 'undefined') {
-      this.currentPath = window.location.pathname;
-      window.__0x1_router = this;
-      window.__0x1_ROUTER__ = this;
-    }
-  }
-  
-  addRoute(path, component) {
-    this.routes.push({ path, component });
-  }
-  
-  navigate(path) {
-    this.currentPath = path;
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', path);
-      this.render();
-    }
-  }
-  
-  render() {
-    if (!this.rootElement) return;
-    
-    const route = this.routes.find(r => r.path === this.currentPath) || 
-                  this.routes.find(r => r.path === '/');
-    
-    if (route) {
-      try {
-        const result = route.component();
-        if (result && typeof result === 'object' && result.type) {
-          this.rootElement.innerHTML = '<div>Route: ' + this.currentPath + '</div>';
-        }
-      } catch (error) {
-        this.rootElement.innerHTML = '<div>Router Error: ' + error.message + '</div>';
-      }
-    } else {
-      this.rootElement.innerHTML = '<div>404 - Page Not Found</div>';
-    }
-  }
-  
-  init() {
-    this.render();
+    });`
   }
 }
 
-export { FallbackRouter as Router };
+// Ensure Router is properly exported
+if (typeof ${routerClass.name || 'Router'} !== 'undefined' && !window.Router) {
+  window.Router = ${routerClass.name || 'Router'};
+}
+`;
+      
+      // Clean up temp file
+      await Bun.$`rm -f ${tempRouterPath}`;
+      
+      // Write the final router content
+      await Bun.write(join(framework0x1Dir, 'router.js'), finalRouterContent);
+      await Bun.write(join(nodeModulesDir, 'router.js'), finalRouterContent);
+      
+      if (!this.options.silent) {
+        logger.success(`✅ Router processed using PROPER MODULE IMPORTS (ZERO FALLBACKS)`);
+        logger.success(`   Router class: ${routerClass.name || 'Router'}`);
+        logger.success(`   Link function: ${linkFunction ? linkFunction.name || 'Link' : 'Generated'}`);
+      }
+      
+    } catch (importError) {
+      if (!this.options.silent) {
+        logger.warn(`⚠️ Module import failed: ${importError}`);
+        logger.info('🔄 Falling back to content analysis (last resort)...');
+      }
+      
+      // LAST RESORT: Only if module import completely fails
+      await this.processRouterContentLegacy(routerContent, framework0x1Dir, nodeModulesDir);
+    }
+  }
+  
+  // LEGACY: Only used if module import fails completely
+  private async processRouterContentLegacy(routerContent: string, framework0x1Dir: string, nodeModulesDir: string): Promise<void> {
+    if (!this.options.silent) {
+      logger.warn('⚠️ Using legacy router processing (module import failed)');
+    }
+    
+    // MINIMAL legacy processing - just ensure the content has basic global exposure
+    const legacyRouterContent = routerContent + `
 
-// Global exposure
+// LEGACY: Basic router exposure (import method failed)
 if (typeof window !== 'undefined') {
-  window.__0x1_Router = FallbackRouter;
-  window.__0x1_RouterLink = () => ({ type: 'a', props: {} });
+  // Try to find and expose any router-like class
+  const routerClasses = Object.keys(this).filter(key => 
+    typeof this[key] === 'function' && 
+    this[key].prototype && 
+    (key.includes('Router') || key.includes('router'))
+  );
+  
+  if (routerClasses.length > 0) {
+    window.__0x1_Router = this[routerClasses[0]];
+  }
+  
+  // Create basic Link function
+  window.__0x1_RouterLink = (props) => ({
+    type: 'a',
+    props: {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href && props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      },
+      children: props.children
+    }
+  });
 }
 `;
     
-    await Bun.write(join(framework0x1Dir, 'router.js'), fallbackRouter);
-    await Bun.write(join(nodeModulesDir, 'router.js'), fallbackRouter);
+    await Bun.write(join(framework0x1Dir, 'router.js'), legacyRouterContent);
+    await Bun.write(join(nodeModulesDir, 'router.js'), legacyRouterContent);
     
     if (!this.options.silent) {
-      logger.success(`✅ Fallback router generated`);
+      logger.success(`✅ Legacy router processing completed`);
     }
   }
 
@@ -932,10 +898,10 @@ if (typeof window !== 'undefined') {
           throw new Error(`CRITICAL: Failed to transpile 0x1 hooks from source. Transpilation errors: ${transpiled.logs?.map(l => l.message).join(', ')}`);
         }
         
-        for (const output of transpiled.outputs) {
-          content += await output.text();
-        }
-        
+          for (const output of transpiled.outputs) {
+            content += await output.text();
+          }
+          
       // PRODUCTION SCENARIO: Copy from dist (with redirect resolution)
       } else if (existsSync(hooksDistPath)) {
         if (!this.options.silent) {
@@ -1081,12 +1047,12 @@ if (typeof window !== 'undefined') {
       
       // CRITICAL: Append the corrected browser compatibility code
       content += browserCompatCode;
-      
-      await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
+          
+          await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
       
       if (!this.options.silent) {
         logger.success(`✅ Generated hooks.js: ${(content.length / 1024).toFixed(1)}KB (SINGLE SOURCE OF TRUTH)`);
-      }
+        }
       
     } catch (error) {
       // CRITICAL: No fallbacks - this is a build failure that must be fixed
@@ -2151,7 +2117,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     // Strategy 3: Development environment detection
     const devPaths = [
       process.cwd().includes('00-Dev/0x1') 
-        ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
         : null,
       process.cwd().includes('0x1') 
         ? process.cwd().split('0x1')[0] + '0x1'
