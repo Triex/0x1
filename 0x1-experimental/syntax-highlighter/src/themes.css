@@ -10,9 +10,9 @@
   position: relative;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: all 0.2s ease;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  padding-left: 6px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 15px;
 }
 
 .syntax-highlighter:hover {
@@ -34,12 +34,12 @@
 .line-number {
   user-select: none;
   text-align: right;
-  padding: 0 16px 0 12px; /* FIXME: 6px Next ver */
+  padding: 0 16px 0 1px;
   min-width: 3em;
   font-size: 12px;
   opacity: 0.6;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
-  margin-right: 10px; /* FIXME: 16px Next ver */
+  margin-right: 1px; 
 }
 
 .line-content {
