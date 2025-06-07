@@ -782,28 +782,56 @@ if (typeof window !== 'undefined') {
         throw new Error(`CRITICAL: Hooks generation produced invalid output (${content.length} bytes). Content preview: ${content.substring(0, 100)}`);
       }
       
-      // CRITICAL: Add DevOrchestrator's exact browser compatibility code (SINGLE SOURCE OF TRUTH)
-      content += `
+      // CRITICAL FIX: Parse the exports to determine the actual function names
+      // This handles the case where functions are exported with aliases like "export{P as useState}"  
+      const exportMatches = content.match(/export\s*\{([^}]+)\}/);
+      const functionMappings: { [key: string]: string } = {};
+      
+      if (exportMatches) {
+        const exports = exportMatches[1];
+        // Parse exports like "P as useState, A as useEffect"
+        const exportPairs = exports.split(',');
+        for (const pair of exportPairs) {
+          const trimmed = pair.trim();
+          if (trimmed.includes(' as ')) {
+            const [internalName, exportName] = trimmed.split(' as ').map(s => s.trim());
+            functionMappings[exportName] = internalName;
+          } else {
+            // Direct export without alias
+            functionMappings[trimmed] = trimmed;
+          }
+        }
+      }
+      
+      // CRITICAL: Use the actual function names from the parsed exports
+      const browserCompatCode = `
 if (typeof window !== 'undefined') {
   // Initialize React-compatible global context
   window.React = window.React || {};
   
-  // Make hooks available globally (no complex context checking)
-  Object.assign(window, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
+  // FIXED: Use the actual function names that exist in scope
+  const hookFunctions = {
+    useState: ${functionMappings['useState'] || 'useState'},
+    useEffect: ${functionMappings['useEffect'] || 'useEffect'},
+    useLayoutEffect: ${functionMappings['useLayoutEffect'] || 'useLayoutEffect'},
+    useMemo: ${functionMappings['useMemo'] || 'useMemo'},
+    useCallback: ${functionMappings['useCallback'] || 'useCallback'},
+    useRef: ${functionMappings['useRef'] || 'useRef'},
+    useClickOutside: ${functionMappings['useClickOutside'] || 'useClickOutside'},
+    useFetch: ${functionMappings['useFetch'] || 'useFetch'},
+    useForm: ${functionMappings['useForm'] || 'useForm'},
+    useLocalStorage: ${functionMappings['useLocalStorage'] || 'useLocalStorage'}
+  };
+  
+  // Make hooks available globally
+  Object.assign(window, hookFunctions);
   
   // Also make available in React namespace for compatibility
-  Object.assign(window.React, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
+  Object.assign(window.React, hookFunctions);
   
   // Global hooks registry
   window.__0x1_hooks = {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage,
+    ...hookFunctions,
     isInitialized: true,
     contextReady: true
   };
@@ -814,6 +842,9 @@ if (typeof window !== 'undefined') {
   window.__0x1_component_context_ready = true;
 }
 `;
+      
+      // CRITICAL: Append the corrected browser compatibility code
+      content += browserCompatCode;
       
       await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
       
