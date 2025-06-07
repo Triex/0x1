@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { logger } from '../../cli/utils/logger';
 
 // Import shared core utilities for SINGLE SOURCE OF TRUTH
+import { ImportTransformer } from '../core/ImportTransformer';
 import { transpilationEngine } from '../core/TranspilationEngine';
 
 // CRITICAL FIX: Import working Tailwind v4 handler from DevOrchestrator (SINGLE SOURCE OF TRUTH)
@@ -431,8 +432,14 @@ export class BuildOrchestrator {
         .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
         .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
 
-      // CRITICAL: COMPREHENSIVE import transformation (FIXED from working dev server)
-      content = this.transformImportsComprehensively(content, sourcePath);
+      // CRITICAL: Use unified ImportTransformer for robust import handling (BuildOptimisation.md)
+      // SINGLE SOURCE OF TRUTH for all import transformations - now includes working DevOrchestrator patterns
+      content = ImportTransformer.transformImports(content, {
+        sourceFilePath: sourcePath,
+        projectPath: this.options.projectPath,
+        mode: 'production',
+        debug: !this.options.silent
+      });
 
       return content;
       
@@ -442,167 +449,6 @@ export class BuildOrchestrator {
       // Return error component
       return this.generateErrorComponent(sourcePath, String(error));
     }
-  }
-
-  // CRITICAL: Comprehensive import transformation to fix 404 errors
-  private transformImportsComprehensively(content: string, sourcePath: string): string {
-    const lines = content.split('\n');
-    const transformedLines: string[] = [];
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      
-      // CRITICAL FIX: Check for CSS imports FIRST (before general import filtering)
-      // CSS imports don't have 'from' and may not have spaces: import"./style.css"
-      if (/import\s*['"'][^'"]*\.(css|scss|sass|less)['"];?/.test(trimmed)) {
-        transformedLines.push('// CSS import removed for browser compatibility');
-        continue;
-      }
-      
-      // Skip non-import lines
-      if (!trimmed.startsWith('import ') || !trimmed.includes(' from ')) {
-        transformedLines.push(line);
-        continue;
-      }
-      
-      // Skip if it's inside a comment or string
-      if (this.isImportInComment(line, lines, i)) {
-        transformedLines.push(line);
-        continue;
-      }
-      
-      let transformedLine = line;
-      
-      // 2. Transform 0x1 framework imports
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']0x1["']/,
-        '$1"/node_modules/0x1/index.js"'
-      );
-      
-      // 3. Transform 0x1 submodule imports
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']0x1\/(link|router|jsx-runtime|jsx-dev-runtime|hooks)["']/,
-        (match, importPart, module) => {
-          const moduleMap: Record<string, string> = {
-            'link': '/0x1/link.js',
-            'router': '/0x1/router.js',
-            'jsx-runtime': '/0x1/jsx-runtime.js',
-            'jsx-dev-runtime': '/0x1/jsx-runtime.js',
-            'hooks': '/0x1/hooks.js'
-          };
-          return `${importPart}"${moduleMap[module]}"`;
-        }
-      );
-      
-      // 4. CRITICAL FIX: Transform relative imports (./component → /components/component.js)
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']\.\/([^"']+)["']/,
-        (match, importPart, path) => {
-          // Determine the correct base path based on file location
-          let basePath = '/components/';
-          if (sourcePath.includes('/lib/')) {
-            basePath = '/lib/';
-          } else if (sourcePath.includes('/app/')) {
-            basePath = '/components/'; // Components are typically in /components/
-          }
-          
-          const normalizedPath = this.normalizeComponentPath(path, basePath);
-          return `${importPart}"${normalizedPath}"`;
-        }
-      );
-      
-      // 5. CRITICAL FIX: Transform parent directory imports (../component → /components/component.js)
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']\.\.\/([^"']+)["']/,
-        (match, importPart, path) => {
-          const normalizedPath = this.normalizeComponentPath(path, '/components/');
-          return `${importPart}"${normalizedPath}"`;
-        }
-      );
-      
-      // 6. CRITICAL FIX: Transform absolute imports that need normalization
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']\/([^"']+)["']/,
-        (match, importPart, path) => {
-          if (path.startsWith('node_modules/') || path.startsWith('0x1/')) {
-            return match; // Already correct
-          }
-          const normalizedPath = this.normalizeComponentPath(path, '/');
-          return `${importPart}"${normalizedPath}"`;
-        }
-      );
-      
-      // 7. Transform npm package imports for browser compatibility
-      transformedLine = transformedLine.replace(
-        /^(\s*import\s+.*?\s+from\s+)["']([^"'./][^"']*)["']/,
-        (match, importPart, packageName) => {
-          const skipPackages = ['react', 'react-dom', '0x1'];
-          if (skipPackages.includes(packageName) || packageName.startsWith('0x1/')) {
-            return match;
-          }
-          return `${importPart}"/node_modules/${packageName}"`;
-        }
-      );
-      
-      transformedLines.push(transformedLine);
-    }
-    
-    return transformedLines.join('\n');
-  }
-
-  // Helper to normalize component paths and ensure .js extensions
-  private normalizeComponentPath(path: string, basePath: string): string {
-    let normalized = path;
-    
-    // Handle different directory structures
-    if (path.includes('components/')) {
-      normalized = path.replace(/^.*?components\//, 'components/');
-    } else if (path.includes('lib/')) {
-      normalized = path.replace(/^.*?lib\//, 'lib/');
-    } else if (path.includes('utils/')) {
-      normalized = path.replace(/^.*?utils\//, 'utils/');
-    } else if (path.includes('hooks/')) {
-      normalized = path.replace(/^.*?hooks\//, 'hooks/');
-    } else {
-      // Default: assume it's a component if no specific directory
-      normalized = basePath.replace(/\/$/, '') + '/' + path;
-    }
-    
-    // Ensure it starts with /
-    if (!normalized.startsWith('/')) {
-      normalized = '/' + normalized;
-    }
-    
-    // CRITICAL: Add .js extension if needed
-    if (!normalized.match(/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif)$/)) {
-      normalized += '.js';
-    } else if (normalized.match(/\.(ts|tsx|jsx)$/)) {
-      normalized = normalized.replace(/\.(ts|tsx|jsx)$/, '.js');
-    }
-    
-    return normalized;
-  }
-
-  // Helper to detect imports in comments
-  private isImportInComment(line: string, allLines: string[], lineIndex: number): boolean {
-    const trimmed = line.trim();
-    
-    // Check for obvious comment patterns
-    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
-      return true;
-    }
-    
-    // Check for JSX text content patterns
-    const jsxPatterns = [
-      /^\s*["'`].*?import.*?["'`]/, // String literals containing import
-      /children:\s*\[/, // JSX children arrays
-      /className\s*=/, // JSX className props
-      /<code[^>]*>.*import/, // Code examples in JSX
-      /<pre[^>]*>.*import/, // Preformatted code blocks
-    ];
-    
-    return jsxPatterns.some(pattern => pattern.test(line));
   }
 
   // CRITICAL: Mirror DevOrchestrator's handleComponentRequest EXACTLY
@@ -710,59 +556,43 @@ export class BuildOrchestrator {
     // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
     await this.generateHooksUsingDevOrchestratorLogic(frameworkPath, framework0x1Dir);
 
-    // CRITICAL: Copy router with DevOrchestrator's exact Link component fixes
-      const routerSourcePath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
-      if (existsSync(routerSourcePath)) {
+    // CRITICAL: Copy router with comprehensive import transformations
+    const routerSourcePath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
+    if (existsSync(routerSourcePath)) {
       let routerContent = readFileSync(routerSourcePath, 'utf-8');
       
-      // CRITICAL: Apply DevOrchestrator's exact Link component fixes
-      // This fixes the "Class constructor K cannot be invoked without 'new'" error
-      routerContent = routerContent.replace(
-        /return\{type:"a",props:\{href:q,className:z,onClick:\(V\)=>\{[^}]+\},children:Q\}\}/,
-        `// Use JSX runtime to create element instead of plain object
-const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
-return jsx("a", {
-  href: q,
-  className: z,
-  onClick: (V) => {
-    if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
-      let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
-    }else window.location.href=q
-  },
-  children: Q
-})`
-      );
-      
-      // BACKUP: If the regex didn't work, replace the entire Link function (same as DevOrchestrator)
-      if (!routerContent.includes('Use JSX runtime')) {
-        routerContent = routerContent.replace(
-          /function F\(\{href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J\}\)\{[^}]+return\{type:"a"[^}]+\}\}/,
-          `function F({href:q,className:z,children:Q,prefetch:G,scrollBehavior:U,scrollToTop:J}){
-  let X=$();if(G&&X)X.prefetch(q);let Y=J?"top":U;
-  // CRITICAL: Use JSX runtime instead of plain object to fix class constructor error
-  const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
-  return jsx("a", {
-    href: q,
-    className: z,
-    onClick: (V) => {
-      if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){
-        let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))
-      }else window.location.href=q
-    },
-    children: Q
-  })
-}`
-        );
+      // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
+      if (!this.options.silent) {
+        logger.info('🔧 Applying ImportTransformer to router for comprehensive fixes...');
       }
       
-      // CRITICAL: Expose the original Link function for the wrapper (same as DevOrchestrator)
-      routerContent += `
+      try {
+        const transformedContent = ImportTransformer.transformImports(routerContent, {
+          sourceFilePath: routerSourcePath, // This contains 'router' so fixes will be applied
+          projectPath: this.options.projectPath,
+          mode: 'production',
+          debug: !this.options.silent
+        });
+        
+        routerContent = transformedContent;
+        if (!this.options.silent) {
+          logger.info('✅ ImportTransformer applied successfully to router');
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.error(`❌ ImportTransformer failed for router: ${error}`);
+        }
+        // Continue with original content if transformation fails
+      }
+        
+        // CRITICAL: Expose the original Link function for the wrapper (same as DevOrchestrator)
+        routerContent += `
 // Expose original Link function for wrapper
 if (typeof window !== 'undefined') {
   window.__0x1_RouterLink = F;
 }
 `;
-      
+        
         await Bun.write(join(framework0x1Dir, 'router.js'), routerContent);
       await Bun.write(join(nodeModulesDir, 'router.js'), routerContent);
     }
@@ -1027,6 +857,7 @@ const serverRoutes = ${routesJson};
 
 // ===== CACHED LAYOUT SYSTEM (PREVENTS DUPLICATION) =====
 const layoutCache = new Map();
+const hierarchyCache = new Map(); // CRITICAL: Add global hierarchy cache
 
 async function loadLayoutOnce(layoutPath) {
   if (layoutCache.has(layoutPath)) {
@@ -1062,6 +893,14 @@ async function loadLayoutOnce(layoutPath) {
 }
 
 async function loadLayoutHierarchy(layouts) {
+  // CRITICAL: Create cache key from layout paths to avoid duplicate loading
+  const cacheKey = layouts.map(l => l.componentPath).join('|');
+  
+  if (hierarchyCache.has(cacheKey)) {
+    console.log('[0x1 App] ✅ Using cached layout hierarchy:', layouts.length, 'layouts');
+    return hierarchyCache.get(cacheKey);
+  }
+  
   console.log('[0x1 App] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
   
   // Ensure hook context is available before loading any layouts
@@ -1086,6 +925,9 @@ async function loadLayoutHierarchy(layouts) {
     const loadedLayout = await loadLayoutOnce(layout.componentPath);
     loadedLayouts.push(loadedLayout);
   }
+  
+  // CRITICAL: Cache the loaded hierarchy
+  hierarchyCache.set(cacheKey, loadedLayouts);
   
   console.log('[0x1 App] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
   return loadedLayouts;

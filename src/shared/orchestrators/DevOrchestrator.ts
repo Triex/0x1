@@ -1060,12 +1060,22 @@ if (typeof module !== 'undefined' && module.exports) {
         .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
         .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
 
+
+
       // CRITICAL: Rewrite import paths to browser-resolvable URLs
       content = content
         .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
           'import { $1 } from "/components/$2.js"')
         .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
         .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized');
+      // // CRITICAL: Use unified ImportTransformer for robust import handling
+      // // SINGLE SOURCE OF TRUTH for all import transformations (BuildOptimisation.md)
+      // content = ImportTransformer.transformImports(content, {
+      //   sourceFilePath: sourcePath,
+      //   projectPath: this.options.projectPath,
+      //   mode: 'development',
+      //   debug: this.options.debug
+      // });
 
       if (this.options.debug) {
         logger.debug(`[DevOrchestrator] Transpilation successful: ${sourcePath} (${content.length} bytes)`);
