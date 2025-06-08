@@ -4,17 +4,17 @@
  */
 
 import {
-    existsSync,
-    mkdirSync,
-    readdirSync,
-    readFileSync,
-    statSync,
-    unlinkSync,
-    writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.js";
 
 // Import the proper metadata system
 
@@ -386,7 +386,7 @@ export async function build(options: BuildOptions = {}): Promise<void> {
 
       (async () => {
         const { discoverRoutesFromFileSystem } = await import(
-          "../server/dev-server"
+          "../server/dev-server.js"
         );
         const fullRoutes = discoverRoutesFromFileSystem(projectPath);
         return fullRoutes.map((route) => ({
