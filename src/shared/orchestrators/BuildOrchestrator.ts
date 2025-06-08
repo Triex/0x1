@@ -639,27 +639,27 @@ export class BuildOrchestrator {
       logger.info(`📄 Processing router content: ${routerContent.length} bytes`);
     }
       
-    // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
-    if (!this.options.silent) {
-      logger.info('🔧 Applying ImportTransformer to router for comprehensive fixes...');
-    }
-    
-    try {
-      const transformedContent = ImportTransformer.transformImports(routerContent, {
-        sourceFilePath: 'router.js',
-        projectPath: this.options.projectPath,
-        mode: 'production',
-        debug: !this.options.silent
-      });
+      // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
+      if (!this.options.silent) {
+        logger.info('🔧 Applying ImportTransformer to router for comprehensive fixes...');
+      }
       
-      routerContent = transformedContent;
-      if (!this.options.silent) {
-        logger.info('✅ ImportTransformer applied successfully to router');
-      }
-    } catch (error) {
-      if (!this.options.silent) {
-        logger.error(`❌ ImportTransformer failed for router: ${error}`);
-      }
+      try {
+        const transformedContent = ImportTransformer.transformImports(routerContent, {
+        sourceFilePath: 'router.js',
+          projectPath: this.options.projectPath,
+          mode: 'production',
+          debug: !this.options.silent
+        });
+        
+        routerContent = transformedContent;
+        if (!this.options.silent) {
+          logger.info('✅ ImportTransformer applied successfully to router');
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.error(`❌ ImportTransformer failed for router: ${error}`);
+        }
     }
         
     // BEST PRACTICE: Parse content directly to find actual classes/functions (ZERO ASSUMPTIONS)
@@ -705,16 +705,20 @@ export class BuildOrchestrator {
       logger.info(`🎯 Selected Link function: ${linkFunctionName || 'none detected'}`);
     }
     
-    // Generate enhanced router content with proper exports and global exposure
+    // Start with the transformed content
     let finalRouterContent = routerContent;
     
-    // Ensure proper exports exist
-    if (routerClassName && !routerContent.includes(`export.*${routerClassName}`)) {
+    // FIXED: Check for existing exports more robustly
+    const hasExistingRouterExport = /export\s*\{[^}]*\b(Router|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Router)\b[^}]*\}/.test(finalRouterContent);
+    const hasExistingLinkExport = /export\s*\{[^}]*\b(Link|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Link)\b[^}]*\}/.test(finalRouterContent);
+    
+    // Only add exports if they don't already exist
+    if (routerClassName && !hasExistingRouterExport) {
       if (!this.options.silent) {
         logger.info(`➕ Adding Router export: ${routerClassName}`);
       }
       
-      const exportMatch = routerContent.match(/export\s*\{([^}]*)\}/);
+      const exportMatch = finalRouterContent.match(/export\s*\{([^}]*)\}/);
       if (exportMatch) {
         const currentExports = exportMatch[1].trim();
         const newExports = currentExports ? `${currentExports}, ${routerClassName} as Router` : `${routerClassName} as Router`;
@@ -724,7 +728,7 @@ export class BuildOrchestrator {
       }
     }
     
-    if (linkFunctionName && !routerContent.includes(`export.*${linkFunctionName}`)) {
+    if (linkFunctionName && !hasExistingLinkExport) {
       if (!this.options.silent) {
         logger.info(`➕ Adding Link export: ${linkFunctionName}`);
       }
@@ -739,7 +743,7 @@ export class BuildOrchestrator {
       }
     }
     
-    // Add global exposure with ACTUAL detected names
+    // Add global exposure with ACTUAL detected names (only if we found components)
     if (routerClassName || linkFunctionName) {
       finalRouterContent += `
 
@@ -765,7 +769,7 @@ ${linkFunctionName ? `  window.__0x1_RouterLink = ${linkFunctionName};` : `  // 
 }
 `;
     } else {
-      // LAST RESORT: No classes or functions found - create minimal working router
+      // ONLY create minimal router if NO components were detected
       if (!this.options.silent) {
         logger.warn(`⚠️ No router classes or functions detected - creating minimal working router`);
       }
@@ -807,7 +811,6 @@ class MinimalRouter {
     if (route && typeof route.component === 'function') {
       try {
         const result = route.component();
-        // Handle 0x1 component format
         if (result && typeof result === 'object') {
           this.renderComponent(result, this.rootElement);
         }
@@ -835,7 +838,6 @@ class MinimalRouter {
     if (component.type && component.props) {
       const element = document.createElement(component.type);
       
-      // Set attributes
       if (component.props) {
         Object.entries(component.props).forEach(([key, value]) => {
           if (key === 'children') return;
@@ -849,7 +851,6 @@ class MinimalRouter {
         });
       }
       
-      // Handle children
       if (component.props && component.props.children) {
         const children = Array.isArray(component.props.children) ? component.props.children : [component.props.children];
         children.forEach(child => {
@@ -905,7 +906,7 @@ if (typeof window !== 'undefined') {
     await Bun.write(join(nodeModulesDir, 'router.js'), finalRouterContent);
     
     if (!this.options.silent) {
-      logger.success(`✅ Router processed using DIRECT CONTENT PARSING (NO FALLBACKS)`);
+      logger.success(`✅ Router processed using DIRECT CONTENT PARSING (NO DUPLICATES)`);
       logger.success(`   Router class: ${routerClassName || 'MinimalRouter (created)'}`);
       logger.success(`   Link function: ${linkFunctionName || 'MinimalLink (created)'}`);
     }
@@ -2251,12 +2252,6 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
   private getFrameworkPath(): string {
     // BULLETPROOF: Find the REAL 0x1 framework directory with comprehensive validation
     
-    if (!this.options.silent) {
-      logger.info(`🔍 [DEBUG] Starting framework detection...`);
-      logger.info(`🔍 [DEBUG] Project path: ${this.options.projectPath}`);
-      logger.info(`🔍 [DEBUG] Process cwd: ${process.cwd()}`);
-    }
-    
     // Strategy 1: Check if we're inside the framework itself (development)
     if (this.isValid0x1Framework(process.cwd())) {
       if (!this.options.silent) {
@@ -2267,10 +2262,6 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     
     // Strategy 2: Check npm package installation (production/CI)
     const nodeModulesFramework = join(this.options.projectPath, 'node_modules', '0x1');
-    if (!this.options.silent) {
-      logger.info(`🔍 [DEBUG] Checking npm package: ${nodeModulesFramework}`);
-      logger.info(`🔍 [DEBUG] Path exists: ${existsSync(nodeModulesFramework)}`);
-    }
     
     if (this.isValid0x1Framework(nodeModulesFramework)) {
       if (!this.options.silent) {
@@ -2289,10 +2280,6 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
         : null
     ].filter(Boolean) as string[];
     
-    if (!this.options.silent) {
-      logger.info(`🔍 [DEBUG] Dev paths to check: ${devPaths.join(', ')}`);
-    }
-    
     for (const path of devPaths) {
       if (this.isValid0x1Framework(path)) {
         if (!this.options.silent) {
@@ -2309,10 +2296,6 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
       join(process.cwd(), '../'),
       join(process.cwd(), '../../')
     ];
-    
-    if (!this.options.silent) {
-      logger.info(`🔍 [DEBUG] Relative paths to check: ${relativePaths.map(p => join(p, '0x1')).join(', ')}`);
-    }
     
     for (const basePath of relativePaths) {
       const frameworkPath = join(basePath, '0x1');
@@ -2337,10 +2320,6 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
         }
         return frameworkPath;
       }
-    }
-    
-    if (!this.options.silent) {
-      logger.info(`🔍 [DEBUG] Recursive paths checked: ${recursivePaths.join(', ')}`);
     }
     
     // CRITICAL: If we can't find the framework, this is a build failure
@@ -2386,24 +2365,19 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
           logger.debug(`🔍 [DEBUG] Package name: ${packageJson.name}`);
         }
         
-        // Must be named exactly "0x1" or similar, not just contain "0x1"
+        // FIXED: Only check if this package is actually the 0x1 framework
+        // Don't exclude based on project name - that makes no sense!
         isFrameworkPackage = packageJson.name === '0x1' || 
                            packageJson.name === '@0x1/framework' ||
-                           (packageJson.name && packageJson.name.startsWith('0x1') && !packageJson.name.includes('website') && !packageJson.name.includes('template'));
+                           (packageJson.name && packageJson.name.startsWith('0x1-'));
         
         if (!this.options.silent) {
           logger.debug(`🔍 [DEBUG] Is framework package: ${isFrameworkPackage}`);
-          logger.debug(`🔍 [DEBUG] Name check: exact='0x1': ${packageJson.name === '0x1'}`);
-          logger.debug(`🔍 [DEBUG] Name check: @0x1/framework: ${packageJson.name === '@0x1/framework'}`);
-          logger.debug(`🔍 [DEBUG] Name check: starts with 0x1: ${packageJson.name && packageJson.name.startsWith('0x1')}`);
-          logger.debug(`🔍 [DEBUG] Name check: excludes website: ${!packageJson.name?.includes('website')}`);
-          logger.debug(`🔍 [DEBUG] Name check: excludes template: ${!packageJson.name?.includes('template')}`);
         }
       } catch (error) {
         if (!this.options.silent) {
           logger.debug(`❌ [DEBUG] Invalid package.json: ${error}`);
         }
-        // Invalid package.json
         isFrameworkPackage = false;
       }
     }
