@@ -1965,6 +1965,21 @@ if (document.readyState === 'loading') {
       }
     }
     
+    // CRITICAL: Load actual project configuration for proper metadata
+    let projectConfig;
+    try {
+      projectConfig = await configManager.loadProjectConfig();
+    } catch (error) {
+      if (this.options.debug) {
+        logger.debug(`Project config loading failed: ${error}`);
+      }
+      // Fallback config
+      projectConfig = {
+        name: 'My 0x1 App',
+        description: '0x1 Framework development environment'
+      };
+    }
+    
     // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
     const externalCssLinks: string[] = [];
     const externalImports: Record<string, string> = {};
@@ -2073,16 +2088,22 @@ if (document.readyState === 'loading') {
       ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
       : '';
 
+    // FIXED: Use actual project configuration for title and description
+    const pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
+    const pageDescription = projectConfig.description || '0x1 Framework development environment';
+
     return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 Development</title>
-  <meta name="description" content="0x1 Framework development environment">
+  <title>${pageTitle}</title>
+  <meta name="description" content="${pageDescription}">
 ${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
 ${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
-  <script type="importmap">${JSON.stringify({ imports: importMap })}</script>
+  <script type="importmap">
+  ${JSON.stringify({ imports: importMap }, null, 2)}
+  </script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>

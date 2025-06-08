@@ -975,7 +975,7 @@ if (typeof window !== 'undefined') {
           minify: false,
           sourcemap: 'none',
           define: {
-            'process.env.NODE_ENV': JSON.stringify('development')
+            'process.env.NODE_ENV': JSON.stringify('production')
           },
           external: []
         });
@@ -986,13 +986,74 @@ if (typeof window !== 'undefined') {
             content += await output.text();
           }
           
-          // Add browser globals (same as DevOrchestrator)
+          // CRITICAL FIX: Ensure JSX runtime produces objects with type/props, not hyperscript functions
+          // Add explicit JSX object creators to override any hyperscript patterns
           content += `
+
+// CRITICAL: Override any hyperscript patterns with proper JSX object creation
+// This fixes the "Unknown JSX type: h" error by ensuring consistent JSX object format
+
+// Ensure jsx/jsxs/jsxDEV always return objects with type and props
+const originalJsx = jsx;
+const originalJsxs = jsxs;
+const originalJsxDEV = jsxDEV;
+
+export function jsx(type, props = {}, key) {
+  // Ensure we always return a proper JSX object, never a function
+  if (typeof type === 'function') {
+    // For component functions, call them and ensure proper object format
+    try {
+      const result = type(props);
+      if (result && typeof result === 'object' && result.type && result.props) {
+        return result;
+      }
+      // If component returns something else, wrap it properly
+      return {
+        type: 'div',
+        props: { children: result },
+        children: result ? [result] : [],
+        key: key || null
+      };
+    } catch (error) {
+      console.error('[0x1 JSX] Component error:', error);
+      return {
+        type: 'div',
+        props: { className: 'component-error', children: 'Component Error' },
+        children: ['Component Error'],
+        key: key || null
+      };
+    }
+  }
+  
+  // For regular elements, ensure proper JSX object format
+  const { children, ...otherProps } = props || {};
+  return {
+    type,
+    props: {
+      ...otherProps,
+      children: Array.isArray(children) ? children : (children !== undefined ? [children] : [])
+    },
+    children: Array.isArray(children) ? children : (children !== undefined ? [children] : []),
+    key: key || null
+  };
+}
+
+export function jsxs(type, props = {}, key) {
+  return jsx(type, props, key);
+}
+
+export function jsxDEV(type, props = {}, key, isStaticChildren, source, self) {
+  return jsx(type, props, key);
+}
+
+// Add browser globals (same as DevOrchestrator)
 if (typeof window !== 'undefined') {
   Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
   window.React = Object.assign(window.React || {}, {
     createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
   });
+  
+  console.log('[0x1 JSX] Runtime initialized with proper object format (fixes h function error)');
 }
 `;
           
@@ -1012,10 +1073,172 @@ if (typeof window !== 'undefined') {
               'import { $1 } from "/node_modules/0x1/index.js"');
           
           await Bun.write(join(framework0x1Dir, 'jsx-runtime.js'), content);
+          
+          if (!this.options.silent) {
+            logger.success(`✅ Generated jsx-runtime.js with proper object format (fixes h function error)`);
+          }
         }
+      } else {
+        // FALLBACK: Generate minimal JSX runtime if source build fails
+        await this.generateFallbackJsxRuntime(framework0x1Dir);
       }
     } catch (error) {
-      logger.warn(`Failed to generate JSX runtime: ${error}`);
+      logger.warn(`Failed to generate JSX runtime from source: ${error}, using fallback`);
+      await this.generateFallbackJsxRuntime(framework0x1Dir);
+    }
+  }
+  
+  // FALLBACK: Generate minimal but correct JSX runtime
+  private async generateFallbackJsxRuntime(framework0x1Dir: string): Promise<void> {
+    const fallbackRuntime = `// 0x1 Framework - Fallback JSX Runtime (Ensures proper object format)
+console.log('[0x1 JSX] Using fallback runtime with guaranteed object format');
+
+// Fragment symbol
+export const Fragment = Symbol.for('react.fragment');
+
+// CRITICAL: JSX functions that ALWAYS return proper objects (never functions)
+export function jsx(type, props = {}, key) {
+  // Handle Fragment
+  if (type === Fragment) {
+    const { children = [] } = props;
+    return {
+      type: Fragment,
+      props: {},
+      children: Array.isArray(children) ? children.flat().filter(c => c != null) : (children != null ? [children] : []),
+      key: key || null
+    };
+  }
+  
+  // Handle function components
+  if (typeof type === 'function') {
+    try {
+      const result = type(props);
+      // Ensure the result is a proper JSX object
+      if (result && typeof result === 'object' && result.type) {
+        return result;
+      }
+      // Wrap unexpected results
+      return {
+        type: 'div',
+        props: { children: result },
+        children: result ? [result] : [],
+        key: key || null
+      };
+    } catch (error) {
+      console.error('[0x1 JSX] Component error:', error);
+      return {
+        type: 'div',
+        props: { className: 'component-error', children: 'Component Error' },
+        children: ['Component Error'],
+        key: key || null
+      };
+    }
+  }
+  
+  // Handle regular HTML elements
+  const { children, ...otherProps } = props || {};
+  return {
+    type,
+    props: {
+      ...otherProps,
+      children: Array.isArray(children) ? children.flat().filter(c => c != null) : (children !== undefined ? [children] : [])
+    },
+    children: Array.isArray(children) ? children.flat().filter(c => c != null) : (children !== undefined ? [children] : []),
+    key: key || null
+  };
+}
+
+export function jsxs(type, props, key) {
+  return jsx(type, props, key);
+}
+
+export function jsxDEV(type, props, key, isStaticChildren, source, self) {
+  return jsx(type, props, key);
+}
+
+export function createElement(type, props, ...children) {
+  const allChildren = children.flat().filter(c => c != null);
+  return jsx(type, { ...props, children: allChildren });
+}
+
+// Render function for browser environment
+export function renderToDOM(node) {
+  if (typeof window === 'undefined') return null;
+  if (!node) return null;
+  
+  if (typeof node === 'string' || typeof node === 'number') {
+    return document.createTextNode(String(node));
+  }
+  
+  if (Array.isArray(node)) {
+    const fragment = document.createDocumentFragment();
+    node.forEach(child => {
+      const childNode = renderToDOM(child);
+      if (childNode) fragment.appendChild(childNode);
+    });
+    return fragment;
+  }
+  
+  if (typeof node === 'object' && node && node.type) {
+    if (node.type === Fragment) {
+      const fragment = document.createDocumentFragment();
+      (node.children || []).forEach(child => {
+        const childNode = renderToDOM(child);
+        if (childNode) fragment.appendChild(childNode);
+      });
+      return fragment;
+    }
+    
+    if (typeof node.type === 'function') {
+      const result = node.type(node.props || {});
+      return renderToDOM(result);
+    }
+    
+    const element = document.createElement(node.type);
+    
+    // Set properties and attributes
+    Object.entries(node.props || {}).forEach(([key, value]) => {
+      if (key === 'children') return;
+      
+      if (key === 'className') {
+        element.className = String(value);
+      } else if (key.startsWith('on') && typeof value === 'function') {
+        const eventName = key.slice(2).toLowerCase();
+        element.addEventListener(eventName, value);
+      } else if (key === 'style' && typeof value === 'object') {
+        Object.assign(element.style, value);
+      } else if (value != null && typeof value !== 'object' && typeof value !== 'function') {
+        element.setAttribute(key, String(value));
+      }
+    });
+    
+    // Add children
+    (node.children || []).forEach(child => {
+      const childNode = renderToDOM(child);
+      if (childNode) element.appendChild(childNode);
+    });
+    
+    return element;
+  }
+  
+  return null;
+}
+
+// Browser globals
+if (typeof window !== 'undefined') {
+  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
+  window.React = Object.assign(window.React || {}, {
+    createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
+  });
+  
+  console.log('[0x1 JSX] Fallback runtime loaded - guaranteed object format');
+}
+`;
+
+    await Bun.write(join(framework0x1Dir, 'jsx-runtime.js'), fallbackRuntime);
+    
+    if (!this.options.silent) {
+      logger.info(`✅ Generated fallback jsx-runtime.js with guaranteed object format`);
     }
   }
 
@@ -1938,6 +2161,9 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     const configManager = getConfigurationManager(this.options.projectPath);
     const pwaMetadata = await configManager.getPWAMetadata();
     
+    // CRITICAL: Load actual project configuration for proper metadata
+    const projectConfig = await configManager.loadProjectConfig();
+    
     // Generate CSS link tags for external dependencies
     const externalCssLinks = this.state.dependencies.cssFiles
       .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
@@ -1968,16 +2194,21 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
       : '';
     
+    // FIXED: Use actual project configuration for title and description
+    const pageTitle = projectConfig.name || 'My 0x1 App';
+    const pageDescription = projectConfig.description || '0x1 Framework application';
+    
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
-  <meta name="description" content="0x1 Framework application">
+  <title>${pageTitle}</title>
+  <meta name="description" content="${pageDescription}">
 ${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
 ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
-  <script type="importmap">{
+  <script type="importmap">
+  {
     "imports": {
       "0x1": "/node_modules/0x1/index.js",
       "0x1/index": "/node_modules/0x1/index.js",
@@ -1993,7 +2224,8 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       "0x1/hooks": "/0x1/hooks.js",
       "0x1/hooks.js": "/0x1/hooks.js"
     }
-  }</script>
+  }
+  </script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
