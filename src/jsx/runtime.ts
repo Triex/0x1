@@ -70,12 +70,12 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
         
         // UNIVERSAL APPROACH: Find component elements with comprehensive search
         // Works with single elements, fragments, nested layouts - ANY structure
-        const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-        
-        if (elements.length === 0) {
+      const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+      
+      if (elements.length === 0) {
           // SMART RETRY: Component doesn't exist yet - queue for retry
-          console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
-          
+        console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
+        
           // DEBUG: For DocsSidebar, let's see what's actually in the DOM
           if (componentName === 'DocsSidebar') {
             console.log(`[0x1 JSX] DOM DEBUG: All elements with data-component-id:`);
@@ -96,16 +96,16 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
             requestAnimationFrame(() => {
               const retryElements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
               if (retryElements.length > 0) {
-                executeReRender(componentId, componentName, type, props, retryElements);
+          executeReRender(componentId, componentName, type, props, retryElements);
               } else {
                 console.debug(`[0x1 JSX] Component ${componentId} still not in DOM after retry - final skip`);
               }
-            });
+        });
           }, 10);
-          return;
-        }
-        
-        executeReRender(componentId, componentName, type, props, elements);
+        return;
+      }
+      
+      executeReRender(componentId, componentName, type, props, elements);
       }
     });
   };
@@ -210,11 +210,11 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
                 oldElement.parentNode.removeChild(oldElement);
                 if (isDebugMode) {
                   console.log(`[0x1 JSX] Removed extra old element ${index} for ${componentId}`);
-                }
-              }
             }
-          });
-          
+          }
+        }
+      });
+      
           if (isDebugMode) {
             console.log(`[0x1 JSX] Successfully re-rendered single component ${componentId}`);
           }

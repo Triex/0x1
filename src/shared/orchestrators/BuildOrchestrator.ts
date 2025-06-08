@@ -1977,6 +1977,23 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="description" content="0x1 Framework application">
 ${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
 ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
+  <script type="importmap">{
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/index": "/node_modules/0x1/index.js",
+      "0x1/index.js": "/node_modules/0x1/index.js",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/router": "/0x1/router.js",
+      "0x1/router.js": "/0x1/router.js",
+      "0x1/link": "/0x1/router.js",
+      "0x1/link.js": "/0x1/router.js",
+      "0x1/hooks": "/0x1/hooks.js",
+      "0x1/hooks.js": "/0x1/hooks.js"
+    }
+  }</script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>

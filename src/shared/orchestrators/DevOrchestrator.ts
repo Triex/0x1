@@ -1821,7 +1821,7 @@ if (document.readyState === 'loading') {
     );
 
     if (matchingRoute || reqPath === '/' || reqPath === '/index.html') {
-      return new Response(this.generateIndexHtml(), {
+      return new Response(await this.generateIndexHtml(), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
     }
@@ -1948,22 +1948,22 @@ if (document.readyState === 'loading') {
   /**
    * Generate the main HTML page with live reload
    */
-  private generateIndexHtml(): string {
-    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+  private async generateIndexHtml(): Promise<string> {
+    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata (FIXED: Made synchronous)
     const configManager = getConfigurationManager(this.options.projectPath);
     let pwaMetadata: { manifestLink?: string; metaTags: string[]; scripts: string[] } = {
       metaTags: [],
       scripts: []
     };
     
-    // Load PWA metadata asynchronously in background (non-blocking)
-    configManager.getPWAMetadata().then((metadata: any) => {
-      pwaMetadata = metadata;
-    }).catch((error: any) => {
+    // FIXED: Load PWA metadata synchronously to ensure it's available for HTML generation
+    try {
+      pwaMetadata = await configManager.getPWAMetadata();
+    } catch (error) {
       if (this.options.debug) {
         logger.debug(`PWA metadata loading failed: ${error}`);
       }
-    });
+    }
     
     // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
     const externalCssLinks: string[] = [];
@@ -2017,9 +2017,10 @@ if (document.readyState === 'loading') {
       }
     }
     
-    // Build complete import map with external packages
+    // Build complete import map with external packages - FIXED: Added missing 0x1/index.js mappings
     const importMap = {
       "0x1": "/node_modules/0x1/index.js",
+      "0x1/index": "/node_modules/0x1/index.js",
       "0x1/index.js": "/node_modules/0x1/index.js",
       "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
       "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
@@ -2029,6 +2030,8 @@ if (document.readyState === 'loading') {
       "0x1/router.js": "/0x1/router.js",
       "0x1/link": "/0x1/router.js",
       "0x1/link.js": "/0x1/router.js",
+      "0x1/hooks": "/0x1/hooks.js",
+      "0x1/hooks.js": "/0x1/hooks.js",
       ...externalImports
     };
     
