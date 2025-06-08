@@ -467,6 +467,11 @@ Powered by Bun    v${Bun.version}`
         return await this.handleExternalScopedPackageRequest(reqPath);
       }
 
+      // 4.6. CRITICAL: Handle CSS style requests from scoped packages like @0x1js/highlighter/styles
+      if (reqPath.includes('/styles') && (reqPath.startsWith('/@') || reqPath.includes('node_modules/@'))) {
+        return await this.handleScopedPackageStylesRequest(reqPath);
+      }
+
       // 5. CSS requests
       if (this.isCssRequest(reqPath)) {
         return await this.handleCssRequest(reqPath);
@@ -907,7 +912,30 @@ export default function Link({ href, className, children, target, rel, onClick, 
         const requestedFilePath = join(packageDir, filePath);
         
         if (existsSync(requestedFilePath)) {
-          const content = readFileSync(requestedFilePath, 'utf-8');
+          let content = readFileSync(requestedFilePath, 'utf-8');
+          
+          // CRITICAL: Handle CSS files specially
+          if (requestedFilePath.endsWith('.css')) {
+            // Rewrite relative CSS imports to absolute URLs
+            content = content.replace(
+              /@import\s+['"]\.\/([^'"]+)['"];?/g,
+              (match, filename) => {
+                const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
+                return `@import '${absoluteUrl}';`;
+              }
+            );
+            
+            if (!this.options.silent) {
+              logger.debug(`[DevOrchestrator] Serving CSS: ${packageName}/${filePath} (${content.length} bytes)`);
+            }
+            
+            return new Response(content, {
+              headers: {
+                'Content-Type': 'text/css; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          }
           
           if (!this.options.silent) {
             logger.debug(`[DevOrchestrator] Serving: ${packageName}/${filePath}`);
@@ -929,7 +957,30 @@ export default function Link({ href, className, children, target, rel, onClick, 
           const mainPath = join(packageDir, mainFile);
           
           if (existsSync(mainPath)) {
-            const content = readFileSync(mainPath, 'utf-8');
+            let content = readFileSync(mainPath, 'utf-8');
+            
+            // CRITICAL: Handle CSS files specially
+            if (mainPath.endsWith('.css')) {
+              // Rewrite relative CSS imports to absolute URLs
+              content = content.replace(
+                /@import\s+['"]\.\/([^'"]+)['"];?/g,
+                (match, filename) => {
+                  const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
+                  return `@import '${absoluteUrl}';`;
+                }
+              );
+              
+              if (!this.options.silent) {
+                logger.debug(`[DevOrchestrator] Serving main CSS for: ${packageName} -> ${mainFile}`);
+              }
+              
+              return new Response(content, {
+                headers: {
+                  'Content-Type': 'text/css; charset=utf-8',
+                  'Cache-Control': 'no-cache'
+                }
+              });
+            }
             
             if (!this.options.silent) {
               logger.debug(`[DevOrchestrator] Serving main file for: ${packageName} -> ${mainFile}`);
@@ -1997,7 +2048,83 @@ if (document.readyState === 'loading') {
     const externalCssLinks: string[] = [];
     const externalImports: Record<string, string> = {};
     
-    // Scan node_modules for any scoped packages that have CSS files
+    // ENHANCED: Scan for CSS imports in source files first (most reliable)
+    const sourceFiles = await this.findSourceFiles();
+    const cssImportPatterns = new Set<string>();
+    
+    for (const filePath of sourceFiles) {
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        
+        // Find CSS imports like: import '@0x1js/highlighter/styles'
+        const cssImportMatches = content.match(/import\s+['"]([^'"]+\/styles?)['"];?/g);
+        if (cssImportMatches) {
+          for (const match of cssImportMatches) {
+            const pathMatch = match.match(/import\s+['"]([^'"]+\/styles?)['"];?/);
+            if (pathMatch) {
+              cssImportPatterns.add(pathMatch[1]);
+            }
+          }
+        }
+        
+        // Also find direct CSS file imports
+        const directCssMatches = content.match(/import\s+['"]([^'"]+\.css)['"];?/g);
+        if (directCssMatches) {
+          for (const match of directCssMatches) {
+            const pathMatch = match.match(/import\s+['"]([^'"]+\.css)['"];?/);
+            if (pathMatch) {
+              cssImportPatterns.add(pathMatch[1]);
+            }
+          }
+        }
+      } catch (error) {
+        // Silent fail for individual files
+      }
+    }
+    
+    // Process discovered CSS imports
+    for (const cssImport of cssImportPatterns) {
+      if (cssImport.startsWith('@')) {
+        // Scoped package CSS import like @0x1js/highlighter/styles
+        const parts = cssImport.split('/');
+        if (parts.length >= 2) {
+          const packageName = `${parts[0]}/${parts[1]}`; // @0x1js/highlighter
+          const subPath = parts.slice(2).join('/'); // styles
+          
+          // Check if this package exists in node_modules
+          const packagePath = join(this.options.projectPath, 'node_modules', packageName);
+          if (existsSync(packagePath)) {
+            // Look for CSS files in the package
+            const possibleCssPaths = [
+              join(packagePath, 'dist', 'styles.css'),
+              join(packagePath, 'dist', `${subPath}.css`),
+              join(packagePath, `${subPath}.css`),
+              join(packagePath, 'styles.css'),
+              join(packagePath, 'dist', 'index.css'),
+              join(packagePath, 'index.css')
+            ];
+            
+            for (const cssPath of possibleCssPaths) {
+              if (existsSync(cssPath)) {
+                const cssUrl = `/node_modules/${packageName}/dist/${cssPath.split('/').pop()}`;
+                externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                
+                if (this.options.debug) {
+                  logger.debug(`Found CSS for ${cssImport}: ${cssUrl}`);
+                }
+                break;
+              }
+            }
+          }
+        }
+      } else if (cssImport.includes('/')) {
+        // Regular package CSS import
+        const cssUrl = `/node_modules/${cssImport}`;
+        externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+      }
+    }
+    
+    // FALLBACK: Scan node_modules for any scoped packages that have CSS files
     const nodeModulesPath = join(this.options.projectPath, 'node_modules');
     if (existsSync(nodeModulesPath)) {
       try {
@@ -2018,19 +2145,22 @@ if (document.readyState === 'loading') {
                   // Add to import map
                   externalImports[packageName] = `/node_modules/${packageName}/index.js`;
                   
-                  // Check for CSS files
-                  const distPath = join(packagePath, 'dist');
-                  if (existsSync(distPath)) {
-                    try {
-                      const distFiles = readdirSync(distPath);
-                      for (const file of distFiles) {
-                        if (file.endsWith('.css')) {
-                          const cssUrl = `/node_modules/${packageName}/dist/${file}`;
-                          externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                  // Check for CSS files (only if not already added above)
+                  const alreadyAdded = externalCssLinks.some(link => link.includes(packageName));
+                  if (!alreadyAdded) {
+                    const distPath = join(packagePath, 'dist');
+                    if (existsSync(distPath)) {
+                      try {
+                        const distFiles = readdirSync(distPath);
+                        for (const file of distFiles) {
+                          if (file.endsWith('.css')) {
+                            const cssUrl = `/node_modules/${packageName}/dist/${file}`;
+                            externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                          }
                         }
+                      } catch (e) {
+                        // Silent fail
                       }
-                    } catch (e) {
-                      // Silent fail
                     }
                   }
                 }
@@ -2403,7 +2533,27 @@ connect();
         }
         
         // Serve the fallback file
-        const content = readFileSync(foundPath, 'utf-8');
+        let content = readFileSync(foundPath, 'utf-8');
+        
+        // CRITICAL: Handle CSS files specially
+        if (foundPath.endsWith('.css')) {
+          // Rewrite relative CSS imports to absolute URLs
+          content = content.replace(
+            /@import\s+['"]\.\/([^'"]+)['"];?/g,
+            (match, filename) => {
+              const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
+              return `@import '${absoluteUrl}';`;
+            }
+          );
+          
+          return new Response(content, {
+            headers: {
+              'Content-Type': 'text/css; charset=utf-8',
+              'Cache-Control': 'no-cache'
+            }
+          });
+        }
+        
         return new Response(content, {
           headers: {
             'Content-Type': foundPath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
@@ -2413,7 +2563,30 @@ connect();
       }
       
       // Serve the requested file
-      const content = readFileSync(requestedFilePath, 'utf-8');
+      let content = readFileSync(requestedFilePath, 'utf-8');
+      
+      // CRITICAL: Handle CSS files specially
+      if (requestedFilePath.endsWith('.css')) {
+        // Rewrite relative CSS imports to absolute URLs
+        content = content.replace(
+          /@import\s+['"]\.\/([^'"]+)['"];?/g,
+          (match, filename) => {
+            const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
+            return `@import '${absoluteUrl}';`;
+          }
+        );
+        
+        if (!this.options.silent) {
+          logger.debug(`[DevOrchestrator] Serving external CSS: ${packageName}${packagePath} (${content.length} bytes)`);
+        }
+        
+        return new Response(content, {
+          headers: {
+            'Content-Type': 'text/css; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
       
       if (!this.options.silent) {
         logger.debug(`[DevOrchestrator] Serving external package: ${packageName}${packagePath}`);
@@ -2478,5 +2651,75 @@ connect();
         return `@import '${absoluteUrl}';`;
       }
     );
+  }
+
+  // Handle external scoped package requests (e.g., /@0x1js/highlighter/...)
+  private async handleScopedPackageStylesRequest(reqPath: string): Promise<Response> {
+    try {
+      // Handle different path patterns:
+      // /@0x1js/highlighter/styles -> /node_modules/@0x1js/highlighter/dist/styles.css
+      // /node_modules/@0x1js/highlighter/dist/styles.css -> direct file
+      
+      let packageName: string;
+      let actualFilePath: string;
+      
+      if (reqPath.startsWith('/@')) {
+        // Direct scoped package request like /@0x1js/highlighter/styles
+        const packageMatch = reqPath.match(/^\/(@[^/]+\/[^/]+)\/styles$/);
+        if (!packageMatch) {
+          return this.createNotFoundResponse('Invalid scoped package styles path');
+        }
+        
+        packageName = packageMatch[1];
+        const packagePath = join(this.options.projectPath, 'node_modules', packageName);
+        
+        // Try multiple possible locations for the CSS file
+        const possiblePaths = [
+          join(packagePath, 'dist', 'styles.css'),
+          join(packagePath, 'styles.css'),
+          join(packagePath, 'dist', 'index.css'),
+          join(packagePath, 'index.css')
+        ];
+        
+        actualFilePath = possiblePaths.find(path => existsSync(path)) || '';
+        
+      } else if (reqPath.includes('node_modules/@')) {
+        // Direct file request like /node_modules/@0x1js/highlighter/dist/styles.css
+        actualFilePath = join(this.options.projectPath, reqPath.substring(1)); // Remove leading /
+        
+        // Extract package name for logging
+        const packageMatch = reqPath.match(/node_modules\/(@[^/]+\/[^/]+)/);
+        packageName = packageMatch ? packageMatch[1] : 'unknown';
+      } else {
+        return this.createNotFoundResponse('Unsupported styles path pattern');
+      }
+      
+      if (!actualFilePath || !existsSync(actualFilePath)) {
+        if (this.options.debug) {
+          logger.warn(`Scoped package styles not found: ${reqPath} (tried: ${actualFilePath})`);
+        }
+        return this.createNotFoundResponse(`Scoped package styles not found: ${reqPath}`);
+      }
+      
+      const content = readFileSync(actualFilePath, 'utf-8');
+      
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Serving scoped package styles: ${packageName} -> ${actualFilePath}`);
+      }
+      
+      return new Response(content, {
+        headers: {
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+    } catch (error) {
+      if (this.options.debug) {
+        logger.error(`[DevOrchestrator] Error serving scoped package styles: ${error}`);
+      }
+      return this.createErrorResponse(error);
+    }
   }
 }
