@@ -1975,6 +1975,9 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     const pageTitle = projectConfig.name || 'My 0x1 App';
     const pageDescription = projectConfig.description || '0x1 Framework application';
     
+    // CRITICAL: Add cache-busting timestamp to prevent Safari iOS caching issues
+    const cacheBust = Date.now();
+    
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -1982,24 +1985,24 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
+${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
 ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
   <script type="importmap">
   {
     "imports": {
-      "0x1": "/node_modules/0x1/index.js",
-      "0x1/index": "/node_modules/0x1/index.js",
-      "0x1/index.js": "/node_modules/0x1/index.js",
-      "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
-      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
-      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js",
-      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js",
-      "0x1/router": "/0x1/router.js",
-      "0x1/router.js": "/0x1/router.js",
-      "0x1/link": "/0x1/router.js",
-      "0x1/link.js": "/0x1/router.js",
-      "0x1/hooks": "/0x1/hooks.js",
-      "0x1/hooks.js": "/0x1/hooks.js"
+      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/router": "/0x1/router.js?v=${cacheBust}",
+      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",
+      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"
     }
   }
   </script>
@@ -2010,7 +2013,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     window.process={env:{NODE_ENV:'production'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js" type="module"></script>${pwaScripts}
+  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
 </body>
 </html>`;
 

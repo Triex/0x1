@@ -557,7 +557,9 @@ if (typeof window !== 'undefined') {
             return new Response(content, {
               headers: {
                 'Content-Type': 'application/javascript; charset=utf-8',
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+                'Pragma': 'no-cache',
+                'Expires': '0'
               }
             });
           }
@@ -628,7 +630,9 @@ if (typeof window !== 'undefined') {
             return new Response(content, {
               headers: { 
                 'Content-Type': 'application/javascript; charset=utf-8',
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+                'Pragma': 'no-cache',
+                'Expires': '0'
               }
             });
           }
@@ -728,7 +732,9 @@ export function Link(props) {
       return new Response(frameworkModule, {
         headers: { 
           'Content-Type': 'application/javascript; charset=utf-8',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         }
       });
     }
@@ -790,7 +796,9 @@ if (typeof window !== 'undefined') {
         return new Response(content, {
           headers: { 
             'Content-Type': 'application/javascript; charset=utf-8',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
           }
         });
       }
@@ -1822,7 +1830,12 @@ if (document.readyState === 'loading') {
 
     if (matchingRoute || reqPath === '/' || reqPath === '/index.html') {
       return new Response(await this.generateIndexHtml(), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        headers: {
+          'content-type': 'text/html;charset=UTF-8',
+          'cache-control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'pragma': 'no-cache',
+          'expires': '0'
+        }
       });
     }
 

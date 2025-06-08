@@ -1142,8 +1142,14 @@ class Router {
         }
       }
 
-      // Fallback for unknown types
-      console.warn("[0x1 Router] Unknown JSX type:", jsx);
+      // Fallback for unknown types - IMPROVED DEBUGGING (BuildOptimisation.md: help developers fix the root cause)
+      console.warn(
+        "[0x1 Router] Component returned invalid JSX object. Expected object with string|function type, got:", 
+        typeof jsx.type, 
+        jsx.type,
+        "\nFull object:", jsx,
+        "\nThis usually means a component is returning hyperscript/h() calls instead of proper JSX. Check your component's return statement."
+      );
       return null;
     } catch (error: any) {
       console.error("[0x1 Router] Error in jsxToDom:", error);
