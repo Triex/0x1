@@ -53,55 +53,60 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
     }
   }
   
-  // Generate stable component ID
-  const componentName = type.name || 'Anonymous';
-  const propsString = JSON.stringify(props || {});
-  let hash = 0;
-  for (let i = 0; i < propsString.length; i++) {
-    const char = propsString.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  const componentId = `${componentName}_${Math.abs(hash).toString(36)}`;
+  const componentName = type.name || 'AnonymousComponent';
+  const componentId = `${componentName}_${Math.random().toString(36).slice(2, 5)}`;
   
-  // Create update callback for state changes
+  // DEBUG: Log what components are being processed
+  if (componentName === 'DocsSidebar') {
+    console.log(`[0x1 JSX] INITIAL RENDER: Processing ${componentName} with ID ${componentId}`);
+    console.log(`[0x1 JSX] INITIAL RENDER: Props:`, props);
+  }
+  
   const updateCallback = () => {
-    console.debug(`[0x1 Hooks] Component ${componentId} state changed, triggering re-render`);
-    
-    // CRITICAL FIX: Use requestAnimationFrame to run after DOM updates complete
-    // This ensures the DOM is fully updated before we try to find elements
+    // Triggered when component state changes and needs re-render
     requestAnimationFrame(() => {
-      console.debug(`[0x1 JSX] RAF running - searching for component ${componentId}`);
-      
-      // Debug: Check if document and DOM are available
-      if (typeof document === 'undefined') {
-        console.error(`[0x1 JSX] Document is undefined in RAF for ${componentId}`);
-        return;
-      }
-      
-      // SMART APPROACH: Check if element exists, if not, queue for retry
-      const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-      
-      if (elements.length === 0) {
-        // Element doesn't exist yet - QUEUE FOR RETRY instead of skipping
-        console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
+      if (typeof window !== 'undefined') {
+        console.debug(`[0x1 Hooks] Component ${componentId} state changed, triggering re-render`);
         
-        // Retry after a short delay to allow DOM to be ready
-        requestAnimationFrame(() => {
-          const retryElements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-          if (retryElements.length === 0) {
-            console.debug(`[0x1 JSX] Component ${componentId} still not in DOM after retry - final skip`);
-            return;
+        // UNIVERSAL APPROACH: Find component elements with comprehensive search
+        // Works with single elements, fragments, nested layouts - ANY structure
+        const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+        
+        if (elements.length === 0) {
+          // SMART RETRY: Component doesn't exist yet - queue for retry
+          console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
+          
+          // DEBUG: For DocsSidebar, let's see what's actually in the DOM
+          if (componentName === 'DocsSidebar') {
+            console.log(`[0x1 JSX] DOM DEBUG: All elements with data-component-id:`);
+            const allComponents = document.querySelectorAll('[data-component-id]');
+            allComponents.forEach((el, i) => {
+              console.log(`  ${i}: ${el.tagName} id="${el.getAttribute('data-component-id')}" name="${el.getAttribute('data-component-name')}"`);
+            });
+            
+            console.log(`[0x1 JSX] DOM DEBUG: All DocsSidebar related elements:`);
+            const sidebarElements = document.querySelectorAll('aside, button[id*="docs"], [class*="sidebar"], [data-component-name="DocsSidebar"]');
+            sidebarElements.forEach((el, i) => {
+              console.log(`  ${i}: ${el.tagName} id="${el.id}" class="${el.className}" component-id="${el.getAttribute('data-component-id')}"`);
+            });
           }
           
-          // Execute the re-render now that element exists
-          executeReRender(componentId, componentName, type, props, retryElements);
-        });
-        return;
+          // Retry after a short delay to allow DOM to update
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              const retryElements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
+              if (retryElements.length > 0) {
+                executeReRender(componentId, componentName, type, props, retryElements);
+              } else {
+                console.debug(`[0x1 JSX] Component ${componentId} still not in DOM after retry - final skip`);
+              }
+            });
+          }, 10);
+          return;
+        }
+        
+        executeReRender(componentId, componentName, type, props, elements);
       }
-      
-      // Element exists, proceed with re-render
-      executeReRender(componentId, componentName, type, props, elements);
     });
   };
   
@@ -109,67 +114,114 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   function executeReRender(componentId: string, componentName: string, type: ComponentFunction, props: any, elements: NodeListOf<Element>) {
     console.debug(`[0x1 JSX] Found ${elements.length} elements for ${componentId}, proceeding with re-render`);
     
+    // DYNAMIC: Check if debug mode is enabled (NO HARDCODING)
+    const isDebugMode = typeof window !== 'undefined' && 
+      (window as any).__0x1_debug === true || 
+      (typeof process !== 'undefined' && process.env.NODE_ENV === 'development');
+    
     // Re-execute the component function to get fresh result
     setContext(componentId, updateCallback);
     try {
       const newResult = type(props);
       
-      // DEBUGGING: Log what the re-rendered component is generating
-      if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
-        console.log(`[0x1 JSX] Re-render generated new result for ${componentId}:`, newResult);
+      // CRITICAL FIX: Reapply metadata to the fresh result since component execution creates new objects
+      const enhancedNewResult = ensureComponentMetadata(newResult, componentId, componentName);
+      
+      // DYNAMIC: Debug logging for ANY component when debug mode is enabled
+      if (isDebugMode) {
+        console.log(`[0x1 JSX] Re-render generated new result for ${componentId}:`, enhancedNewResult);
       }
       
-      const newElements = renderToDOM(newResult);
+      // CRITICAL FIX: Handle fragment components (multiple elements) properly
+      // Check for React Fragment objects OR plain arrays
+      const isFragment = Array.isArray(enhancedNewResult) || 
+                        (enhancedNewResult && typeof enhancedNewResult === 'object' && 'type' in enhancedNewResult && 
+                         typeof enhancedNewResult.type === 'symbol' && 'children' in enhancedNewResult);
       
-      // DEBUGGING: Log the actual DOM elements being created
-      if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
-        console.log(`[0x1 JSX] renderToDOM created elements for ${componentId}:`, newElements);
-        if (newElements instanceof Element) {
-          console.log(`[0x1 JSX] New element HTML for ${componentId}:`, newElements.outerHTML.substring(0, 200) + '...');
+      if (isFragment) {
+        // Fragment component - multiple elements need coordinated replacement
+        let fragmentChildren: any[] = [];
+        
+        if (Array.isArray(enhancedNewResult)) {
+          fragmentChildren = enhancedNewResult;
+        } else if (enhancedNewResult && 'children' in enhancedNewResult && Array.isArray(enhancedNewResult.children)) {
+          fragmentChildren = enhancedNewResult.children;
+        }
+        
+        const newElements = fragmentChildren.map((item, index) => {
+          return renderToDOM(item);
+        }).filter(Boolean);
+        
+        if (isDebugMode) {
+          console.log(`[0x1 JSX] Fragment component ${componentId}: ${fragmentChildren.length} result items -> ${newElements.length} DOM elements`);
+        }
+        
+        if (newElements.length > 0 && elements.length > 0) {
+          // STRATEGY: Replace the first old element with first new element, 
+          // then insert remaining new elements, then remove remaining old elements
+          const firstOldElement = elements[0];
+          const parent = firstOldElement.parentNode;
+          
+          if (parent) {
+            // Insert all new elements before the first old element
+            newElements.forEach((newElement, index) => {
+              if (newElement) {
+                parent.insertBefore(newElement, firstOldElement);
+                if (isDebugMode) {
+                  console.log(`[0x1 JSX] Inserted new fragment element ${index} for ${componentId}`);
+                }
+              }
+            });
+            
+            // Remove all old elements
+            elements.forEach((oldElement, index) => {
+              if (oldElement.parentNode) {
+                oldElement.parentNode.removeChild(oldElement);
+                if (isDebugMode) {
+                  console.log(`[0x1 JSX] Removed old fragment element ${index} for ${componentId}`);
+                }
+              }
+            });
+            
+            if (isDebugMode) {
+              console.log(`[0x1 JSX] Successfully re-rendered fragment component ${componentId}: ${newElements.length} elements`);
+            }
+          }
+        }
+      } else {
+        // Single element component - standard replacement
+        const newElements = renderToDOM(enhancedNewResult);
+        
+        if (isDebugMode) {
+          console.log(`[0x1 JSX] Single element component ${componentId}:`, newElements);
+        }
+        
+        if (newElements) {
+          elements.forEach((oldElement, index) => {
+            if (oldElement.parentNode && index === 0) { // Only replace the first element for single components
+              oldElement.parentNode.replaceChild(newElements, oldElement);
+              
+              if (isDebugMode) {
+                console.log(`[0x1 JSX] Replaced single element for ${componentId}`);
+              }
+            } else if (index > 0) {
+              // Remove extra old elements if they exist
+              if (oldElement.parentNode) {
+                oldElement.parentNode.removeChild(oldElement);
+                if (isDebugMode) {
+                  console.log(`[0x1 JSX] Removed extra old element ${index} for ${componentId}`);
+                }
+              }
+            }
+          });
+          
+          if (isDebugMode) {
+            console.log(`[0x1 JSX] Successfully re-rendered single component ${componentId}`);
+          }
         }
       }
-      
-      // Replace each found element
-      elements.forEach((element, index) => {
-        if (element.parentNode && newElements) {
-          
-          // DEBUGGING: Log what we're about to replace
-          if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
-            console.log(`[0x1 JSX] About to replace element ${index} for ${componentId}:`);
-            console.log(`[0x1 JSX] Old element HTML:`, element.outerHTML.substring(0, 200) + '...');
-          }
-          
-          // For single element results, replace directly
-          if (newElements instanceof DocumentFragment) {
-            // Handle fragment results
-            const wrapper = document.createElement('div');
-            wrapper.setAttribute('data-component-id', componentId);
-            wrapper.setAttribute('data-component-name', componentName);
-            wrapper.style.display = 'contents'; // Make wrapper invisible
-            wrapper.appendChild(newElements);
-            element.parentNode.replaceChild(wrapper, element);
-            
-            // DEBUGGING: Log replacement result
-            if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
-              console.log(`[0x1 JSX] Replaced with fragment wrapper for ${componentId}`);
-            }
-          } else if (newElements instanceof Element) {
-            // Ensure metadata is preserved
-            newElements.setAttribute('data-component-id', componentId);
-            newElements.setAttribute('data-component-name', componentName);
-            element.parentNode.replaceChild(newElements, element);
-            
-            // DEBUGGING: Log replacement result
-            if (componentId.includes('CryptoHeader') || componentId.includes('ThemeToggle') || componentId.includes('WalletConnect')) {
-              console.log(`[0x1 JSX] Replaced with new element for ${componentId}:`, newElements.outerHTML.substring(0, 200) + '...');
-            }
-          }
-        }
-      });
-      
-      console.debug(`[0x1 JSX] Successfully re-rendered component ${componentId}`);
     } catch (error) {
-      console.error(`[0x1 JSX] Error re-rendering component ${componentId}:`, error);
+      console.error(`[0x1 JSX] Re-render failed for ${componentId}:`, error);
     } finally {
       clearContext();
     }
@@ -182,37 +234,91 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   try {
     const result = type(props);
     
+    // DEBUG: Log the result for DocsSidebar
+    if (componentName === 'DocsSidebar') {
+      console.log(`[0x1 JSX] INITIAL RENDER: ${componentName} returned:`, result);
+      console.log(`[0x1 JSX] INITIAL RENDER: Result type:`, Array.isArray(result) ? 'Array' : typeof result);
+    }
+    
     // CRITICAL: Ensure component metadata is applied to the result
     const enhancedResult = ensureComponentMetadata(result, componentId, componentName);
     
+    // DEBUG: Log the enhanced result for DocsSidebar
+    if (componentName === 'DocsSidebar') {
+      console.log(`[0x1 JSX] INITIAL RENDER: Enhanced result for ${componentName}:`, enhancedResult);
+      if (Array.isArray(enhancedResult)) {
+        enhancedResult.forEach((item, i) => {
+          if (item && typeof item === 'object' && 'props' in item) {
+            console.log(`  Fragment item ${i}:`, item.type, item.props?.['data-component-id']);
+          }
+        });
+      } else if (enhancedResult && typeof enhancedResult === 'object' && 'children' in enhancedResult) {
+        console.log(`[0x1 JSX] INITIAL RENDER: Fragment type:`, enhancedResult.type, 'children count:', enhancedResult.children?.length);
+        if (Array.isArray(enhancedResult.children)) {
+          enhancedResult.children.forEach((child: any, i: number) => {
+            if (child && typeof child === 'object' && 'props' in child) {
+              console.log(`  Fragment child ${i}:`, child.type, child.props?.['data-component-id']);
+            }
+          });
+        }
+      }
+    }
+    
     return enhancedResult;
-    
   } catch (error: any) {
-    console.error('[0x1 JSX] Component error:', error);
-    
-    // Return error boundary fallback
+    console.error(`[0x1 JSX] Error in component ${componentId}:`, error);
     return {
       type: 'div',
       props: { 
         className: 'error-boundary',
-        style: { color: 'red', padding: '10px', border: '1px solid red' },
-        'data-component-id': componentId,
-        'data-component-name': componentName
+        style: { color: 'red', padding: '10px', border: '1px solid red' }
       },
       children: [`Error in ${componentName}: ${error.message}`],
       key: null
     };
   }
-  // REMOVED: Don't clear context here - let the hooks system manage context lifecycle
-  // This allows nested components to access the parent's context
 }
 
 /**
  * Ensure component metadata is applied to JSX result for re-render tracking
+ * UNIVERSAL: Works with ANY component structure - fragments, single elements, nested layouts
  */
 function ensureComponentMetadata(result: JSXNode, componentId: string, componentName: string): JSXNode {
   if (!result || typeof result !== 'object') {
     return result;
+  }
+  
+  // Handle React Fragment (Symbol(react.fragment))
+  if ('type' in result && 'children' in result && typeof result.type === 'symbol') {
+    const fragment = result as JSXElement;
+    
+    // For fragments, apply metadata to ALL children
+    if (Array.isArray(fragment.children)) {
+      const enhancedChildren = fragment.children.map((child, index) => {
+        if (child && typeof child === 'object' && 'type' in child && 'props' in child) {
+          const enhancedChild = { ...child };
+          if (!enhancedChild.props) {
+            enhancedChild.props = {};
+          }
+          
+          // Apply metadata to each child in the fragment
+          enhancedChild.props['data-component-id'] = componentId;
+          enhancedChild.props['data-component-name'] = componentName;
+          enhancedChild.props['data-fragment-index'] = index;
+          
+          return enhancedChild;
+        }
+        return child;
+      });
+      
+      // Return the fragment with enhanced children
+      return {
+        ...fragment,
+        children: enhancedChildren
+      };
+    }
+    
+    return fragment;
   }
   
   // Handle JSX element
@@ -230,34 +336,29 @@ function ensureComponentMetadata(result: JSXNode, componentId: string, component
     return jsxElement;
   }
   
-  // Handle arrays (fragments)
+  // Handle arrays (fragments or multiple elements)
   if (Array.isArray(result)) {
-    // Wrap array in a container with metadata
-    return {
-      type: 'div',
-      props: {
-        'data-component-id': componentId,
-        'data-component-name': componentName,
-        'data-component-wrapper': 'true',
-        style: { display: 'contents' }
-      },
-      children: result,
-      key: componentId
-    };
+    const enhancedArray = result.map((child, index) => {
+      if (child && typeof child === 'object' && 'type' in child && 'props' in child) {
+        const enhancedChild = { ...child };
+        if (!enhancedChild.props) {
+          enhancedChild.props = {};
+        }
+        
+        // UNIVERSAL: Apply metadata to ALL elements in fragment
+        enhancedChild.props['data-component-id'] = componentId;
+        enhancedChild.props['data-component-name'] = componentName;
+        enhancedChild.props['data-fragment-index'] = index;
+        
+        return enhancedChild;
+      }
+      return child;
+    });
+    
+    return enhancedArray;
   }
   
-  // Handle other objects by wrapping them
-  return {
-    type: 'div',
-    props: {
-      'data-component-id': componentId,
-      'data-component-name': componentName,
-      'data-component-wrapper': 'true',
-      style: { display: 'contents' }
-    },
-    children: [result],
-    key: componentId
-  };
+  return result;
 }
 
 /**
