@@ -9,6 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path';
 
 // Import shared core utilities
+import { getConfigurationManager } from '../core/ConfigurationManager';
 import { importEngine } from '../core/ImportEngine';
 import { ImportTransformer } from '../core/ImportTransformer';
 import { transpilationEngine } from '../core/TranspilationEngine';
@@ -1948,6 +1949,22 @@ if (document.readyState === 'loading') {
    * Generate the main HTML page with live reload
    */
   private generateIndexHtml(): string {
+    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+    const configManager = getConfigurationManager(this.options.projectPath);
+    let pwaMetadata: { manifestLink?: string; metaTags: string[]; scripts: string[] } = {
+      metaTags: [],
+      scripts: []
+    };
+    
+    // Load PWA metadata asynchronously in background (non-blocking)
+    configManager.getPWAMetadata().then((metadata: any) => {
+      pwaMetadata = metadata;
+    }).catch((error: any) => {
+      if (this.options.debug) {
+        logger.debug(`PWA metadata loading failed: ${error}`);
+      }
+    });
+    
     // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
     const externalCssLinks: string[] = [];
     const externalImports: Record<string, string> = {};
@@ -1968,43 +1985,37 @@ if (document.readyState === 'loading') {
               for (const scopeItem of scopeItems) {
                 if (scopeItem.isDirectory()) {
                   const packageName = `${item.name}/${scopeItem.name}`;
-                  const packageDistPath = join(scopePath, scopeItem.name, 'dist');
+                  const packagePath = join(scopePath, scopeItem.name);
                   
-                  // Add to import map for browser resolution
-                  externalImports[packageName] = `/${packageName}/dist/index.js`;
+                  // Add to import map
+                  externalImports[packageName] = `/node_modules/${packageName}/index.js`;
                   
-                  // Check for CSS files in the package
-                  if (existsSync(packageDistPath)) {
+                  // Check for CSS files
+                  const distPath = join(packagePath, 'dist');
+                  if (existsSync(distPath)) {
                     try {
-                      const distFiles = readdirSync(packageDistPath);
-                      const cssFiles = distFiles.filter(file => file.endsWith('.css'));
-                      
-                      for (const cssFile of cssFiles) {
-                        // FIXED: Remove @ and replace / with - (not replace both with -)
-                        const cssFileName = `${packageName.replace('@', '').replace(/\//g, '-')}-${cssFile}`;
-                        externalCssLinks.push(`  <link rel="stylesheet" href="/${cssFileName}">`);
-                        
-                        if (!this.options.silent) {
-                          logger.debug(`[DevOrchestrator] Generated CSS link: ${cssFileName} from package: ${packageName}`);
+                      const distFiles = readdirSync(distPath);
+                      for (const file of distFiles) {
+                        if (file.endsWith('.css')) {
+                          const cssUrl = `/node_modules/${packageName}/dist/${file}`;
+                          externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
                         }
                       }
-                    } catch (error) {
-                      // Silent fail for individual packages
+                    } catch (e) {
+                      // Silent fail
                     }
                   }
                 }
               }
-            } catch (error) {
+            } catch (e) {
               // Silent fail for individual scope directories
             }
           }
         }
-      } catch (error) {
-        // Silent fail if node_modules doesn't exist or can't be read
+      } catch (e) {
+        // Silent fail if node_modules doesn't exist or isn't readable
       }
     }
-    
-    const externalCssHtml = externalCssLinks.length > 0 ? '\n' + externalCssLinks.join('\n') : '';
     
     // Build complete import map with external packages
     const importMap = {
@@ -2046,14 +2057,29 @@ if (document.readyState === 'loading') {
       }
     }
     
+    // DYNAMIC PWA SUPPORT - Add PWA manifest link if available
+    const manifestLink = pwaMetadata.manifestLink || '';
+    
+    // DYNAMIC PWA SUPPORT - Add PWA meta tags
+    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
+      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
+      : '';
+    
+    // DYNAMIC PWA SUPPORT - Add PWA scripts
+    const pwaScripts = pwaMetadata.scripts.length > 0
+      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
+      : '';
+
     return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0x1 App</title>
-${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">${externalCssHtml}
-  <script type="importmap">{"imports":${JSON.stringify(importMap)}}</script>
+  <title>0x1 Development</title>
+  <meta name="description" content="0x1 Framework development environment">
+${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
+${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
+  <script type="importmap">${JSON.stringify({ imports: importMap })}</script>
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
@@ -2061,8 +2087,23 @@ ${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.c
     window.process={env:{NODE_ENV:'development'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js" type="module"></script>
-  <script src="/__0x1_live_reload.js"></script>
+  <script src="/app.js" type="module"></script>${pwaScripts}
+  <script>
+    // Live reload functionality
+    if (typeof WebSocket !== 'undefined') {
+      const ws = new WebSocket(\`ws://\${location.host}/__0x1_ws\`);
+      ws.addEventListener('message', (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'reload') {
+          console.log('🔄 Reloading due to file change:', data.filename || 'unknown');
+          location.reload();
+        }
+      });
+      ws.addEventListener('close', () => {
+        console.log('🔌 Live reload disconnected');
+      });
+    }
+  </script>
 </body>
 </html>`;
   }

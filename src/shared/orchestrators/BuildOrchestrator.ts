@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { logger } from '../../cli/utils/logger';
 
 // Import shared core utilities for SINGLE SOURCE OF TRUTH
+import { getConfigurationManager } from '../core/ConfigurationManager';
 import { ImportTransformer } from '../core/ImportTransformer';
 import { transpilationEngine } from '../core/TranspilationEngine';
 
@@ -1933,6 +1934,10 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   }
 
   private async generateHtmlFile(outputPath: string): Promise<void> {
+    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+    const configManager = getConfigurationManager(this.options.projectPath);
+    const pwaMetadata = await configManager.getPWAMetadata();
+    
     // Generate CSS link tags for external dependencies
     const externalCssLinks = this.state.dependencies.cssFiles
       .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
@@ -1950,6 +1955,19 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       }
     }
     
+    // DYNAMIC PWA SUPPORT - Add PWA manifest link if available
+    const manifestLink = pwaMetadata.manifestLink || '';
+    
+    // DYNAMIC PWA SUPPORT - Add PWA meta tags
+    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
+      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
+      : '';
+    
+    // DYNAMIC PWA SUPPORT - Add PWA scripts
+    const pwaScripts = pwaMetadata.scripts.length > 0
+      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
+      : '';
+    
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -1957,8 +1975,8 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>0x1 App</title>
   <meta name="description" content="0x1 Framework application">
-${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
-${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"imports":{"0x1":"/node_modules/0x1/index.js","0x1/index.js":"/node_modules/0x1/index.js","0x1/jsx-runtime":"/0x1/jsx-runtime.js","0x1/jsx-runtime.js":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime":"/0x1/jsx-runtime.js","0x1/jsx-dev-runtime.js":"/0x1/jsx-runtime.js","0x1/router":"/0x1/router.js","0x1/router.js":"/0x1/router.js","0x1/link":"/0x1/router.js","0x1/link.js":"/0x1/router.js"}}</script>
+${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
+${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 </head>
 <body class="bg-slate-900 text-white">
   <div id="app"></div>
@@ -1966,7 +1984,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">{"i
     window.process={env:{NODE_ENV:'production'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js" type="module"></script>
+  <script src="/app.js" type="module"></script>${pwaScripts}
 </body>
 </html>`;
 

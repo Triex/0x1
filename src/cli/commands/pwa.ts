@@ -8,7 +8,11 @@ import { mkdir } from 'fs/promises'; // Keep mkdir for directory creation
 import { join } from 'path';
 import prompts from 'prompts';
 // Import with underscore prefix to satisfy linting while preserving type info
-import type { PromptObject as _PromptObject } from 'prompts';
+import type { PWAConfig } from '../../core/pwa';
+import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration } from '../../core/pwa';
+import { getConfigurationManager } from '../../shared/core/ConfigurationManager';
+import { generateAllIcons } from '../../utils/icon-generator';
+import { logger } from '../utils/logger';
 
 // Extended choice type to support descriptions in prompts
 interface ExtendedPromptChoice {
@@ -16,10 +20,6 @@ interface ExtendedPromptChoice {
   value: any;
   description?: string;
 }
-import type { PWAConfig } from '../../core/pwa';
-import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration } from '../../core/pwa';
-import { generateAllIcons } from '../../utils/icon-generator';
-import { logger } from '../utils/logger';
 
 interface PWACommandOptions {
   name?: string;
@@ -155,7 +155,11 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   }
 
   // Update HTML to include PWA meta tags and manifest
-  await updateHtmlFile(projectPath, isTypeScript, options);
+  const configManager = getConfigurationManager(projectPath);
+  await configManager.savePWAConfig(pwaConfig);
+  
+  const htmlSpin = logger.spinner('Updating project configuration');
+  htmlSpin.stop('success', 'PWA configuration saved for dynamic HTML generation');
 
   // Mark setup as successful
   setupSuccess = true;
@@ -341,75 +345,4 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
     ...responses,
     cacheName
   };
-}
-
-/**
- * Update HTML file to include PWA meta tags and manifest
- */
-async function updateHtmlFile(projectPath: string, isTypeScript: boolean, pwaOptions?: PWACommandOptions): Promise<void> {
-  const htmlSpin = logger.spinner('Updating HTML file');
-  
-  try {
-    // Determine possible paths for index.html
-    const possiblePaths = [
-      join(projectPath, 'index.html'),          // Root directory
-      join(projectPath, 'src', 'index.html'),   // src directory
-      join(projectPath, 'public', 'index.html') // public directory
-    ];
-    
-    // Find the first existing path
-    const htmlPath = possiblePaths.find(path => existsSync(path));
-    
-    if (!htmlPath) {
-      throw new Error('Could not find index.html in project');
-    }
-    
-    // Read HTML file
-    // Use Bun's native file API for better performance
-    const html = await Bun.file(htmlPath).text();
-    
-    // Check if manifest is already included
-    if (html.includes('<link rel="manifest"')) {
-      htmlSpin.stop('success', 'Manifest already included in HTML file');
-      return;
-    }
-    
-    // Find head tag
-    const headIndex = html.indexOf('</head>');
-    if (headIndex === -1) {
-      throw new Error('Could not find </head> tag in HTML file');
-    }
-    
-    // Determine status bar style
-    let statusBarStyle = 'default';
-    
-    if (pwaOptions) {
-      // If options provided, create config from them
-      const pwaConfig = createConfigFromOptions(pwaOptions);
-      statusBarStyle = pwaConfig.statusBarStyle || 'default';
-    }
-    
-    // Add PWA meta tags and manifest
-    const pwaLinks = `
-  <!-- PWA Meta Tags -->
-  <link rel="manifest" href="/manifest.json">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="${statusBarStyle}">
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <!-- PWA Script -->
-  <script type="module" src="./register-sw.${isTypeScript ? 'ts' : 'js'}"></script>
-`;
-    
-    const updatedHtml = html.slice(0, headIndex) + pwaLinks + html.slice(headIndex);
-    
-    // Write updated HTML file
-    // Use Bun's native file API for better performance
-    await Bun.write(htmlPath, updatedHtml);
-    
-    htmlSpin.stop('success', 'Updated HTML file with PWA meta tags and manifest');
-  } catch (error) {
-    htmlSpin.stop('error', 'Failed to update HTML file');
-    logger.error(`Error updating HTML file: ${error}`);
-    logger.info('You will need to manually add PWA meta tags and manifest to your HTML file');
-  }
 }
