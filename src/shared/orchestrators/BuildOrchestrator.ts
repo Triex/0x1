@@ -1352,12 +1352,113 @@ export default {
       2
     );
 
-    // Generate app.js using EXACT pattern from DevOrchestrator (FIXED layout loading)
-    const appScript = `// 0x1 Framework App Bundle - Production Ready with Fixed Layout Loading
+    // Generate app.js with client-side metadata updates for production SPA
+    const appScript = `// 0x1 Framework App Bundle - Production Ready with Client-Side Metadata Updates
 console.log('[0x1 App] Starting production app...');
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
+
+// ===== CLIENT-SIDE METADATA SYSTEM =====
+async function updatePageMetadata(route) {
+  if (!route) return;
+  
+  try {
+    // Try to extract metadata from the route component
+    const componentModule = await import(route.componentPath);
+    
+    // Check if component has metadata export (Next.js 15 style)
+    if (componentModule.metadata) {
+      const metadata = componentModule.metadata;
+      
+      // Update document title
+      if (metadata.title) {
+        const resolvedTitle = typeof metadata.title === 'string' 
+          ? metadata.title 
+          : metadata.title.default || metadata.title.template || 'Page';
+        document.title = resolvedTitle;
+      }
+      
+      // Update meta description
+      if (metadata.description) {
+        let metaDesc = document.querySelector('meta[name="description"]');
+        if (!metaDesc) {
+          metaDesc = document.createElement('meta');
+          metaDesc.setAttribute('name', 'description');
+          document.head.appendChild(metaDesc);
+        }
+        metaDesc.setAttribute('content', metadata.description);
+      }
+      
+      // Update Open Graph tags
+      if (metadata.openGraph) {
+        const og = metadata.openGraph;
+        
+        // OG Title
+        if (og.title) {
+          let ogTitle = document.querySelector('meta[property="og:title"]');
+          if (!ogTitle) {
+            ogTitle = document.createElement('meta');
+            ogTitle.setAttribute('property', 'og:title');
+            document.head.appendChild(ogTitle);
+          }
+          ogTitle.setAttribute('content', og.title);
+        }
+        
+        // OG Description
+        if (og.description) {
+          let ogDesc = document.querySelector('meta[property="og:description"]');
+          if (!ogDesc) {
+            ogDesc = document.createElement('meta');
+            ogDesc.setAttribute('property', 'og:description');
+            document.head.appendChild(ogDesc);
+          }
+          ogDesc.setAttribute('content', og.description);
+        }
+        
+        // OG URL
+        if (og.url) {
+          let ogUrl = document.querySelector('meta[property="og:url"]');
+          if (!ogUrl) {
+            ogUrl = document.createElement('meta');
+            ogUrl.setAttribute('property', 'og:url');
+            document.head.appendChild(ogUrl);
+          }
+          ogUrl.setAttribute('content', og.url);
+        }
+      }
+      
+      // Update Twitter tags
+      if (metadata.twitter) {
+        const twitter = metadata.twitter;
+        
+        if (twitter.title) {
+          let twitterTitle = document.querySelector('meta[name="twitter:title"]');
+          if (!twitterTitle) {
+            twitterTitle = document.createElement('meta');
+            twitterTitle.setAttribute('name', 'twitter:title');
+            document.head.appendChild(twitterTitle);
+          }
+          twitterTitle.setAttribute('content', twitter.title);
+        }
+        
+        if (twitter.description) {
+          let twitterDesc = document.querySelector('meta[name="twitter:description"]');
+          if (!twitterDesc) {
+            twitterDesc = document.createElement('meta');
+            twitterDesc.setAttribute('name', 'twitter:description');
+            document.head.appendChild(twitterDesc);
+          }
+          twitterDesc.setAttribute('content', twitter.description);
+        }
+      }
+      
+      console.log('[0x1 App] Updated page metadata for:', route.path);
+    }
+  } catch (error) {
+    console.warn('[0x1 App] Failed to update metadata for route:', route.path, error);
+  }
+}
 
 // ===== CACHED LAYOUT SYSTEM (PREVENTS DUPLICATION) =====
 const layoutCache = new Map();
@@ -1586,7 +1687,7 @@ async function initApp() {
     window.__0x1_router = router;
     window.router = router;
     
-    // Step 4: Register routes with cached layout loading (FIXED duplication)
+    // Step 4: Register routes with cached layout loading and metadata updates
     for (const route of serverRoutes) {
       try {
         // Load all layouts for this route ONCE using cache
@@ -1598,6 +1699,9 @@ async function initApp() {
         const componentModule = await import(route.componentPath);
             
             if (componentModule && componentModule.default) {
+              // CRITICAL: Update page metadata when route loads
+              await updatePageMetadata(route);
+              
               // Compose the page component with all its layouts
               const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
               return composedComponent(props);
@@ -1637,9 +1741,17 @@ async function initApp() {
     
     // Step 5: Start router
     router.init();
-    router.navigate(window.location.pathname, false);
     
-    console.log('[0x1] ✅ App initialized successfully');
+    // CRITICAL: Navigate to current path and update metadata
+    const currentPath = window.location.pathname;
+    const currentRoute = serverRoutes.find(route => route.path === currentPath);
+    if (currentRoute) {
+      await updatePageMetadata(currentRoute);
+    }
+    
+    router.navigate(currentPath, false);
+    
+    console.log('[0x1] ✅ App initialized successfully with metadata support');
     
   } catch (error) {
     console.error('[0x1] ❌ Initialization failed:', error);

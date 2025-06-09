@@ -720,49 +720,103 @@ if (typeof window !== 'undefined') {
 
   /**
    * Apply additional comprehensive transformations after basic import transformation
-   * CONTEXT-AWARE patterns that don't transform imports inside strings
+   * CONTEXT-AWARE patterns that don't transform imports inside strings or JSX content
    */
   static applyAdditionalTransformations(content: string, options: ImportTransformOptions): string {
-    // CRITICAL: Only transform imports that are actual import statements at line start
-    // Avoid transforming imports inside strings, JSX content, or documentation
+    // CRITICAL: Split content into lines and analyze each line in context
+    const lines = content.split('\n');
+    const transformedLines: string[] = [];
     
-    const transformedContent = content
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      
+      // CRITICAL: Skip transformation for lines that are inside JSX string content
+      // Check for patterns that indicate this is transpiled JSX content with string literals
+      const isJSXStringContent = 
+        // Check if line contains JSX string literals with imports
+        line.includes('"import ') || line.includes("'import ") ||
+        // Check if line is part of JSX children array with string content
+        (line.includes('children: [') || line.includes('children:["') || line.includes("children:['")) ||
+        // Check if line is inside a string literal that contains code examples
+        (line.includes('props: {') && (line.includes('"import ') || line.includes("'import "))) ||
+        // Check if this is obviously transpiled JSX content
+        (line.includes('jsxDEV(') && (line.includes('"import ') || line.includes("'import "))) ||
+        // Check for SyntaxHighlighter patterns
+        line.includes('SyntaxHighlighter') ||
+        // Check for code block patterns in JSX
+        (line.includes('className: "') && line.includes('language-')) ||
+        // Check if we're inside a template literal or multi-line string
+        line.includes('`import ') ||
+        // Check for documentation/example code patterns
+        (line.includes('// ') && line.includes('import ')) ||
+        // Look for previous context that suggests this is content, not actual code
+        (i > 0 && (lines[i-1].includes('children:') || lines[i-1].includes('SyntaxHighlighter')));
+      
+      if (isJSXStringContent) {
+        // Don't transform imports in JSX string content
+        transformedLines.push(line);
+        if (options.debug && trimmed.includes('import ')) {
+          console.log(`[ImportTransformer] Skipping import in JSX string content: ${trimmed.substring(0, 50)}...`);
+        }
+        continue;
+      }
+      
+      // CRITICAL: Only transform if this is an actual import statement at the beginning of a line
+      // AND not inside any kind of string literal context
+      if (!trimmed.startsWith('import ')) {
+        transformedLines.push(line);
+        continue;
+      }
+      
+      // Apply transformations only to actual import statements
+      let transformedLine = line;
+      
       // Components and relative imports - ONLY for actual import statements
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\.\/components\/([^"']+)(["'])/gm, 
-        '$1/components/$2.js$3')
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\/([^"']+)(["'])/gm, 
-        '$1/$2.js$3')
+      transformedLine = transformedLine
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\.\/components\/([^"']+)(["'])/, 
+          '$1/components/$2.js$3')
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\/([^"']+)(["'])/, 
+          '$1/$2.js$3')
+        
+        // CSS imports (remove completely) - ONLY for actual import statements
+        .replace(/^(\s*)import\s*["']\.\/globals\.css[""];?/, '$1// CSS import externalized')
+        .replace(/^(\s*)import\s*["']\.\.\/globals\.css[""];?/, '$1// CSS import externalized')
+        .replace(/^(\s*)import\s*["'][^"']*\.css[""];?/, '$1// CSS import removed for browser compatibility')
+        // DYNAMIC: Handle ALL scoped package CSS imports - ONLY for actual import statements
+        .replace(/^(\s*)import\s*["']@[^/]+\/[^/]+\/styles?[""];?/, '$1// CSS import from scoped package removed for browser compatibility')
+        
+        // Framework runtime imports - ONLY for actual import statements
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-dev-runtime(["'])/, 
+          '$1/0x1/jsx-runtime.js$2')
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-runtime(["'])/, 
+          '$1/0x1/jsx-runtime.js$2')
+        
+        // CRITICAL: Link imports - CONTEXT-AWARE patterns that avoid string content
+        // Only transform if it's an actual import statement at the start of a line
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/link(["'])/, 
+          '$1/0x1/router.js$2')
+        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1\/link["']/, 
+          '$1{ Link as $2 } from "/0x1/router.js"')
+        // Only transform already-transformed paths if they're actual imports
+        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']\/0x1\/router\.js["']/, 
+          '$1{ Link as $2 } from "/0x1/router.js"')
+        
+        // Framework main imports - ONLY for actual import statements
+        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1(["'])/, 
+          '$1/node_modules/0x1/index.js$2')
+        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1["']/, 
+          '$1$2 from "/node_modules/0x1/index.js"');
       
-      // CSS imports (remove completely) - ONLY for actual import statements
-      .replace(/^(\s*)import\s*["']\.\/globals\.css["'];?/gm, '$1// CSS import externalized')
-      .replace(/^(\s*)import\s*["']\.\.\/globals\.css["'];?/gm, '$1// CSS import externalized')
-      .replace(/^(\s*)import\s*["'][^"']*\.css["'];?/gm, '$1// CSS import removed for browser compatibility')
-      // DYNAMIC: Handle ALL scoped package CSS imports - ONLY for actual import statements
-      .replace(/^(\s*)import\s*["']@[^/]+\/[^/]+\/styles?["'];?/gm, '$1// CSS import from scoped package removed for browser compatibility')
+      transformedLines.push(transformedLine);
       
-      // Framework runtime imports - ONLY for actual import statements
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-dev-runtime(["'])/gm, 
-        '$1/0x1/jsx-runtime.js$2')
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-runtime(["'])/gm, 
-        '$1/0x1/jsx-runtime.js$2')
-      
-      // CRITICAL: Link imports - CONTEXT-AWARE patterns that avoid string content
-      // Only transform if it's an actual import statement at the start of a line
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/link(["'])/gm, 
-        '$1/0x1/router.js$2')
-      .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1\/link["']/gm, 
-        '$1{ Link as $2 } from "/0x1/router.js"')
-      // Only transform already-transformed paths if they're actual imports
-      .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']\/0x1\/router\.js["']/gm, 
-        '$1{ Link as $2 } from "/0x1/router.js"')
-      
-      // Framework main imports - ONLY for actual import statements
-      .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1(["'])/gm, 
-        '$1/node_modules/0x1/index.js$2')
-      .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1["']/gm, 
-        '$1$2 from "/node_modules/0x1/index.js"');
+      // Debug log if transformation occurred
+      if (options.debug && transformedLine !== line) {
+        console.log(`[ImportTransformer] Applied transformation: ${line.trim()} → ${transformedLine.trim()}`);
+      }
+    }
 
-    return transformedContent;
+    return transformedLines.join('\n');
   }
 
   /**

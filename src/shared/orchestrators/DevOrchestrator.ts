@@ -1540,7 +1540,7 @@ if (typeof globalThis !== 'undefined') {
   }
 
   /**
-   * Handle app.js bundle request - REDUCED LOGGING FOR CLEAN DEVELOPMENT
+   * Handle app.js bundle request - RESTORED FULL LAYOUT SYSTEM
    */
   private async handleAppBundleRequest(): Promise<Response> {
     try {
@@ -1553,13 +1553,114 @@ if (typeof globalThis !== 'undefined') {
 
       const routesJson = JSON.stringify(sanitizedRoutes, null, 2);
 
-      // Generate clean app.js with minimal, essential logging only
+      // Generate complete app.js with full layout system and client-side metadata updates
       const appScript = `
-// 0x1 Framework App Bundle - Development Ready
+// 0x1 Framework App Bundle - Development Ready with Full Layout System
 console.log('[0x1] Starting development app...');
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
+
+// ===== CLIENT-SIDE METADATA SYSTEM (SAME AS PRODUCTION) =====
+async function updatePageMetadata(route) {
+  if (!route) return;
+  
+  try {
+    // Try to extract metadata from the route component
+    const componentModule = await import(route.componentPath);
+    
+    // Check if component has metadata export (Next.js 15 style)
+    if (componentModule.metadata) {
+      const metadata = componentModule.metadata;
+      
+      // Update document title
+      if (metadata.title) {
+        const resolvedTitle = typeof metadata.title === 'string' 
+          ? metadata.title 
+          : metadata.title.default || metadata.title.template || 'Page';
+        document.title = resolvedTitle + ' - Development';
+      }
+      
+      // Update meta description
+      if (metadata.description) {
+        let metaDesc = document.querySelector('meta[name="description"]');
+        if (!metaDesc) {
+          metaDesc = document.createElement('meta');
+          metaDesc.setAttribute('name', 'description');
+          document.head.appendChild(metaDesc);
+        }
+        metaDesc.setAttribute('content', metadata.description);
+      }
+      
+      // Update Open Graph tags
+      if (metadata.openGraph) {
+        const og = metadata.openGraph;
+        
+        // OG Title
+        if (og.title) {
+          let ogTitle = document.querySelector('meta[property="og:title"]');
+          if (!ogTitle) {
+            ogTitle = document.createElement('meta');
+            ogTitle.setAttribute('property', 'og:title');
+            document.head.appendChild(ogTitle);
+          }
+          ogTitle.setAttribute('content', og.title);
+        }
+        
+        // OG Description
+        if (og.description) {
+          let ogDesc = document.querySelector('meta[property="og:description"]');
+          if (!ogDesc) {
+            ogDesc = document.createElement('meta');
+            ogDesc.setAttribute('property', 'og:description');
+            document.head.appendChild(ogDesc);
+          }
+          ogDesc.setAttribute('content', og.description);
+        }
+        
+        // OG URL
+        if (og.url) {
+          let ogUrl = document.querySelector('meta[property="og:url"]');
+          if (!ogUrl) {
+            ogUrl = document.createElement('meta');
+            ogUrl.setAttribute('property', 'og:url');
+            document.head.appendChild(ogUrl);
+          }
+          ogUrl.setAttribute('content', og.url);
+        }
+      }
+      
+      // Update Twitter tags
+      if (metadata.twitter) {
+        const twitter = metadata.twitter;
+        
+        if (twitter.title) {
+          let twitterTitle = document.querySelector('meta[name="twitter:title"]');
+          if (!twitterTitle) {
+            twitterTitle = document.createElement('meta');
+            twitterTitle.setAttribute('name', 'twitter:title');
+            document.head.appendChild(twitterTitle);
+          }
+          twitterTitle.setAttribute('content', twitter.title);
+        }
+        
+        if (twitter.description) {
+          let twitterDesc = document.querySelector('meta[name="twitter:description"]');
+          if (!twitterDesc) {
+            twitterDesc = document.createElement('meta');
+            twitterDesc.setAttribute('name', 'twitter:description');
+            document.head.appendChild(twitterDesc);
+          }
+          twitterDesc.setAttribute('content', twitter.description);
+        }
+      }
+      
+      console.log('[0x1 Dev] Updated page metadata for:', route.path);
+    }
+  } catch (error) {
+    console.warn('[0x1 Dev] Failed to update metadata for route:', route.path, error);
+  }
+}
 
 // ===== CACHED LAYOUT SYSTEM (PREVENTS DUPLICATION) =====
 const layoutCache = new Map();
@@ -1798,6 +1899,9 @@ async function initApp() {
         const routeComponent = async (props) => {
           try {
             const componentModule = await import(route.componentPath);
+            
+            // CRITICAL: Update metadata when route loads (same as production)
+            await updatePageMetadata(route);
             
             if (componentModule && componentModule.default) {
               // Compose the page component with all its layouts
@@ -2047,48 +2151,185 @@ if (document.readyState === 'loading') {
     }
     
     // CRITICAL: Extract metadata from the SPECIFIC route's component (not just homepage)
-    let pageMetadata = null;
-    if (route) {
-      // Find the source file for this specific route
-      const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
-      let sourceFile = null;
-      
-      for (const ext of sourceExtensions) {
-        const potentialPath = join(
-          this.options.projectPath,
-          route.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
-        );
-        if (existsSync(potentialPath)) {
-          sourceFile = potentialPath;
-          break;
-        }
-      }
-      
-      if (sourceFile) {
-        try {
-          // Use the existing metadata extraction system
-          const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
-          const extractedMetadata = await extractMetadataFromFile(sourceFile);
-          
-          if (extractedMetadata) {
-            pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
-            if (this.options.debug) {
-              logger.debug(`✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || 'No title'}`);
+    // FIXED: Use client-side metadata updates (same as production) instead of server-side extraction
+    const pageMetadata = null; // Client-side metadata updates handle this
+    if (route && this.options.debug) {
+      logger.debug(`Route ${route.path} will use client-side metadata updates (same as production)`);
+    }
+    
+    // CRITICAL: Dynamically discover external packages and their CSS - RESTORED FROM WORKING VERSION
+    const externalCssLinks: string[] = [];
+    const externalImports: Record<string, string> = {};
+    
+    // ENHANCED: Scan for CSS imports in source files first (most reliable)
+    const sourceFiles = await this.findSourceFiles();
+    const cssImportPatterns = new Set<string>();
+    
+    for (const filePath of sourceFiles) {
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        
+        // Find CSS imports like: import '@0x1js/highlighter/styles'
+        const cssImportMatches = content.match(/import\s+['"]([^'"]+\/styles?)['"];?/g);
+        if (cssImportMatches) {
+          for (const match of cssImportMatches) {
+            const pathMatch = match.match(/import\s+['"]([^'"]+\/styles?)['"];?/);
+            if (pathMatch) {
+              cssImportPatterns.add(pathMatch[1]);
             }
           }
-        } catch (error) {
-          if (this.options.debug) {
-            logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
+        }
+        
+        // Also find direct CSS file imports
+        const directCssMatches = content.match(/import\s+['"]([^'"]+\.css)['"];?/g);
+        if (directCssMatches) {
+          for (const match of directCssMatches) {
+            const pathMatch = match.match(/import\s+['"]([^'"]+\.css)['"];?/);
+            if (pathMatch) {
+              cssImportPatterns.add(pathMatch[1]);
+            }
           }
         }
+      } catch (error) {
+        // Silent fail for individual files
       }
     }
     
-    // Generate CSS link tags for external dependencies
-    const externalCssLinks = '';
+    // Process discovered CSS imports
+    for (const cssImport of cssImportPatterns) {
+      if (cssImport.startsWith('@')) {
+        // Scoped package CSS import like @0x1js/highlighter/styles
+        const parts = cssImport.split('/');
+        if (parts.length >= 2) {
+          const packageName = `${parts[0]}/${parts[1]}`; // @0x1js/highlighter
+          const subPath = parts.slice(2).join('/'); // styles
+          
+          // Check if this package exists in node_modules
+          const packagePath = join(this.options.projectPath, 'node_modules', packageName);
+          if (existsSync(packagePath)) {
+            // Look for CSS files in the package
+            const possibleCssPaths = [
+              join(packagePath, 'dist', 'styles.css'),
+              join(packagePath, 'dist', `${subPath}.css`),
+              join(packagePath, `${subPath}.css`),
+              join(packagePath, 'styles.css'),
+              join(packagePath, 'dist', 'index.css'),
+              join(packagePath, 'index.css')
+            ];
+            
+            for (const cssPath of possibleCssPaths) {
+              if (existsSync(cssPath)) {
+                const cssUrl = `/node_modules/${packageName}/dist/${cssPath.split('/').pop()}`;
+                externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                
+                if (this.options.debug) {
+                  logger.debug(`Found CSS for ${cssImport}: ${cssUrl}`);
+                }
+                break;
+              }
+            }
+          }
+        }
+      } else if (cssImport.includes('/')) {
+        // Regular package CSS import
+        const cssUrl = `/node_modules/${cssImport}`;
+        externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+      }
+    }
+    
+    // FALLBACK: Scan node_modules for any scoped packages that have CSS files
+    const nodeModulesPath = join(this.options.projectPath, 'node_modules');
+    if (existsSync(nodeModulesPath)) {
+      try {
+        const items = readdirSync(nodeModulesPath, { withFileTypes: true });
+        
+        for (const item of items) {
+          if (item.isDirectory() && item.name.startsWith('@')) {
+            // This is a scope directory like @0x1js
+            const scopePath = join(nodeModulesPath, item.name);
+            try {
+              const scopeItems = readdirSync(scopePath, { withFileTypes: true });
+              
+              for (const scopeItem of scopeItems) {
+                if (scopeItem.isDirectory()) {
+                  const packageName = `${item.name}/${scopeItem.name}`;
+                  const packagePath = join(scopePath, scopeItem.name);
+                  
+                  // Add to import map
+                  externalImports[packageName] = `/node_modules/${packageName}/index.js`;
+                  
+                  // Check for CSS files (only if not already added above)
+                  const alreadyAdded = externalCssLinks.some(link => link.includes(packageName));
+                  if (!alreadyAdded) {
+                    const distPath = join(packagePath, 'dist');
+                    if (existsSync(distPath)) {
+                      try {
+                        const distFiles = readdirSync(distPath);
+                        for (const file of distFiles) {
+                          if (file.endsWith('.css')) {
+                            const cssUrl = `/node_modules/${packageName}/dist/${file}`;
+                            externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                          }
+                        }
+                      } catch (e) {
+                        // Silent fail
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // Silent fail for individual scope directories
+            }
+          }
+        }
+      } catch (e) {
+        // Silent fail if node_modules doesn't exist or isn't readable
+      }
+    }
+    
+    // Build complete import map with external packages
+    const importMap = {
+      "0x1": "/node_modules/0x1/index.js",
+      "0x1/index": "/node_modules/0x1/index.js",
+      "0x1/index.js": "/node_modules/0x1/index.js",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js",
+      "0x1/router": "/0x1/router.js",
+      "0x1/router.js": "/0x1/router.js",
+      "0x1/link": "/0x1/router.js",
+      "0x1/link.js": "/0x1/router.js",
+      "0x1/hooks": "/0x1/hooks.js",
+      "0x1/hooks.js": "/0x1/hooks.js",
+      ...externalImports
+    };
     
     // Generate favicon link (consistent with existing logic)
-    const faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+    let faviconLink = '';
+    const faviconSearchDirs = [
+      join(this.options.projectPath, 'public'),
+      join(this.options.projectPath, 'app'),
+      join(this.options.projectPath, 'src')
+    ];
+    
+    for (const dir of faviconSearchDirs) {
+      const faviconSvg = join(dir, 'favicon.svg');
+      const faviconIco = join(dir, 'favicon.ico');
+      const faviconPng = join(dir, 'favicon.png');
+      
+      if (existsSync(faviconSvg)) {
+        faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+        break;
+      } else if (existsSync(faviconIco)) {
+        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        break;
+      } else if (existsSync(faviconPng)) {
+        faviconLink = '  <link rel="icon" href="/favicon.png" type="image/png">';
+        break;
+      }
+    }
     
     // PWA support
     const manifestLink = pwaMetadata.manifestLink || '';
@@ -2099,25 +2340,11 @@ if (document.readyState === 'loading') {
       ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
       : '';
     
-    // Use page metadata if available, fallback to project config
-    let pageTitle, pageDescription, additionalMetaTags = '';
-    
-    if (pageMetadata) {
-      const { resolveTitle, generateMetaTags } = await import('../../core/metadata');
-      pageTitle = `${resolveTitle(pageMetadata)} - Development`;
-      pageDescription = pageMetadata.description || projectConfig.description || '0x1 Framework development environment';
-      
-      try {
-        additionalMetaTags = generateMetaTags(pageMetadata);
-      } catch (error) {
-        if (this.options.debug) {
-          logger.warn(`Failed to generate meta tags: ${error}`);
-        }
-      }
-    } else {
-      pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
-      pageDescription = projectConfig.description || '0x1 Framework development environment';
-    }
+    // Use project config for server-side HTML (client-side metadata will override)
+    // SINGLE SOURCE OF TRUTH: Same as production - client handles page-specific metadata
+    const pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
+    const pageDescription = projectConfig.description || '0x1 Framework development environment';
+    const additionalMetaTags = ''; // Client-side metadata will handle this
     
     // Cache-busting timestamp
     const cacheBust = Date.now();
@@ -2129,27 +2356,10 @@ if (document.readyState === 'loading') {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink}
-${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
+${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
   <script type="importmap">
-  {
-    "imports": {
-      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
-      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",
-      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",
-      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
-      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
-      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
-      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
-      "0x1/router": "/0x1/router.js?v=${cacheBust}",
-      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",
-      "0x1/link": "/0x1/router.js?v=${cacheBust}",
-      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",
-      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",
-      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"
-    }
-  }
+  ${JSON.stringify({ imports: importMap }, null, 2)}
   </script>
 </head>
 <body class="bg-slate-900 text-white">
