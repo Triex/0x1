@@ -677,8 +677,33 @@ export declare function processTailwindFast(
       routerContent = routerContent.replace(/\bjsxs_\w+/g, 'jsxs');
       routerContent = routerContent.replace(/\bFragment_\w+/g, 'Fragment');
       
+      // Write the normalized router content
       await Bun.write(routerDest, routerContent);
-      console.log("✅ Copied router to dist/core/router.js with JSX normalization");
+      
+      // CRITICAL FIX: Manually fix the Link export (auto-detection is broken)
+      let finalContent = await Bun.file(routerDest).text();
+      
+      // Find and replace the incorrect Link export
+      finalContent = finalContent.replace(
+        /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
+        (match, before, after) => {
+          // Find the RouterLink function and export it as Link instead
+          if (finalContent.includes('RouterLink')) {
+            return match.replace(/\w+\s+as\s+Link/, 'RouterLink as Link');
+          }
+          // Look for function that creates <a> elements
+          const linkFunctionMatch = finalContent.match(/function\s+(\w+)\([^{]*\{[^}]*createElement\(["']a["']\)/);
+          if (linkFunctionMatch) {
+            const correctLinkFunction = linkFunctionMatch[1];
+            return match.replace(/\w+\s+as\s+Link/, `${correctLinkFunction} as Link`);
+          }
+          return match;
+        }
+      );
+      
+      await Bun.write(routerDest, finalContent);
+      
+      console.log("✅ Built router.js with JSX normalization and corrected Link export");
     }
 
     console.log("📦 Building Router module...");
@@ -741,7 +766,30 @@ export declare function processTailwindFast(
         // Write the normalized router content
         await Bun.write(outputPath, content);
         
-        console.log("✅ Built router.js with JSX normalization");
+        // CRITICAL FIX: Manually fix the Link export (auto-detection is broken)
+        let finalContent = await Bun.file(outputPath).text();
+        
+        // Find and replace the incorrect Link export
+        finalContent = finalContent.replace(
+          /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
+          (match, before, after) => {
+            // Find the RouterLink function and export it as Link instead
+            if (finalContent.includes('RouterLink')) {
+              return match.replace(/\w+\s+as\s+Link/, 'RouterLink as Link');
+            }
+            // Look for function that creates <a> elements
+            const linkFunctionMatch = finalContent.match(/function\s+(\w+)\([^{]*\{[^}]*createElement\(["']a["']\)/);
+            if (linkFunctionMatch) {
+              const correctLinkFunction = linkFunctionMatch[1];
+              return match.replace(/\w+\s+as\s+Link/, `${correctLinkFunction} as Link`);
+            }
+            return match;
+          }
+        );
+        
+        await Bun.write(outputPath, finalContent);
+        
+        console.log("✅ Built router.js with JSX normalization and corrected Link export");
       } else {
         console.warn("⚠️ Failed to build router.js");
       }
