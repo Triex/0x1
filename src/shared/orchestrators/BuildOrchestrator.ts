@@ -1941,6 +1941,45 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     // CRITICAL: Load actual project configuration for proper metadata
     const projectConfig = await configManager.loadProjectConfig();
     
+    // CRITICAL: Extract metadata from homepage component (like Next.js 15)
+    let pageMetadata = null;
+    const homeRoute = this.state.routes.find(route => route.path === '/');
+    if (homeRoute) {
+      // Find the source file for the homepage
+      const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
+      let sourceFile = null;
+      
+      for (const ext of sourceExtensions) {
+        const potentialPath = join(
+          this.options.projectPath,
+          homeRoute.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
+        );
+        if (existsSync(potentialPath)) {
+          sourceFile = potentialPath;
+          break;
+        }
+      }
+      
+      if (sourceFile) {
+        try {
+          // Use the existing metadata extraction system
+          const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
+          const extractedMetadata = await extractMetadataFromFile(sourceFile);
+          
+          if (extractedMetadata) {
+            pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
+            if (!this.options.silent) {
+              logger.info(`✅ Extracted metadata from homepage: ${pageMetadata.title || 'No title'}`);
+            }
+          }
+        } catch (error) {
+          if (!this.options.silent) {
+            logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
+          }
+        }
+      }
+    }
+    
     // Generate CSS link tags for external dependencies
     const externalCssLinks = this.state.dependencies.cssFiles
       .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
@@ -1971,9 +2010,32 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
       : '';
     
-    // FIXED: Use actual project configuration for title and description
-    const pageTitle = projectConfig.name || 'My 0x1 App';
-    const pageDescription = projectConfig.description || '0x1 Framework application';
+    // FIXED: Use page metadata if available, fallback to project config
+    let pageTitle, pageDescription;
+    
+    if (pageMetadata) {
+      // Use the metadata system's title resolution
+      const { resolveTitle } = await import('../../core/metadata');
+      pageTitle = resolveTitle(pageMetadata);
+      pageDescription = pageMetadata.description || projectConfig.description || '0x1 Framework application';
+    } else {
+      // Fallback to project config
+      pageTitle = projectConfig.name || 'My 0x1 App';
+      pageDescription = projectConfig.description || '0x1 Framework application';
+    }
+    
+    // Generate additional meta tags from page metadata
+    let additionalMetaTags = '';
+    if (pageMetadata) {
+      try {
+        const { generateMetaTags } = await import('../../core/metadata');
+        additionalMetaTags = generateMetaTags(pageMetadata);
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to generate meta tags: ${error}`);
+        }
+      }
+    }
     
     // CRITICAL: Add cache-busting timestamp to prevent Safari iOS caching issues
     const cacheBust = Date.now();
@@ -1985,7 +2047,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
 ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
   <script type="importmap">
   {

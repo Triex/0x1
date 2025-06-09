@@ -2044,6 +2044,45 @@ if (document.readyState === 'loading') {
       };
     }
     
+    // CRITICAL: Extract metadata from homepage component (like Next.js 15) - SAME AS BUILDORCHESTRATOR
+    let pageMetadata = null;
+    const homeRoute = this.state.routes.find(route => route.path === '/');
+    if (homeRoute) {
+      // Find the source file for the homepage
+      const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
+      let sourceFile = null;
+      
+      for (const ext of sourceExtensions) {
+        const potentialPath = join(
+          this.options.projectPath,
+          homeRoute.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
+        );
+        if (existsSync(potentialPath)) {
+          sourceFile = potentialPath;
+          break;
+        }
+      }
+      
+      if (sourceFile) {
+        try {
+          // Use the existing metadata extraction system
+          const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
+          const extractedMetadata = await extractMetadataFromFile(sourceFile);
+          
+          if (extractedMetadata) {
+            pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
+            if (this.options.debug) {
+              logger.debug(`✅ Extracted metadata from homepage: ${pageMetadata.title || 'No title'}`);
+            }
+          }
+        } catch (error) {
+          if (this.options.debug) {
+            logger.debug(`Failed to extract metadata from ${sourceFile}: ${error}`);
+          }
+        }
+      }
+    }
+    
     // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
     const externalCssLinks: string[] = [];
     const externalImports: Record<string, string> = {};
@@ -2232,8 +2271,26 @@ if (document.readyState === 'loading') {
       : '';
 
     // FIXED: Use actual project configuration for title and description
-    const pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
-    const pageDescription = projectConfig.description || '0x1 Framework development environment';
+    let pageTitle, pageDescription, additionalMetaTags = '';
+    
+    if (pageMetadata) {
+      // Use the metadata system's title resolution
+      const { resolveTitle, generateMetaTags } = await import('../../core/metadata');
+      pageTitle = `${resolveTitle(pageMetadata)} - Development`;
+      pageDescription = pageMetadata.description || projectConfig.description || '0x1 Framework development environment';
+      
+      try {
+        additionalMetaTags = generateMetaTags(pageMetadata);
+      } catch (error) {
+        if (this.options.debug) {
+          logger.debug(`Failed to generate meta tags: ${error}`);
+        }
+      }
+    } else {
+      // Fallback to project config
+      pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
+      pageDescription = projectConfig.description || '0x1 Framework development environment';
+    }
 
     return `<!DOCTYPE html>
 <html lang="en" class="dark">
@@ -2242,7 +2299,7 @@ if (document.readyState === 'loading') {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
+${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
 ${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
   <script type="importmap">
   ${JSON.stringify({ imports: importMap }, null, 2)}
