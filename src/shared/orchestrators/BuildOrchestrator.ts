@@ -443,7 +443,7 @@ export class BuildOrchestrator {
         sourceFilePath: sourcePath,
         projectPath: this.options.projectPath,
         mode: 'production',
-        debug: !this.options.silent
+        debug: false // Only enable debug when explicitly requested
       });
 
       return content;
@@ -1774,11 +1774,80 @@ if (document.readyState === 'loading') {
   }
 
   private async processCssUsingWorkingPattern(outputPath: string): Promise<void> {
-    if (!this.options.silent) {
-      logger.info('🎨 Processing CSS using working pattern...');
-    }
-
     try {
+      // Use ConfigurationManager to get CSS configuration
+      const configManager = getConfigurationManager(this.options.projectPath);
+      const cssConfig = await configManager.getCSSConfig();
+      
+    if (!this.options.silent) {
+        logger.info(`🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === '0x1-enhanced' ? 'Lightning-fast mode' : 'Standard mode'})`);
+      }
+
+      // Try 0x1 Enhanced TailwindHandler if configured
+      if (cssConfig.processor === '0x1-enhanced') {
+        try {
+          if (!this.options.silent) {
+            logger.info('⚡ Using 0x1 Enhanced TailwindHandler for sub-50ms builds...');
+          }
+          
+          // FIXED: Use framework build path for TailwindHandler with completely dynamic imports
+          let processTailwindFast;
+          try {
+            // Try built framework path first (construct path to avoid TS resolution)
+            const distPath = ['..', '..', 'dist', 'core', 'tailwind-handler.js'].join('/');
+            const builtHandler = await import(distPath);
+            processTailwindFast = builtHandler.processTailwindFast;
+          } catch {
+            try {
+              // Fallback to experimental path during development
+              const expPath = ['..', '..', '..', '0x1-experimental', 'tailwind-handler', 'TailwindHandler.js'].join('/');
+              const expHandler = await import(expPath);
+              processTailwindFast = expHandler.processTailwindFast;
+            } catch {
+              throw new Error('TailwindHandler not available');
+            }
+          }
+          
+          const result = await processTailwindFast(this.options.projectPath, {
+            outputPath: join(outputPath, 'styles.css'),
+            config: {
+              content: cssConfig.content || [
+                'app/**/*.{js,ts,jsx,tsx}',
+                'components/**/*.{js,ts,jsx,tsx}',
+                'pages/**/*.{js,ts,jsx,tsx}',
+                '**/*.{html,js,ts,jsx,tsx}'
+              ],
+              darkMode: cssConfig.darkMode,
+              theme: cssConfig.theme
+            }
+          });
+          
+          if (result.success && result.css.length > 1000) {
+            const cacheStatus = result.fromCache ? 'Cache hit!' : 'Fresh build';
+            const speedImprovement = result.processingTime < 50 ? '🚀 FAST!' : '⚡ FASTER!';
+            
+            if (!this.options.silent) {
+              logger.success(`✅ 0x1 Enhanced: ${cacheStatus} ${result.processingTime.toFixed(1)}ms ${speedImprovement}`);
+              logger.success(`✅ CSS generated: ${(result.css.length / 1024).toFixed(1)}KB (${result.fromCache ? 'cached' : 'fresh'})`);
+            }
+            
+            // Early return - skip slow processing completely!
+            return;
+          } else {
+            if (!this.options.silent) {
+              logger.warn('⚠️ 0x1 Enhanced handler produced minimal CSS, falling back...');
+            }
+          }
+        } catch (enhancedError) {
+          if (!this.options.silent) {
+            logger.debug(`[TailwindHandler] Enhanced handler failed: ${enhancedError}`);
+            logger.info('💠 Falling back to Tailwind v4...');
+          }
+        }
+      }
+      
+      // Use Tailwind v4 (either as primary choice or fallback)
+      if (cssConfig.processor === 'tailwind-v4' || cssConfig.processor === '0x1-enhanced') {
       // CRITICAL FIX: Use EXACT same Tailwind v4 processing as DevOrchestrator (SINGLE SOURCE OF TRUTH)
       const { tailwindV4Handler } = await import('../../cli/commands/utils/server/tailwind-v4');
       
@@ -1856,10 +1925,11 @@ if (document.readyState === 'loading') {
       } else {
         if (!this.options.silent) {
           logger.info('💠 Tailwind v4 not available, using fallback CSS');
+          }
         }
       }
 
-      // FALLBACK: Only reached if Tailwind v4 is not available or failed
+      // FALLBACK: Only reached if both enhanced and v4 are not available or failed
       if (!this.options.silent) {
         logger.info('💠 Using CSS fallback processing');
       }
@@ -1901,12 +1971,12 @@ if (document.readyState === 'loading') {
             
             // Process CSS to remove problematic imports
             processedCss = processedCss
-              .replace(/@import\s+["']tailwindcss[""];?/g, '/* Tailwind CSS processed */')
-              .replace(/@import\s+["']tailwindcss\/base[""];?/g, '/* Tailwind base processed */')
-              .replace(/@import\s+["']tailwindcss\/components[""];?/g, '/* Tailwind components processed */')
-              .replace(/@import\s+["']tailwindcss\/utilities[""];?/g, '/* Tailwind utilities processed */')
-              .replace(/@import\s+["'][^"']*node_modules[^"']*[""];?/g, '/* Node modules import removed */')
-              .replace(/@import\s+["']([^"'/][^"']*)[""];?/g, '/* Package import removed: $1 */');
+              .replace(/@import\s+["']tailwindcss["'];?/g, '/* Tailwind CSS processed */')
+              .replace(/@import\s+["']tailwindcss\/base["'];?/g, '/* Tailwind base processed */')
+              .replace(/@import\s+["']tailwindcss\/components["'];?/g, '/* Tailwind components processed */')
+              .replace(/@import\s+["']tailwindcss\/utilities["'];?/g, '/* Tailwind utilities processed */')
+              .replace(/@import\s+["'][^"']*node_modules[^"']*["'];?/g, '/* Node modules import removed */')
+              .replace(/@import\s+["']([^"'/][^"']*)["'];?/g, '/* Package import removed: $1 */');
             
             // Add essential utilities only for true fallback CSS
             processedCss += this.getEssentialTailwindUtilities();

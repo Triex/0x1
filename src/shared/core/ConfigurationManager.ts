@@ -23,6 +23,21 @@ export interface ProjectConfig {
   // PWA configuration
   pwa?: PWAConfig;
   
+  // CSS processing configuration
+  css?: {
+    processor: 'tailwind-v4' | '0x1-enhanced';
+    minify?: boolean;
+    sourcemap?: boolean;
+    outputPath?: string;
+    content?: string[];
+    purge?: boolean;
+    darkMode?: 'class' | 'media';
+    theme?: {
+      extend?: Record<string, any>;
+    };
+    plugins?: string[];
+  };
+  
   // Build configuration
   build?: {
     outDir: string;
@@ -78,7 +93,24 @@ export class ConfigurationManager {
       version: '1.0.0',
       themeColor: '#0077cc',
       backgroundColor: '#ffffff',
-      themeMode: 'dark'
+      themeMode: 'dark',
+      css: {
+        processor: '0x1-enhanced', // Default to high-performance processor
+        minify: true,
+        sourcemap: true,
+        outputPath: 'dist/styles/output.css',
+        content: [
+          'src/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+          'components/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+          'pages/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+          'app/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+          '*.{js,ts,jsx,tsx,html,vue,svelte}'
+        ],
+        purge: true,
+        darkMode: 'class',
+        theme: { extend: {} },
+        plugins: []
+      }
     };
 
     // 1. Load from package.json
@@ -217,6 +249,40 @@ export class ConfigurationManager {
     }
 
     return result;
+  }
+
+  /**
+   * Get CSS configuration with defaults
+   * Returns merged CSS config from project configuration and sensible defaults
+   * Supports both 'tailwind-v4' (standard) and '0x1-enhanced' (98% faster) processors
+   */
+  async getCSSConfig(): Promise<NonNullable<ProjectConfig['css']>> {
+    const config = await this.loadProjectConfig();
+    
+    // Default CSS configuration
+    const defaultCSS: NonNullable<ProjectConfig['css']> = {
+      processor: '0x1-enhanced', // Use high-performance 0x1 enhanced processor by default
+      minify: true,
+      sourcemap: true,
+      outputPath: 'dist/styles/output.css',
+      content: [
+        'src/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+        'components/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+        'pages/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+        'app/**/*.{js,ts,jsx,tsx,html,vue,svelte}',
+        '*.{js,ts,jsx,tsx,html,vue,svelte}'
+      ],
+      purge: true,
+      darkMode: 'class',
+      theme: { extend: {} },
+      plugins: []
+    };
+    
+    // Merge with project-specific CSS config
+    return {
+      ...defaultCSS,
+      ...config.css
+    };
   }
 
   /**

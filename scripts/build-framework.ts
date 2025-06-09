@@ -359,6 +359,94 @@ async function buildFramework() {
 
     console.log("📦 Building standalone packages...");
 
+    // Build @0x1js/tailwind-handler package
+    console.log("Building @0x1js/tailwind-handler...");
+    const tailwindHandlerSrc = resolve("0x1-experimental/tailwind-handler");
+    const tailwindHandlerDist = join(tailwindHandlerSrc, "dist");
+    
+    // Clean and create dist directory for TailwindHandler
+    if (existsSync(tailwindHandlerDist)) {
+      await Bun.spawn(['rm', '-rf', tailwindHandlerDist]).exited;
+    }
+    await Bun.spawn(['mkdir', '-p', tailwindHandlerDist]).exited;
+    
+    const tailwindHandlerBuildResult = await Bun.build({
+      entrypoints: [join(tailwindHandlerSrc, "TailwindHandler.ts")],
+      outdir: tailwindHandlerDist,
+      target: "bun", // Optimized for Bun runtime
+      format: "esm",
+      minify: true,
+      splitting: false, // Single file for maximum performance
+      plugins: [consoleLogRemovalPlugin], // Remove console logs in production
+      define: {
+        'process.env.NODE_ENV': '"production"'
+      }
+    });
+    
+    if (!tailwindHandlerBuildResult.success) {
+      console.warn("⚠️ @0x1js/tailwind-handler build failed, but framework build continues");
+      console.error("TailwindHandler build errors:", tailwindHandlerBuildResult.logs);
+    } else {
+      // Generate TypeScript declarations
+      const declarationContent = `/**
+ * @0x1js/tailwind-handler - Lightning-fast Tailwind CSS processor
+ * Built for Bun 1.2+ with native performance optimizations
+ */
+
+export interface TailwindConfig {
+  enabled: boolean;
+  inputPath: string;
+  outputPath: string;
+  configPath?: string;
+  darkMode?: 'class' | 'media';
+  content: string[];
+  theme?: {
+    extend?: Record<string, any>;
+  };
+  plugins?: string[];
+}
+
+export interface ProcessingResult {
+  css: string;
+  processingTime: number;
+  fromCache: boolean;
+  classesExtracted: number;
+  cacheHit: boolean;
+}
+
+export declare class TailwindHandler {
+  constructor(projectPath: string, config?: Partial<TailwindConfig>);
+  process(): Promise<ProcessingResult>;
+  cleanCache(): Promise<void>;
+  static getCoreCSS(): string;
+}
+
+export declare function createTailwindHandler(
+  projectPath: string, 
+  config?: Partial<TailwindConfig>
+): Promise<TailwindHandler>;
+
+export declare function processTailwindFast(
+  projectPath: string,
+  options?: {
+    outputPath?: string;
+    config?: Partial<TailwindConfig>;
+  }
+): Promise<ProcessingResult>;
+`;
+
+      await Bun.write(join(tailwindHandlerDist, "TailwindHandler.d.ts"), declarationContent);
+      console.log("✅ Built @0x1js/tailwind-handler with TypeScript declarations");
+      
+      // Copy to main dist for framework usage
+      const handlerSource = join(tailwindHandlerDist, "TailwindHandler.js");
+      const handlerDest = join(distDir, "core/tailwind-handler.js");
+      if (existsSync(handlerSource)) {
+        await Bun.write(handlerDest, await Bun.file(handlerSource).text());
+        console.log("✅ Copied TailwindHandler to dist/core/tailwind-handler.js");
+      }
+    }
+
     // Build 0x1-store package
     console.log("Building 0x1-store...");
     const storeBuildResult = await Bun.build({
