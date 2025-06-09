@@ -644,30 +644,112 @@ export function generateHeadContent(metadata: Metadata, pageTitle?: string): str
 }
 
 /**
- * Automatically extract metadata from a file's exports
- * This enables Next15-style static metadata exports
+ * Safely extract metadata from a file using static analysis
+ * This avoids executing imports that might fail in build environments
  */
 export async function extractMetadataFromFile(filePath: string): Promise<Metadata | null> {
   try {
-    // Dynamic import to get the metadata export
-    const module = await import(filePath);
+    // Read the file content as text
+    const fileContent = await Bun.file(filePath).text();
     
-    // Check for metadata export
-    if (module.metadata && typeof module.metadata === 'object') {
-      return module.metadata as Metadata;
-    }
-    
-    // Check for generateMetadata function
-    if (typeof module.generateMetadata === 'function') {
-      const result = await module.generateMetadata();
-      return result as Metadata;
-    }
-    
-    return null;
+    // Use static analysis instead of dynamic import to avoid execution issues
+    return extractMetadataFromSource(fileContent);
   } catch (error) {
     console.warn(`Failed to extract metadata from ${filePath}:`, error);
     return null;
   }
+}
+
+/**
+ * Extract metadata from source code using static analysis
+ * Parses export const metadata = {...} without executing imports
+ */
+function extractMetadataFromSource(sourceCode: string): Metadata | null {
+  try {
+    // Look for export const metadata = or export const metadata:
+    const metadataRegex = /export\s+const\s+metadata\s*(?::\s*[^=]+)?\s*=\s*({[\s\S]*?});/;
+    const match = sourceCode.match(metadataRegex);
+    
+    if (!match) {
+      return null;
+    }
+    
+    const metadataObjectStr = match[1];
+    
+    // Parse the metadata object safely
+    return parseMetadataObject(metadataObjectStr);
+  } catch (error) {
+    console.warn('Failed to parse metadata from source:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse metadata object string into Metadata interface
+ * Handles common JavaScript object patterns safely
+ */
+function parseMetadataObject(objStr: string): Metadata | null {
+  try {
+    // Clean the object string and prepare for parsing
+    let cleanedStr = objStr
+      .replace(/\/\/.*$/gm, '') // Remove single-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+      .replace(/(\w+):/g, '"$1":') // Quote unquoted keys
+      .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
+    
+    // Handle arrays properly
+    cleanedStr = cleanedStr.replace(/\[([^\]]*)\]/g, (match, content) => {
+      // Quote array string elements
+      const quotedContent = content.replace(/(\w+)(?=\s*[,\]])/g, '"$1"');
+      return `[${quotedContent}]`;
+    });
+    
+    // Try to parse as JSON
+    const parsed = JSON.parse(cleanedStr);
+    return parsed as Metadata;
+  } catch (error) {
+    // Fallback: try to extract key metadata fields manually
+    return extractBasicMetadata(objStr);
+  }
+}
+
+/**
+ * Fallback metadata extraction for complex object structures
+ * Extracts basic title, description, and keywords
+ */
+function extractBasicMetadata(objStr: string): Metadata | null {
+  const metadata: Partial<Metadata> = {};
+  
+  // Extract title
+  const titleMatch = objStr.match(/title\s*:\s*["']([^"']+)["']/);
+  if (titleMatch) {
+    metadata.title = titleMatch[1];
+  }
+  
+  // Extract description
+  const descMatch = objStr.match(/description\s*:\s*["']([^"']+)["']/);
+  if (descMatch) {
+    metadata.description = descMatch[1];
+  }
+  
+  // Extract keywords array
+  const keywordsMatch = objStr.match(/keywords\s*:\s*\[([^\]]*)\]/);
+  if (keywordsMatch) {
+    const keywordsStr = keywordsMatch[1];
+    const keywords = keywordsStr
+      .split(',')
+      .map(k => k.trim().replace(/["']/g, ''))
+      .filter(k => k.length > 0);
+    metadata.keywords = keywords;
+  }
+  
+  // Extract OpenGraph title
+  const ogTitleMatch = objStr.match(/openGraph\s*:\s*{[^}]*title\s*:\s*["']([^"']+)["']/);
+  if (ogTitleMatch) {
+    metadata.openGraph = { title: ogTitleMatch[1] };
+  }
+  
+  return Object.keys(metadata).length > 0 ? metadata as Metadata : null;
 }
 
 /**

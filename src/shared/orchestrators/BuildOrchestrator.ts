@@ -290,8 +290,8 @@ export class BuildOrchestrator {
     // Step 5: Copy static assets (MOVED BEFORE HTML so favicon exists)
     await this.copyStaticAssets(outputPath);
 
-    // Step 6: Generate HTML (NOW favicon link will be included)
-    await this.generateHtmlFile(outputPath);
+    // Step 6: CRITICAL FIX - Generate separate HTML files for each route (for crawlers) + main SPA file (for users)
+    await this.generateRouteSpecificHtmlFiles(outputPath);
   }
 
   private async generateComponentsUsingWorkingPattern(outputPath: string): Promise<void> {
@@ -1304,8 +1304,6 @@ export function Link(props) {
         if (props.href.startsWith('/')) {
           window.history.pushState(null, '', props.href);
           window.dispatchEvent(new PopStateEvent('popstate'));
-        } else {
-          window.location.href = props.href;
         }
       },
       children: props.children
@@ -2764,6 +2762,255 @@ export default function ErrorComponent(props) {
   private async completeCopyFrameworkFiles(nodeModulesDir: string, framework0x1Dir: string): Promise<void> {
     // Generate browser-compatible 0x1 entry point (same as DevOrchestrator)
     await this.generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir, framework0x1Dir);
+  }
+
+  /**
+   * CRITICAL FIX: Generate route-specific HTML files for external crawlers + main SPA file
+   * This ensures social media crawlers, SEO tools, and link previews see correct metadata
+   * while maintaining SPA functionality for users
+   */
+  private async generateRouteSpecificHtmlFiles(outputPath: string): Promise<void> {
+    if (!this.options.silent) {
+      logger.info('🌐 Generating route-specific HTML files for crawlers + SPA file for users...');
+    }
+
+    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+    const configManager = getConfigurationManager(this.options.projectPath);
+    const pwaMetadata = await configManager.getPWAMetadata();
+    const projectConfig = await configManager.loadProjectConfig();
+    
+    // Generate CSS link tags and other shared resources
+    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = 
+      await this.generateSharedHtmlResources(outputPath, pwaMetadata);
+
+    // Step 1: Generate main SPA file (index.html) - for users browsing
+    await this.generateMainSpaFile(outputPath, projectConfig, {
+      faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust
+    });
+
+    // Step 2: Generate route-specific HTML files - for crawlers and external tools
+    await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, {
+      faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust
+    });
+
+    if (!this.options.silent) {
+      logger.success(`✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
+    }
+  }
+
+  /**
+   * Generate shared HTML resources used by all HTML files
+   */
+  private async generateSharedHtmlResources(outputPath: string, pwaMetadata: any) {
+    // Generate favicon link
+    let faviconLink = '';
+    const faviconPath = join(outputPath, 'favicon.svg');
+    if (existsSync(faviconPath)) {
+      faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+    } else {
+      const faviconIcoPath = join(outputPath, 'favicon.ico');
+      if (existsSync(faviconIcoPath)) {
+        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+      }
+    }
+
+    // Generate CSS links for external dependencies
+    const externalCssLinks = this.state.dependencies.cssFiles
+      .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
+      .join('\n');
+
+    // PWA resources
+    const manifestLink = pwaMetadata.manifestLink || '';
+    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
+      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
+      : '';
+    const pwaScripts = pwaMetadata.scripts.length > 0
+      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
+      : '';
+
+    // Cache-busting timestamp
+    const cacheBust = Date.now();
+
+    return { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust };
+  }
+
+  /**
+   * Generate main SPA file (index.html) - for users browsing the site
+   * This file uses client-side routing and metadata updates
+   */
+  private async generateMainSpaFile(outputPath: string, projectConfig: any, resources: any) {
+    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = resources;
+
+    // Use project config for the main SPA file (users will get dynamic metadata updates)
+    const pageTitle = projectConfig.name || 'My 0x1 App';
+    const pageDescription = projectConfig.description || '0x1 Framework application';
+
+    const spaHtml = `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${pageTitle}</title>
+  <meta name="description" content="${pageDescription}">
+${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/router": "/0x1/router.js?v=${cacheBust}",
+      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",
+      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"
+    }
+  }
+  </script>
+</head>
+<body class="bg-slate-900 text-white">
+  <div id="app"></div>
+  <script>
+    window.process={env:{NODE_ENV:'production'}};
+    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
+  </script>
+  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
+</body>
+</html>`;
+
+    await Bun.write(join(outputPath, 'index.html'), spaHtml);
+
+    if (!this.options.silent) {
+      logger.info('✅ Generated main SPA file: index.html (for users with client-side routing)');
+    }
+  }
+
+  /**
+   * Generate route-specific HTML files - for crawlers and external tools
+   * Each route gets its own HTML file with proper metadata baked in
+   */
+  private async generateCrawlerOptimizedRouteFiles(outputPath: string, projectConfig: any, resources: any) {
+    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = resources;
+
+    for (const route of this.state.routes) {
+      try {
+        // Extract metadata for this specific route
+        const routeMetadata = await this.extractMetadataFromRoute(route);
+        
+        let pageTitle, pageDescription, additionalMetaTags = '';
+
+        if (routeMetadata) {
+          // Use route-specific metadata
+          const { resolveTitle } = await import('../../core/metadata');
+          pageTitle = resolveTitle(routeMetadata);
+          pageDescription = routeMetadata.description || projectConfig.description || '0x1 Framework application';
+          
+          // Generate comprehensive meta tags for crawlers
+          try {
+            const { generateMetaTags } = await import('../../core/metadata');
+            additionalMetaTags = generateMetaTags(routeMetadata);
+          } catch (error) {
+            if (!this.options.silent) {
+              logger.warn(`Failed to generate meta tags for route ${route.path}: ${error}`);
+            }
+          }
+        } else {
+          // Fallback to project config
+          pageTitle = projectConfig.name || 'My 0x1 App';
+          pageDescription = projectConfig.description || '0x1 Framework application';
+        }
+
+        // Generate HTML file for this route
+        const routeHtml = `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${pageTitle}</title>
+  <meta name="description" content="${pageDescription}">
+${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
+  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->
+  <script type="importmap">
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/router": "/0x1/router.js?v=${cacheBust}",
+      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",
+      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"
+    }
+  }
+  </script>
+</head>
+<body class="bg-slate-900 text-white">
+  <div id="app"></div>
+  <script>
+    window.process={env:{NODE_ENV:'production'}};
+    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
+  </script>
+  <!-- CRAWLER OPTIMIZATION: SPA functionality still works for users -->
+  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
+</body>
+</html>`;
+
+        // Determine the output file path for this route
+        const routeOutputPath = this.getRouteOutputPath(outputPath, route.path);
+        
+        // Ensure directory exists
+        mkdirSync(join(routeOutputPath, '..'), { recursive: true });
+        
+        // Write the route-specific HTML file
+        await Bun.write(routeOutputPath, routeHtml);
+
+        if (!this.options.silent) {
+          logger.info(`✅ Generated crawler-optimized HTML: ${route.path} -> ${routeOutputPath.replace(outputPath, '')}`);
+        }
+
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to generate HTML for route ${route.path}: ${error}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Determine the output file path for a route
+   * Examples:
+   * "/" -> "/index.html" (already handled by main SPA file)
+   * "/about" -> "/about.html" 
+   * "/tools" -> "/tools.html"
+   * "/blog/post" -> "/blog/post.html"
+   */
+  private getRouteOutputPath(outputPath: string, routePath: string): string {
+    if (routePath === '/') {
+      // Homepage is handled by the main SPA file
+      return join(outputPath, 'index.html');
+    }
+
+    // Convert route path to file path
+    // "/about" -> "about.html"
+    // "/tools" -> "tools.html"  
+    // "/blog/post" -> "blog/post.html"
+    const cleanPath = routePath.startsWith('/') ? routePath.slice(1) : routePath;
+    const fileName = cleanPath + '.html';
+    
+    return join(outputPath, fileName);
   }
 } 
 
