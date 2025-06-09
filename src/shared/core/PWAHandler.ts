@@ -20,6 +20,21 @@ export interface PWAConfig {
   generateIcons: boolean;
   offlineSupport: boolean;
   cacheStrategy: string;
+  precacheResources?: string[];
+  cacheName?: string;
+  statusBarStyle?: string;
+  scope?: string;
+  enabled?: boolean;
+  manifest?: string;
+  workbox?: {
+    swSrc?: string;
+    swDest?: string;
+    globPatterns?: string[];
+  };
+  icons?: {
+    source?: string;
+    output?: string;
+  };
 }
 
 export interface PWAResources {

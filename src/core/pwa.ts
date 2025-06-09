@@ -281,7 +281,8 @@ export const DEFAULT_PWA_CONFIG: PWAConfig = {
     "/index.html",
     "/styles.css",
     "/app.js",
-    "/icons/favicon.svg",
+    // CRITICAL FIX: Remove hardcoded icon paths that might not exist
+    // Icons will be added dynamically by the build process if they exist
   ],
 };
 
@@ -383,7 +384,7 @@ export function generateManifest(config: PWAConfig): string {
 }
 
 /**
- * Generate service worker content
+ * Generate service worker content with resource validation
  */
 export function generateServiceWorker(config: PWAConfig): string {
   const cacheName = config.cacheName || '0x1-cache-v1';
@@ -402,8 +403,10 @@ export function generateServiceWorker(config: PWAConfig): string {
           // If not in cache, fetch from network
           try {
             const networkResponse = await fetch(request);
-            const cache = await caches.open(CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            if (networkResponse.ok) {
+              const cache = await caches.open(CACHE_NAME);
+              cache.put(request, networkResponse.clone());
+            }
             return networkResponse;
           } catch (error) {
             return new Response('Network error', { status: 408 });
@@ -416,8 +419,10 @@ export function generateServiceWorker(config: PWAConfig): string {
           // Try network first, then cache
           try {
             const networkResponse = await fetch(request);
-            const cache = await caches.open(CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            if (networkResponse.ok) {
+              const cache = await caches.open(CACHE_NAME);
+              cache.put(request, networkResponse.clone());
+            }
             return networkResponse;
           } catch (error) {
             // If network fails, use cache
@@ -436,9 +441,11 @@ export function generateServiceWorker(config: PWAConfig): string {
           
           // Update cache in background
           const fetchPromise = fetch(request).then(networkResponse => {
-            cache.put(request, networkResponse.clone());
+            if (networkResponse.ok) {
+              cache.put(request, networkResponse.clone());
+            }
             return networkResponse;
-          });
+          }).catch(() => null);
           
           // Return cached version or wait for network
           return cachedResponse || fetchPromise;
@@ -453,14 +460,47 @@ const CACHE_NAME = '${cacheName}';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_RESOURCES = ${filesToCache};
 
-// Install event - precache resources
+// CRITICAL FIX: Validate resources before caching to prevent addAll failures
+async function validateAndCacheResources(cache, resources) {
+  const validResources = [];
+  
+  for (const url of resources) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        validResources.push(url);
+        await cache.put(url, response);
+        console.log('[SW] Cached:', url);
+      } else {
+        console.warn('[SW] Resource not found, skipping cache:', url, response.status);
+      }
+    } catch (error) {
+      console.warn('[SW] Failed to fetch resource, skipping cache:', url, error.message);
+    }
+  }
+  
+  console.log('[SW] Successfully cached', validResources.length, 'of', resources.length, 'resources');
+  return validResources;
+}
+
+// Install event - precache resources with validation
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_RESOURCES);
-    }).then(() => {
-      return self.skipWaiting();
-    })
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        
+        // CRITICAL FIX: Validate resources before attempting to cache them
+        await validateAndCacheResources(cache, PRECACHE_RESOURCES);
+        
+        await self.skipWaiting();
+        console.log('[SW] Installation completed with resource validation');
+      } catch (error) {
+        console.error('[SW] Installation failed:', error);
+        // Still complete installation even if caching fails
+        await self.skipWaiting();
+      }
+    })()
   );
 });
 
@@ -494,7 +534,9 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(() => {
-        return caches.match(OFFLINE_URL);
+        return caches.match(OFFLINE_URL) || 
+               caches.match('/') || 
+               new Response('You are offline', { headers: { 'Content-Type': 'text/html' }});
       })
     );
     return;
@@ -554,15 +596,8 @@ async function syncContent() {
     try {
       const cache = await caches.open(CACHE_NAME);
       
-      // Update precached resources
-      for (const url of PRECACHE_RESOURCES) {
-        try {
-          const response = await fetch(url);
-          await cache.put(url, response);
-        } catch (error) {
-          console.error('Failed to update cache for:', url, error);
-        }
-      }
+      // Update precached resources with validation
+      await validateAndCacheResources(cache, PRECACHE_RESOURCES);
     } catch (error) {
       console.error('Background sync failed:', error);
     }
