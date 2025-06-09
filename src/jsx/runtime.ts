@@ -185,7 +185,7 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
             
             if (isDebugMode) {
               console.log(`[0x1 JSX] Successfully re-rendered fragment component ${componentId}: ${newElements.length} elements`);
-            }
+          }
           }
         }
       } else {
@@ -203,7 +203,7 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
               
               if (isDebugMode) {
                 console.log(`[0x1 JSX] Replaced single element for ${componentId}`);
-              }
+            }
             } else if (index > 0) {
               // Remove extra old elements if they exist
               if (oldElement.parentNode) {
@@ -343,8 +343,8 @@ function ensureComponentMetadata(result: JSXNode, componentId: string, component
         const enhancedChild = { ...child };
         if (!enhancedChild.props) {
           enhancedChild.props = {};
-        }
-        
+  }
+  
         // UNIVERSAL: Apply metadata to ALL elements in fragment
         enhancedChild.props['data-component-id'] = componentId;
         enhancedChild.props['data-component-name'] = componentName;

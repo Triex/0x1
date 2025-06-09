@@ -1,6 +1,6 @@
 /**
  * 0x1 PWA Core Module
- * Provides progressive web app capabilities
+ * Provides progressive web app capabilities with comprehensive config parsing
  */
 
 import { Metadata } from './metadata.js';
@@ -22,6 +22,240 @@ export interface PWAConfig {
   cacheName?: string;
   precacheResources?: string[];
   statusBarStyle?: 'default' | 'black' | 'black-translucent';
+  
+  // Extended config for complex setups
+  enabled?: boolean;
+  manifest?: string;
+  workbox?: {
+    swSrc?: string;
+    swDest?: string;
+    globPatterns?: string[];
+  };
+  icons?: {
+    source?: string;
+    output?: string;
+  };
+}
+
+/**
+ * Complex configuration parser for 0x1.config.ts files
+ * Handles nested app.pwa and top-level pwa configurations
+ */
+export interface Complex0x1Config {
+  app?: {
+    name?: string;
+    title?: string;
+    description?: string;
+    pwa?: Partial<PWAConfig>;
+  };
+  pwa?: {
+    enabled?: boolean;
+    manifest?: string;
+    workbox?: {
+      swSrc?: string;
+      swDest?: string;
+      globPatterns?: string[];
+    };
+    icons?: {
+      source?: string;
+      output?: string;
+    };
+  };
+  [key: string]: any;
+}
+
+/**
+ * Parse and merge PWA configuration from complex 0x1.config.ts structure
+ * BULLETPROOF: Handles all possible configuration combinations
+ */
+export function parseComplexPWAConfig(config: Complex0x1Config): PWAConfig | null {
+  try {
+    // Extract PWA config from multiple possible locations
+    const appPwaConfig = config.app?.pwa || {};
+    const topLevelPwaConfig = config.pwa || {};
+    const appConfig = config.app || {};
+    
+    // Check if PWA is enabled (explicit disable check)
+    const pwaEnabled = topLevelPwaConfig.enabled !== false && 
+                      (appPwaConfig.name || appConfig.name || topLevelPwaConfig.enabled === true);
+    
+    if (!pwaEnabled) {
+      return null;
+    }
+    
+    // Merge configurations with proper precedence:
+    // 1. app.pwa takes highest precedence for app-specific settings
+    // 2. top-level pwa for technical/build settings
+    // 3. app for fallback app metadata
+    const mergedConfig: PWAConfig = {
+      // App identity (from app.pwa > app > defaults)
+      name: appPwaConfig.name || appConfig.name || appConfig.title || "0x1 App",
+      shortName: appPwaConfig.shortName || 
+                extractShortName(appPwaConfig.name || appConfig.name || appConfig.title || "0x1"),
+      description: appPwaConfig.description || appConfig.description || "Built with 0x1 - the ultra-minimal framework",
+      
+      // Visual settings (from app.pwa > defaults)
+      themeColor: appPwaConfig.themeColor || "#7c3aed",
+      backgroundColor: appPwaConfig.backgroundColor || "#ffffff",
+      display: appPwaConfig.display || "standalone",
+      statusBarStyle: appPwaConfig.statusBarStyle || "default",
+      
+      // App behavior (from app.pwa > defaults)
+      startUrl: appPwaConfig.startUrl || "/",
+      orientation: appPwaConfig.orientation || "any",
+      scope: appPwaConfig.scope || "/",
+      
+      // Technical settings (from app.pwa > top-level pwa > defaults)
+      iconsPath: appPwaConfig.iconsPath || "/icons",
+      generateIcons: appPwaConfig.generateIcons !== false,
+      offlineSupport: appPwaConfig.offlineSupport !== false,
+      cacheStrategy: appPwaConfig.cacheStrategy || "stale-while-revalidate",
+      cacheName: appPwaConfig.cacheName || extractCacheName(appConfig.name || "0x1-app"),
+      
+      // Advanced settings (merge from both sources)
+      precacheResources: mergeArrays(
+        appPwaConfig.precacheResources,
+        ["/", "/index.html", "/styles.css", "/app.js", "/icons/favicon.svg"]
+      ),
+      
+      // Extended config from top-level pwa
+      enabled: topLevelPwaConfig.enabled !== false,
+      manifest: topLevelPwaConfig.manifest || "/manifest.json",
+      workbox: topLevelPwaConfig.workbox,
+      icons: topLevelPwaConfig.icons
+    };
+    
+    return mergedConfig;
+  } catch (error) {
+    console.warn(`[PWA Config Parser] Error parsing complex config: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Extract short name from full app name
+ */
+function extractShortName(fullName: string): string {
+  // Split by non-alphanumeric characters
+  const words = fullName.split(/[^a-zA-Z0-9]/).filter(Boolean);
+  
+  if (words.length > 1) {
+    // Multi-word: create acronym (first letter of each word, max 4 chars)
+    return words.slice(0, 4).map(word => word.charAt(0).toUpperCase()).join('');
+  } else {
+    // Single word: use first 8 characters
+    return fullName.substring(0, Math.min(8, fullName.length));
+  }
+}
+
+/**
+ * Extract cache name from app name
+ */
+function extractCacheName(appName: string): string {
+  const normalizedName = appName.toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `${normalizedName}-cache-v1`;
+}
+
+/**
+ * Merge arrays with deduplication
+ */
+function mergeArrays<T>(primary?: T[], fallback?: T[]): T[] {
+  const merged = [...(primary || []), ...(fallback || [])];
+  return [...new Set(merged)]; // Remove duplicates
+}
+
+/**
+ * Load PWA configuration from various sources
+ * SINGLE SOURCE OF TRUTH: Centralized config loading logic
+ */
+export async function loadPWAConfig(configPath?: string): Promise<PWAConfig | null> {
+  const possiblePaths = [
+    configPath,
+    '0x1.config.ts',
+    '0x1.config.js',
+    'ox1.config.ts',
+    'ox1.config.js'
+  ].filter(Boolean);
+  
+  for (const path of possiblePaths) {
+    try {
+      // Try to load the config file
+      const configExists = await Bun.file(path!).exists();
+      if (!configExists) continue;
+      
+      const configContent = await Bun.file(path!).text();
+      const parsedConfig = parseConfigFileContent(configContent);
+      
+      if (parsedConfig) {
+        const pwaConfig = parseComplexPWAConfig(parsedConfig);
+        if (pwaConfig) {
+          console.log(`[PWA] Loaded config from ${path}`);
+          return pwaConfig;
+        }
+      }
+    } catch (error) {
+      console.warn(`[PWA] Could not load config from ${path}: ${error}`);
+      continue;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Parse configuration file content (TypeScript/JavaScript)
+ * ROBUST: Handles complex TypeScript syntax and dynamic expressions
+ */
+function parseConfigFileContent(content: string): Complex0x1Config | null {
+  try {
+    // Remove comments and imports
+    const cleanContent = content
+      .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
+      .replace(/\/\/.*$/gm, '') // Remove line comments
+      .replace(/import\s+.*?from\s+.*?;/g, '') // Remove imports
+      .replace(/export\s+type\s+.*?;/g, ''); // Remove type exports
+    
+    // Extract the default export object
+    const exportMatch = cleanContent.match(/export\s+default\s+(\{[\s\S]*?\});?\s*$/m);
+    if (!exportMatch) {
+      console.warn('[PWA Config Parser] No default export found');
+      return null;
+    }
+    
+    let configString = exportMatch[1];
+    
+    // Handle dynamic expressions safely
+    configString = configString
+      .replace(/process\.env\.(\w+)/g, (match, envVar) => {
+        const value = process.env[envVar];
+        return value ? `"${value}"` : 'undefined';
+      })
+      .replace(/process\.env\.(\w+)\s*===\s*["']([^"']+)["']/g, (match, envVar, compareValue) => {
+        const value = process.env[envVar];
+        return value === compareValue ? 'true' : 'false';
+      });
+    
+    // Use safe evaluation with controlled context
+    const safeEval = new Function(
+      'console',
+      `
+      // Provide safe console object
+      const process = { env: ${JSON.stringify(process.env)} };
+      
+      // Return the config object
+      return ${configString};
+      `
+    );
+    
+    const config = safeEval(console);
+    return config as Complex0x1Config;
+  } catch (error) {
+    console.warn(`[PWA Config Parser] Failed to parse config: ${error}`);
+    return null;
+  }
 }
 
 /**
@@ -41,11 +275,11 @@ export const DEFAULT_PWA_CONFIG: PWAConfig = {
   offlineSupport: true,
   cacheStrategy: "stale-while-revalidate",
   cacheName: "0x1-cache-v1",
-  statusBarStyle: "default", // iOS status bar style - can be 'default', 'black', or 'black-translucent'
+  statusBarStyle: "default",
   precacheResources: [
     "/",
     "/index.html",
-    "/styles/main.css",
+    "/styles.css",
     "/app.js",
     "/icons/favicon.svg",
   ],

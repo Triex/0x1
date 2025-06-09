@@ -6,6 +6,7 @@
 
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { logger } from '../../cli/utils/logger.js';
 import type { PWAConfig } from '../../core/pwa';
 
 export interface ProjectConfig {
@@ -369,39 +370,31 @@ export default config;
           this.metadata = this.metadata || {} as ProjectMetadata;
           this.metadata.configPath = configPath;
           
-          // CRITICAL FIX: Actually parse the config file content
           const configContent = await Bun.file(configPath).text();
+          const parsedConfig = this.parseConfigFile(configContent);
           
-          // Extract the configuration object from the file
-          // Handle multiple patterns: export default {}, const config = {}, etc.
-          const extractedConfig = this.parseConfigFile(configContent);
-          
-          if (extractedConfig) {
-            // Handle nested config structures (app.pwa vs direct pwa)
-            if (extractedConfig.app) {
-              // Comprehensive config format: { app: { pwa: {...} } }
-              return {
-                name: extractedConfig.app.name,
-                description: extractedConfig.app.description,
-                themeColor: extractedConfig.app.themeColor,
-                backgroundColor: extractedConfig.app.backgroundColor,
-                pwa: extractedConfig.app.pwa,
-                build: extractedConfig.app.build,
-                dev: extractedConfig.dev
-              };
-            } else {
-              // Simple config format: { pwa: {...} }
-              return extractedConfig;
+          if (parsedConfig) {
+            logger.debug(`[ConfigurationManager] Loaded config from ${configPath}`);
+            
+            // Use enhanced PWA parsing from core PWA module
+            const { parseComplexPWAConfig } = await import('../../core/pwa.js');
+            const pwaConfig = parseComplexPWAConfig(parsedConfig);
+            
+            // Merge PWA config into the parsed config
+            if (pwaConfig) {
+              parsedConfig.pwa = pwaConfig;
+              logger.debug(`[ConfigurationManager] Enhanced PWA config loaded: ${pwaConfig.name}`);
             }
+            
+            return parsedConfig;
           }
         } catch (error) {
-          // Log the error but continue trying other config paths
-          console.warn(`Failed to load config from ${configPath}:`, error);
+          logger.warn(`[ConfigurationManager] Failed to parse config file ${configPath}: ${error}`);
           continue;
         }
       }
     }
-
+    
     return null;
   }
 

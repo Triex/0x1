@@ -9,8 +9,7 @@ import { join } from 'path';
 import prompts from 'prompts';
 // Import with underscore prefix to satisfy linting while preserving type info
 import type { PWAConfig } from '../../core/pwa';
-import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration } from '../../core/pwa';
-import { getConfigurationManager } from '../../shared/core/ConfigurationManager';
+import { DEFAULT_PWA_CONFIG, generateManifest, generateOfflinePage, generateServiceWorker, generateServiceWorkerRegistration, loadPWAConfig } from '../../core/pwa';
 import { generateAllIcons } from '../../utils/icon-generator';
 import { logger } from '../utils/logger';
 
@@ -37,6 +36,7 @@ interface PWACommandOptions {
 
 /**
  * Add PWA functionality to a 0x1 project
+ * ENHANCED: Now supports complex nested 0x1.config.ts structures
  */
 export async function addPWA(options: PWACommandOptions = {}, customProjectPath?: string): Promise<boolean> {
   let setupSuccess = false;
@@ -48,16 +48,40 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
 
   // Use custom project path or current directory
   const projectPath = customProjectPath || process.cwd();
-  // Use await with the now-async function
+  
   if (!(await is0x1Project(projectPath))) {
     logger.error('Not a 0x1 project. Please run this command from the root of a 0x1 project.');
     return false;
   }
 
+  // ENHANCED: First try to load existing complex configuration
+  let existingPwaConfig: PWAConfig | null = null;
+  
+  try {
+    // Change to project directory to load config
+    const originalCwd = process.cwd();
+    process.chdir(projectPath);
+    
+    existingPwaConfig = await loadPWAConfig();
+    
+    // Restore original working directory
+    process.chdir(originalCwd);
+    
+    if (existingPwaConfig) {
+      logger.info('✅ Found existing PWA configuration in 0x1.config.ts');
+      logger.info(`   App: ${existingPwaConfig.name} (${existingPwaConfig.shortName})`);
+      logger.info(`   Theme: ${existingPwaConfig.themeColor}`);
+      logger.spacer();
+    }
+  } catch (error) {
+    logger.debug(`No existing PWA config found or failed to load: ${error}`);
+  }
+
   // Get PWA configuration through prompts or options
+  const baseConfig = existingPwaConfig || DEFAULT_PWA_CONFIG;
   const pwaConfig = options.skipPrompts 
-    ? createConfigFromOptions(options) 
-    : await promptForConfig(options);
+    ? createConfigFromOptions(options, baseConfig) 
+    : await promptForConfig(options, baseConfig);
 
   // Start PWA setup
   logger.section('Setting up PWA');
@@ -72,7 +96,6 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Create manifest.json
   const manifestSpin = logger.spinner('Creating manifest.json');
   const manifestJson = generateManifest(pwaConfig);
-  // Use Bun's native file API for better performance
   await Bun.write(
     join(projectPath, 'public', 'manifest.json'),
     manifestJson
@@ -82,7 +105,6 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   // Create service worker
   const swSpin = logger.spinner('Creating service worker');
   const serviceWorkerJs = generateServiceWorker(pwaConfig);
-  // Use Bun's native file API for better performance
   await Bun.write(
     join(projectPath, 'public', 'service-worker.js'),
     serviceWorkerJs
@@ -93,7 +115,6 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   if (pwaConfig.offlineSupport) {
     const offlineSpin = logger.spinner('Creating offline page');
     const offlineHtml = generateOfflinePage(pwaConfig);
-    // Use Bun's native file API for better performance
     await Bun.write(
       join(projectPath, 'public', 'offline.html'),
       offlineHtml
@@ -110,7 +131,6 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   const extension = isTypeScript ? 'ts' : 'js';
   
   // Check different possible locations for the file
-  // For full template, the file should be in root, for others it might be in src
   let swRegisterPath;
   
   // First try root directory
@@ -133,11 +153,9 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
     await mkdir(parentDir, { recursive: true });
   }
   
-  // Use Bun's native file API for better performance
   await Bun.write(swRegisterPath, registrationJs);
   regSpin.stop('success', `Created ${swRegisterPath.split('/').pop()}`);
   
-  // Store the path for later reference in the next steps
   const swRegisterRelativePath = swRegisterPath.replace(`${projectPath}/`, '');
 
   // Generate icons if enabled
@@ -148,7 +166,6 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
       await generateAllIcons(projectPath, pwaConfig);
       iconSpin.stop('success', 'Generated all PWA icons');
       
-      // Show clear path information
       const urlPath = pwaConfig.iconsPath || '/icons';
       const filesystemPath = urlPath.startsWith('/') ? `public${urlPath}` : pwaConfig.iconsPath;
       
@@ -156,18 +173,14 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
       logger.info(`🌐 Icons served from: ${urlPath}/`);
       
     } catch (error) {
-    setupSuccess = false;
+      setupSuccess = false;
       iconSpin.stop('error', 'Failed to generate icons');
       logger.error(`Error generating icons: ${error}`);
     }
   }
 
-  // Update HTML to include PWA meta tags and manifest
-  const configManager = getConfigurationManager(projectPath);
-  await configManager.savePWAConfig(pwaConfig);
-  
-  const htmlSpin = logger.spinner('Updating project configuration');
-  htmlSpin.stop('success', 'PWA configuration saved for dynamic HTML generation');
+  // ENHANCED: Update or create 0x1.config.ts with PWA configuration
+  await updateProjectConfig(projectPath, pwaConfig);
 
   // Mark setup as successful
   setupSuccess = true;
@@ -179,13 +192,182 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
   
   // Show next steps
   logger.section('Next Steps');
-  logger.log('1. Add the service worker registration to your app:');
-  logger.log(`import './${swRegisterRelativePath}';`);
-  logger.log('2. Test your PWA using Chrome DevTools Lighthouse');
-  logger.log('3. Deploy your app to a secure (HTTPS) environment');
+  if (!existingPwaConfig) {
+    logger.log('1. Add the service worker registration to your app:');
+    logger.log(`   import './${swRegisterRelativePath}';`);
+    logger.log('2. Test your PWA using Chrome DevTools Lighthouse');
+    logger.log('3. Deploy your app to a secure (HTTPS) environment');
+  } else {
+    logger.log('1. Your existing PWA configuration has been updated');
+    logger.log('2. Test your updated PWA using Chrome DevTools Lighthouse');
+    logger.log('3. Deploy your app to see the changes');
+  }
   logger.spacer();
   
   return setupSuccess;
+}
+
+/**
+ * Update project configuration with PWA settings
+ * ENHANCED: Handles both simple and complex 0x1.config.ts structures
+ */
+async function updateProjectConfig(projectPath: string, pwaConfig: PWAConfig): Promise<void> {
+  const configPaths = [
+    join(projectPath, '0x1.config.ts'),
+    join(projectPath, '0x1.config.js'),
+    join(projectPath, 'ox1.config.ts'),
+    join(projectPath, 'ox1.config.js')
+  ];
+  
+  let configPath = configPaths.find(path => existsSync(path));
+  
+  if (configPath) {
+    // Update existing config file
+    const configSpin = logger.spinner('Updating 0x1.config.ts with PWA settings');
+    
+    try {
+      const configContent = await Bun.file(configPath).text();
+      
+      // Check if it has nested app.pwa structure
+      const hasNestedStructure = configContent.includes('app:') && configContent.includes('pwa:');
+      
+      if (hasNestedStructure) {
+        // Update the existing nested PWA config
+        await updateNestedPWAConfig(configPath, pwaConfig);
+      } else {
+        // Add or update flat PWA config
+        await updateFlatPWAConfig(configPath, pwaConfig);
+      }
+      
+      configSpin.stop('success', 'Updated PWA configuration in 0x1.config.ts');
+    } catch (error) {
+      configSpin.stop('warn', 'Could not update config file automatically');
+      logger.warn(`Please manually add PWA configuration: ${error}`);
+    }
+  } else {
+    // Create new config file with PWA settings
+    const configSpin = logger.spinner('Creating 0x1.config.ts with PWA settings');
+    
+    configPath = join(projectPath, '0x1.config.ts');
+    const configContent = createBasicConfigWithPWA(pwaConfig);
+    
+    await Bun.write(configPath, configContent);
+    configSpin.stop('success', 'Created 0x1.config.ts with PWA configuration');
+  }
+}
+
+/**
+ * Update nested app.pwa configuration structure
+ */
+async function updateNestedPWAConfig(configPath: string, pwaConfig: PWAConfig): Promise<void> {
+  const content = await Bun.file(configPath).text();
+  
+  // Find and update the app.pwa section
+  const pwaConfigString = `    pwa: {
+      name: "${pwaConfig.name}",
+      shortName: "${pwaConfig.shortName}",
+      description: "${pwaConfig.description}",
+      themeColor: "${pwaConfig.themeColor}",
+      backgroundColor: "${pwaConfig.backgroundColor}",
+      display: "${pwaConfig.display}",
+      startUrl: "${pwaConfig.startUrl}",
+      orientation: "${pwaConfig.orientation}",
+      iconsPath: "${pwaConfig.iconsPath}",
+      generateIcons: ${pwaConfig.generateIcons},
+      offlineSupport: ${pwaConfig.offlineSupport},
+      cacheStrategy: "${pwaConfig.cacheStrategy}",
+      cacheName: "${pwaConfig.cacheName}",
+      statusBarStyle: "${pwaConfig.statusBarStyle}",
+      precacheResources: ${JSON.stringify(pwaConfig.precacheResources, null, 8)},
+    },`;
+  
+  // Replace existing pwa config or add it to app section
+  let updatedContent;
+  if (content.includes('pwa:')) {
+    // Replace existing pwa config
+    updatedContent = content.replace(/pwa:\s*\{[^}]*\}[^,]*,?/s, pwaConfigString);
+  } else {
+    // Add pwa config to app section
+    updatedContent = content.replace(
+      /(app:\s*\{[^}]*)(,?\s*\})/s, 
+      `$1,\n${pwaConfigString}\n  $2`
+    );
+  }
+  
+  await Bun.write(configPath, updatedContent);
+}
+
+/**
+ * Update flat PWA configuration structure
+ */
+async function updateFlatPWAConfig(configPath: string, pwaConfig: PWAConfig): Promise<void> {
+  const content = await Bun.file(configPath).text();
+  
+  const pwaConfigString = `  pwa: {
+    name: "${pwaConfig.name}",
+    shortName: "${pwaConfig.shortName}",
+    description: "${pwaConfig.description}",
+    themeColor: "${pwaConfig.themeColor}",
+    backgroundColor: "${pwaConfig.backgroundColor}",
+    display: "${pwaConfig.display}",
+    startUrl: "${pwaConfig.startUrl}",
+    orientation: "${pwaConfig.orientation}",
+    iconsPath: "${pwaConfig.iconsPath}",
+    generateIcons: ${pwaConfig.generateIcons},
+    offlineSupport: ${pwaConfig.offlineSupport},
+    cacheStrategy: "${pwaConfig.cacheStrategy}",
+    cacheName: "${pwaConfig.cacheName}",
+    statusBarStyle: "${pwaConfig.statusBarStyle}",
+    precacheResources: ${JSON.stringify(pwaConfig.precacheResources, null, 4)},
+  },`;
+  
+  // Add PWA config to the main export
+  const updatedContent = content.replace(
+    /(export\s+default\s+\{[^}]*)(,?\s*\}[^}]*$)/s, 
+    `$1,\n${pwaConfigString}\n$2`
+  );
+  
+  await Bun.write(configPath, updatedContent);
+}
+
+/**
+ * Create basic config file with PWA settings
+ */
+function createBasicConfigWithPWA(pwaConfig: PWAConfig): string {
+  return `/**
+ * 0x1 Configuration with PWA Support
+ */
+
+/** @type {import('0x1')._0x1Config} */
+export default {
+  app: {
+    name: "${pwaConfig.name}",
+    description: "${pwaConfig.description}",
+    pwa: {
+      name: "${pwaConfig.name}",
+      shortName: "${pwaConfig.shortName}",
+      description: "${pwaConfig.description}",
+      themeColor: "${pwaConfig.themeColor}",
+      backgroundColor: "${pwaConfig.backgroundColor}",
+      display: "${pwaConfig.display}",
+      startUrl: "${pwaConfig.startUrl}",
+      orientation: "${pwaConfig.orientation}",
+      iconsPath: "${pwaConfig.iconsPath}",
+      generateIcons: ${pwaConfig.generateIcons},
+      offlineSupport: ${pwaConfig.offlineSupport},
+      cacheStrategy: "${pwaConfig.cacheStrategy}",
+      cacheName: "${pwaConfig.cacheName}",
+      statusBarStyle: "${pwaConfig.statusBarStyle}",
+      precacheResources: ${JSON.stringify(pwaConfig.precacheResources, null, 6)},
+    },
+  },
+  build: {
+    outDir: "dist",
+    minify: true,
+    sourcemap: true,
+  },
+};
+`;
 }
 
 /**
@@ -232,24 +414,27 @@ async function is0x1Project(projectPath: string): Promise<boolean> {
 
 /**
  * Create PWA config from command line options
+ * ENHANCED: Now merges with existing config
  */
-function createConfigFromOptions(options: PWACommandOptions): PWAConfig {
+function createConfigFromOptions(options: PWACommandOptions, baseConfig: PWAConfig = DEFAULT_PWA_CONFIG): PWAConfig {
   return {
-    ...DEFAULT_PWA_CONFIG,
-    name: options.name || DEFAULT_PWA_CONFIG.name,
-    shortName: options.shortName || DEFAULT_PWA_CONFIG.shortName,
-    description: options.description || DEFAULT_PWA_CONFIG.description,
-    themeColor: options.themeColor || DEFAULT_PWA_CONFIG.themeColor,
-    backgroundColor: options.backgroundColor || DEFAULT_PWA_CONFIG.backgroundColor,
-    generateIcons: options.icons ?? DEFAULT_PWA_CONFIG.generateIcons,
-    offlineSupport: options.offline ?? DEFAULT_PWA_CONFIG.offlineSupport
+    ...baseConfig,
+    name: options.name || baseConfig.name,
+    shortName: options.shortName || baseConfig.shortName,
+    description: options.description || baseConfig.description,
+    themeColor: options.themeColor || baseConfig.themeColor,
+    backgroundColor: options.backgroundColor || baseConfig.backgroundColor,
+    generateIcons: options.icons ?? baseConfig.generateIcons,
+    offlineSupport: options.offline ?? baseConfig.offlineSupport,
+    statusBarStyle: options.statusBarStyle || baseConfig.statusBarStyle,
   };
 }
 
 /**
  * Prompt user for PWA configuration
+ * ENHANCED: Now uses existing config as defaults
  */
-async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
+async function promptForConfig(options: PWACommandOptions, baseConfig: PWAConfig = DEFAULT_PWA_CONFIG): Promise<PWAConfig> {
   logger.info('Please provide information for your PWA:');
   logger.spacer();
 
@@ -258,34 +443,34 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
       type: 'text',
       name: 'name',
       message: '📱 What is the name of your application?',
-      initial: options.name || 'My 0x1 App',
+      initial: options.name || baseConfig.name,
       validate: (value) => value.trim() ? true : 'Application name is required'
     },
     {
       type: 'text',
       name: 'shortName',
       message: '🔤 Short name for home screen:',
-      initial: options.shortName || 'App',
+      initial: options.shortName || baseConfig.shortName,
       validate: (value) => value.trim() ? true : 'Short name is required'
     },
     {
       type: 'text',
       name: 'description',
       message: '📝 Description:',
-      initial: options.description || 'Built with 0x1 - the ultra-minimal framework'
+      initial: options.description || baseConfig.description
     },
     {
       type: 'text',
       name: 'themeColor',
       message: '🎨 Theme color (hex):',
-      initial: options.themeColor || '#0077cc',
+      initial: options.themeColor || baseConfig.themeColor,
       validate: (value) => /^#[0-9A-Fa-f]{6}$/.test(value) ? true : 'Please enter a valid hex color (e.g. #ffffff)'
     },
     {
       type: 'text',
       name: 'backgroundColor',
       message: '🖌️ Background color (hex):',
-      initial: options.backgroundColor || '#ffffff',
+      initial: options.backgroundColor || baseConfig.backgroundColor,
       validate: (value) => /^#[0-9A-Fa-f]{6}$/.test(value) ? true : 'Please enter a valid hex color (e.g. #ffffff)'
     },
     {
@@ -298,7 +483,7 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
         { title: 'Minimal UI', value: 'minimal-ui', description: 'Similar to standalone with minimal UI elements' } as ExtendedPromptChoice,
         { title: 'Browser', value: 'browser', description: 'Regular browser experience' } as ExtendedPromptChoice
       ],
-      initial: 0
+      initial: ['standalone', 'fullscreen', 'minimal-ui', 'browser'].indexOf(baseConfig.display) || 0
     },
     {
       type: 'select',
@@ -321,7 +506,7 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
           description: 'Try network first, fall back to cache if offline' 
         } as ExtendedPromptChoice
       ],
-      initial: 0
+      initial: ['stale-while-revalidate', 'cache-first', 'network-first'].indexOf(baseConfig.cacheStrategy || 'stale-while-revalidate') || 0
     },
     {
       type: 'select',
@@ -331,7 +516,7 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
         { title: 'Yes', value: true } as ExtendedPromptChoice,
         { title: 'No', value: false } as ExtendedPromptChoice
       ],
-      initial: options.icons === undefined ? 0 : (options.icons ? 0 : 1)
+      initial: options.icons === undefined ? (baseConfig.generateIcons ? 0 : 1) : (options.icons ? 0 : 1)
     },
     {
       type: 'select',
@@ -341,7 +526,7 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
         { title: 'Yes', value: true } as ExtendedPromptChoice,
         { title: 'No', value: false } as ExtendedPromptChoice
       ],
-      initial: options.offline === undefined ? 0 : (options.offline ? 0 : 1)
+      initial: options.offline === undefined ? (baseConfig.offlineSupport ? 0 : 1) : (options.offline ? 0 : 1)
     }
   ]);
 
@@ -349,7 +534,7 @@ async function promptForConfig(options: PWACommandOptions): Promise<PWAConfig> {
   const cacheName = `0x1-${responses.name.toLowerCase().replace(/\s+/g, '-')}-v1`;
 
   return {
-    ...DEFAULT_PWA_CONFIG,
+    ...baseConfig,
     ...responses,
     cacheName
   };
