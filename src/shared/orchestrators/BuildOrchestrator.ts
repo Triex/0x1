@@ -2779,22 +2779,40 @@ export default function ErrorComponent(props) {
     const pwaMetadata = await configManager.getPWAMetadata();
     const projectConfig = await configManager.loadProjectConfig();
     
-    // Generate CSS link tags and other shared resources
-    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = 
-      await this.generateSharedHtmlResources(outputPath, pwaMetadata);
+    // Generate shared HTML resources
+    const resources = await this.generateSharedHtmlResources(outputPath, pwaMetadata);
 
-    // Step 1: Generate main SPA file (index.html) - for users browsing
-    await this.generateMainSpaFile(outputPath, projectConfig, {
-      faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust
-    });
+    // CRITICAL PWA FIX: Auto-inject service worker registration
+    if (pwaMetadata.scripts.length > 0) {
+      resources.pwaScripts += '\n  ' + pwaMetadata.scripts.join('\n  ');
+      
+      // Add automatic service worker registration if PWA is enabled
+      if (projectConfig?.pwa) {
+        resources.pwaScripts += `
+  <script>
+    // Auto-register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const registration = await navigator.serviceWorker.register('/service-worker.js');
+          console.log('✅ Service Worker registered:', registration.scope);
+        } catch (error) {
+          console.error('❌ Service Worker registration failed:', error);
+        }
+      });
+    }
+  </script>`;
+      }
+    }
 
-    // Step 2: Generate route-specific HTML files - for crawlers and external tools
-    await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, {
-      faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust
-    });
+    // Generate main SPA file for users
+    await this.generateMainSpaFile(outputPath, projectConfig, resources);
+
+    // Generate crawler-optimized route files
+    await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, resources);
 
     if (!this.options.silent) {
-      logger.success(`✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
+      logger.success(`✅ ✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
     }
   }
 

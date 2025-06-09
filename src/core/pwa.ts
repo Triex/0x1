@@ -88,6 +88,13 @@ export function generateManifest(config: PWAConfig): string {
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable'
+      },
+      // Keep SVG as fallback for modern browsers
+      {
+        src: `${config.iconsPath || '/icons'}/icon-512x512.svg`,
+        sizes: 'any',
+        type: 'image/svg+xml',
+        purpose: 'any'
       }
     ],
     screenshots: [
@@ -95,13 +102,15 @@ export function generateManifest(config: PWAConfig): string {
         src: `${config.iconsPath || '/icons'}/screenshot-desktop.png`,
         sizes: '1280x720',
         type: 'image/png',
-        form_factor: 'wide'
+        form_factor: 'wide',
+        label: 'Desktop Screenshot'
       },
       {
         src: `${config.iconsPath || '/icons'}/screenshot-mobile.png`,
         sizes: '375x812',
         type: 'image/png',
-        form_factor: 'narrow'
+        form_factor: 'narrow',
+        label: 'Mobile Screenshot'
       }
     ],
     id: config.name.toLowerCase().replace(/\s+/g, '-'),
@@ -114,14 +123,26 @@ export function generateManifest(config: PWAConfig): string {
       {
         name: 'Home',
         url: '/',
-        description: 'Go to the home page'
+        description: 'Go to the home page',
+        icons: [
+          {
+            src: `${config.iconsPath || '/icons'}/icon-192x192.png`,
+            sizes: '192x192',
+            type: 'image/png'
+          }
+        ]
       }
     ],
     file_handlers: [],
     handle_links: 'preferred',
     launch_handler: {
       client_mode: ['navigate-existing', 'auto']
-    }
+    },
+    // PWA display overrides for better compatibility
+    display_override: [
+      "window-controls-overlay",
+      config.display || "standalone"
+    ]
   };
 
   return JSON.stringify(manifest, null, 2);

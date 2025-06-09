@@ -218,28 +218,110 @@ export class ConfigurationManager {
 
   /**
    * Save PWA configuration to project
-   * DYNAMIC APPROACH - creates configuration that build system can use
+   * PRESERVES existing configuration - only updates PWA section
    */
   async savePWAConfig(pwaConfig: PWAConfig): Promise<void> {
-    await this.loadProjectConfig();
-    
-    if (!this.config) {
-      throw new Error('Project configuration not loaded');
+    // Check if there's an existing comprehensive config file
+    const configPaths = [
+      join(this.projectPath, '0x1.config.ts'),
+      join(this.projectPath, '0x1.config.js'),
+      join(this.projectPath, 'ox1.config.ts'),
+      join(this.projectPath, 'ox1.config.js')
+    ];
+
+    let existingConfigPath: string | null = null;
+    let existingConfig: any = null;
+
+    // Try to find and read existing config
+    for (const configPath of configPaths) {
+      if (existsSync(configPath)) {
+        existingConfigPath = configPath;
+        try {
+          const configContent = await Bun.file(configPath).text();
+          
+          // Extract the config object from the file
+          // Handle both "export default {}" and "const config = {}" patterns
+          const configMatch = configContent.match(/(?:export\s+default\s*|const\s+\w+:\s*\w+\s*=)\s*(\{[\s\S]*\});?\s*(?:export\s+default|$)/);
+          
+          if (configMatch) {
+            try {
+              // Clean up the extracted config for parsing
+              let configStr = configMatch[1];
+              
+              // Handle TypeScript types and fix common issues for JSON parsing
+              configStr = configStr
+                .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
+                .replace(/\/\/.*$/gm, '') // Remove line comments
+                .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+                .replace(/(\w+):/g, '"$1":') // Quote property names
+                .replace(/:\s*["']([^"']*?)["']/g, ': "$1"') // Normalize quotes
+                .replace(/process\.env\.\w+/g, '"env-placeholder"'); // Handle env vars
+              
+              // Try to parse the config
+              existingConfig = JSON.parse(configStr);
+              break;
+            } catch (parseError) {
+              // If parsing fails, we'll create a new config that preserves the existing structure
+              console.warn(`Could not parse existing config at ${configPath}, will preserve file structure`);
+            }
+          }
+        } catch (error) {
+          console.warn(`Could not read existing config at ${configPath}:`, error);
+        }
+      }
     }
 
-    this.config.pwa = pwaConfig;
+    if (existingConfigPath && existingConfig) {
+      // PRESERVE existing comprehensive configuration
+      console.log('✅ Preserving existing comprehensive configuration');
+      
+      // Add PWA config to existing structure
+      if (existingConfig.app) {
+        // Comprehensive config format
+        existingConfig.app.pwa = pwaConfig;
+      } else {
+        // Simple config format - add pwa at root level
+        existingConfig.pwa = pwaConfig;
+      }
 
-    // Save to 0x1 config file for build system to use
-    const configPath = join(this.projectPath, '0x1.config.ts');
-    
-    const configContent = `import type { ProjectConfig } from '0x1';
+      // Write back the preserved config with PWA added
+      const configContent = `/**
+ * 0x1 Configuration with PWA Support
+ * Preserves all existing settings and adds PWA functionality
+ */
+
+/** @type {import('0x1')._0x1Config} */
+export default ${JSON.stringify(existingConfig, null, 2).replace(/"env-placeholder"/g, 'process.env.NODE_ENV')};
+`;
+
+      await Bun.write(existingConfigPath, configContent);
+      console.log(`✅ Updated existing config at: ${existingConfigPath}`);
+      
+    } else {
+      // NO existing comprehensive config - create simple ProjectConfig
+      console.log('📝 Creating new simple PWA configuration');
+      
+      await this.loadProjectConfig();
+      
+      if (!this.config) {
+        throw new Error('Project configuration not loaded');
+      }
+
+      this.config.pwa = pwaConfig;
+
+      // Save to simple 0x1 config file
+      const configPath = join(this.projectPath, '0x1.config.ts');
+      
+      const configContent = `import type { ProjectConfig } from '0x1';
 
 const config: ProjectConfig = ${JSON.stringify(this.config, null, 2)};
 
 export default config;
 `;
 
-    await Bun.write(configPath, configContent);
+      await Bun.write(configPath, configContent);
+      console.log(`✅ Created new config at: ${configPath}`);
+    }
   }
 
   /**
