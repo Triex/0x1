@@ -18,165 +18,21 @@
       ]
     },
     {
-      "source": "/app/(.*)\\.js",
+      "source": "/(.*)\\.js",
       "headers": [
         {
           "key": "Content-Type",
           "value": "application/javascript; charset=utf-8"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/components/(.*)\\.js",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/node_modules/(.*)\\.js",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
         }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/0x1/hooks.js",
-      "destination": "/0x1/hooks.js"
-    },
-    {
-      "source": "/0x1/jsx-runtime.js",
-      "destination": "/0x1/jsx-runtime.js"
-    },
-    {
-      "source": "/0x1/jsx-dev-runtime.js",
-      "destination": "/0x1/jsx-dev-runtime.js"
-    },
-    {
-      "source": "/0x1/router.js",
-      "destination": "/0x1/router.js"
-    },
-    {
-      "source": "/0x1/index.js",
-      "destination": "/0x1/index.js"
-    },
-    {
-      "source": "/0x1/component.js",
-      "destination": "/0x1/component.js"
-    },
-    {
-      "source": "/0x1/directives.js",
-      "destination": "/0x1/directives.js"
-    },
-    {
-      "source": "/0x1/error-boundary.js",
-      "destination": "/0x1/error-boundary.js"
-    },
-    {
-      "source": "/0x1/head.js",
-      "destination": "/0x1/head.js"
-    },
-    {
-      "source": "/0x1/link.js",
-      "destination": "/0x1/link.js"
-    },
-    {
-      "source": "/0x1/live-reload.js",
-      "destination": "/0x1/live-reload.js"
-    },
-    {
-      "source": "/0x1/metadata.js",
-      "destination": "/0x1/metadata.js"
-    },
-    {
-      "source": "/0x1/navigation.js",
-      "destination": "/0x1/navigation.js"
-    },
-    {
-      "source": "/0x1/pwa.js",
-      "destination": "/0x1/pwa.js"
-    },
-    {
-      "source": "/0x1/runtime.js",
-      "destination": "/0x1/runtime.js"
-    },
-    {
       "source": "/0x1/(.*)",
       "destination": "/0x1/$1"
-    },
-    {
-      "source": "/node_modules/0x1/index.js",
-      "destination": "/node_modules/0x1/index.js"
-    },
-    {
-      "source": "/node_modules/(.*)",
-      "destination": "/node_modules/$1"
-    },
-    {
-      "source": "/styles.css",
-      "destination": "/styles.css"
-    },
-    {
-      "source": "/app.js",
-      "destination": "/app.js"
-    },
-    {
-      "source": "/app-bundle.js",
-      "destination": "/app-bundle.js"
-    },
-    {
-      "source": "/app/(.*)\\.js",
-      "destination": "/app/$1.js"
-    },
-    {
-      "source": "/components/(.*)\\.js",
-      "destination": "/components/$1.js"
-    },
-    {
-      "source": "/public/(.*)",
-      "destination": "/public/$1"
-    },
-    {
-      "source": "/favicon.ico",
-      "destination": "/favicon.ico"
-    },
-    {
-      "source": "/favicon.svg",
-      "destination": "/favicon.svg"
-    },
-    {
-      "source": "/manifest.json",
-      "destination": "/manifest.json"
-    },
-    {
-      "source": "/service-worker.js",
-      "destination": "/service-worker.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }
