@@ -239,12 +239,12 @@ export class BuildOrchestrator {
   > {
     const components: Array<{ path: string; relativePath: string }> = [];
     const componentDirectories = [
-    "app/components",
-    "app", 
-    "components",
-    "lib",
-    "src/components", 
-    "src/lib",
+      "app/components",
+      "app",
+      "components",
+      "lib",
+      "src/components",
+      "src/lib",
     ];
     const componentExtensions = [".tsx", ".jsx", ".ts", ".js"];
 
@@ -426,63 +426,8 @@ export class BuildOrchestrator {
     sourceCode: string,
     sourcePath: string
   ): Promise<string> {
-    try {
-      // Use DevOrchestrator's EXACT transpilation settings - this is what works
-      const transpiler = new Bun.Transpiler({
-        loader: sourcePath.endsWith('.tsx') ? 'tsx' : 'jsx',
-        target: 'browser',
-        minifyWhitespace: this.options.minify,
-        inline: true, // Enable constant inlining for better performance
-        define: {
-          "process.env.NODE_ENV": JSON.stringify("production"),
-        },
-        tsconfig: JSON.stringify({
-          compilerOptions: {
-            jsx: 'react-jsx',
-            jsxImportSource: '0x1'
-          }
-        })
-      });
-
-      let content = transpiler.transformSync(sourceCode);
-
-      // CRITICAL: Apply EXACT same post-processing as DevOrchestrator
-      // Fix mangled JSX function names (this is what causes the hyperscript issue)
-      content = content
-        .replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV')
-        .replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx')
-        .replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs')
-        .replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment')
-        .replace(/createElement_[a-zA-Z0-9_]+/g, 'createElement');
-
-      // Ensure JSX runtime import is present
-      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(') || content.includes('jsxs(');
-      const hasJSXImport = content.includes('from "0x1/jsx-runtime"') || content.includes('from "0x1/jsx-dev-runtime"');
-      
-      if (hasJSX && !hasJSXImport) {
-        // Add JSX runtime import at the top
-        const lines = content.split('\n');
-        const firstImportIndex = lines.findIndex(line => line.trim().startsWith('import '));
-        const insertIndex = firstImportIndex >= 0 ? firstImportIndex : 0;
-        lines.splice(insertIndex, 0, 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "0x1/jsx-runtime";');
-        content = lines.join('\n');
-      }
-
-      // Use unified ImportTransformer for consistent import handling
-      content = ImportTransformer.transformImports(content, {
-        sourceFilePath: sourcePath,
-        projectPath: this.options.projectPath,
-        mode: 'production',
-        debug: false,
-      });
-
-      return content;
-    } catch (error) {
-      logger.warn(`Transpilation failed for ${sourcePath}: ${error}`);
-      
-      // Return simple error component (no complex validation)
-      return this.generateErrorComponent(sourcePath, String(error));
-    }
+    // SINGLE SOURCE OF TRUTH: Use the exact same logic that works perfectly in DevOrchestrator
+    return this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
   }
 
   // CRITICAL FIX: Generate proper error components that return JSX objects
@@ -496,6 +441,23 @@ export class BuildOrchestrator {
 
   // Helper method to find route source files (restored)
   private findRouteSourceFile(route: Route): string | null {
+    // First try the Next.js-style paths
+    const nextStylePaths = [
+      join(this.options.projectPath, "app", route.path, "page.tsx"),
+      join(this.options.projectPath, "app", route.path, "page.jsx"),
+      join(this.options.projectPath, "app", route.path, "page.ts"),
+      join(this.options.projectPath, "app", route.path, "page.js"),
+      join(this.options.projectPath, "app", route.path, "index.tsx"),
+      join(this.options.projectPath, "app", route.path, "index.jsx"),
+      join(this.options.projectPath, "app", route.path, "index.ts"),
+      join(this.options.projectPath, "app", route.path, "index.js"),
+    ];
+
+    for (const path of nextStylePaths) {
+      if (existsSync(path)) return path;
+    }
+
+    // Then fall back to the original approach if nothing found
     const basePath = join(
       this.options.projectPath,
       route.componentPath.replace(/^\//, "").replace(/\.js$/, "")
@@ -510,6 +472,77 @@ export class BuildOrchestrator {
     }
     
     return null;
+  }
+
+  // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
+  private async transpileUsingDevOrchestratorLogic(
+    sourceCode: string,
+    sourcePath: string
+  ): Promise<string> {
+    try {
+      // EXACT same logic as DevOrchestrator.handleComponentRequest
+      const transpiler = new Bun.Transpiler({
+        loader: sourcePath.endsWith(".tsx")
+          ? "tsx"
+          : sourcePath.endsWith(".jsx")
+            ? "jsx"
+            : sourcePath.endsWith(".ts")
+              ? "ts"
+              : "js",
+        target: "browser",
+        define: {
+          "process.env.NODE_ENV": JSON.stringify("production"),
+          global: "globalThis",
+        },
+        // CRITICAL: Use EXACT same JSX configuration as DevOrchestrator
+        tsconfig: JSON.stringify({
+          compilerOptions: {
+            jsx: 'react-jsx',
+            jsxImportSource: '0x1'
+          }
+        })
+      });
+
+      // Use transformSync like DevOrchestrator (no await needed)
+      let content = transpiler.transformSync(sourceCode);
+
+      // CRITICAL: Apply EXACT same fixes as DevOrchestrator
+      // Check if JSX is used but import is missing
+      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(');
+      const hasJSXImport = content.includes('from "0x1/jsx-dev-runtime"') || content.includes('from "0x1/jsx-runtime"');
+      
+      if (hasJSX && !hasJSXImport) {
+        // Add JSX runtime import at the top (same as DevOrchestrator)
+        const lines = content.split('\n');
+        const importIndex = lines.findIndex(line => line.startsWith('import ')) + 1 || 0;
+        lines.splice(importIndex, 0, 'import { jsxDEV } from "0x1/jsx-dev-runtime";');
+        content = lines.join('\n');
+      }
+
+      // CRITICAL: Replace mangled JSX function names with proper ones (same as DevOrchestrator)
+      content = content
+        .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+        .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+        .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+        .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+
+      // CRITICAL: Use unified ImportTransformer for robust import handling
+      content = ImportTransformer.transformImports(content, {
+        sourceFilePath: sourcePath,
+        projectPath: this.options.projectPath,
+        mode: 'production',
+        debug: false,
+      });
+
+      return content;
+    } catch (error) {
+      logger.warn(
+        `DevOrchestrator-style transpilation failed for ${sourcePath}: ${error}`
+      );
+      
+      // Return simple error component (no complex validation)
+      return this.generateErrorComponent(sourcePath, String(error));
+    }
   }
 
   // CRITICAL: Mirror DevOrchestrator's handleComponentRequest EXACTLY
@@ -542,8 +575,8 @@ export class BuildOrchestrator {
       // Read source file
       const sourceCode = readFileSync(sourcePath, "utf-8");
 
-      // CRITICAL FIX: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
-      const content = await this.transpileComponentForProduction(
+      // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
+      const content = await this.transpileUsingDevOrchestratorLogic(
         sourceCode,
         sourcePath
       );
@@ -740,37 +773,32 @@ export class BuildOrchestrator {
       );
     }
       
-      // CRITICAL: Apply transpilation to router for consistent JSX handling
+      // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
       if (!this.options.silent) {
-      logger.info("🔧 Transpiling router content for consistent JSX handling...");
+      logger.info(
+        "🔧 Applying ImportTransformer to router for comprehensive fixes..."
+      );
       }
       
       try {
-      const transpiler = new Bun.Transpiler({
-        loader: 'tsx',
-        target: 'browser',
-        minifyWhitespace: this.options.minify,
-        inline: true, // Enable constant inlining for better performance
-        define: {
-          "process.env.NODE_ENV": JSON.stringify("production"),
-        },
-        tsconfig: JSON.stringify({
-          compilerOptions: {
-            jsx: 'react-jsx',
-            jsxImportSource: '0x1'
-          }
-        })
-      });
-
-      routerContent = transpiler.transformSync(routerContent);
-      
-      if (!this.options.silent) {
-        logger.info("✅ Router transpilation completed");
-      }
-    } catch (error) {
-      if (!this.options.silent) {
-        logger.warn(`Router transpilation failed, continuing with original: ${error}`);
-      }
+      const transformedContent = ImportTransformer.transformImports(
+        routerContent,
+        {
+          sourceFilePath: "router.js",
+          projectPath: this.options.projectPath,
+          mode: "production",
+          debug: !this.options.silent,
+        }
+      );
+        
+        routerContent = transformedContent;
+        if (!this.options.silent) {
+        logger.info("✅ ImportTransformer applied successfully to router");
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.error(`❌ ImportTransformer failed for router: ${error}`);
+        }
     }
 
     // BEST PRACTICE: Parse content directly to find actual classes/functions (ZERO ASSUMPTIONS)
@@ -889,11 +917,10 @@ export class BuildOrchestrator {
     
     // 3. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
     finalRouterContent = finalRouterContent
-      .replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV')
-      .replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx')
-      .replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs')
-      .replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment')
-      .replace(/createElement_[a-zA-Z0-9_]+/g, 'createElement');
+      .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+      .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+      .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+      .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
 
     // 4. Handle mixed alphanumeric patterns
     finalRouterContent = finalRouterContent
@@ -911,7 +938,7 @@ export class BuildOrchestrator {
 
     // 6. Transform imports to browser-resolvable URLs (exact same as DevOrchestrator)
     finalRouterContent = finalRouterContent
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\/components\/([^"']+)["']/g, 
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
         'import { $1 } from "/components/$2.js"')
       .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
       .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
@@ -1241,69 +1268,92 @@ if (typeof window !== 'undefined') {
           
           // CRITICAL FIX: Ensure JSX functions return objects, not HTML strings
           content += `
-  if (typeof window !== 'undefined') {
-    // CRITICAL: Override any existing jsx functions to ensure they return JSX objects
-    const ensureJsxObject = (type, props, key) => {
-      if (typeof type === 'string') {
-        return {
-          type: type,
-          props: props || {},
-          children: (props && props.children) ? (Array.isArray(props.children) ? props.children : [props.children]) : [],
-          key: key || null
-        };
-      }
-      if (typeof type === 'function') {
-        // Call component function and ensure result is JSX object
-        const result = type(props || {});
-        if (typeof result === 'string') {
-          console.warn('[0x1] Component returned HTML string instead of JSX object:', type.name || 'Anonymous');
-          // Convert HTML string back to JSX object (emergency fallback)
-          return {
-            type: 'div',
-            props: { dangerouslySetInnerHTML: { __html: result } },
-            children: [],
-            key: key || null
-          };
-        }
-        return result;
-      }
+if (typeof window !== 'undefined') {
+  // CRITICAL: Override any existing jsx functions to ensure they return JSX objects
+  const ensureJsxObject = (type, props, key) => {
+    if (typeof type === 'string') {
       return {
         type: type,
         props: props || {},
-        children: [],
+        children: (props && props.children) ? (Array.isArray(props.children) ? props.children : [props.children]) : [],
         key: key || null
       };
+    }
+    if (typeof type === 'function') {
+      // Call component function and ensure result is JSX object
+      const result = type(props || {});
+      if (typeof result === 'string') {
+        console.warn('[0x1] Component returned HTML string instead of JSX object:', type.name || 'Anonymous');
+        // Convert HTML string back to JSX object (emergency fallback)
+        return {
+          type: 'div',
+          props: { dangerouslySetInnerHTML: { __html: result } },
+          children: [],
+          key: key || null
+        };
+      }
+      return result;
+    }
+    return {
+      type: type,
+      props: props || {},
+      children: [],
+      key: key || null
     };
+  };
 
-    // Override global JSX functions to always return objects
-    window.jsx = ensureJsxObject;
-    window.jsxs = ensureJsxObject;
-    window.jsxDEV = ensureJsxObject;
-    window.createElement = (type, props, ...children) => {
-      const childArray = children.flat().filter(child => child != null);
-      return ensureJsxObject(type, { ...props, children: childArray.length === 1 ? childArray[0] : childArray });
-    };
-    
-    // Ensure React compatibility
-    Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
-    window.React = Object.assign(window.React || {}, {
-      createElement: window.createElement, 
-      Fragment, 
-      jsx: window.jsx, 
-      jsxs: window.jsxs, 
-      version: '19.0.0-0x1-compat'
-    });
-  }
-  `;
-          
-          // Write the JSX runtime content directly
-          await Bun.write(join(framework0x1Dir, "jsx-runtime.js"), content);
-
-          if (!this.options.silent) {
-            logger.success(
-              `✅ Generated jsx-runtime.js: ${(content.length / 1024).toFixed(1)}KB`
+  // Override global JSX functions to always return objects
+  window.jsx = ensureJsxObject;
+  window.jsxs = ensureJsxObject;
+  window.jsxDEV = ensureJsxObject;
+  window.createElement = (type, props, ...children) => {
+    const childArray = children.flat().filter(child => child != null);
+    return ensureJsxObject(type, { ...props, children: childArray.length === 1 ? childArray[0] : childArray });
+  };
+  
+  // Ensure React compatibility
+  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
+  window.React = Object.assign(window.React || {}, {
+    createElement: window.createElement, 
+    Fragment, 
+    jsx: window.jsx, 
+    jsxs: window.jsxs, 
+    version: '19.0.0-0x1-compat'
+  });
+}
+`;          
+          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
+          content = content
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g,
+              'import { $1 } from "/components/$2.js"'
+            )
+            .replace(
+              /import\s*["']\.\/globals\.css["']/g,
+              "// CSS import externalized"
+            )
+            .replace(
+              /import\s*["']\.\.\/globals\.css["']/g,
+              "// CSS import externalized"
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g,
+              'import { $1 } from "/0x1/jsx-runtime.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g,
+              'import { $1 } from "/0x1/jsx-runtime.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g,
+              'import { $1 } from "/0x1/router.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g,
+              'import { $1 } from "/node_modules/0x1/index.js"'
             );
-          }
+
+          await Bun.write(join(framework0x1Dir, "jsx-runtime.js"), content);
         }
       }
     } catch (error) {
@@ -2201,7 +2251,7 @@ if (document.readyState === 'loading') {
       
       if (isV4Available) {
         if (!this.options.silent) {
-          logger.info(`🌈 Processing Tailwind CSS v4 for production build`)
+          logger.info(`🌈 Processing Tailwind CSS v4 for production build`);
         }
 
         // Use working Tailwind v4 processing
@@ -2243,8 +2293,8 @@ if (document.readyState === 'loading') {
                 // Verify it's actually Tailwind v4 CSS (should start with /*! tailwindcss)
                   if (
                     cssContent.includes("tailwindcss v4") ||
-                    (cssContent.includes("@layer") &&
-                      cssContent.includes("tailwindcss"))
+                    cssContent.includes("tailwindcss v3") ||
+                    cssContent.includes("@layer")
                   ) {
                   // CRITICAL: Copy PURE Tailwind CSS only - no additions
                     await Bun.write(join(outputPath, "styles.css"), cssContent);
@@ -2342,7 +2392,7 @@ if (document.readyState === 'loading') {
               
               // CRITICAL FIX: Also create hashed versions for compatibility
               await this.createHashedCssVersions(outputPath, cssContent);
-
+              
               return;
             }
             
@@ -2473,9 +2523,11 @@ if (document.readyState === 'loading') {
 .bg-white { background-color: #fff; }
 .bg-violet-600 { background-color: #7c3aed; }
 .bg-violet-700 { background-color: #6d28d9; }
+.bg-muted { background-color: #f1f5f9; }
 .text-white { color: #fff; }
 .text-gray-900 { color: #111827; }
 .text-gray-800 { color: #1f2937; }
+.text-gray-600 { color: #4b5563; }
 .text-violet-600 { color: #7c3aed; }
 .text-violet-400 { color: #a78bfa; }
 .text-foreground { color: #0f172a; }
@@ -2537,9 +2589,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
 
 /* Essential Effects */
 .rounded-lg{border-radius:0.5rem}.shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
-.hover\\:bg-violet-700:hover{background-color:#6d28d9}
-.hover\\:bg-muted:hover{background-color:#f1f5f9}
-.transition-all{transition:all 0.15s ease}.duration-200{transition-duration:0.2s}
+.transition-all{transition:all 0.15s ease}.hover\\:bg-violet-700:hover{background-color:#6d28d9}
 .inline-block{display:inline-block}.min-h-\\[60vh\\]{min-height:60vh}
 
 /* Dark mode */
@@ -3035,29 +3085,22 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
     for (const dir of scanDirs) {
       const fullDir = join(this.options.projectPath, dir);
       if (!existsSync(fullDir)) continue;
-
-      const scanRecursive = (
-        dirPath: string,
-        depth: number = 0
-      ): void => {
+      
+      const scanRecursive = (dirPath: string, depth: number = 0) => {
         if (depth > 5) return; // Prevent infinite recursion
         
         try {
           const items = readdirSync(dirPath, { withFileTypes: true });
           
           for (const item of items) {
+            if (item.name.startsWith(".") || item.name === "node_modules")
+              continue;
+            
             const itemPath = join(dirPath, item.name);
             
-            if (
-              item.isDirectory() &&
-              !item.name.startsWith(".") &&
-              item.name !== "node_modules"
-            ) {
-              const newRelativePath = item.name;
+            if (item.isDirectory()) {
               scanRecursive(itemPath, depth + 1);
-            } else if (
-              extensions.some((ext) => item.name.endsWith(ext))
-            ) {
+            } else if (extensions.some((ext) => item.name.endsWith(ext))) {
               files.push(itemPath);
             }
           }
@@ -3065,10 +3108,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
           // Silent fail for individual directories
         }
       };
-
+      
       scanRecursive(fullDir);
     }
-
+    
     return files;
   }
 
@@ -3308,10 +3351,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
     // COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
     // Replace mangled JSX function names with proper ones
     content = content
-      .replace(/jsxDEV_[a-zA-Z0-9_]+/g, "jsxDEV")
-      .replace(/jsx_[a-zA-Z0-9_]+/g, "jsx")
-      .replace(/jsxs_[a-zA-Z0-9_]+/g, "jsxs")
-      .replace(/Fragment_[a-zA-Z0-9_]+/g, "Fragment");
+      .replace(/jsxDEV_[a-zA-Z0-9]+/g, "jsxDEV")
+      .replace(/jsx_[a-zA-Z0-9]+/g, "jsx")
+      .replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs")
+      .replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
 
     // Handle mixed alphanumeric patterns
     content = content
@@ -3579,15 +3622,10 @@ export default function ErrorComponent(props) {
     const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
       resources;
 
-        // Use project config for the main SPA file (users will get dynamic metadata updates)
+    // Use project config for the main SPA file (users will get dynamic metadata updates)
     const pageTitle = projectConfig.name || "My 0x1 App";
     const pageDescription =
       projectConfig.description || "0x1 Framework application";
-
-    // Initialize required template variables
-    const additionalMetaTags = "";
-    const manifestLink = pwaResources?.manifestLink || "";
-    const pwaMetaTags = pwaResources?.metaTags || "";
 
     let spaHtml = `<!DOCTYPE html>
 <html lang="en" class="dark">
@@ -3596,9 +3634,8 @@ export default function ErrorComponent(props) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + "\n" : ""}${manifestLink ? manifestLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
-  <script type="importmap">
+${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
   {
     "imports": {
       "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
@@ -3624,7 +3661,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
     window.process={env:{NODE_ENV:'production'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaResources?.scripts || ""}
+  <script src="/app.js?v=${cacheBust}" type="module"></script>
 </body>
 </html>`;
 
@@ -3636,7 +3673,6 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         projectPath: this.options.projectPath,
         outputPath,
         silent: this.options.silent,
-        debug: !this.options.silent,
       },
       pwaResources
     );
@@ -3747,7 +3783,6 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
             projectPath: this.options.projectPath,
             outputPath,
             silent: this.options.silent,
-            debug: !this.options.silent,
           },
           pwaResources
         );
@@ -3887,9 +3922,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
     return precacheResources;
   }
 
-  /**
-   * SIMPLIFIED: Remove complex validation - DevOrchestrator works perfectly without it (SINGLE SOURCE OF TRUTH)
-   */
+  // SIMPLIFIED: Remove complex validation - DevOrchestrator works perfectly without it (SINGLE SOURCE OF TRUTH)
   private validateAndFixComponentOutput(content: string, sourcePath: string): string {
     // DevOrchestrator works perfectly without complex validation
     // Just return the content as-is like DevOrchestrator does
