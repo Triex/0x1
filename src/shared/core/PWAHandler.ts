@@ -74,7 +74,7 @@ export class PWAHandler {
       `<meta name="application-name" content="${pwaConfig.shortName}">`,
       `<meta name="apple-mobile-web-app-capable" content="yes">`,
       `<meta name="apple-mobile-web-app-status-bar-style" content="default">`,
-      `<meta name="apple-mobile-web-app-title" content="${pwaConfig.shortName}">`,
+      `<meta name="apple-mobile-web-app-title" content="${pwaConfig.name}">`,
       `<meta name="mobile-web-app-capable" content="yes">`,
       `<meta name="msapplication-TileColor" content="${pwaConfig.themeColor}">`,
       `<meta name="msapplication-tap-highlight" content="no">`
