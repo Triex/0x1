@@ -435,6 +435,23 @@ export async function generateAllIcons(
   const logoText = typedConfig.logoText || '';
   const theme = typedConfig.theme || 'classic';
   
+  // CRITICAL FIX: Convert URL path to filesystem path
+  // "/icons" (URL path) -> "public/icons" (filesystem path)
+  let filesystemPath: string;
+  
+  if (pwaConfig.iconsPath) {
+    if (pwaConfig.iconsPath.startsWith('/')) {
+      // URL path like "/icons" -> filesystem path "public/icons"
+      filesystemPath = `public${pwaConfig.iconsPath}`;
+    } else {
+      // Already a filesystem path like "public/icons"
+      filesystemPath = pwaConfig.iconsPath;
+    }
+  } else {
+    // Default to public/icons
+    filesystemPath = DEFAULT_OPTIONS.outputPath;
+  }
+  
   // Prepare options from PWA config with proper type handling
   const iconOptions: IconGeneratorOptions = {
     baseColor: pwaConfig.themeColor,
@@ -444,9 +461,7 @@ export async function generateAllIcons(
     subtext: pwaConfig.shortName,
     theme,
     logoText,
-    outputPath: pwaConfig.iconsPath?.startsWith('/') 
-      ? pwaConfig.iconsPath.substring(1) // Remove leading slash
-      : pwaConfig.iconsPath || DEFAULT_OPTIONS.outputPath
+    outputPath: filesystemPath
   };
   
   // Merge with provided options
@@ -461,6 +476,8 @@ export async function generateAllIcons(
     ]);
     
     console.log('All PWA icons generated successfully!');
+    console.log(`Icons generated to: ${filesystemPath}`);
+    console.log(`Icons will be served from: ${pwaConfig.iconsPath || '/icons'}`);
   } catch (error) {
     console.error('Error generating PWA icons:', error instanceof Error ? error.message : String(error));
     throw error;

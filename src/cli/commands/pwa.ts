@@ -147,6 +147,14 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
     try {
       await generateAllIcons(projectPath, pwaConfig);
       iconSpin.stop('success', 'Generated all PWA icons');
+      
+      // Show clear path information
+      const urlPath = pwaConfig.iconsPath || '/icons';
+      const filesystemPath = urlPath.startsWith('/') ? `public${urlPath}` : pwaConfig.iconsPath;
+      
+      logger.info(`📁 Icons generated to: ${filesystemPath}/`);
+      logger.info(`🌐 Icons served from: ${urlPath}/`);
+      
     } catch (error) {
     setupSuccess = false;
       iconSpin.stop('error', 'Failed to generate icons');
