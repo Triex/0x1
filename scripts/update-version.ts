@@ -240,8 +240,8 @@ async function updateReadmeVersion(version: string): Promise<void> {
       },
       {
         name: "Current State Headers Exact",
-        // Exact match for the specific header in README.md
-        regex: /### Current State \(v0\.0\.176\)/g,
+        // Exact match for the specific header in README.md - FIXED: Use dynamic pattern
+        regex: /### Current State \(v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?\)/g,
         replacement: `### Current State (v${version})`
       },
       {
@@ -365,9 +365,11 @@ async function updateReadmeVersion(version: string): Promise<void> {
     if (updatedCount === 0) {
       console.log('Attempting direct string replacement for known patterns...');
       
-      // Look for the Current State header specifically
-      const currentStateStr = "### Current State (v0.0.176)";
-      if (readmeContent.includes(currentStateStr)) {
+      // Look for the Current State header specifically - FIXED: Use dynamic detection
+      const currentStateMatch = readmeContent.match(/### Current State \(v([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)\)/);
+      if (currentStateMatch) {
+        const oldVersion = currentStateMatch[1];
+        const currentStateStr = `### Current State (v${oldVersion})`;
         const newCurrentStateStr = `### Current State (v${version})`;
         readmeContent = readmeContent.replace(currentStateStr, newCurrentStateStr);
         updatedCount++;

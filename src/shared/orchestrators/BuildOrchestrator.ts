@@ -491,7 +491,8 @@ export class BuildOrchestrator {
               : "js",
         target: "browser",
         define: {
-          "process.env.NODE_ENV": JSON.stringify("production"),
+          // CRITICAL FIX: Use development mode to ensure JSX objects, not hyperscript
+          "process.env.NODE_ENV": JSON.stringify("development"),
           global: "globalThis",
         },
         // CRITICAL: Use EXACT same JSX configuration as DevOrchestrator
@@ -1011,7 +1012,24 @@ if (typeof window !== 'undefined') {
 ${routerClassName ? `  window.__0x1_Router = ${routerClassName};` : "  // No Router class detected"}
 ${
   linkFunctionName
-    ? `  window.__0x1_RouterLink = ${linkFunctionName};`
+    ? `  // CRITICAL FIX: Wrap Link function to prevent hyperscript objects
+  const originalLink = ${linkFunctionName};
+  window.__0x1_RouterLink = (props) => {
+    const result = originalLink(props);
+    
+    // Detect and convert hyperscript objects to JSX objects
+    if (result && typeof result === 'object' && result.constructor && result.constructor.name === 'h') {
+      console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
+      return {
+        type: result.type || 'a',
+        props: result.props || {},
+        children: result.children || result.props?.children || [],
+        key: null
+      };
+    }
+    
+    return result;
+  };`
     : `  // No Link function detected - creating functional one
   window.__0x1_RouterLink = (props) => ({
     type: 'a',
@@ -1029,8 +1047,7 @@ ${
     }
   });`
 }
-}
-`;
+}`;
     } else {
       // ONLY create minimal router if NO components were detected
       if (!this.options.silent) {
@@ -1254,8 +1271,8 @@ if (typeof window !== 'undefined') {
           minify: false,
           sourcemap: "none",
           define: {
-            // CRITICAL FIX: Use production mode to ensure JSX objects, not HTML strings
-            "process.env.NODE_ENV": JSON.stringify("production"),
+            // CRITICAL FIX: Use development mode to ensure JSX objects, not hyperscript
+            "process.env.NODE_ENV": JSON.stringify("development"),
           },
           external: [],
         });
@@ -1289,6 +1306,16 @@ if (typeof window !== 'undefined') {
           type: 'div',
           props: { dangerouslySetInnerHTML: { __html: result } },
           children: [],
+          key: key || null
+        };
+      }
+      // CRITICAL FIX: Prevent hyperscript objects from being returned
+      if (result && typeof result === 'object' && result.constructor && result.constructor.name === 'h') {
+        console.warn('[0x1] Component returned hyperscript object, converting to JSX:', type.name || 'Anonymous');
+        return {
+          type: result.type || 'div',
+          props: result.props || {},
+          children: result.children || [],
           key: key || null
         };
       }
@@ -1393,7 +1420,8 @@ if (typeof window !== 'undefined') {
           minify: false,
           sourcemap: "none",
           define: {
-            "process.env.NODE_ENV": JSON.stringify("production"),
+            // CRITICAL FIX: Use development mode for consistency with JSX runtime
+            "process.env.NODE_ENV": JSON.stringify("development"),
           },
           external: [],
         });
@@ -1644,10 +1672,20 @@ export function Link(props) {
   // Call the router Link and convert plain object to JSX
   const linkResult = RouterLink(props);
   
-  // If it returns a plain object, convert it to JSX
-  if (linkResult && typeof linkResult === 'object' && linkResult.type && linkResult.props) {
-    const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
-    return jsx(linkResult.type, linkResult.props);
+  // CRITICAL FIX: Detect and convert hyperscript objects to JSX objects
+  if (linkResult && typeof linkResult === 'object') {
+    // Check if it's a hyperscript object (has constructor name 'h')
+    if (linkResult.constructor && linkResult.constructor.name === 'h') {
+      console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
+      const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+      return jsx(linkResult.type || 'a', linkResult.props || {});
+    }
+    
+    // If it returns a plain object, convert it to JSX
+    if (linkResult.type && linkResult.props) {
+      const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
+      return jsx(linkResult.type, linkResult.props);
+    }
   }
   
   return linkResult;
