@@ -648,8 +648,37 @@ export declare function processTailwindFast(
     const routerSource = resolve("0x1-router/dist/index.js");
     const routerDest = resolve(distDir, "core/router.js");
     if (existsSync(routerSource)) {
-      await Bun.write(routerDest, await Bun.file(routerSource).text());
-      console.log("✅ Copied router to dist/core/router.js");
+      // CRITICAL FIX: Apply JSX normalization to 0x1-router package too
+      let routerContent = await Bun.file(routerSource).text();
+      
+      console.log('🔧 Applying JSX normalization to 0x1-router package...');
+      
+      // 1. Add JSX runtime imports at the beginning (if not already present)
+      if (!routerContent.includes('jsx-runtime.js')) {
+        const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
+        routerContent = jsxImport + routerContent;
+      }
+      
+      // 2. Apply aggressive JSX function normalization (exact same as BuildOrchestrator)
+      routerContent = routerContent.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
+      routerContent = routerContent.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
+      routerContent = routerContent.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
+      routerContent = routerContent.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
+      
+      // 3. Handle mixed alphanumeric patterns
+      routerContent = routerContent.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
+      routerContent = routerContent.replace(/jsx_[0-9a-z]+/gi, 'jsx');
+      routerContent = routerContent.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
+      routerContent = routerContent.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+      
+      // 4. Ultra aggressive catch-all patterns
+      routerContent = routerContent.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
+      routerContent = routerContent.replace(/\bjsx_\w+/g, 'jsx');
+      routerContent = routerContent.replace(/\bjsxs_\w+/g, 'jsxs');
+      routerContent = routerContent.replace(/\bFragment_\w+/g, 'Fragment');
+      
+      await Bun.write(routerDest, routerContent);
+      console.log("✅ Copied router to dist/core/router.js with JSX normalization");
     }
 
     console.log("📦 Building Router module...");
@@ -657,7 +686,7 @@ export declare function processTailwindFast(
     // Build Router module for Next.js-style imports (0x1/router)
     const routerModulePath = join(srcDir, "router.ts");
     if (existsSync(routerModulePath)) {
-      const { success } = await Bun.build({
+      const { success, outputs } = await Bun.build({
         entrypoints: [routerModulePath],
         outdir: distDir,
         target: "browser",
@@ -665,8 +694,54 @@ export declare function processTailwindFast(
         minify: true,
       });
 
-      if (success) {
-        console.log("✅ Built router.js");
+      if (success && outputs.length > 0) {
+        // CRITICAL FIX: Apply JSX normalization to router.js (same as BuildOrchestrator)
+        const outputPath = outputs[0].path;
+        let content = await Bun.file(outputPath).text();
+        
+        console.log('🔧 Applying JSX normalization to router.js...');
+        
+        // 1. Add JSX runtime imports at the beginning
+        const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
+        content = jsxImport + content;
+        
+        // 2. Apply aggressive JSX function normalization (exact same as BuildOrchestrator)
+        content = content.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
+        content = content.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
+        content = content.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
+        content = content.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
+        
+        // 3. Handle mixed alphanumeric patterns
+        content = content.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
+        content = content.replace(/jsx_[0-9a-z]+/gi, 'jsx');
+        content = content.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
+        content = content.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+        
+        // 4. Ultra aggressive catch-all patterns
+        content = content.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
+        content = content.replace(/\bjsx_\w+/g, 'jsx');
+        content = content.replace(/\bjsxs_\w+/g, 'jsxs');
+        content = content.replace(/\bFragment_\w+/g, 'Fragment');
+        
+        // 5. Transform imports to browser-resolvable URLs
+        content = content
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+            'import { $1 } from "/components/$2.js"')
+          .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+          .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+            'import { $1 } from "/0x1/jsx-runtime.js"')
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+            'import { $1 } from "/0x1/jsx-runtime.js"')
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+            'import { $1 } from "/0x1/router.js"')
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+            'import { $1 } from "/node_modules/0x1/index.js"');
+        
+        // Write the normalized router content
+        await Bun.write(outputPath, content);
+        
+        console.log("✅ Built router.js with JSX normalization");
       } else {
         console.warn("⚠️ Failed to build router.js");
       }
