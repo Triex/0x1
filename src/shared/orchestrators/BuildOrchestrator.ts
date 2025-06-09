@@ -60,9 +60,9 @@ export class BuildOrchestrator {
 
   constructor(options: BuildOrchestratorOptions) {
     this.options = {
-      outDir: 'dist',
+      outDir: "dist",
       minify: true,
-      ...options
+      ...options,
     };
     
     this.state = {
@@ -71,12 +71,12 @@ export class BuildOrchestrator {
       assets: new Map(),
       dependencies: {
         packages: [],
-        cssFiles: []
-      }
+        cssFiles: [],
+      },
     };
 
     // Configure shared engines for production
-    transpilationEngine.configure('production');
+    transpilationEngine.configure("production");
   }
 
   async build(): Promise<BuildResult> {
@@ -85,7 +85,9 @@ export class BuildOrchestrator {
       const outputPath = join(this.options.projectPath, this.options.outDir!);
     
       if (!this.options.silent) {
-        logger.info('🚀 Building 0x1 application using working backup patterns...');
+        logger.info(
+          "🚀 Building 0x1 application using working backup patterns..."
+        );
       }
 
       // Phase 1: Clean and prepare
@@ -107,9 +109,9 @@ export class BuildOrchestrator {
       }
 
       return this.createSuccessResult(buildTime);
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       logger.error(`❌ Build failed: ${errorMessage}`);
       return this.createErrorResult(error);
     }
@@ -125,7 +127,7 @@ export class BuildOrchestrator {
     mkdirSync(outputPath, { recursive: true });
 
     // Create required subdirectories
-    const requiredDirs = ['0x1', 'node_modules/0x1', 'app', 'components'];
+    const requiredDirs = ["0x1", "node_modules/0x1", "app", "components"];
     for (const dir of requiredDirs) {
       mkdirSync(join(outputPath, dir), { recursive: true });
     }
@@ -133,7 +135,7 @@ export class BuildOrchestrator {
 
   private async discoverEverything(): Promise<void> {
     if (!this.options.silent) {
-      logger.info('🔍 Discovering routes and components...');
+      logger.info("🔍 Discovering routes and components...");
     }
 
     // Use working route discovery
@@ -141,7 +143,9 @@ export class BuildOrchestrator {
     this.state.components = await this.discoverComponents();
 
     if (!this.options.silent) {
-      logger.info(`Found ${this.state.routes.length} routes and ${this.state.components.length} components`);
+      logger.info(
+        `Found ${this.state.routes.length} routes and ${this.state.components.length} components`
+      );
     }
   }
 
@@ -171,7 +175,7 @@ export class BuildOrchestrator {
           const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
           currentLayouts.push({ 
             path: routePath || "/", 
-            componentPath: layoutComponentPath 
+            componentPath: layoutComponentPath,
           });
         }
 
@@ -187,7 +191,7 @@ export class BuildOrchestrator {
           routes.push({ 
             path: routePath || "/", 
             componentPath: componentPath,
-            layouts: currentLayouts
+            layouts: currentLayouts,
           });
         }
 
@@ -224,38 +228,58 @@ export class BuildOrchestrator {
     routes.sort((a, b) => {
       if (a.path === "/" && b.path !== "/") return 1;
       if (b.path === "/" && a.path !== "/") return -1;
-      const aSegments = a.path.split('/').filter(s => s).length;
-      const bSegments = b.path.split('/').filter(s => s).length;
+      const aSegments = a.path.split("/").filter((s) => s).length;
+      const bSegments = b.path.split("/").filter((s) => s).length;
       return bSegments - aSegments;
     });
 
     return routes;
   }
 
-  private async discoverComponents(): Promise<Array<{ path: string; relativePath: string }>> {
+  private async discoverComponents(): Promise<
+    Array<{ path: string; relativePath: string }>
+  > {
     const components: Array<{ path: string; relativePath: string }> = [];
-    const componentDirectories = ['components', 'lib', 'src/components', 'src/lib'];
-    const componentExtensions = ['.tsx', '.jsx', '.ts', '.js'];
+    const componentDirectories = [
+      "components",
+      "lib",
+      "src/components",
+      "src/lib",
+    ];
+    const componentExtensions = [".tsx", ".jsx", ".ts", ".js"];
 
     for (const dir of componentDirectories) {
       const fullDirPath = join(this.options.projectPath, dir);
       if (!existsSync(fullDirPath)) continue;
 
-      const scanRecursive = (dirPath: string, relativePath: string = ''): void => {
+      const scanRecursive = (
+        dirPath: string,
+        relativePath: string = ""
+      ): void => {
         try {
           const items = readdirSync(dirPath, { withFileTypes: true });
           
           for (const item of items) {
             const itemPath = join(dirPath, item.name);
             
-            if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
-              const newRelativePath = relativePath ? join(relativePath, item.name) : item.name;
+            if (
+              item.isDirectory() &&
+              !item.name.startsWith(".") &&
+              item.name !== "node_modules"
+            ) {
+              const newRelativePath = relativePath
+                ? join(relativePath, item.name)
+                : item.name;
               scanRecursive(itemPath, newRelativePath);
-            } else if (componentExtensions.some(ext => item.name.endsWith(ext))) {
-              const componentFile = relativePath ? join(dir, relativePath, item.name) : join(dir, item.name);
+            } else if (
+              componentExtensions.some((ext) => item.name.endsWith(ext))
+            ) {
+              const componentFile = relativePath
+                ? join(dir, relativePath, item.name)
+                : join(dir, item.name);
               components.push({
                 path: itemPath,
-                relativePath: componentFile
+                relativePath: componentFile,
               });
             }
           }
@@ -295,9 +319,13 @@ export class BuildOrchestrator {
     await this.generateRouteSpecificHtmlFiles(outputPath);
   }
 
-  private async generateComponentsUsingWorkingPattern(outputPath: string): Promise<void> {
+  private async generateComponentsUsingWorkingPattern(
+    outputPath: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.info('🧩 Generating components using DevOrchestrator exact logic...');
+      logger.info(
+        "🧩 Generating components using DevOrchestrator exact logic..."
+      );
     }
 
     // CRITICAL FIX: Follow DevOrchestrator pattern exactly - generate ONLY standalone components
@@ -306,13 +334,18 @@ export class BuildOrchestrator {
     // 1. Generate ALL route page components as standalone files (NO EMBEDDING)
     for (const route of this.state.routes) {
       try {
-        await this.generateComponentUsingDevOrchestratorLogic(route.componentPath, outputPath);
+        await this.generateComponentUsingDevOrchestratorLogic(
+          route.componentPath,
+          outputPath
+        );
         
         if (!this.options.silent) {
           logger.debug(`Generated route: ${route.componentPath}`);
         }
       } catch (error) {
-        logger.warn(`Failed to generate route ${route.componentPath}: ${error}`);
+        logger.warn(
+          `Failed to generate route ${route.componentPath}: ${error}`
+        );
       }
     }
 
@@ -328,7 +361,10 @@ export class BuildOrchestrator {
 
     for (const layoutPath of layoutPaths) {
       try {
-        await this.generateComponentUsingDevOrchestratorLogic(layoutPath, outputPath);
+        await this.generateComponentUsingDevOrchestratorLogic(
+          layoutPath,
+          outputPath
+        );
         
         if (!this.options.silent) {
           logger.debug(`Generated layout: ${layoutPath}`);
@@ -341,20 +377,28 @@ export class BuildOrchestrator {
     // 3. Generate ALL standalone components
     for (const component of this.state.components) {
       try {
-        const componentUrlPath = `/${component.relativePath.replace(/\.(tsx|ts|jsx)$/, '.js')}`;
-        await this.generateComponentUsingDevOrchestratorLogic(componentUrlPath, outputPath);
+        const componentUrlPath = `/${component.relativePath.replace(/\.(tsx|ts|jsx)$/, ".js")}`;
+        await this.generateComponentUsingDevOrchestratorLogic(
+          componentUrlPath,
+          outputPath
+        );
     
         if (!this.options.silent) {
           logger.debug(`Generated component: ${componentUrlPath}`);
         }
       } catch (error) {
-        logger.warn(`Failed to generate component ${component.relativePath}: ${error}`);
+        logger.warn(
+          `Failed to generate component ${component.relativePath}: ${error}`
+        );
       }
     }
   }
 
   // CRITICAL: Generate route components with layout composition (restored from working version)
-  private async generateRouteWithLayoutComposition(route: Route, outputPath: string): Promise<void> {
+  private async generateRouteWithLayoutComposition(
+    route: Route,
+    outputPath: string
+  ): Promise<void> {
     try {
       // Find the route source file
         const sourcePath = this.findRouteSourceFile(route);
@@ -363,25 +407,35 @@ export class BuildOrchestrator {
         return;
         }
 
-        const sourceCode = readFileSync(sourcePath, 'utf-8');
+      const sourceCode = readFileSync(sourcePath, "utf-8");
 
       // CRITICAL: No layout composition at build time - generate standalone component only
-      const transpiledContent = await this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
+      const transpiledContent = await this.transpileUsingDevOrchestratorLogic(
+        sourceCode,
+        sourcePath
+      );
       
       // Write to output
-        const outputComponentPath = join(outputPath, route.componentPath.replace(/^\//, ''));
-      mkdirSync(join(outputComponentPath, '..'), { recursive: true });
+      const outputComponentPath = join(
+        outputPath,
+        route.componentPath.replace(/^\//, "")
+      );
+      mkdirSync(join(outputComponentPath, ".."), { recursive: true });
       writeFileSync(outputComponentPath, transpiledContent);
-
       } catch (error) {
-      logger.warn(`Failed to generate route component ${route.componentPath}: ${error}`);
+      logger.warn(
+        `Failed to generate route component ${route.componentPath}: ${error}`
+      );
     }
   }
 
   // Helper method to find route source files (restored)
   private findRouteSourceFile(route: Route): string | null {
-    const basePath = join(this.options.projectPath, route.componentPath.replace(/^\//, '').replace(/\.js$/, ''));
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+    const basePath = join(
+      this.options.projectPath,
+      route.componentPath.replace(/^\//, "").replace(/\.js$/, "")
+    );
+    const extensions = [".tsx", ".jsx", ".ts", ".js"];
     
     for (const ext of extensions) {
       const sourcePath = basePath + ext;
@@ -394,18 +448,25 @@ export class BuildOrchestrator {
   }
 
   // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
-  private async transpileUsingDevOrchestratorLogic(sourceCode: string, sourcePath: string): Promise<string> {
+  private async transpileUsingDevOrchestratorLogic(
+    sourceCode: string,
+    sourcePath: string
+  ): Promise<string> {
     try {
       // EXACT same logic as DevOrchestrator.handleComponentRequest
       const transpiler = new Bun.Transpiler({
-        loader: sourcePath.endsWith('.tsx') ? 'tsx' : 
-                sourcePath.endsWith('.jsx') ? 'jsx' :
-                sourcePath.endsWith('.ts') ? 'ts' : 'js',
-        target: 'browser',
+        loader: sourcePath.endsWith(".tsx")
+          ? "tsx"
+          : sourcePath.endsWith(".jsx")
+            ? "jsx"
+            : sourcePath.endsWith(".ts")
+              ? "ts"
+              : "js",
+        target: "browser",
         define: {
-          'process.env.NODE_ENV': JSON.stringify('development'),
-          'global': 'globalThis'
-        }
+          "process.env.NODE_ENV": JSON.stringify("development"),
+          global: "globalThis",
+        },
         // CRITICAL FIX: Remove the problematic JSX configuration that was causing hyperscript/h() calls
         // Use Bun's default JSX transformation instead
       });
@@ -415,15 +476,25 @@ export class BuildOrchestrator {
 
       // CRITICAL: Apply EXACT same fixes as DevOrchestrator
       // Check if JSX is used but import is missing
-      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(') || content.includes('jsxs(');
-      const hasJSXImport = content.includes('from "0x1/jsx-dev-runtime"') || content.includes('from "0x1/jsx-runtime"');
+      const hasJSX =
+        content.includes("jsxDEV") ||
+        content.includes("jsx(") ||
+        content.includes("jsxs(");
+      const hasJSXImport =
+        content.includes('from "0x1/jsx-dev-runtime"') ||
+        content.includes('from "0x1/jsx-runtime"');
       
       if (hasJSX && !hasJSXImport) {
         // Add JSX runtime import at the top
-        const lines = content.split('\n');
-        const importIndex = lines.findIndex(line => line.startsWith('import ')) + 1 || 0;
-        lines.splice(importIndex, 0, 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";');
-        content = lines.join('\n');
+        const lines = content.split("\n");
+        const importIndex =
+          lines.findIndex((line) => line.startsWith("import ")) + 1 || 0;
+        lines.splice(
+          importIndex,
+          0,
+          'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";'
+        );
+        content = lines.join("\n");
       }
 
       // CRITICAL: Replace mangled JSX function names with proper ones (same as DevOrchestrator)
@@ -434,14 +505,15 @@ export class BuildOrchestrator {
       content = ImportTransformer.transformImports(content, {
         sourceFilePath: sourcePath,
         projectPath: this.options.projectPath,
-        mode: 'production',
-        debug: false // Only enable debug when explicitly requested
+        mode: "production",
+        debug: false, // Only enable debug when explicitly requested
       });
 
       return content;
-      
     } catch (error) {
-      logger.warn(`DevOrchestrator-style transpilation failed for ${sourcePath}: ${error}`);
+      logger.warn(
+        `DevOrchestrator-style transpilation failed for ${sourcePath}: ${error}`
+      );
       
       // Return error component
       return this.generateErrorComponent(sourcePath, String(error));
@@ -449,16 +521,24 @@ export class BuildOrchestrator {
   }
 
   // CRITICAL: Mirror DevOrchestrator's handleComponentRequest EXACTLY
-  private async generateComponentUsingDevOrchestratorLogic(reqPath: string, outputPath: string): Promise<void> {
+  private async generateComponentUsingDevOrchestratorLogic(
+    reqPath: string,
+    outputPath: string
+  ): Promise<void> {
     try {
       // EXACT same logic as DevOrchestrator.handleComponentRequest
-      const cleanPath = reqPath.split('?')[0];
-      const basePath = cleanPath.endsWith('.js') ? cleanPath.replace('.js', '') : cleanPath;
-      const relativePath = basePath.startsWith('/') ? basePath.slice(1) : basePath;
+      const cleanPath = reqPath.split("?")[0];
+      const basePath = cleanPath.endsWith(".js")
+        ? cleanPath.replace(".js", "")
+        : cleanPath;
+      const relativePath = basePath.startsWith("/")
+        ? basePath.slice(1)
+        : basePath;
 
       // Find the source file (same as DevOrchestrator.generatePossiblePaths)
-      const possiblePaths = this.generatePossiblePathsLikeDevOrchestrator(relativePath);
-      const sourcePath = possiblePaths.find(path => existsSync(path));
+      const possiblePaths =
+        this.generatePossiblePathsLikeDevOrchestrator(relativePath);
+      const sourcePath = possiblePaths.find((path) => existsSync(path));
 
       if (!sourcePath) {
         if (!this.options.silent) {
@@ -468,24 +548,30 @@ export class BuildOrchestrator {
       }
 
       // Read source file
-      const sourceCode = readFileSync(sourcePath, 'utf-8');
+      const sourceCode = readFileSync(sourcePath, "utf-8");
 
       // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
-      const content = await this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
+      const content = await this.transpileUsingDevOrchestratorLogic(
+        sourceCode,
+        sourcePath
+      );
 
       // Write to output (ensuring directory exists)
-      const outputFilePath = join(outputPath, reqPath.replace(/^\//, ''));
-      mkdirSync(join(outputFilePath, '..'), { recursive: true });
+      const outputFilePath = join(outputPath, reqPath.replace(/^\//, ""));
+      mkdirSync(join(outputFilePath, ".."), { recursive: true });
       writeFileSync(outputFilePath, content);
-
     } catch (error) {
-      logger.warn(`Failed to generate component using DevOrchestrator logic for ${reqPath}: ${error}`);
+      logger.warn(
+        `Failed to generate component using DevOrchestrator logic for ${reqPath}: ${error}`
+      );
     }
   }
 
   // EXACT same logic as DevOrchestrator.generatePossiblePaths
-  private generatePossiblePathsLikeDevOrchestrator(relativePath: string): string[] {
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+  private generatePossiblePathsLikeDevOrchestrator(
+    relativePath: string
+  ): string[] {
+    const extensions = [".tsx", ".jsx", ".ts", ".js"];
     const basePath = join(this.options.projectPath, relativePath);
     
     // For layout and page files, we need to be extra careful about path resolution
@@ -497,9 +583,13 @@ export class BuildOrchestrator {
     }
     
     // Special handling for app directory structure
-    if (relativePath.startsWith('app/')) {
+    if (relativePath.startsWith("app/")) {
       const appRelativePath = relativePath.substring(4); // Remove 'app/' prefix
-      const appBasePath = join(this.options.projectPath, 'app', appRelativePath);
+      const appBasePath = join(
+        this.options.projectPath,
+        "app",
+        appRelativePath
+      );
       
       for (const ext of extensions) {
         paths.push(`${appBasePath}${ext}`);
@@ -509,32 +599,38 @@ export class BuildOrchestrator {
     return paths;
   }
 
-  private async copyFrameworkFilesUsingWorkingPattern(outputPath: string): Promise<void> {
+  private async copyFrameworkFilesUsingWorkingPattern(
+    outputPath: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.info('📦 Copying framework files using DevOrchestrator working pattern...');
+      logger.info(
+        "📦 Copying framework files using DevOrchestrator working pattern..."
+      );
     }
 
     const frameworkPath = this.getFrameworkPath();
-    const frameworkDistPath = join(frameworkPath, 'dist');
+    const frameworkDistPath = join(frameworkPath, "dist");
 
     // Create framework directories
-    const framework0x1Dir = join(outputPath, '0x1');
-    const nodeModulesDir = join(outputPath, 'node_modules', '0x1');
+    const framework0x1Dir = join(outputPath, "0x1");
+    const nodeModulesDir = join(outputPath, "node_modules", "0x1");
     
     // CRITICAL FIX: Copy ALL framework files including hashed versions (same as DevOrchestrator)
     if (existsSync(frameworkDistPath)) {
-      const allFrameworkFiles = readdirSync(frameworkDistPath).filter(file => 
-        file.endsWith('.js') || file.endsWith('.css')
+      const allFrameworkFiles = readdirSync(frameworkDistPath).filter(
+        (file) => file.endsWith(".js") || file.endsWith(".css")
       );
       
       if (!this.options.silent) {
-        logger.info(`Found ${allFrameworkFiles.length} framework files to copy`);
+        logger.info(
+          `Found ${allFrameworkFiles.length} framework files to copy`
+        );
       }
       
       for (const file of allFrameworkFiles) {
         const srcPath = join(frameworkDistPath, file);
         if (existsSync(srcPath)) {
-          const content = readFileSync(srcPath, 'utf-8');
+          const content = readFileSync(srcPath, "utf-8");
           
           // Write to both locations to ensure compatibility
           await Bun.write(join(framework0x1Dir, file), content);
@@ -548,203 +644,300 @@ export class BuildOrchestrator {
     }
 
     // CRITICAL: Generate JSX runtime using DevOrchestrator's exact logic
-    await this.generateJsxRuntimeUsingDevOrchestratorLogic(frameworkPath, framework0x1Dir);
+    await this.generateJsxRuntimeUsingDevOrchestratorLogic(
+      frameworkPath,
+      framework0x1Dir
+    );
 
     // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
-    await this.generateHooksUsingDevOrchestratorLogic(frameworkPath, framework0x1Dir);
+    await this.generateHooksUsingDevOrchestratorLogic(
+      frameworkPath,
+      framework0x1Dir
+    );
 
     // CRITICAL: Copy router with comprehensive import transformations
-    const routerSourcePath = join(frameworkPath, '0x1-router', 'dist', 'index.js');
-    
+    const routerSourcePath = join(
+      frameworkPath,
+      "0x1-router",
+      "dist",
+      "index.js"
+    );
+
     if (!this.options.silent) {
       logger.info(`🔍 Looking for router source: ${routerSourcePath}`);
       logger.info(`📁 Router source exists: ${existsSync(routerSourcePath)}`);
     }
-    
+
     // CRITICAL: Try multiple router locations since npm packages structure differently
     const possibleRouterPaths = [
       routerSourcePath, // Original path
-      join(frameworkPath, 'dist', 'router.js'), // Direct in dist
-      join(frameworkPath, 'dist', 'index.js'), // Main package file might include router
-      join(frameworkPath, 'router.js'), // Root level
-      join(frameworkPath, 'src', 'router.ts'), // Source
-      join(frameworkPath, 'src', 'router.js') // Source JS
+      join(frameworkPath, "dist", "router.js"), // Direct in dist
+      join(frameworkPath, "dist", "index.js"), // Main package file might include router
+      join(frameworkPath, "router.js"), // Root level
+      join(frameworkPath, "src", "router.ts"), // Source
+      join(frameworkPath, "src", "router.js"), // Source JS
     ];
-    
+
     if (!this.options.silent) {
       logger.info(`🔍 Checking router locations...`);
       for (const path of possibleRouterPaths) {
-        logger.info(`📁 ${path}: ${existsSync(path) ? '✅ EXISTS' : '❌ NOT FOUND'}`);
+        logger.info(
+          `📁 ${path}: ${existsSync(path) ? "✅ EXISTS" : "❌ NOT FOUND"}`
+        );
       }
     }
-    
+
     // Find first existing router file
-    const actualRouterPath = possibleRouterPaths.find(path => existsSync(path));
-    
+    const actualRouterPath = possibleRouterPaths.find((path) =>
+      existsSync(path)
+    );
+
     if (!actualRouterPath) {
       if (!this.options.silent) {
-        logger.warn(`⚠️ No dedicated router file found, checking if router is embedded in main package...`);
-        
+        logger.warn(
+          `⚠️ No dedicated router file found, checking if router is embedded in main package...`
+        );
+
         // Check if the main dist files contain router functionality
         const mainDistFiles = [
-          join(frameworkPath, 'dist', 'index.js'),
-          join(frameworkPath, 'dist', 'main.js'),
-          join(frameworkPath, 'dist', 'bundle.js')
+          join(frameworkPath, "dist", "index.js"),
+          join(frameworkPath, "dist", "main.js"),
+          join(frameworkPath, "dist", "bundle.js"),
         ];
-        
+
         for (const file of mainDistFiles) {
           if (existsSync(file)) {
-            const content = readFileSync(file, 'utf-8');
-            if (content.includes('class') && (content.includes('Router') || content.includes('navigate') || content.includes('addRoute'))) {
+            const content = readFileSync(file, "utf-8");
+            if (
+              content.includes("class") &&
+              (content.includes("Router") ||
+                content.includes("navigate") ||
+                content.includes("addRoute"))
+            ) {
               if (!this.options.silent) {
                 logger.success(`✅ Found router embedded in: ${file}`);
               }
-              
+
               // Process this file as router
-              await this.processRouterContent(content, framework0x1Dir, nodeModulesDir);
+              await this.processRouterContent(
+                content,
+                framework0x1Dir,
+                nodeModulesDir
+              );
               return;
             }
           }
         }
-        
-        logger.error(`❌ CRITICAL: No router found anywhere in framework package`);
+
+        logger.error(
+          `❌ CRITICAL: No router found anywhere in framework package`
+        );
         logger.info(`🔍 Framework path: ${frameworkPath}`);
-        logger.info(`📁 Framework contents: ${existsSync(frameworkPath) ? readdirSync(frameworkPath).join(', ') : 'PATH NOT FOUND'}`);
+        logger.info(
+          `📁 Framework contents: ${existsSync(frameworkPath) ? readdirSync(frameworkPath).join(", ") : "PATH NOT FOUND"}`
+        );
       }
-      
+
       // Continue without router - generate a minimal fallback
-      await this.processRouterContentLegacy("", framework0x1Dir, nodeModulesDir);
+      await this.processRouterContentLegacy(
+        "",
+        framework0x1Dir,
+        nodeModulesDir
+      );
       return;
     }
-    
+
     if (!this.options.silent) {
       logger.success(`✅ Found router at: ${actualRouterPath}`);
     }
-    
-    const routerContent = readFileSync(actualRouterPath, 'utf-8');
-    await this.processRouterContent(routerContent, framework0x1Dir, nodeModulesDir);
-    
+
+    const routerContent = readFileSync(actualRouterPath, "utf-8");
+    await this.processRouterContent(
+      routerContent,
+      framework0x1Dir,
+      nodeModulesDir
+    );
+
     // Generate browser-compatible 0x1 entry point (same as DevOrchestrator)
-    await this.generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir, framework0x1Dir);
+    await this.generateBrowserEntryUsingDevOrchestratorPattern(
+      nodeModulesDir,
+      framework0x1Dir
+    );
   }
-  
-  private async processRouterContent(routerContent: string, framework0x1Dir: string, nodeModulesDir: string): Promise<void> {
+
+  private async processRouterContent(
+    routerContent: string,
+    framework0x1Dir: string,
+    nodeModulesDir: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.info(`📄 Processing router content: ${routerContent.length} bytes`);
+      logger.info(
+        `📄 Processing router content: ${routerContent.length} bytes`
+      );
     }
       
       // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
       if (!this.options.silent) {
-        logger.info('🔧 Applying ImportTransformer to router for comprehensive fixes...');
+      logger.info(
+        "🔧 Applying ImportTransformer to router for comprehensive fixes..."
+      );
       }
       
       try {
-        const transformedContent = ImportTransformer.transformImports(routerContent, {
-        sourceFilePath: 'router.js',
+      const transformedContent = ImportTransformer.transformImports(
+        routerContent,
+        {
+          sourceFilePath: "router.js",
           projectPath: this.options.projectPath,
-          mode: 'production',
-          debug: !this.options.silent
-        });
+          mode: "production",
+          debug: !this.options.silent,
+        }
+      );
         
         routerContent = transformedContent;
         if (!this.options.silent) {
-          logger.info('✅ ImportTransformer applied successfully to router');
+        logger.info("✅ ImportTransformer applied successfully to router");
         }
       } catch (error) {
         if (!this.options.silent) {
           logger.error(`❌ ImportTransformer failed for router: ${error}`);
         }
     }
-        
+
     // BEST PRACTICE: Parse content directly to find actual classes/functions (ZERO ASSUMPTIONS)
     if (!this.options.silent) {
-      logger.info('🎯 Parsing router content for actual classes and functions (ZERO HARDCODING)...');
+      logger.info(
+        "🎯 Parsing router content for actual classes and functions (ZERO HARDCODING)..."
+      );
     }
-    
+
     // Find ALL classes in the router content
-    const classMatches = routerContent.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/g);
-    const allClasses = classMatches ? classMatches.map(match => {
-      const nameMatch = match.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-      return nameMatch ? nameMatch[1] : null;
-    }).filter(Boolean) : [];
-    
+    const classMatches = routerContent.match(
+      /class\s+([a-zA-Z_][a-zA-Z0-9_]*)/g
+    );
+    const allClasses = classMatches
+      ? classMatches
+          .map((match) => {
+            const nameMatch = match.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+            return nameMatch ? nameMatch[1] : null;
+          })
+          .filter(Boolean)
+      : [];
+
     // Find ALL functions that handle navigation/links
-    const functionMatches = routerContent.match(/(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)[^=]*(?:=\s*(?:\([^)]*\)\s*=>|function)|\s*\([^)]*\))[^{]*{[^}]*(?:href|navigate|click|pushState)[^}]*}/g);
-    const allFunctions = functionMatches ? functionMatches.map(match => {
-      const nameMatch = match.match(/(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)/);
-      return nameMatch ? nameMatch[1] : null;
-    }).filter(Boolean) : [];
-    
+    const functionMatches = routerContent.match(
+      /(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)[^=]*(?:=\s*(?:\([^)]*\)\s*=>|function)|\s*\([^)]*\))[^{]*{[^}]*(?:href|navigate|click|pushState)[^}]*}/g
+    );
+    const allFunctions = functionMatches
+      ? functionMatches
+          .map((match) => {
+            const nameMatch = match.match(
+              /(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)/
+            );
+            return nameMatch ? nameMatch[1] : null;
+          })
+          .filter(Boolean)
+      : [];
+
     if (!this.options.silent) {
-      logger.info(`🔍 Found classes: ${allClasses.join(', ') || 'none'}`);
-      logger.info(`🔍 Found navigation functions: ${allFunctions.join(', ') || 'none'}`);
+      logger.info(`🔍 Found classes: ${allClasses.join(", ") || "none"}`);
+      logger.info(
+        `🔍 Found navigation functions: ${allFunctions.join(", ") || "none"}`
+      );
     }
-    
+
     // Determine the Router class (prioritize Router-like names)
-    const routerClassName = allClasses.find(name => 
-      name?.toLowerCase().includes('router') || 
-      name === 'Router' || 
-      name === 'AppRouter'
-    ) || allClasses[0]; // Fallback to first class
-    
-    // Determine the Link function (prioritize Link-like names)  
-    const linkFunctionName = allFunctions.find(name =>
-      name?.toLowerCase().includes('link') ||
-      name === 'Link' ||
-      name === 'AppLink'
-    ) || allFunctions.find(name => name !== routerClassName); // Exclude router class
-    
+    const routerClassName =
+      allClasses.find(
+        (name) =>
+          name?.toLowerCase().includes("router") ||
+          name === "Router" ||
+          name === "AppRouter"
+      ) || allClasses[0]; // Fallback to first class
+
+    // Determine the Link function (prioritize Link-like names)
+    const linkFunctionName =
+      allFunctions.find(
+        (name) =>
+          name?.toLowerCase().includes("link") ||
+          name === "Link" ||
+          name === "AppLink"
+      ) || allFunctions.find((name) => name !== routerClassName); // Exclude router class
+
     if (!this.options.silent) {
-      logger.info(`🎯 Selected Router class: ${routerClassName || 'none detected'}`);
-      logger.info(`🎯 Selected Link function: ${linkFunctionName || 'none detected'}`);
+      logger.info(
+        `🎯 Selected Router class: ${routerClassName || "none detected"}`
+      );
+      logger.info(
+        `🎯 Selected Link function: ${linkFunctionName || "none detected"}`
+      );
     }
-    
+
     // Start with the transformed content
     let finalRouterContent = routerContent;
-    
+
     // FIXED: Check for existing exports more robustly
-    const hasExistingRouterExport = /export\s*\{[^}]*\b(Router|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Router)\b[^}]*\}/.test(finalRouterContent);
-    const hasExistingLinkExport = /export\s*\{[^}]*\b(Link|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Link)\b[^}]*\}/.test(finalRouterContent);
-    
+    const hasExistingRouterExport =
+      /export\s*\{[^}]*\b(Router|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Router)\b[^}]*\}/.test(
+        finalRouterContent
+      );
+    const hasExistingLinkExport =
+      /export\s*\{[^}]*\b(Link|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Link)\b[^}]*\}/.test(
+        finalRouterContent
+      );
+
     // Only add exports if they don't already exist
     if (routerClassName && !hasExistingRouterExport) {
       if (!this.options.silent) {
         logger.info(`➕ Adding Router export: ${routerClassName}`);
       }
-      
+
       const exportMatch = finalRouterContent.match(/export\s*\{([^}]*)\}/);
       if (exportMatch) {
         const currentExports = exportMatch[1].trim();
-        const newExports = currentExports ? `${currentExports}, ${routerClassName} as Router` : `${routerClassName} as Router`;
-        finalRouterContent = finalRouterContent.replace(/export\s*\{[^}]*\}/, `export { ${newExports} }`);
+        const newExports = currentExports
+          ? `${currentExports}, ${routerClassName} as Router`
+          : `${routerClassName} as Router`;
+        finalRouterContent = finalRouterContent.replace(
+          /export\s*\{[^}]*\}/,
+          `export { ${newExports} }`
+        );
       } else {
         finalRouterContent += `\nexport { ${routerClassName} as Router };\n`;
       }
     }
-    
+
     if (linkFunctionName && !hasExistingLinkExport) {
       if (!this.options.silent) {
         logger.info(`➕ Adding Link export: ${linkFunctionName}`);
       }
-      
+
       const exportMatch = finalRouterContent.match(/export\s*\{([^}]*)\}/);
       if (exportMatch) {
         const currentExports = exportMatch[1].trim();
-        const newExports = currentExports ? `${currentExports}, ${linkFunctionName} as Link` : `${linkFunctionName} as Link`;
-        finalRouterContent = finalRouterContent.replace(/export\s*\{[^}]*\}/, `export { ${newExports} }`);
+        const newExports = currentExports
+          ? `${currentExports}, ${linkFunctionName} as Link`
+          : `${linkFunctionName} as Link`;
+        finalRouterContent = finalRouterContent.replace(
+          /export\s*\{[^}]*\}/,
+          `export { ${newExports} }`
+        );
       } else {
         finalRouterContent += `\nexport { ${linkFunctionName} as Link };\n`;
       }
     }
-    
+
     // Add global exposure with ACTUAL detected names (only if we found components)
     if (routerClassName || linkFunctionName) {
       finalRouterContent += `
 
 // SINGLE SOURCE OF TRUTH: Expose ACTUAL detected router components
 if (typeof window !== 'undefined') {
-${routerClassName ? `  window.__0x1_Router = ${routerClassName};` : '  // No Router class detected'}
-${linkFunctionName ? `  window.__0x1_RouterLink = ${linkFunctionName};` : `  // No Link function detected - creating functional one
+${routerClassName ? `  window.__0x1_Router = ${routerClassName};` : "  // No Router class detected"}
+${
+  linkFunctionName
+    ? `  window.__0x1_RouterLink = ${linkFunctionName};`
+    : `  // No Link function detected - creating functional one
   window.__0x1_RouterLink = (props) => ({
     type: 'a',
     props: {
@@ -759,15 +952,18 @@ ${linkFunctionName ? `  window.__0x1_RouterLink = ${linkFunctionName};` : `  // 
       },
       children: props.children
     }
-  });`}
+  });`
+}
 }
 `;
     } else {
       // ONLY create minimal router if NO components were detected
       if (!this.options.silent) {
-        logger.warn(`⚠️ No router classes or functions detected - creating minimal working router`);
+        logger.warn(
+          `⚠️ No router classes or functions detected - creating minimal working router`
+        );
       }
-      
+
       finalRouterContent += `
 
 // MINIMAL WORKING ROUTER: Created because no router components detected
@@ -894,26 +1090,38 @@ if (typeof window !== 'undefined') {
 }
 `;
     }
-    
+
     // Write the final router content
-    await Bun.write(join(framework0x1Dir, 'router.js'), finalRouterContent);
-    await Bun.write(join(nodeModulesDir, 'router.js'), finalRouterContent);
-    
+    await Bun.write(join(framework0x1Dir, "router.js"), finalRouterContent);
+    await Bun.write(join(nodeModulesDir, "router.js"), finalRouterContent);
+
     if (!this.options.silent) {
-      logger.success(`✅ Router processed using DIRECT CONTENT PARSING (NO DUPLICATES)`);
-      logger.success(`   Router class: ${routerClassName || 'MinimalRouter (created)'}`);
-      logger.success(`   Link function: ${linkFunctionName || 'MinimalLink (created)'}`);
+      logger.success(
+        `✅ Router processed using DIRECT CONTENT PARSING (NO DUPLICATES)`
+      );
+      logger.success(
+        `   Router class: ${routerClassName || "MinimalRouter (created)"}`
+      );
+      logger.success(
+        `   Link function: ${linkFunctionName || "MinimalLink (created)"}`
+      );
     }
   }
-  
+
   // LEGACY: Only used if module import fails completely
-  private async processRouterContentLegacy(routerContent: string, framework0x1Dir: string, nodeModulesDir: string): Promise<void> {
+  private async processRouterContentLegacy(
+    routerContent: string,
+    framework0x1Dir: string,
+    nodeModulesDir: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.warn('⚠️ Using legacy router processing (module import failed)');
+      logger.warn("⚠️ Using legacy router processing (module import failed)");
     }
-    
+
     // MINIMAL legacy processing - just ensure the content has basic global exposure
-    const legacyRouterContent = routerContent + `
+    const legacyRouterContent =
+      routerContent +
+      `
 
 // LEGACY: Basic router exposure (import method failed)
 if (typeof window !== 'undefined') {
@@ -946,35 +1154,38 @@ if (typeof window !== 'undefined') {
   });
 }
 `;
-    
-    await Bun.write(join(framework0x1Dir, 'router.js'), legacyRouterContent);
-    await Bun.write(join(nodeModulesDir, 'router.js'), legacyRouterContent);
-    
+
+    await Bun.write(join(framework0x1Dir, "router.js"), legacyRouterContent);
+    await Bun.write(join(nodeModulesDir, "router.js"), legacyRouterContent);
+
     if (!this.options.silent) {
       logger.success(`✅ Legacy router processing completed`);
     }
   }
 
   // CRITICAL: Generate JSX runtime using DevOrchestrator's exact logic
-  private async generateJsxRuntimeUsingDevOrchestratorLogic(frameworkPath: string, framework0x1Dir: string): Promise<void> {
+  private async generateJsxRuntimeUsingDevOrchestratorLogic(
+    frameworkPath: string,
+    framework0x1Dir: string
+  ): Promise<void> {
     try {
-      const runtimePath = join(frameworkPath, 'src', 'jsx-dev-runtime.ts');
+      const runtimePath = join(frameworkPath, "src", "jsx-dev-runtime.ts");
       
       if (existsSync(runtimePath)) {
         const transpiled = await Bun.build({
           entrypoints: [runtimePath],
-          target: 'browser',
-          format: 'esm',
+          target: "browser",
+          format: "esm",
           minify: false,
-          sourcemap: 'none',
+          sourcemap: "none",
           define: {
-            'process.env.NODE_ENV': JSON.stringify('development')
+            "process.env.NODE_ENV": JSON.stringify("development"),
           },
-          external: []
+          external: [],
         });
         
         if (transpiled.success && transpiled.outputs.length > 0) {
-          let content = '';
+          let content = "";
           for (const output of transpiled.outputs) {
             content += await output.text();
           }
@@ -991,20 +1202,36 @@ if (typeof window !== 'undefined') {
           
           // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
           content = content
-            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
-              'import { $1 } from "/components/$2.js"')
-            .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
-            .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
-            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
-              'import { $1 } from "/0x1/jsx-runtime.js"')
-            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
-              'import { $1 } from "/0x1/jsx-runtime.js"')
-            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
-              'import { $1 } from "/0x1/router.js"')
-            .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
-              'import { $1 } from "/node_modules/0x1/index.js"');
-          
-          await Bun.write(join(framework0x1Dir, 'jsx-runtime.js'), content);
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g,
+              'import { $1 } from "/components/$2.js"'
+            )
+            .replace(
+              /import\s*["']\.\/globals\.css["']/g,
+              "// CSS import externalized"
+            )
+            .replace(
+              /import\s*["']\.\.\/globals\.css["']/g,
+              "// CSS import externalized"
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g,
+              'import { $1 } from "/0x1/jsx-runtime.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g,
+              'import { $1 } from "/0x1/jsx-runtime.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g,
+              'import { $1 } from "/0x1/router.js"'
+            )
+            .replace(
+              /import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g,
+              'import { $1 } from "/node_modules/0x1/index.js"'
+            );
+
+          await Bun.write(join(framework0x1Dir, "jsx-runtime.js"), content);
         }
       }
     } catch (error) {
@@ -1023,9 +1250,10 @@ if (typeof window !== 'undefined') {
         logger.info(`🔍 Looking for hooks dist: ${hooksDistPath}`);
       }
       
-      let content = '';
+      // SINGLE SOURCE OF TRUTH: Use exact same transpilation as DevOrchestrator
+      let hooksContent = '';
       
-      // DEVELOPMENT SCENARIO: Transpile from source
+      // DEVELOPMENT SCENARIO: Transpile from source (preferred)
       if (existsSync(hooksSourcePath)) {
         if (!this.options.silent) {
           logger.info(`✅ Found hooks source, transpiling from: ${hooksSourcePath}`);
@@ -1044,345 +1272,212 @@ if (typeof window !== 'undefined') {
         });
         
         if (!transpiled.success || transpiled.outputs.length === 0) {
-          throw new Error(`CRITICAL: Failed to transpile 0x1 hooks from source. Transpilation errors: ${transpiled.logs?.map(l => l.message).join(', ')}`);
+          throw new Error(`Failed to transpile hooks from source: ${transpiled.logs?.map(l => l.message).join(', ')}`);
         }
         
-          for (const output of transpiled.outputs) {
-            content += await output.text();
-          }
-          
-      // PRODUCTION SCENARIO: Copy from dist (with redirect resolution)
+        for (const output of transpiled.outputs) {
+          hooksContent += await output.text();
+        }
+        
+      // PRODUCTION SCENARIO: Use dist file
       } else if (existsSync(hooksDistPath)) {
         if (!this.options.silent) {
-          logger.info(`✅ Found hooks dist, reading from: ${hooksDistPath}`);
+          logger.info(`✅ Found hooks dist, using: ${hooksDistPath}`);
         }
         
-        content = readFileSync(hooksDistPath, 'utf-8');
+        hooksContent = readFileSync(hooksDistPath, 'utf-8');
         
-        // ROBUST: Handle npm package redirects (e.g., export * from './hooks-abc123.js')
-        if (content.length < 200 && content.includes('export') && content.includes('from')) {
-          const redirectMatch = content.match(/export\s*\*\s*from\s*['"]\.\/([^'"]+)['"];?/);
+        // Handle npm package redirects
+        if (hooksContent.length < 200 && hooksContent.includes('export') && hooksContent.includes('from')) {
+          const redirectMatch = hooksContent.match(/export\s*\*\s*from\s*['"]\.\/([^'"]+)['"];?/);
           if (redirectMatch) {
             const actualFileName = redirectMatch[1];
             const actualFilePath = join(frameworkPath, 'dist', actualFileName);
             
-            if (!this.options.silent) {
-              logger.info(`🔄 Resolving redirect to: ${actualFilePath}`);
-            }
-            
             if (existsSync(actualFilePath)) {
-              content = readFileSync(actualFilePath, 'utf-8');
+              hooksContent = readFileSync(actualFilePath, 'utf-8');
               if (!this.options.silent) {
                 logger.success(`✅ Resolved hooks from: ${actualFileName}`);
               }
-            } else {
-              throw new Error(`CRITICAL: Hooks redirect target not found: ${actualFilePath}`);
             }
           }
         }
-        
-        // ROBUST: Validate the file actually contains the hooks we need
-        const requiredHooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef'];
-        const missingHooks = requiredHooks.filter(hook => !content.includes(hook));
-        
-        if (missingHooks.length > 0) {
-          if (!this.options.silent) {
-            logger.warn(`❌ Hooks file missing required exports: ${missingHooks.join(', ')}`);
-            logger.warn(`📄 File content preview (first 500 chars): ${content.substring(0, 500)}`);
-          }
-          
-          // Try to find other hooks files in dist directory
-          const distDir = join(frameworkPath, 'dist');
-          const distFiles = existsSync(distDir) ? readdirSync(distDir).filter(file => 
-            file.includes('hook') && file.endsWith('.js')
-          ) : [];
-          
-          if (!this.options.silent) {
-            logger.info(`🔍 Available hooks files in dist: ${distFiles.join(', ')}`);
-          }
-          
-          // Try each hooks file until we find one with the required exports
-          for (const file of distFiles) {
-            const filePath = join(distDir, file);
-            const fileContent = readFileSync(filePath, 'utf-8');
-            const fileMissingHooks = requiredHooks.filter(hook => !fileContent.includes(hook));
-            
-            if (fileMissingHooks.length === 0) {
-              if (!this.options.silent) {
-                logger.success(`✅ Found complete hooks in: ${file}`);
-              }
-              content = fileContent;
-              break;
-            } else if (!this.options.silent) {
-              logger.debug(`❌ ${file} missing: ${fileMissingHooks.join(', ')}`);
-            }
-          }
-          
-          // Final validation
-          const finalMissingHooks = requiredHooks.filter(hook => !content.includes(hook));
-          if (finalMissingHooks.length > 0) {
-            throw new Error(`CRITICAL: No hooks file contains required exports: ${finalMissingHooks.join(', ')}. Available files: ${distFiles.join(', ')}`);
-          }
-        }
-        
       } else {
-        throw new Error(`CRITICAL: 0x1 framework hooks not found at ${hooksSourcePath} or ${hooksDistPath}. Framework installation is broken.`);
+        throw new Error(`No hooks found at ${hooksSourcePath} or ${hooksDistPath}`);
       }
       
-      if (!content || content.length < 100) {
-        throw new Error(`CRITICAL: Hooks generation produced invalid output (${content.length} bytes). Content preview: ${content.substring(0, 100)}`);
+      if (!hooksContent || hooksContent.length < 100) {
+        throw new Error(`Invalid hooks content: ${hooksContent.length} bytes`);
       }
       
-      // CRITICAL FIX: Parse the exports to determine the actual function names
-      // This handles the case where functions are exported with aliases like "export{P as useState}"  
-      const exportMatches = content.match(/export\s*\{([^}]+)\}/);
-      const functionMappings: { [key: string]: string } = {};
-      
-      if (exportMatches) {
-        const exports = exportMatches[1];
-        // Parse exports like "P as useState, A as useEffect"
-        const exportPairs = exports.split(',');
-        for (const pair of exportPairs) {
-          const trimmed = pair.trim();
-          if (trimmed.includes(' as ')) {
-            const [internalName, exportName] = trimmed.split(' as ').map(s => s.trim());
-            functionMappings[exportName] = internalName;
-          } else {
-            // Direct export without alias
-            functionMappings[trimmed] = trimmed;
-          }
-        }
-      }
-      
-      // CRITICAL: Use the actual function names from the parsed exports
+      // SINGLE SOURCE OF TRUTH: Add exact same browser compatibility as DevOrchestrator
       const browserCompatCode = `
+
 if (typeof window !== 'undefined') {
   // Initialize React-compatible global context
   window.React = window.React || {};
   
-  // CRITICAL FIX: Create bypass hook implementations (same approach as DevOrchestrator's transpilation)
-  // These hooks work WITHOUT component context checking for production builds
+  // CREATE BROWSER-COMPATIBLE HOOK IMPLEMENTATIONS (not just expose original hooks)
   
-  // Hook state storage (simple Map-based approach)
-  const hookStates = new Map();
-  let currentHookIndex = 0;
-  let currentComponent = null;
+  // Simple state management for production builds
+  const stateStorage = new Map();
+  let componentCounter = 0;
   
-  // Component context functions for JSX runtime compatibility
-  function enterComponentContext(componentId, updateCallback) {
-    currentComponent = componentId;
-    currentHookIndex = 0;
+  function browserUseState(initialValue) {
+    // No context checking - just work!
+    const computedInitialValue = typeof initialValue === 'function' ? initialValue() : initialValue;
     
-    if (!hookStates.has(componentId)) {
-      hookStates.set(componentId, {
-        states: [],
-        effects: [],
-        updateCallback: updateCallback
-      });
-    }
-  }
-  
-  function exitComponentContext() {
-    currentComponent = null;
-    currentHookIndex = 0;
-  }
-  
-  // BYPASS HOOK IMPLEMENTATIONS (no strict context checking)
-  function bypassUseState(initialValue) {
-    // Use a fallback component ID if no context (this is the key difference!)
-    const componentId = currentComponent || 'fallback-component';
+    // Simple fallback state management
+    const stateId = 'state_' + (++componentCounter);
     
-    if (!hookStates.has(componentId)) {
-      hookStates.set(componentId, { states: [], effects: [], updateCallback: null });
+    if (!stateStorage.has(stateId)) {
+      stateStorage.set(stateId, computedInitialValue);
     }
     
-    const componentData = hookStates.get(componentId);
-    const hookIndex = currentHookIndex++;
-    
-    // Initialize state if needed
-    if (hookIndex >= componentData.states.length) {
-      const computedInitialValue = typeof initialValue === 'function' ? initialValue() : initialValue;
-      componentData.states[hookIndex] = computedInitialValue;
-    }
-    
-    const currentValue = componentData.states[hookIndex];
+    const currentValue = stateStorage.get(stateId);
     
     const setValue = (newValue) => {
-      const prevValue = componentData.states[hookIndex];
-      const nextValue = typeof newValue === 'function' ? newValue(prevValue) : newValue;
+      const nextValue = typeof newValue === 'function' ? newValue(currentValue) : newValue;
+      stateStorage.set(stateId, nextValue);
       
-      if (prevValue !== nextValue) {
-        componentData.states[hookIndex] = nextValue;
-        
-        // Trigger update if callback available
-        if (componentData.updateCallback) {
-          componentData.updateCallback();
-        }
+      // Trigger re-render if possible
+      if (window.__0x1_triggerUpdate) {
+        window.__0x1_triggerUpdate();
       }
     };
     
     return [currentValue, setValue];
   }
   
-  function bypassUseEffect(effect, deps) {
-    // Use a fallback component ID if no context
-    const componentId = currentComponent || 'fallback-component';
-    
-    if (!hookStates.has(componentId)) {
-      hookStates.set(componentId, { states: [], effects: [], updateCallback: null });
-    }
-    
-    const componentData = hookStates.get(componentId);
-    const hookIndex = currentHookIndex++;
-    
-    // Initialize effect if needed
-    if (hookIndex >= componentData.effects.length) {
-      componentData.effects[hookIndex] = { deps: undefined, cleanup: null };
-    }
-    
-    const effectData = componentData.effects[hookIndex];
-    
-    // Check if dependencies changed
-    const depsChanged = !deps || !effectData.deps || deps.length !== effectData.deps.length || 
-      deps.some((dep, i) => dep !== effectData.deps[i]);
-    
-    if (depsChanged) {
-      effectData.deps = deps ? [...deps] : undefined;
-      
-      // Clean up previous effect
-      if (effectData.cleanup && typeof effectData.cleanup === 'function') {
-        effectData.cleanup();
-      }
-      
-      // Run new effect
-      setTimeout(() => {
-        try {
-          effectData.cleanup = effect();
-        } catch (error) {
-          console.error('[0x1 Hooks] Effect error:', error);
+  function browserUseEffect(effect, deps) {
+    // Simple effect execution - no context checking
+    setTimeout(() => {
+      try {
+        const cleanup = effect();
+        if (typeof cleanup === 'function') {
+          // Store cleanup for later if needed
+          window.__0x1_cleanupFunctions = window.__0x1_cleanupFunctions || [];
+          window.__0x1_cleanupFunctions.push(cleanup);
         }
-      }, 0);
+      } catch (error) {
+        console.warn('[0x1 Hooks] useEffect error:', error);
+      }
+    }, 0);
+  }
+  
+  function browserUseLayoutEffect(effect, deps) {
+    // Same as useEffect for simplicity
+    return browserUseEffect(effect, deps);
+  }
+  
+  function browserUseMemo(factory, deps) {
+    // Simple memoization
+    try {
+      return factory();
+    } catch (error) {
+      console.warn('[0x1 Hooks] useMemo error:', error);
+      return undefined;
     }
   }
   
-  function bypassUseRef(initialValue) {
-    // Use a fallback component ID if no context
-    const componentId = currentComponent || 'fallback-component';
-    
-    if (!hookStates.has(componentId)) {
-      hookStates.set(componentId, { states: [], effects: [], refs: [], updateCallback: null });
-    }
-    
-    const componentData = hookStates.get(componentId);
-    if (!componentData.refs) componentData.refs = [];
-    
-    const hookIndex = currentHookIndex++;
-    
-    // Initialize ref if needed
-    if (hookIndex >= componentData.refs.length) {
-      componentData.refs[hookIndex] = { current: initialValue };
-    }
-    
-    return componentData.refs[hookIndex];
+  function browserUseCallback(callback, deps) {
+    // Just return the callback
+    return callback;
   }
   
-  function bypassUseMemo(factory, deps) {
-    // Use a fallback component ID if no context
-    const componentId = currentComponent || 'fallback-component';
-    
-    if (!hookStates.has(componentId)) {
-      hookStates.set(componentId, { states: [], effects: [], memos: [], updateCallback: null });
-    }
-    
-    const componentData = hookStates.get(componentId);
-    if (!componentData.memos) componentData.memos = [];
-    
-    const hookIndex = currentHookIndex++;
-    
-    // Initialize memo if needed
-    if (hookIndex >= componentData.memos.length) {
-      componentData.memos[hookIndex] = { value: factory(), deps: [...deps] };
-    }
-    
-    const memoData = componentData.memos[hookIndex];
-    
-    // Check if dependencies changed
-    const depsChanged = !deps || !memoData.deps || deps.length !== memoData.deps.length || 
-      deps.some((dep, i) => dep !== memoData.deps[i]);
-    
-    if (depsChanged) {
-      memoData.value = factory();
-      memoData.deps = [...deps];
-    }
-    
-    return memoData.value;
+  function browserUseRef(initialValue) {
+    // Simple ref implementation
+    return { current: initialValue };
   }
   
-  function bypassUseCallback(callback, deps) {
-    return bypassUseMemo(() => callback, deps);
+  // Simple fallback implementations for custom hooks
+  function browserUseClickOutside() {
+    return { current: null };
   }
   
-  // Create hook functions object with bypass implementations
+  function browserUseFetch() {
+    return { data: null, loading: false, error: null };
+  }
+  
+  function browserUseForm() {
+    return {};
+  }
+  
+  function browserUseLocalStorage(initialValue) {
+    // Use browserUseState as fallback
+    return browserUseState(initialValue);
+  }
+  
+  // BROWSER-COMPATIBLE HOOK FUNCTIONS (no context checking!)
   const hookFunctions = {
-    useState: bypassUseState,
-    useEffect: bypassUseEffect,
-    useLayoutEffect: bypassUseEffect, // Same as useEffect for simplicity
-    useMemo: bypassUseMemo,
-    useCallback: bypassUseCallback,
-    useRef: bypassUseRef,
-    useClickOutside: () => ({ current: null }), // Simple fallback
-    useFetch: () => ({ data: null, loading: false, error: null }), // Simple fallback
-    useForm: () => ({}), // Simple fallback
-    useLocalStorage: bypassUseState // Use same as useState
+    useState: browserUseState,
+    useEffect: browserUseEffect,
+    useLayoutEffect: browserUseLayoutEffect,
+    useMemo: browserUseMemo,
+    useCallback: browserUseCallback,
+    useRef: browserUseRef,
+    useClickOutside: browserUseClickOutside,
+    useFetch: browserUseFetch,
+    useForm: browserUseForm,
+    useLocalStorage: browserUseLocalStorage
   };
   
-  // Make hooks available globally (same as DevOrchestrator)
+  // Make browser-compatible hooks available globally
   Object.assign(window, hookFunctions);
   
   // Also make available in React namespace for compatibility
   Object.assign(window.React, hookFunctions);
   
   // Set the context functions that JSX runtime looks for
-  window.__0x1_enterComponentContext = enterComponentContext;
-  window.__0x1_exitComponentContext = exitComponentContext;
-  globalThis.__0x1_enterComponentContext = enterComponentContext;
-  globalThis.__0x1_exitComponentContext = exitComponentContext;
+  window.__0x1_enterComponentContext = function(componentId, updateCallback) {
+    // Simple context entry for JSX runtime compatibility
+  };
+  
+  window.__0x1_exitComponentContext = function() {
+    // Simple context exit for JSX runtime compatibility
+  };
+  
+  globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
+  globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
   
   // Global hooks registry (same as DevOrchestrator)
   window.__0x1_hooks = {
     ...hookFunctions,
     isInitialized: true,
     contextReady: true,
-    enterComponentContext,
-    exitComponentContext
+    enterComponentContext: window.__0x1_enterComponentContext,
+    exitComponentContext: window.__0x1_exitComponentContext
   };
   
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
   console.log('[0x1 Hooks] Component context functions available for JSX runtime');
+  console.log('[0x1 Hooks] Browser-compatible hooks active (no context checking)');
   
   // Component context ready flag
   window.__0x1_component_context_ready = true;
 }
 `;
       
-      // CRITICAL: Append the corrected browser compatibility code
-      content += browserCompatCode;
-          
-          await Bun.write(join(framework0x1Dir, 'hooks.js'), content);
+      // CLEAN APPROACH: Just append browser compatibility (no patching)
+      const finalContent = hooksContent + browserCompatCode;
+      
+      await Bun.write(join(framework0x1Dir, 'hooks.js'), finalContent);
       
       if (!this.options.silent) {
-        logger.success(`✅ Generated hooks.js: ${(content.length / 1024).toFixed(1)}KB (SINGLE SOURCE OF TRUTH)`);
-        }
+        logger.success(`✅ Generated clean hooks.js: ${(finalContent.length / 1024).toFixed(1)}KB`);
+      }
       
     } catch (error) {
-      // CRITICAL: No fallbacks - this is a build failure that must be fixed
       const errorMsg = `CRITICAL BUILD FAILURE: Hooks generation failed - ${error}`;
       logger.error(errorMsg);
       throw new Error(errorMsg);
     }
   }
 
-  private async generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir: string, framework0x1Dir: string): Promise<void> {
+  private async generateBrowserEntryUsingDevOrchestratorPattern(
+    nodeModulesDir: string,
+    framework0x1Dir: string
+  ): Promise<void> {
     // Use EXACT same pattern as DevOrchestrator's framework module
     const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
 console.log('[0x1] Framework module loaded - dynamic runtime version');
@@ -1495,20 +1590,24 @@ export default {
 };
 `;
 
-    await Bun.write(join(nodeModulesDir, 'index.js'), cleanFrameworkModule);
+    await Bun.write(join(nodeModulesDir, "index.js"), cleanFrameworkModule);
   }
 
-  private async generateAppBundleUsingWorkingPattern(outputPath: string): Promise<void> {
+  private async generateAppBundleUsingWorkingPattern(
+    outputPath: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.info('📱 Generating app bundle using DevOrchestrator working pattern...');
+      logger.info(
+        "📱 Generating app bundle using DevOrchestrator working pattern..."
+      );
     }
 
     // Use EXACT same pattern as DevOrchestrator (with layout composition)
     const routesJson = JSON.stringify(
-      this.state.routes.map(route => ({
+      this.state.routes.map((route) => ({
       path: route.path,
       componentPath: route.componentPath,
-      layouts: route.layouts || []
+        layouts: route.layouts || [],
       })), 
       null, 
       2
@@ -1933,89 +2032,124 @@ if (document.readyState === 'loading') {
 }
 `;
 
-    await Bun.write(join(outputPath, 'app.js'), appScript);
+    await Bun.write(join(outputPath, "app.js"), appScript);
   }
 
-  private async processCssUsingWorkingPattern(outputPath: string): Promise<void> {
+  private async processCssUsingWorkingPattern(
+    outputPath: string
+  ): Promise<void> {
     try {
       // Use ConfigurationManager to get CSS configuration
       const configManager = getConfigurationManager(this.options.projectPath);
       const cssConfig = await configManager.getCSSConfig();
-      
+
     if (!this.options.silent) {
-        logger.info(`🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === '0x1-enhanced' ? 'Lightning-fast mode' : 'Standard mode'})`);
+        logger.info(
+          `🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === "0x1-enhanced" ? "Lightning-fast mode" : "Standard mode"})`
+        );
       }
 
       // Try 0x1 Enhanced TailwindHandler if configured
-      if (cssConfig.processor === '0x1-enhanced') {
+      if (cssConfig.processor === "0x1-enhanced") {
         try {
           if (!this.options.silent) {
-            logger.info('⚡ Using 0x1 Enhanced TailwindHandler for sub-50ms builds...');
+            logger.info(
+              "⚡ Using 0x1 Enhanced TailwindHandler for sub-50ms builds..."
+            );
           }
-          
+
           // FIXED: Use framework build path for TailwindHandler with completely dynamic imports
           let processTailwindFast;
           try {
             // Try built framework path first (construct path to avoid TS resolution)
-            const distPath = ['..', '..', 'dist', 'core', 'tailwind-handler.js'].join('/');
+            const distPath = [
+              "..",
+              "..",
+              "dist",
+              "core",
+              "tailwind-handler.js",
+            ].join("/");
             const builtHandler = await import(distPath);
             processTailwindFast = builtHandler.processTailwindFast;
           } catch {
             try {
               // Fallback to experimental path during development
-              const expPath = ['..', '..', '..', '0x1-experimental', 'tailwind-handler', 'TailwindHandler.js'].join('/');
+              const expPath = [
+                "..",
+                "..",
+                "..",
+                "0x1-experimental",
+                "tailwind-handler",
+                "TailwindHandler.js",
+              ].join("/");
               const expHandler = await import(expPath);
               processTailwindFast = expHandler.processTailwindFast;
             } catch {
-              throw new Error('TailwindHandler not available');
+              throw new Error("TailwindHandler not available");
             }
           }
-          
+
           const result = await processTailwindFast(this.options.projectPath, {
-            outputPath: join(outputPath, 'styles.css'),
+            outputPath: join(outputPath, "styles.css"),
             config: {
               content: cssConfig.content || [
-                'app/**/*.{js,ts,jsx,tsx}',
-                'components/**/*.{js,ts,jsx,tsx}',
-                'pages/**/*.{js,ts,jsx,tsx}',
-                '**/*.{html,js,ts,jsx,tsx}'
+                "app/**/*.{js,ts,jsx,tsx}",
+                "components/**/*.{js,ts,jsx,tsx}",
+                "pages/**/*.{js,ts,jsx,tsx}",
+                "**/*.{html,js,ts,jsx,tsx}",
               ],
               darkMode: cssConfig.darkMode,
-              theme: cssConfig.theme
-            }
+              theme: cssConfig.theme,
+            },
           });
-          
+
           if (result.success && result.css.length > 1000) {
-            const cacheStatus = result.fromCache ? 'Cache hit!' : 'Fresh build';
-            const speedImprovement = result.processingTime < 50 ? '🚀 FAST!' : '⚡ FASTER!';
-            
+            const cacheStatus = result.fromCache ? "Cache hit!" : "Fresh build";
+            const speedImprovement =
+              result.processingTime < 50 ? "🚀 FAST!" : "⚡ FASTER!";
+
             if (!this.options.silent) {
-              logger.success(`✅ 0x1 Enhanced: ${cacheStatus} ${result.processingTime.toFixed(1)}ms ${speedImprovement}`);
-              logger.success(`✅ CSS generated: ${(result.css.length / 1024).toFixed(1)}KB (${result.fromCache ? 'cached' : 'fresh'})`);
+              logger.success(
+                `✅ 0x1 Enhanced: ${cacheStatus} ${result.processingTime.toFixed(1)}ms ${speedImprovement}`
+              );
+              logger.success(
+                `✅ CSS generated: ${(result.css.length / 1024).toFixed(1)}KB (${result.fromCache ? "cached" : "fresh"})`
+              );
             }
-            
+
             // Early return - skip slow processing completely!
             return;
           } else {
             if (!this.options.silent) {
-              logger.warn('⚠️ 0x1 Enhanced handler produced minimal CSS, falling back...');
+              logger.warn(
+                "⚠️ 0x1 Enhanced handler produced minimal CSS, falling back..."
+              );
             }
           }
         } catch (enhancedError) {
           if (!this.options.silent) {
-            logger.debug(`[TailwindHandler] Enhanced handler failed: ${enhancedError}`);
-            logger.info('💠 Falling back to Tailwind v4...');
+            logger.debug(
+              `[TailwindHandler] Enhanced handler failed: ${enhancedError}`
+            );
+            logger.info("💠 Falling back to Tailwind v4...");
           }
         }
       }
-      
+
       // Use Tailwind v4 (either as primary choice or fallback)
-      if (cssConfig.processor === 'tailwind-v4' || cssConfig.processor === '0x1-enhanced') {
+      if (
+        cssConfig.processor === "tailwind-v4" ||
+        cssConfig.processor === "0x1-enhanced"
+      ) {
       // CRITICAL FIX: Use EXACT same Tailwind v4 processing as DevOrchestrator (SINGLE SOURCE OF TRUTH)
-      const { tailwindV4Handler } = await import('../../cli/commands/utils/server/tailwind-v4');
+        const { tailwindV4Handler } = await import(
+          "../../cli/commands/utils/server/tailwind-v4"
+        );
       
       // Check if Tailwind v4 is available first
-      const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
+        const isV4Available = await tailwindV4Handler.isAvailable(
+          this.options.projectPath
+        );
       
       if (isV4Available) {
         if (!this.options.silent) {
@@ -2023,18 +2157,28 @@ if (document.readyState === 'loading') {
         }
 
         // Use working Tailwind v4 processing
-        let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
+          let inputFile = tailwindV4Handler.findInputFile(
+            this.options.projectPath
+          );
         if (!inputFile) {
-          inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
+            inputFile = tailwindV4Handler.createDefaultInput(
+              this.options.projectPath
+            );
         }
 
         // Only proceed if we have a valid input file
         if (inputFile) {
           try {
-            const expectedCssPath = join(this.options.projectPath, 'dist', 'styles.css');
+              const expectedCssPath = join(
+                this.options.projectPath,
+                "dist",
+                "styles.css"
+              );
             
             if (!this.options.silent) {
-              logger.debug(`🔍 Tailwind v4 expected output: ${expectedCssPath}`);
+                logger.debug(
+                  `🔍 Tailwind v4 expected output: ${expectedCssPath}`
+                );
             }
             
             const tailwindProcess = await tailwindV4Handler.startProcess(
@@ -2046,32 +2190,44 @@ if (document.readyState === 'loading') {
             if (tailwindProcess && tailwindProcess.success) {
               // Check if the CSS file was actually created
               if (existsSync(expectedCssPath)) {
-                const cssContent = readFileSync(expectedCssPath, 'utf-8');
+                  const cssContent = readFileSync(expectedCssPath, "utf-8");
                 
                 // Verify it's actually Tailwind v4 CSS (should start with /*! tailwindcss)
-                if (cssContent.includes('tailwindcss v4') || cssContent.includes('tailwindcss v3') || cssContent.includes('@layer')) {
+                  if (
+                    cssContent.includes("tailwindcss v4") ||
+                    cssContent.includes("tailwindcss v3") ||
+                    cssContent.includes("@layer")
+                  ) {
                   // CRITICAL: Copy PURE Tailwind CSS only - no additions
-                  await Bun.write(join(outputPath, 'styles.css'), cssContent);
+                    await Bun.write(join(outputPath, "styles.css"), cssContent);
                   
                   if (!this.options.silent) {
-                    logger.success(`✅ Tailwind CSS v4 processed successfully: ${(cssContent.length / 1024).toFixed(1)}KB (PURE)`);
+                      logger.success(
+                        `✅ Tailwind CSS v4 processed successfully: ${(cssContent.length / 1024).toFixed(1)}KB (PURE)`
+                      );
                   }
                   
                   // CRITICAL: Return immediately to prevent any fallback processing
                   return;
                 } else {
                   if (!this.options.silent) {
-                    logger.warn(`⚠️ CSS file found but doesn't appear to be Tailwind v4 output`);
+                      logger.warn(
+                        `⚠️ CSS file found but doesn't appear to be Tailwind v4 output`
+                      );
                   }
                 }
               } else {
                 if (!this.options.silent) {
-                  logger.warn(`⚠️ Tailwind v4 reported success but no CSS file found at ${expectedCssPath}`);
+                    logger.warn(
+                      `⚠️ Tailwind v4 reported success but no CSS file found at ${expectedCssPath}`
+                    );
                 }
               }
             } else {
               if (!this.options.silent) {
-                logger.warn(`⚠️ Tailwind v4 process failed or returned no success flag`);
+                  logger.warn(
+                    `⚠️ Tailwind v4 process failed or returned no success flag`
+                  );
               }
             }
           } catch (tailwindError) {
@@ -2087,45 +2243,51 @@ if (document.readyState === 'loading') {
         }
       } else {
         if (!this.options.silent) {
-          logger.info('💠 Tailwind v4 not available, using fallback CSS');
+            logger.info("💠 Tailwind v4 not available, using fallback CSS");
           }
         }
       }
 
       // FALLBACK: Only reached if both enhanced and v4 are not available or failed
       if (!this.options.silent) {
-        logger.info('💠 Using CSS fallback processing');
+        logger.info("💠 Using CSS fallback processing");
       }
 
       // Enhanced fallback CSS handling - RESTORED dist directory but with exclusions
       const cssDirectories = [
-        join(this.options.projectPath, 'dist'),
-        join(this.options.projectPath, 'public'),
-        join(this.options.projectPath, 'app'),
-        join(this.options.projectPath, 'src')
+        join(this.options.projectPath, "dist"),
+        join(this.options.projectPath, "public"),
+        join(this.options.projectPath, "app"),
+        join(this.options.projectPath, "src"),
       ];
 
       for (const dir of cssDirectories) {
         const possiblePaths = [
-          join(dir, 'styles.css'),
-          join(dir, 'globals.css'),
-          join(dir, 'global.css'),
-          join(dir, 'app.css'),
-          join(dir, 'main.css')
+          join(dir, "styles.css"),
+          join(dir, "globals.css"),
+          join(dir, "global.css"),
+          join(dir, "app.css"),
+          join(dir, "main.css"),
         ];
 
         for (const cssPath of possiblePaths) {
           if (existsSync(cssPath)) {
-            const cssContent = readFileSync(cssPath, 'utf-8');
+            const cssContent = readFileSync(cssPath, "utf-8");
             
             // If this is a Tailwind v4 file that we missed above, use it pure
-            if (cssContent.includes('tailwindcss v4') || (cssContent.includes('@layer') && cssContent.includes('tailwindcss'))) {
+            if (
+              cssContent.includes("tailwindcss v4") ||
+              (cssContent.includes("@layer") &&
+                cssContent.includes("tailwindcss"))
+            ) {
               if (!this.options.silent) {
-                logger.success(`✅ Found Tailwind CSS in fallback: ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB) - using PURE`);
+                logger.success(
+                  `✅ Found Tailwind CSS in fallback: ${cssPath.replace(this.options.projectPath, "")} (${(cssContent.length / 1024).toFixed(1)}KB) - using PURE`
+                );
               }
               
               // Use the pure Tailwind CSS without adding utilities
-              await Bun.write(join(outputPath, 'styles.css'), cssContent);
+              await Bun.write(join(outputPath, "styles.css"), cssContent);
               return;
             }
             
@@ -2134,20 +2296,40 @@ if (document.readyState === 'loading') {
             
             // Process CSS to remove problematic imports
             processedCss = processedCss
-              .replace(/@import\s+["']tailwindcss["'];?/g, '/* Tailwind CSS processed */')
-              .replace(/@import\s+["']tailwindcss\/base["'];?/g, '/* Tailwind base processed */')
-              .replace(/@import\s+["']tailwindcss\/components["'];?/g, '/* Tailwind components processed */')
-              .replace(/@import\s+["']tailwindcss\/utilities["'];?/g, '/* Tailwind utilities processed */')
-              .replace(/@import\s+["'][^"']*node_modules[^"']*["'];?/g, '/* Node modules import removed */')
-              .replace(/@import\s+["']([^"'/][^"']*)["'];?/g, '/* Package import removed: $1 */');
+              .replace(
+                /@import\s+["']tailwindcss["'];?/g,
+                "/* Tailwind CSS processed */"
+              )
+              .replace(
+                /@import\s+["']tailwindcss\/base["'];?/g,
+                "/* Tailwind base processed */"
+              )
+              .replace(
+                /@import\s+["']tailwindcss\/components["'];?/g,
+                "/* Tailwind components processed */"
+              )
+              .replace(
+                /@import\s+["']tailwindcss\/utilities["'];?/g,
+                "/* Tailwind utilities processed */"
+              )
+              .replace(
+                /@import\s+["'][^"']*node_modules[^"']*["'];?/g,
+                "/* Node modules import removed */"
+              )
+              .replace(
+                /@import\s+["']([^"'/][^"']*)["'];?/g,
+                "/* Package import removed: $1 */"
+              );
             
             // Add essential utilities only for true fallback CSS
             processedCss += this.getEssentialTailwindUtilities();
             
-            await Bun.write(join(outputPath, 'styles.css'), processedCss);
+            await Bun.write(join(outputPath, "styles.css"), processedCss);
             
             if (!this.options.silent) {
-              logger.success(`✅ CSS processed with essential utilities: ${(processedCss.length / 1024).toFixed(1)}KB`);
+              logger.success(
+                `✅ CSS processed with essential utilities: ${(processedCss.length / 1024).toFixed(1)}KB`
+              );
             }
             return;
           }
@@ -2156,21 +2338,24 @@ if (document.readyState === 'loading') {
 
       // Generate minimal CSS fallback only if no other CSS found
       const fallbackCss = this.getMinimalProductionCss();
-      await Bun.write(join(outputPath, 'styles.css'), fallbackCss);
+      await Bun.write(join(outputPath, "styles.css"), fallbackCss);
       
       if (!this.options.silent) {
-        logger.info(`✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`);
+        logger.info(
+          `✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`
+        );
       }
-
     } catch (error) {
       logger.warn(`CSS processing failed: ${error}`);
       
       // Final fallback
       const fallbackCss = this.getMinimalProductionCss();
-      await Bun.write(join(outputPath, 'styles.css'), fallbackCss);
+      await Bun.write(join(outputPath, "styles.css"), fallbackCss);
       
       if (!this.options.silent) {
-        logger.info(`✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`);
+        logger.info(
+          `✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`
+        );
       }
     }
   }
@@ -2281,67 +2466,77 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
     const configManager = getConfigurationManager(this.options.projectPath);
     const pwaMetadata = await configManager.getPWAMetadata();
-    
+
     // CRITICAL: Load actual project configuration for proper metadata
     const projectConfig = await configManager.loadProjectConfig();
-    
+
     // CRITICAL: Extract metadata from homepage component (for the default HTML file)
     // In production builds, we generate one HTML file but support client-side routing
     let pageMetadata = null;
-    const homeRoute = this.state.routes.find(route => route.path === '/');
+    const homeRoute = this.state.routes.find((route) => route.path === "/");
     if (homeRoute) {
       pageMetadata = await this.extractMetadataFromRoute(homeRoute);
     }
-    
+
     // Generate CSS link tags for external dependencies
     const externalCssLinks = this.state.dependencies.cssFiles
-      .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
-      .join('\n');
+      .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
+      .join("\n");
     
     // CRITICAL: Generate favicon link based on what was discovered
-    let faviconLink = '';
-    const faviconPath = join(outputPath, 'favicon.svg');
+    let faviconLink = "";
+    const faviconPath = join(outputPath, "favicon.svg");
     if (existsSync(faviconPath)) {
-      faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+      faviconLink =
+        '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
     } else {
-      const faviconIcoPath = join(outputPath, 'favicon.ico');
+      const faviconIcoPath = join(outputPath, "favicon.ico");
       if (existsSync(faviconIcoPath)) {
-        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        faviconLink =
+          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
       }
     }
-    
+
     // DYNAMIC PWA SUPPORT - Add PWA manifest link if available
-    const manifestLink = pwaMetadata.manifestLink || '';
-    
+    const manifestLink = pwaMetadata.manifestLink || "";
+
     // DYNAMIC PWA SUPPORT - Add PWA meta tags
-    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
-      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
-      : '';
-    
+    const pwaMetaTags =
+      pwaMetadata.metaTags.length > 0
+        ? "\n" +
+          pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join("\n")
+        : "";
+
     // DYNAMIC PWA SUPPORT - Add PWA scripts
-    const pwaScripts = pwaMetadata.scripts.length > 0
-      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
-      : '';
-    
+    const pwaScripts =
+      pwaMetadata.scripts.length > 0
+        ? "\n" +
+          pwaMetadata.scripts.map((script: string) => `  ${script}`).join("\n")
+        : "";
+
     // FIXED: Use page metadata if available, fallback to project config
     let pageTitle, pageDescription;
-    
+
     if (pageMetadata) {
       // Use the metadata system's title resolution
-      const { resolveTitle } = await import('../../core/metadata');
+      const { resolveTitle } = await import("../../core/metadata");
       pageTitle = resolveTitle(pageMetadata);
-      pageDescription = pageMetadata.description || projectConfig.description || '0x1 Framework application';
+      pageDescription =
+        pageMetadata.description ||
+        projectConfig.description ||
+        "0x1 Framework application";
     } else {
       // Fallback to project config
-      pageTitle = projectConfig.name || 'My 0x1 App';
-      pageDescription = projectConfig.description || '0x1 Framework application';
+      pageTitle = projectConfig.name || "My 0x1 App";
+      pageDescription =
+        projectConfig.description || "0x1 Framework application";
     }
-    
+
     // Generate additional meta tags from page metadata
-    let additionalMetaTags = '';
+    let additionalMetaTags = "";
     if (pageMetadata) {
       try {
-        const { generateMetaTags } = await import('../../core/metadata');
+        const { generateMetaTags } = await import("../../core/metadata");
         additionalMetaTags = generateMetaTags(pageMetadata);
       } catch (error) {
         if (!this.options.silent) {
@@ -2349,7 +2544,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
         }
       }
     }
-    
+
     // CRITICAL: Add cache-busting timestamp to prevent Safari iOS caching issues
     const cacheBust = Date.now();
     
@@ -2360,8 +2555,8 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
+${additionalMetaTags}${faviconLink ? faviconLink + "\n" : ""}${manifestLink ? manifestLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
   <script type="importmap">
   {
     "imports": {
@@ -2392,7 +2587,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 </body>
 </html>`;
 
-    await Bun.write(join(outputPath, 'index.html'), html);
+    await Bun.write(join(outputPath, "index.html"), html);
   }
 
   /**
@@ -2400,45 +2595,53 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
    */
   private async extractMetadataFromRoute(route: Route): Promise<any> {
     // Find the source file for this route
-    const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
+    const sourceExtensions = [".tsx", ".ts", ".jsx", ".js"];
     let sourceFile = null;
-    
+
     for (const ext of sourceExtensions) {
       const potentialPath = join(
         this.options.projectPath,
-        route.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
+        route.componentPath.replace(/^\//, "").replace(/\.js$/, ext)
       );
       if (existsSync(potentialPath)) {
         sourceFile = potentialPath;
         break;
       }
     }
-    
+
     if (sourceFile) {
       try {
         // Use the existing metadata extraction system
-        const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
+        const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } =
+          await import("../../core/metadata");
         const extractedMetadata = await extractMetadataFromFile(sourceFile);
-        
+
         if (extractedMetadata) {
-          const pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
+          const pageMetadata = mergeMetadata(
+            extractedMetadata,
+            DEFAULT_METADATA
+          );
           if (!this.options.silent) {
-            logger.info(`✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || 'No title'}`);
+            logger.info(
+              `✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || "No title"}`
+            );
           }
           return pageMetadata;
         }
       } catch (error) {
         if (!this.options.silent) {
-          logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
+          logger.warn(
+            `Failed to extract metadata from ${sourceFile}: ${error}`
+          );
         }
       }
     }
-    
+
     return null;
   }
 
   private async copyStaticAssets(outputPath: string): Promise<void> {
-    const publicDir = join(this.options.projectPath, 'public');
+    const publicDir = join(this.options.projectPath, "public");
     if (existsSync(publicDir)) {
       try {
         await Bun.$`cp -r ${publicDir}/* ${outputPath}/`;
@@ -2453,13 +2656,17 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 
   private async handleFaviconDiscovery(outputPath: string): Promise<void> {
     const faviconSearchDirs = [
-      join(this.options.projectPath, 'public'),
-      join(this.options.projectPath, 'app'),
-      join(this.options.projectPath, 'src')
+      join(this.options.projectPath, "public"),
+      join(this.options.projectPath, "app"),
+      join(this.options.projectPath, "src"),
     ];
-    
-    const faviconExtensions = ['.svg', '.ico', '.png', '.jpg', '.jpeg'];
-    const foundFavicons: Array<{ path: string; name: string; priority: number }> = [];
+
+    const faviconExtensions = [".svg", ".ico", ".png", ".jpg", ".jpeg"];
+    const foundFavicons: Array<{
+      path: string;
+      name: string;
+      priority: number;
+    }> = [];
     
     // Search for favicons with priority system
     for (const dir of faviconSearchDirs) {
@@ -2471,18 +2678,23 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
           const lowerFile = file.toLowerCase();
           
           // Check if it's a favicon file
-          if (lowerFile.startsWith('favicon')) {
-            const ext = faviconExtensions.find(e => lowerFile.endsWith(e));
+          if (lowerFile.startsWith("favicon")) {
+            const ext = faviconExtensions.find((e) => lowerFile.endsWith(e));
             if (ext) {
               // Priority: .svg > .ico > .png > .jpg/.jpeg
-              const priority = ext === '.svg' ? 1 : 
-                             ext === '.ico' ? 2 : 
-                             ext === '.png' ? 3 : 4;
+              const priority =
+                ext === ".svg"
+                  ? 1
+                  : ext === ".ico"
+                    ? 2
+                    : ext === ".png"
+                      ? 3
+                      : 4;
               
               foundFavicons.push({
                 path: join(dir, file),
                 name: file,
-                priority
+                priority,
               });
             }
           }
@@ -2497,17 +2709,25 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     
     if (foundFavicons.length > 0) {
       const selectedFavicon = foundFavicons[0];
-      const outputFaviconPath = join(outputPath, 'favicon' + selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf('.')));
+      const outputFaviconPath = join(
+        outputPath,
+        "favicon" +
+          selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf("."))
+      );
       
       try {
         const faviconContent = readFileSync(selectedFavicon.path);
         await Bun.write(outputFaviconPath, faviconContent);
         
         if (!this.options.silent) {
-          logger.success(`✅ Favicon copied: ${selectedFavicon.name} (${selectedFavicon.priority === 1 ? 'SVG' : selectedFavicon.priority === 2 ? 'ICO' : selectedFavicon.priority === 3 ? 'PNG' : 'JPG'})`);
+          logger.success(
+            `✅ Favicon copied: ${selectedFavicon.name} (${selectedFavicon.priority === 1 ? "SVG" : selectedFavicon.priority === 2 ? "ICO" : selectedFavicon.priority === 3 ? "PNG" : "JPG"})`
+          );
           
           if (foundFavicons.length > 1) {
-            logger.info(`📋 Found ${foundFavicons.length} favicons, prioritized: ${foundFavicons.map(f => f.name + (f === selectedFavicon ? ' ✓' : '')).join(', ')}`);
+            logger.info(
+              `📋 Found ${foundFavicons.length} favicons, prioritized: ${foundFavicons.map((f) => f.name + (f === selectedFavicon ? " ✓" : "")).join(", ")}`
+            );
           }
         }
       } catch (error) {
@@ -2517,54 +2737,72 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       }
     } else {
       // Generate minimal favicon.ico if none exists
-      const faviconPath = join(outputPath, 'favicon.ico');
+      const faviconPath = join(outputPath, "favicon.ico");
       const faviconData = new Uint8Array([
-        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
-        0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00,
-        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
+        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00,
+        0x08, 0x00, 0x68, 0x05, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00,
+        0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x01, 0x00,
+        0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00,
       ]);
       await Bun.write(faviconPath, faviconData);
       
       if (!this.options.silent) {
-        logger.info(`📄 Generated default favicon.ico (no favicon found in public/ or app/)`);
+        logger.info(
+          `📄 Generated default favicon.ico (no favicon found in public/ or app/)`
+        );
       }
     }
   }
 
   private async copyExternalPackages(outputPath: string): Promise<void> {
     if (!this.options.silent) {
-      logger.info('📦 Copying external packages...');
+      logger.info("📦 Copying external packages...");
     }
 
-    const nodeModulesOutputPath = join(outputPath, 'node_modules');
+    const nodeModulesOutputPath = join(outputPath, "node_modules");
     
     // CRITICAL: Dynamic detection of ALL scoped packages being imported
     const scopedPackages = await this.detectScopedPackageImports();
     
     for (const packageName of scopedPackages) {
-      const packageSourcePath = join(this.options.projectPath, 'node_modules', packageName);
+      const packageSourcePath = join(
+        this.options.projectPath,
+        "node_modules",
+        packageName
+      );
       const packageOutputPath = join(nodeModulesOutputPath, packageName);
       
       if (existsSync(packageSourcePath)) {
         try {
           // Create the package directory structure
-          const packageDir = packageName.split('/')[0]; // @scope
-          mkdirSync(join(nodeModulesOutputPath, packageDir), { recursive: true });
+          const packageDir = packageName.split("/")[0]; // @scope
+          mkdirSync(join(nodeModulesOutputPath, packageDir), {
+            recursive: true,
+          });
           
           // Copy the entire package
           await Bun.$`cp -r ${packageSourcePath} ${packageOutputPath}`;
           
           // CRITICAL: Dynamic CSS detection for ANY package
-          const cssFiles = await this.detectPackageCssFiles(packageSourcePath, packageName);
+          const cssFiles = await this.detectPackageCssFiles(
+            packageSourcePath,
+            packageName
+          );
           
           for (const cssFile of cssFiles) {
-            const cssOutputPath = join(outputPath, `${packageName.replace(/[@/]/g, '-')}-${cssFile.name}`);
-            const cssContent = readFileSync(cssFile.path, 'utf-8');
+            const cssOutputPath = join(
+              outputPath,
+              `${packageName.replace(/[@/]/g, "-")}-${cssFile.name}`
+            );
+            const cssContent = readFileSync(cssFile.path, "utf-8");
             writeFileSync(cssOutputPath, cssContent);
             
             // Store CSS file info for HTML generation
-            this.state.dependencies.cssFiles.push(`/${packageName.replace(/[@/]/g, '-')}-${cssFile.name}`);
+            this.state.dependencies.cssFiles.push(
+              `/${packageName.replace(/[@/]/g, "-")}-${cssFile.name}`
+            );
             
             if (!this.options.silent) {
               logger.info(`✅ Copied CSS from ${packageName}: ${cssFile.name}`);
@@ -2599,10 +2837,12 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     
     for (const filePath of sourceFiles) {
       try {
-        const content = readFileSync(filePath, 'utf-8');
+        const content = readFileSync(filePath, "utf-8");
         
         // Match all scoped package imports: @scope/package
-        const scopedImportMatches = content.match(/from\s+["'](@[^/]+\/[^/"']+)/g);
+        const scopedImportMatches = content.match(
+          /from\s+["'](@[^/]+\/[^/"']+)/g
+        );
         if (scopedImportMatches) {
           for (const match of scopedImportMatches) {
             const packageMatch = match.match(/from\s+["'](@[^/]+\/[^/"']+)/);
@@ -2613,7 +2853,9 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
         }
         
         // Also match direct imports: import "@scope/package"
-        const directImportMatches = content.match(/import\s+["'](@[^/]+\/[^/"']+)/g);
+        const directImportMatches = content.match(
+          /import\s+["'](@[^/]+\/[^/"']+)/g
+        );
         if (directImportMatches) {
           for (const match of directImportMatches) {
             const packageMatch = match.match(/import\s+["'](@[^/]+\/[^/"']+)/);
@@ -2634,16 +2876,19 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
    * Dynamically detect CSS files in ANY package
    * ZERO HARDCODING - finds all .css files in package
    */
-  private async detectPackageCssFiles(packagePath: string, packageName: string): Promise<Array<{name: string, path: string}>> {
-    const cssFiles: Array<{name: string, path: string}> = [];
+  private async detectPackageCssFiles(
+    packagePath: string,
+    packageName: string
+  ): Promise<Array<{ name: string; path: string }>> {
+    const cssFiles: Array<{ name: string; path: string }> = [];
     
     // Common CSS locations in packages
     const possibleCssDirs = [
-      join(packagePath, 'dist'),
-      join(packagePath, 'lib'),
-      join(packagePath, 'build'),
-      join(packagePath, 'styles'),
-      packagePath // root
+      join(packagePath, "dist"),
+      join(packagePath, "lib"),
+      join(packagePath, "build"),
+      join(packagePath, "styles"),
+      packagePath, // root
     ];
     
     for (const dir of possibleCssDirs) {
@@ -2652,12 +2897,12 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       try {
         const files = readdirSync(dir);
         for (const file of files) {
-          if (file.endsWith('.css')) {
+          if (file.endsWith(".css")) {
             const fullPath = join(dir, file);
             if (existsSync(fullPath)) {
               cssFiles.push({
                 name: file,
-                path: fullPath
+                path: fullPath,
               });
             }
           }
@@ -2676,10 +2921,10 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
    */
   private async findAllSourceFiles(): Promise<string[]> {
     const files: string[] = [];
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+    const extensions = [".tsx", ".jsx", ".ts", ".js"];
     
     // Dynamic directory discovery
-    const scanDirs = ['app', 'src', 'components', 'lib', 'pages'];
+    const scanDirs = ["app", "src", "components", "lib", "pages"];
     
     for (const dir of scanDirs) {
       const fullDir = join(this.options.projectPath, dir);
@@ -2692,13 +2937,14 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
           const items = readdirSync(dirPath, { withFileTypes: true });
           
           for (const item of items) {
-            if (item.name.startsWith('.') || item.name === 'node_modules') continue;
+            if (item.name.startsWith(".") || item.name === "node_modules")
+              continue;
             
             const itemPath = join(dirPath, item.name);
             
             if (item.isDirectory()) {
               scanRecursive(itemPath, depth + 1);
-            } else if (extensions.some(ext => item.name.endsWith(ext))) {
+            } else if (extensions.some((ext) => item.name.endsWith(ext))) {
               files.push(itemPath);
             }
           }
@@ -2715,35 +2961,43 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 
   private getFrameworkPath(): string {
     // BULLETPROOF: Find the REAL 0x1 framework directory with comprehensive validation
-    
+
     // Strategy 1: Check if we're inside the framework itself (development)
     if (this.isValid0x1Framework(process.cwd())) {
       if (!this.options.silent) {
-        logger.info(`✅ Found 0x1 framework at current directory: ${process.cwd()}`);
+        logger.info(
+          `✅ Found 0x1 framework at current directory: ${process.cwd()}`
+        );
       }
       return process.cwd();
     }
-    
+
     // Strategy 2: Check npm package installation (production/CI)
-    const nodeModulesFramework = join(this.options.projectPath, 'node_modules', '0x1');
-    
+    const nodeModulesFramework = join(
+      this.options.projectPath,
+      "node_modules",
+      "0x1"
+    );
+
     if (this.isValid0x1Framework(nodeModulesFramework)) {
       if (!this.options.silent) {
-        logger.info(`✅ Found 0x1 framework as npm package: ${nodeModulesFramework}`);
+        logger.info(
+          `✅ Found 0x1 framework as npm package: ${nodeModulesFramework}`
+        );
       }
       return nodeModulesFramework;
     }
-    
+
     // Strategy 3: Development environment detection
     const devPaths = [
-      process.cwd().includes('00-Dev/0x1') 
-      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+      process.cwd().includes("00-Dev/0x1")
+        ? process.cwd().split("00-Dev/0x1")[0] + "00-Dev/0x1"
         : null,
-      process.cwd().includes('0x1') 
-        ? process.cwd().split('0x1')[0] + '0x1'
-        : null
+      process.cwd().includes("0x1")
+        ? process.cwd().split("0x1")[0] + "0x1"
+        : null,
     ].filter(Boolean) as string[];
-    
+
     for (const path of devPaths) {
       if (this.isValid0x1Framework(path)) {
         if (!this.options.silent) {
@@ -2752,54 +3006,59 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
         return path;
       }
     }
-    
+
     // Strategy 4: Relative navigation from project
     const relativePaths = [
-      join(this.options.projectPath, '../'),
-      join(this.options.projectPath, '../../'),
-      join(process.cwd(), '../'),
-      join(process.cwd(), '../../')
+      join(this.options.projectPath, "../"),
+      join(this.options.projectPath, "../../"),
+      join(process.cwd(), "../"),
+      join(process.cwd(), "../../"),
     ];
-    
+
     for (const basePath of relativePaths) {
-      const frameworkPath = join(basePath, '0x1');
+      const frameworkPath = join(basePath, "0x1");
       if (this.isValid0x1Framework(frameworkPath)) {
         if (!this.options.silent) {
-          logger.info(`✅ Found 0x1 framework at relative path: ${frameworkPath}`);
+          logger.info(
+            `✅ Found 0x1 framework at relative path: ${frameworkPath}`
+          );
         }
         return frameworkPath;
       }
     }
-    
+
     // Strategy 5: Search parent directories recursively
     let currentDir = this.options.projectPath;
     const recursivePaths: string[] = [];
-    for (let i = 0; i < 5; i++) { // Max 5 levels up
-      currentDir = join(currentDir, '..');
-      const frameworkPath = join(currentDir, '0x1');
+    for (let i = 0; i < 5; i++) {
+      // Max 5 levels up
+      currentDir = join(currentDir, "..");
+      const frameworkPath = join(currentDir, "0x1");
       recursivePaths.push(frameworkPath);
       if (this.isValid0x1Framework(frameworkPath)) {
         if (!this.options.silent) {
-          logger.info(`✅ Found 0x1 framework via recursive search: ${frameworkPath}`);
+          logger.info(
+            `✅ Found 0x1 framework via recursive search: ${frameworkPath}`
+          );
         }
         return frameworkPath;
       }
     }
-    
+
     // CRITICAL: If we can't find the framework, this is a build failure
     const searchedPaths = [
       process.cwd(),
       nodeModulesFramework,
       ...devPaths,
-      ...relativePaths.map(p => join(p, '0x1')),
-      ...recursivePaths
+      ...relativePaths.map((p) => join(p, "0x1")),
+      ...recursivePaths,
     ];
-    
-    const errorMsg = `CRITICAL BUILD FAILURE: 0x1 framework not found in any expected location. Searched paths: ${searchedPaths.join(', ')}`;
+
+    const errorMsg = `CRITICAL BUILD FAILURE: 0x1 framework not found in any expected location. Searched paths: ${searchedPaths.join(", ")}`;
     logger.error(errorMsg);
     throw new Error(errorMsg);
   }
-  
+
   // BULLETPROOF: Validate that a directory is actually the 0x1 framework
   private isValid0x1Framework(path: string): boolean {
     if (!existsSync(path)) {
@@ -2808,35 +3067,40 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       }
       return false;
     }
-    
+
     if (!this.options.silent) {
       logger.debug(`🔍 [DEBUG] Validating framework at: ${path}`);
     }
-    
+
     // Check package.json first to verify it's actually 0x1
-    const packageJsonPath = join(path, 'package.json');
+    const packageJsonPath = join(path, "package.json");
     let isFrameworkPackage = false;
-    
+
     if (!this.options.silent) {
       logger.debug(`🔍 [DEBUG] Checking package.json: ${packageJsonPath}`);
-      logger.debug(`🔍 [DEBUG] Package.json exists: ${existsSync(packageJsonPath)}`);
+      logger.debug(
+        `🔍 [DEBUG] Package.json exists: ${existsSync(packageJsonPath)}`
+      );
     }
-    
+
     if (existsSync(packageJsonPath)) {
       try {
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
         if (!this.options.silent) {
           logger.debug(`🔍 [DEBUG] Package name: ${packageJson.name}`);
         }
-        
+
         // FIXED: Only check if this package is actually the 0x1 framework
         // Don't exclude based on project name - that makes no sense!
-        isFrameworkPackage = packageJson.name === '0x1' || 
-                           packageJson.name === '@0x1/framework' ||
-                           (packageJson.name && packageJson.name.startsWith('0x1-'));
-        
+        isFrameworkPackage =
+          packageJson.name === "0x1" ||
+          packageJson.name === "@0x1/framework" ||
+          (packageJson.name && packageJson.name.startsWith("0x1-"));
+
         if (!this.options.silent) {
-          logger.debug(`🔍 [DEBUG] Is framework package: ${isFrameworkPackage}`);
+          logger.debug(
+            `🔍 [DEBUG] Is framework package: ${isFrameworkPackage}`
+          );
         }
       } catch (error) {
         if (!this.options.silent) {
@@ -2845,53 +3109,59 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
         isFrameworkPackage = false;
       }
     }
-    
+
     // Development scenario: Check for source files
     const sourceFiles = [
-      join(path, 'src', 'core', 'hooks.ts'),
-      join(path, 'src', 'jsx-dev-runtime.ts')
+      join(path, "src", "core", "hooks.ts"),
+      join(path, "src", "jsx-dev-runtime.ts"),
     ];
-    
-    const sourceDirs = [
-      join(path, 'src'),
-      join(path, 'src', 'core')
-    ];
-    
-    const hasSourceFiles = sourceFiles.every(file => existsSync(file));
-    const hasSourceDirs = sourceDirs.every(dir => existsSync(dir));
+
+    const sourceDirs = [join(path, "src"), join(path, "src", "core")];
+
+    const hasSourceFiles = sourceFiles.every((file) => existsSync(file));
+    const hasSourceDirs = sourceDirs.every((dir) => existsSync(dir));
     const isDevelopmentFramework = hasSourceFiles && hasSourceDirs;
-    
+
     if (!this.options.silent) {
-      logger.debug(`🔍 [DEBUG] Source files check: ${sourceFiles.map(f => `${f.split('/').pop()}: ${existsSync(f)}`).join(', ')}`);
-      logger.debug(`🔍 [DEBUG] Is development framework: ${isDevelopmentFramework}`);
+      logger.debug(
+        `🔍 [DEBUG] Source files check: ${sourceFiles.map((f) => `${f.split("/").pop()}: ${existsSync(f)}`).join(", ")}`
+      );
+      logger.debug(
+        `🔍 [DEBUG] Is development framework: ${isDevelopmentFramework}`
+      );
     }
-    
+
     // Production scenario: Check for dist files
     const distFiles = [
-      join(path, 'dist', 'hooks.js'),
-      join(path, 'dist', 'jsx-runtime.js')
+      join(path, "dist", "hooks.js"),
+      join(path, "dist", "jsx-runtime.js"),
     ];
-    
-    const distDirs = [
-      join(path, 'dist')
-    ];
-    
-    const hasDistFiles = distFiles.some(file => existsSync(file)); // At least one dist file
-    const hasDistDirs = distDirs.every(dir => existsSync(dir));
+
+    const distDirs = [join(path, "dist")];
+
+    const hasDistFiles = distFiles.some((file) => existsSync(file)); // At least one dist file
+    const hasDistDirs = distDirs.every((dir) => existsSync(dir));
     const isProductionFramework = hasDistFiles && hasDistDirs;
-    
+
     if (!this.options.silent) {
-      logger.debug(`🔍 [DEBUG] Dist files check: ${distFiles.map(f => `${f.split('/').pop()}: ${existsSync(f)}`).join(', ')}`);
-      logger.debug(`🔍 [DEBUG] Is production framework: ${isProductionFramework}`);
+      logger.debug(
+        `🔍 [DEBUG] Dist files check: ${distFiles.map((f) => `${f.split("/").pop()}: ${existsSync(f)}`).join(", ")}`
+      );
+      logger.debug(
+        `🔍 [DEBUG] Is production framework: ${isProductionFramework}`
+      );
     }
-    
+
     // Valid if it's either development OR production framework AND has correct package.json
-    const isValid = (isDevelopmentFramework || isProductionFramework) && isFrameworkPackage;
-    
+    const isValid =
+      (isDevelopmentFramework || isProductionFramework) && isFrameworkPackage;
+
     if (!this.options.silent) {
-      logger.debug(`🎯 [DEBUG] Final validation: dev=${isDevelopmentFramework}, prod=${isProductionFramework}, package=${isFrameworkPackage}, valid=${isValid}`);
+      logger.debug(
+        `🎯 [DEBUG] Final validation: dev=${isDevelopmentFramework}, prod=${isProductionFramework}, package=${isFrameworkPackage}, valid=${isValid}`
+      );
     }
-    
+
     return isValid;
   }
 
@@ -2904,7 +3174,7 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       components: this.state.components.length,
       assets: this.state.assets.size,
       errors: [],
-      warnings: []
+      warnings: [],
     };
   }
 
@@ -2917,62 +3187,33 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
       components: 0,
       assets: 0,
       errors: [error instanceof Error ? error.message : String(error)],
-      warnings: []
+      warnings: [],
     };
   }
 
   private normalizeJsxFunctionCalls(content: string): string {
-    // CRITICAL: Use EXACT same aggressive normalization as working DevOrchestrator
-    // This handles ALL possible hashed function patterns that Bun might generate
-    
-    // 1. Most aggressive: Replace any jsx function with underscore and hash
-    content = content.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
-    content = content.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
-    content = content.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
-    content = content.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
-    
-    // 2. Handle mixed alphanumeric patterns
-    content = content.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
-    content = content.replace(/jsx_[0-9a-z]+/gi, 'jsx');
-    content = content.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
-    content = content.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
-    
-    // 3. Ultra aggressive catch-all: any jsx followed by underscore and anything
-    content = content.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
-    content = content.replace(/\bjsx_\w+/g, 'jsx');
-    content = content.replace(/\bjsxs_\w+/g, 'jsxs');
-    content = content.replace(/\bFragment_\w+/g, 'Fragment');
-    
-    // 4. Even more aggressive: handle any character combinations
-    content = content.replace(/jsxDEV_[^(\s]+/g, 'jsxDEV');
-    content = content.replace(/jsx_[^(\s]+/g, 'jsx');
-    content = content.replace(/jsxs_[^(\s]+/g, 'jsxs');
-    content = content.replace(/Fragment_[^(\s]+/g, 'Fragment');
-    
-    // 5. Absolutely aggressive: replace ALL occurrences regardless of pattern
-    content = content.replace(/jsx[a-zA-Z]*_[a-zA-Z0-9]+/g, (match) => {
-      if (match.startsWith('jsxDEV_')) return 'jsxDEV';
-      if (match.startsWith('jsxs_')) return 'jsxs';
-      if (match.startsWith('jsx_')) return 'jsx';
-      if (match.startsWith('Fragment_')) return 'Fragment';
-      // Fallback: just remove the hash
-      const base = match.split('_')[0];
-      return base;
-    });
+    // SIMPLE: Just handle the most common hashed function patterns
+    content = content.replace(/jsx_[a-zA-Z0-9]+/g, "jsx");
+    content = content.replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs");
+    content = content.replace(/jsxDEV_[a-zA-Z0-9]+/g, "jsxDEV");
+    content = content.replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
     
     return content;
   }
 
   private insertJsxRuntimePreamble(code: string): string {
-    const lines = code.split('\n');
+    const lines = code.split("\n");
     let insertIndex = 0;
     
     // Find end of imports
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      if (line.startsWith('import ') || (line.startsWith('export ') && line.includes('from '))) {
+      if (
+        line.startsWith("import ") ||
+        (line.startsWith("export ") && line.includes("from "))
+      ) {
         insertIndex = i + 1;
-      } else if (line.startsWith('//') || line === '') {
+      } else if (line.startsWith("//") || line === "") {
         // Skip comments and empty lines
       } else if (line) {
         break;
@@ -2982,10 +3223,13 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     const preamble = `// 0x1 Framework - JSX Runtime Access\nimport { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';`;
     
     lines.splice(insertIndex, 0, preamble);
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
-  private generateErrorComponent(filePath: string, errorMessage: string): string {
+  private generateErrorComponent(
+    filePath: string,
+    errorMessage: string
+  ): string {
     const safePath = filePath.replace(/'/g, "\\'");
     const safeError = errorMessage.replace(/'/g, "\\'");
     
@@ -3025,9 +3269,15 @@ export default function ErrorComponent(props) {
   }
 
   // Complete the copyFrameworkFilesUsingWorkingPattern method
-  private async completeCopyFrameworkFiles(nodeModulesDir: string, framework0x1Dir: string): Promise<void> {
+  private async completeCopyFrameworkFiles(
+    nodeModulesDir: string,
+    framework0x1Dir: string
+  ): Promise<void> {
     // Generate browser-compatible 0x1 entry point (same as DevOrchestrator)
-    await this.generateBrowserEntryUsingDevOrchestratorPattern(nodeModulesDir, framework0x1Dir);
+    await this.generateBrowserEntryUsingDevOrchestratorPattern(
+      nodeModulesDir,
+      framework0x1Dir
+    );
   }
 
   /**
@@ -3035,20 +3285,24 @@ export default function ErrorComponent(props) {
    * This ensures social media crawlers, SEO tools, and link previews see correct metadata
    * while maintaining SPA functionality for users
    */
-  private async generateRouteSpecificHtmlFiles(outputPath: string): Promise<void> {
+  private async generateRouteSpecificHtmlFiles(
+    outputPath: string
+  ): Promise<void> {
     if (!this.options.silent) {
-      logger.info('🌐 Generating route-specific HTML files for crawlers + SPA file for users...');
+      logger.info(
+        "🌐 Generating route-specific HTML files for crawlers + SPA file for users..."
+      );
     }
 
     // SINGLE SOURCE OF TRUTH: Use ConfigurationManager for PWA metadata
     const configManager = getConfigurationManager(this.options.projectPath);
     let pwaConfig: PWAConfig | null = null;
     let projectConfig: any = {};
-    
+
     try {
       const pwaMetadata = await configManager.getPWAMetadata();
       projectConfig = await configManager.loadProjectConfig();
-      
+
       // Extract PWA config from project config if available
       if (projectConfig?.pwa) {
         pwaConfig = projectConfig.pwa;
@@ -3063,30 +3317,39 @@ export default function ErrorComponent(props) {
 
     // SINGLE SOURCE OF TRUTH: Use shared PWA handler
     const pwaHandler = PWAHandler.create({
-      mode: 'production',
+      mode: "production",
       projectPath: this.options.projectPath,
       outputPath,
       silent: this.options.silent,
-      debug: !this.options.silent
+      debug: !this.options.silent,
     });
 
     const pwaResources = await pwaHandler.generatePWAResources(pwaConfig);
-    
+
     // Log PWA status using shared handler
-    const hasIcons = await this.iconsExist(pwaConfig?.iconsPath || '/icons');
+    const hasIcons = await this.iconsExist(pwaConfig?.iconsPath || "/icons");
     pwaHandler.logPWAStatus(pwaConfig, hasIcons);
-    
+
     // Generate shared HTML resources
-    const resources = await this.generateSharedHtmlResources(outputPath, pwaResources);
+    const resources = await this.generateSharedHtmlResources(
+      outputPath,
+      pwaResources
+    );
 
     // Generate main SPA file for users
     await this.generateMainSpaFile(outputPath, projectConfig, resources);
 
     // Generate crawler-optimized route files
-    await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, resources);
+    await this.generateCrawlerOptimizedRouteFiles(
+      outputPath,
+      projectConfig,
+      resources
+    );
 
     if (!this.options.silent) {
-      logger.success(`✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
+      logger.success(
+        `✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`
+      );
     }
   }
 
@@ -3096,44 +3359,51 @@ export default function ErrorComponent(props) {
   private async iconsExist(iconsPath: string): Promise<boolean> {
     if (!iconsPath) return false;
 
-    const filesystemPath = iconsPath.startsWith('/') 
-      ? join(this.options.projectPath, 'public', iconsPath.substring(1))
+    const filesystemPath = iconsPath.startsWith("/")
+      ? join(this.options.projectPath, "public", iconsPath.substring(1))
       : join(this.options.projectPath, iconsPath);
 
-    const essentialIcons = ['icon-192x192.png', 'icon-512x512.png'];
-    return essentialIcons.some(icon => existsSync(join(filesystemPath, icon)));
+    const essentialIcons = ["icon-192x192.png", "icon-512x512.png"];
+    return essentialIcons.some((icon) =>
+      existsSync(join(filesystemPath, icon))
+    );
   }
 
   /**
    * Generate shared HTML resources used by all HTML files
    * UPDATED: Uses PWA resources from shared handler
    */
-  private async generateSharedHtmlResources(outputPath: string, pwaResources: any) {
+  private async generateSharedHtmlResources(
+    outputPath: string,
+    pwaResources: any
+  ) {
     // Generate favicon link
-    let faviconLink = '';
-    const faviconPath = join(outputPath, 'favicon.svg');
+    let faviconLink = "";
+    const faviconPath = join(outputPath, "favicon.svg");
     if (existsSync(faviconPath)) {
-      faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+      faviconLink =
+        '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
     } else {
-      const faviconIcoPath = join(outputPath, 'favicon.ico');
+      const faviconIcoPath = join(outputPath, "favicon.ico");
       if (existsSync(faviconIcoPath)) {
-        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        faviconLink =
+          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
       }
     }
 
     // Generate CSS links for external dependencies
     const externalCssLinks = this.state.dependencies.cssFiles
-      .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
-      .join('\n');
+      .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
+      .join("\n");
 
     // Cache-busting timestamp
     const cacheBust = Date.now();
 
-    return { 
-      faviconLink, 
-      externalCssLinks, 
+    return {
+      faviconLink,
+      externalCssLinks,
       pwaResources, // Use PWA resources from shared handler
-      cacheBust 
+      cacheBust,
     };
   }
 
@@ -3141,12 +3411,18 @@ export default function ErrorComponent(props) {
    * Generate main SPA file (index.html) - for users browsing the site
    * UPDATED: Uses shared PWA handler for injection
    */
-  private async generateMainSpaFile(outputPath: string, projectConfig: any, resources: any) {
-    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
+  private async generateMainSpaFile(
+    outputPath: string,
+    projectConfig: any,
+    resources: any
+  ) {
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
+      resources;
 
     // Use project config for the main SPA file (users will get dynamic metadata updates)
-    const pageTitle = projectConfig.name || 'My 0x1 App';
-    const pageDescription = projectConfig.description || '0x1 Framework application';
+    const pageTitle = projectConfig.name || "My 0x1 App";
+    const pageDescription =
+      projectConfig.description || "0x1 Framework application";
 
     let spaHtml = `<!DOCTYPE html>
 <html lang="en" class="dark">
@@ -3155,8 +3431,8 @@ export default function ErrorComponent(props) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">
+${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
   {
     "imports": {
       "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
@@ -3187,17 +3463,23 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">
 </html>`;
 
     // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
-    spaHtml = injectPWAIntoHTML(spaHtml, {
-      mode: 'production',
-      projectPath: this.options.projectPath,
-      outputPath,
-      silent: this.options.silent
-    }, pwaResources);
+    spaHtml = injectPWAIntoHTML(
+      spaHtml,
+      {
+        mode: "production",
+        projectPath: this.options.projectPath,
+        outputPath,
+        silent: this.options.silent,
+      },
+      pwaResources
+    );
 
-    await Bun.write(join(outputPath, 'index.html'), spaHtml);
+    await Bun.write(join(outputPath, "index.html"), spaHtml);
 
     if (!this.options.silent) {
-      logger.info('✅ Generated main SPA file: index.html (for users with client-side routing)');
+      logger.info(
+        "✅ Generated main SPA file: index.html (for users with client-side routing)"
+      );
     }
   }
 
@@ -3205,35 +3487,48 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">
    * Generate route-specific HTML files - for crawlers and external tools
    * UPDATED: Uses shared PWA handler for injection
    */
-  private async generateCrawlerOptimizedRouteFiles(outputPath: string, projectConfig: any, resources: any) {
-    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
+  private async generateCrawlerOptimizedRouteFiles(
+    outputPath: string,
+    projectConfig: any,
+    resources: any
+  ) {
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
+      resources;
 
     for (const route of this.state.routes) {
       try {
         // Extract metadata for this specific route
         const routeMetadata = await this.extractMetadataFromRoute(route);
-        
-        let pageTitle, pageDescription, additionalMetaTags = '';
+
+        let pageTitle,
+          pageDescription,
+          additionalMetaTags = "";
 
         if (routeMetadata) {
           // Use route-specific metadata
-          const { resolveTitle } = await import('../../core/metadata');
+          const { resolveTitle } = await import("../../core/metadata");
           pageTitle = resolveTitle(routeMetadata);
-          pageDescription = routeMetadata.description || projectConfig.description || '0x1 Framework application';
-          
+          pageDescription =
+            routeMetadata.description ||
+            projectConfig.description ||
+            "0x1 Framework application";
+
           // Generate comprehensive meta tags for crawlers
           try {
-            const { generateMetaTags } = await import('../../core/metadata');
+            const { generateMetaTags } = await import("../../core/metadata");
             additionalMetaTags = generateMetaTags(routeMetadata);
           } catch (error) {
             if (!this.options.silent) {
-              logger.warn(`Failed to generate meta tags for route ${route.path}: ${error}`);
+              logger.warn(
+                `Failed to generate meta tags for route ${route.path}: ${error}`
+              );
             }
           }
         } else {
           // Fallback to project config
-          pageTitle = projectConfig.name || 'My 0x1 App';
-          pageDescription = projectConfig.description || '0x1 Framework application';
+          pageTitle = projectConfig.name || "My 0x1 App";
+          pageDescription =
+            projectConfig.description || "0x1 Framework application";
         }
 
         // Generate HTML file for this route
@@ -3244,8 +3539,8 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->
+${additionalMetaTags}${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->
   <script type="importmap">
   {
     "imports": {
@@ -3278,29 +3573,36 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <!-- CRAWLER OPTIMIZATION: R
 </html>`;
 
         // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
-        routeHtml = injectPWAIntoHTML(routeHtml, {
-          mode: 'production',
-          projectPath: this.options.projectPath,
-          outputPath,
-          silent: this.options.silent
-        }, pwaResources);
+        routeHtml = injectPWAIntoHTML(
+          routeHtml,
+          {
+            mode: "production",
+            projectPath: this.options.projectPath,
+            outputPath,
+            silent: this.options.silent,
+          },
+          pwaResources
+        );
 
         // Determine the output file path for this route
         const routeOutputPath = this.getRouteOutputPath(outputPath, route.path);
-        
+
         // Ensure directory exists
-        mkdirSync(join(routeOutputPath, '..'), { recursive: true });
-        
+        mkdirSync(join(routeOutputPath, ".."), { recursive: true });
+
         // Write the route-specific HTML file
         await Bun.write(routeOutputPath, routeHtml);
 
         if (!this.options.silent) {
-          logger.info(`✅ Generated crawler-optimized HTML: ${route.path} -> ${routeOutputPath.replace(outputPath, '')}`);
+          logger.info(
+            `✅ Generated crawler-optimized HTML: ${route.path} -> ${routeOutputPath.replace(outputPath, "")}`
+          );
         }
-
       } catch (error) {
         if (!this.options.silent) {
-          logger.warn(`Failed to generate HTML for route ${route.path}: ${error}`);
+          logger.warn(
+            `Failed to generate HTML for route ${route.path}: ${error}`
+          );
         }
       }
     }
@@ -3310,23 +3612,25 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}  <!-- CRAWLER OPTIMIZATION: R
    * Determine the output file path for a route
    * Examples:
    * "/" -> "/index.html" (already handled by main SPA file)
-   * "/about" -> "/about.html" 
+   * "/about" -> "/about.html"
    * "/tools" -> "/tools.html"
    * "/blog/post" -> "/blog/post.html"
    */
   private getRouteOutputPath(outputPath: string, routePath: string): string {
-    if (routePath === '/') {
+    if (routePath === "/") {
       // Homepage is handled by the main SPA file
-      return join(outputPath, 'index.html');
+      return join(outputPath, "index.html");
     }
 
     // Convert route path to file path
     // "/about" -> "about.html"
-    // "/tools" -> "tools.html"  
+    // "/tools" -> "tools.html"
     // "/blog/post" -> "blog/post.html"
-    const cleanPath = routePath.startsWith('/') ? routePath.slice(1) : routePath;
-    const fileName = cleanPath + '.html';
-    
+    const cleanPath = routePath.startsWith("/")
+      ? routePath.slice(1)
+      : routePath;
+    const fileName = cleanPath + ".html";
+
     return join(outputPath, fileName);
   }
 } 
