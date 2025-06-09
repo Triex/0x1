@@ -2787,6 +2787,8 @@ export default function ErrorComponent(props) {
       // Extract PWA config from project config if available
       if (projectConfig?.pwa) {
         pwaConfig = projectConfig.pwa;
+      } else if (projectConfig?.app?.pwa) {
+        pwaConfig = projectConfig.app.pwa;
       }
     } catch (error) {
       if (!this.options.silent) {

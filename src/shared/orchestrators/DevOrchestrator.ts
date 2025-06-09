@@ -2131,8 +2131,11 @@ if (document.readyState === 'loading') {
       projectConfig = await configManager.loadProjectConfig();
 
       // Extract PWA config from project config if available
+      // CRITICAL FIX: Handle both nested (app.pwa) and flattened (pwa) structures
       if (projectConfig?.pwa) {
         pwaConfig = projectConfig.pwa;
+      } else if (projectConfig?.app?.pwa) {
+        pwaConfig = projectConfig.app.pwa;
       }
     } catch (error) {
       if (this.options.debug) {

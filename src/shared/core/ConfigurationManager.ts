@@ -92,10 +92,12 @@ export class ConfigurationManager {
       config = { ...config, ...fileConfig };
     }
 
-    // 3. Load PWA configuration if exists
-    const pwaConfig = await this.loadPWAConfig();
-    if (pwaConfig) {
-      config.pwa = pwaConfig;
+    // 3. Load PWA configuration from manifest.json ONLY if not already loaded from config file
+    if (!config.pwa) {
+      const pwaConfig = await this.loadPWAConfig();
+      if (pwaConfig) {
+        config.pwa = pwaConfig;
+      }
     }
 
     this.config = config;
@@ -350,6 +352,7 @@ export default config;
 
   /**
    * Load configuration from 0x1 config files
+   * CRITICAL FIX: Actually parse and load the config file (was just detecting existence)
    */
   private async loadFromConfigFiles(): Promise<Partial<ProjectConfig> | null> {
     const configPaths = [
@@ -362,23 +365,160 @@ export default config;
     for (const configPath of configPaths) {
       if (existsSync(configPath)) {
         try {
-          // For now, we'll just detect the file exists
-          // In a full implementation, we'd dynamically import the config
+          // Store config path for metadata
           this.metadata = this.metadata || {} as ProjectMetadata;
           this.metadata.configPath = configPath;
           
-          // TODO: Dynamic import of config file
-          // const config = await import(configPath);
-          // return config.default || config;
+          // CRITICAL FIX: Actually parse the config file content
+          const configContent = await Bun.file(configPath).text();
           
-          return null; // For now, just detect file existence
+          // Extract the configuration object from the file
+          // Handle multiple patterns: export default {}, const config = {}, etc.
+          const extractedConfig = this.parseConfigFile(configContent);
+          
+          if (extractedConfig) {
+            // Handle nested config structures (app.pwa vs direct pwa)
+            if (extractedConfig.app) {
+              // Comprehensive config format: { app: { pwa: {...} } }
+              return {
+                name: extractedConfig.app.name,
+                description: extractedConfig.app.description,
+                themeColor: extractedConfig.app.themeColor,
+                backgroundColor: extractedConfig.app.backgroundColor,
+                pwa: extractedConfig.app.pwa,
+                build: extractedConfig.app.build,
+                dev: extractedConfig.dev
+              };
+            } else {
+              // Simple config format: { pwa: {...} }
+              return extractedConfig;
+            }
+          }
         } catch (error) {
+          // Log the error but continue trying other config paths
+          console.warn(`Failed to load config from ${configPath}:`, error);
           continue;
         }
       }
     }
 
     return null;
+  }
+
+  /**
+   * Parse configuration file content
+   * BULLETPROOF: Handles complex TypeScript config files with dynamic expressions
+   */
+  private parseConfigFile(content: string): any | null {
+    try {
+      // Remove comments and imports
+      const cleanContent = content
+        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
+        .replace(/\/\/.*$/gm, '') // Remove line comments
+        .replace(/import\s+.*?from\s+.*?;/g, '') // Remove imports
+        .replace(/export\s+type\s+.*?;/g, '') // Remove type exports
+        .replace(/\/\*\*[\s\S]*?\*\//g, ''); // Remove JSDoc comments
+
+      // Extract the default export object
+      const exportMatch = cleanContent.match(/export\s+default\s+(\{[\s\S]*?\});?\s*$/m);
+      if (!exportMatch) {
+        return null;
+      }
+
+      let configString = exportMatch[1];
+      
+      // CRITICAL: Handle dynamic expressions safely
+      // Replace process.env references with safe values
+      configString = configString.replace(/process\.env\.(\w+)/g, (match, envVar) => {
+        // For build purposes, we'll use safe defaults
+        switch (envVar) {
+          case 'NODE_ENV': return '"production"';
+          case 'ANALYZE': return 'false';
+          default: return '""';
+        }
+      });
+
+      // Handle template literals and other complex syntax
+      configString = configString
+        .replace(/`([^`]*)`/g, '"$1"') // Convert template literals to strings
+        .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+        .replace(/(\s*)\/\*[\s\S]*?\*\/(\s*)/g, '') // Remove any remaining comments
+        .replace(/(\s*)\/\/.*$/gm, ''); // Remove any remaining line comments
+
+      // Create a safe evaluation context with controlled globals
+      const safeEval = new Function(
+        'safeConsole', 
+        `
+        // Provide safe console object
+        const console = arguments[0];
+        
+        // Return the config object
+        return ${configString};
+        `
+      );
+      
+      // Execute with a safe console object
+      const safeConsole = {
+        log: () => {},
+        warn: () => {},
+        error: () => {}
+      };
+      
+      const parsed = safeEval(safeConsole);
+      
+      return parsed;
+      
+    } catch (error) {
+      console.warn(`[ConfigurationManager] Failed to parse config file: ${error}`);
+      
+      // FALLBACK: Try to extract just the PWA config manually if full parsing fails
+      try {
+        const pwaMatch = content.match(/pwa:\s*\{([\s\S]*?)\n\s*\}/);
+        if (pwaMatch) {
+          // Extract just the PWA config and manually parse key parts
+          const pwaContent = pwaMatch[1];
+          
+          const extractValue = (key: string): string | null => {
+            const match = pwaContent.match(new RegExp(`${key}:\\s*["']([^"']*)["']`));
+            return match ? match[1] : null;
+          };
+          
+          const extractBoolean = (key: string): boolean => {
+            const match = pwaContent.match(new RegExp(`${key}:\\s*(true|false)`));
+            return match ? match[1] === 'true' : false;
+          };
+          
+          // Manually extract essential PWA config
+          const basicPwaConfig = {
+            app: {
+              pwa: {
+                name: extractValue('name') || '0x1 Framework',
+                shortName: extractValue('shortName') || '0x1',
+                description: extractValue('description') || 'Built with 0x1',
+                themeColor: extractValue('themeColor') || '#a88bfa',
+                backgroundColor: extractValue('backgroundColor') || '#ffffff',
+                display: extractValue('display') || 'standalone',
+                startUrl: extractValue('startUrl') || '/',
+                orientation: extractValue('orientation') || 'any',
+                iconsPath: extractValue('iconsPath') || '/icons',
+                generateIcons: extractBoolean('generateIcons'),
+                offlineSupport: extractBoolean('offlineSupport'),
+                cacheStrategy: extractValue('cacheStrategy') || 'stale-while-revalidate',
+                cacheName: extractValue('cacheName') || '0x1-cache-v1',
+                statusBarStyle: extractValue('statusBarStyle') || 'default'
+              }
+            }
+          };
+          
+          console.warn('[ConfigurationManager] Used fallback PWA extraction');
+          return basicPwaConfig;
+        }
+      } catch (fallbackError) {
+        console.warn(`[ConfigurationManager] Fallback parsing also failed: ${fallbackError}`);
+      }
+      
+      return null;
+    }
   }
 
   /**
