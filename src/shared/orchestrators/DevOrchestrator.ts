@@ -1872,15 +1872,19 @@ if (document.readyState === 'loading') {
   }
 
   /**
-   * Handle route requests (serve main app HTML)
+   * Handle route requests with dynamic metadata extraction
    */
   private async handleRouteRequest(reqPath: string): Promise<Response> {
     const matchingRoute = this.state.routes.find(route => 
-      route.path === reqPath || route.path === '/'
+      route.path === reqPath || (reqPath === '/' && route.path === '/')
     );
 
-    if (matchingRoute || reqPath === '/' || reqPath === '/index.html') {
-      return new Response(await this.generateIndexHtml(), {
+    // Default to homepage if no specific route found
+    const routeToUse = matchingRoute || this.state.routes.find(route => route.path === '/');
+
+    if (routeToUse || reqPath === '/' || reqPath === '/index.html') {
+      // CRITICAL: Generate HTML with metadata specific to this route
+      return new Response(await this.generateIndexHtmlForRoute(routeToUse, reqPath), {
         headers: {
           'content-type': 'text/html;charset=UTF-8',
           'cache-control': 'no-cache, no-store, must-revalidate, max-age=0',
@@ -2010,17 +2014,16 @@ if (document.readyState === 'loading') {
   }
 
   /**
-   * Generate the main HTML page with live reload
+   * Generate HTML with metadata specific to a route
    */
-  private async generateIndexHtml(): Promise<string> {
-    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata (FIXED: Made synchronous)
+  private async generateIndexHtmlForRoute(route: Route | undefined, reqPath: string): Promise<string> {
+    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
     const configManager = getConfigurationManager(this.options.projectPath);
     let pwaMetadata: { manifestLink?: string; metaTags: string[]; scripts: string[] } = {
       metaTags: [],
       scripts: []
     };
     
-    // FIXED: Load PWA metadata synchronously to ensure it's available for HTML generation
     try {
       pwaMetadata = await configManager.getPWAMetadata();
     } catch (error) {
@@ -2029,7 +2032,7 @@ if (document.readyState === 'loading') {
       }
     }
     
-    // CRITICAL: Load actual project configuration for proper metadata
+    // Load project configuration
     let projectConfig;
     try {
       projectConfig = await configManager.loadProjectConfig();
@@ -2037,25 +2040,23 @@ if (document.readyState === 'loading') {
       if (this.options.debug) {
         logger.debug(`Project config loading failed: ${error}`);
       }
-      // Fallback config
       projectConfig = {
         name: 'My 0x1 App',
         description: '0x1 Framework development environment'
       };
     }
     
-    // CRITICAL: Extract metadata from homepage component (like Next.js 15) - SAME AS BUILDORCHESTRATOR
+    // CRITICAL: Extract metadata from the SPECIFIC route's component (not just homepage)
     let pageMetadata = null;
-    const homeRoute = this.state.routes.find(route => route.path === '/');
-    if (homeRoute) {
-      // Find the source file for the homepage
+    if (route) {
+      // Find the source file for this specific route
       const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
       let sourceFile = null;
       
       for (const ext of sourceExtensions) {
         const potentialPath = join(
           this.options.projectPath,
-          homeRoute.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
+          route.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
         );
         if (existsSync(potentialPath)) {
           sourceFile = potentialPath;
@@ -2072,209 +2073,36 @@ if (document.readyState === 'loading') {
           if (extractedMetadata) {
             pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
             if (this.options.debug) {
-              logger.debug(`✅ Extracted metadata from homepage: ${pageMetadata.title || 'No title'}`);
+              logger.debug(`✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || 'No title'}`);
             }
           }
         } catch (error) {
           if (this.options.debug) {
-            logger.debug(`Failed to extract metadata from ${sourceFile}: ${error}`);
+            logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
           }
         }
       }
     }
     
-    // CRITICAL: Dynamically discover external packages and their CSS - ZERO HARDCODING
-    const externalCssLinks: string[] = [];
-    const externalImports: Record<string, string> = {};
+    // Generate CSS link tags for external dependencies
+    const externalCssLinks = '';
     
-    // ENHANCED: Scan for CSS imports in source files first (most reliable)
-    const sourceFiles = await this.findSourceFiles();
-    const cssImportPatterns = new Set<string>();
+    // Generate favicon link (consistent with existing logic)
+    const faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
     
-    for (const filePath of sourceFiles) {
-      try {
-        const content = readFileSync(filePath, 'utf-8');
-        
-        // Find CSS imports like: import '@0x1js/highlighter/styles'
-        const cssImportMatches = content.match(/import\s+['"]([^'"]+\/styles?)['"];?/g);
-        if (cssImportMatches) {
-          for (const match of cssImportMatches) {
-            const pathMatch = match.match(/import\s+['"]([^'"]+\/styles?)['"];?/);
-            if (pathMatch) {
-              cssImportPatterns.add(pathMatch[1]);
-            }
-          }
-        }
-        
-        // Also find direct CSS file imports
-        const directCssMatches = content.match(/import\s+['"]([^'"]+\.css)['"];?/g);
-        if (directCssMatches) {
-          for (const match of directCssMatches) {
-            const pathMatch = match.match(/import\s+['"]([^'"]+\.css)['"];?/);
-            if (pathMatch) {
-              cssImportPatterns.add(pathMatch[1]);
-            }
-          }
-        }
-      } catch (error) {
-        // Silent fail for individual files
-      }
-    }
-    
-    // Process discovered CSS imports
-    for (const cssImport of cssImportPatterns) {
-      if (cssImport.startsWith('@')) {
-        // Scoped package CSS import like @0x1js/highlighter/styles
-        const parts = cssImport.split('/');
-        if (parts.length >= 2) {
-          const packageName = `${parts[0]}/${parts[1]}`; // @0x1js/highlighter
-          const subPath = parts.slice(2).join('/'); // styles
-          
-          // Check if this package exists in node_modules
-          const packagePath = join(this.options.projectPath, 'node_modules', packageName);
-          if (existsSync(packagePath)) {
-            // Look for CSS files in the package
-            const possibleCssPaths = [
-              join(packagePath, 'dist', 'styles.css'),
-              join(packagePath, 'dist', `${subPath}.css`),
-              join(packagePath, `${subPath}.css`),
-              join(packagePath, 'styles.css'),
-              join(packagePath, 'dist', 'index.css'),
-              join(packagePath, 'index.css')
-            ];
-            
-            for (const cssPath of possibleCssPaths) {
-              if (existsSync(cssPath)) {
-                const cssUrl = `/node_modules/${packageName}/dist/${cssPath.split('/').pop()}`;
-                externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
-                
-                if (this.options.debug) {
-                  logger.debug(`Found CSS for ${cssImport}: ${cssUrl}`);
-                }
-                break;
-              }
-            }
-          }
-        }
-      } else if (cssImport.includes('/')) {
-        // Regular package CSS import
-        const cssUrl = `/node_modules/${cssImport}`;
-        externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
-      }
-    }
-    
-    // FALLBACK: Scan node_modules for any scoped packages that have CSS files
-    const nodeModulesPath = join(this.options.projectPath, 'node_modules');
-    if (existsSync(nodeModulesPath)) {
-      try {
-        const items = readdirSync(nodeModulesPath, { withFileTypes: true });
-        
-        for (const item of items) {
-          if (item.isDirectory() && item.name.startsWith('@')) {
-            // This is a scope directory like @0x1js
-            const scopePath = join(nodeModulesPath, item.name);
-            try {
-              const scopeItems = readdirSync(scopePath, { withFileTypes: true });
-              
-              for (const scopeItem of scopeItems) {
-                if (scopeItem.isDirectory()) {
-                  const packageName = `${item.name}/${scopeItem.name}`;
-                  const packagePath = join(scopePath, scopeItem.name);
-                  
-                  // Add to import map
-                  externalImports[packageName] = `/node_modules/${packageName}/index.js`;
-                  
-                  // Check for CSS files (only if not already added above)
-                  const alreadyAdded = externalCssLinks.some(link => link.includes(packageName));
-                  if (!alreadyAdded) {
-                    const distPath = join(packagePath, 'dist');
-                    if (existsSync(distPath)) {
-                      try {
-                        const distFiles = readdirSync(distPath);
-                        for (const file of distFiles) {
-                          if (file.endsWith('.css')) {
-                            const cssUrl = `/node_modules/${packageName}/dist/${file}`;
-                            externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
-                          }
-                        }
-                      } catch (e) {
-                        // Silent fail
-                      }
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              // Silent fail for individual scope directories
-            }
-          }
-        }
-      } catch (e) {
-        // Silent fail if node_modules doesn't exist or isn't readable
-      }
-    }
-    
-    // Build complete import map with external packages - FIXED: Added missing 0x1/index.js mappings
-    const importMap = {
-      "0x1": "/node_modules/0x1/index.js",
-      "0x1/index": "/node_modules/0x1/index.js",
-      "0x1/index.js": "/node_modules/0x1/index.js",
-      "0x1/jsx-runtime": "/0x1/jsx-runtime.js",
-      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js",
-      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js",
-      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js",
-      "0x1/router": "/0x1/router.js",
-      "0x1/router.js": "/0x1/router.js",
-      "0x1/link": "/0x1/router.js",
-      "0x1/link.js": "/0x1/router.js",
-      "0x1/hooks": "/0x1/hooks.js",
-      "0x1/hooks.js": "/0x1/hooks.js",
-      ...externalImports
-    };
-    
-    // CRITICAL: Generate favicon link based on what's available
-    let faviconLink = '';
-    const faviconSearchDirs = [
-      join(this.options.projectPath, 'public'),
-      join(this.options.projectPath, 'app'),
-      join(this.options.projectPath, 'src')
-    ];
-    
-    for (const dir of faviconSearchDirs) {
-      const faviconSvg = join(dir, 'favicon.svg');
-      const faviconIco = join(dir, 'favicon.ico');
-      const faviconPng = join(dir, 'favicon.png');
-      
-      if (existsSync(faviconSvg)) {
-        faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
-        break;
-      } else if (existsSync(faviconIco)) {
-        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
-        break;
-      } else if (existsSync(faviconPng)) {
-        faviconLink = '  <link rel="icon" href="/favicon.png" type="image/png">';
-        break;
-      }
-    }
-    
-    // DYNAMIC PWA SUPPORT - Add PWA manifest link if available
+    // PWA support
     const manifestLink = pwaMetadata.manifestLink || '';
-    
-    // DYNAMIC PWA SUPPORT - Add PWA meta tags
     const pwaMetaTags = pwaMetadata.metaTags.length > 0 
       ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
       : '';
-    
-    // DYNAMIC PWA SUPPORT - Add PWA scripts
     const pwaScripts = pwaMetadata.scripts.length > 0
       ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
       : '';
-
-    // FIXED: Use actual project configuration for title and description
+    
+    // Use page metadata if available, fallback to project config
     let pageTitle, pageDescription, additionalMetaTags = '';
     
     if (pageMetadata) {
-      // Use the metadata system's title resolution
       const { resolveTitle, generateMetaTags } = await import('../../core/metadata');
       pageTitle = `${resolveTitle(pageMetadata)} - Development`;
       pageDescription = pageMetadata.description || projectConfig.description || '0x1 Framework development environment';
@@ -2283,26 +2111,45 @@ if (document.readyState === 'loading') {
         additionalMetaTags = generateMetaTags(pageMetadata);
       } catch (error) {
         if (this.options.debug) {
-          logger.debug(`Failed to generate meta tags: ${error}`);
+          logger.warn(`Failed to generate meta tags: ${error}`);
         }
       }
     } else {
-      // Fallback to project config
       pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
       pageDescription = projectConfig.description || '0x1 Framework development environment';
     }
-
-    return `<!DOCTYPE html>
+    
+    // Cache-busting timestamp
+    const cacheBust = Date.now();
+    
+    const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css">
-${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
+${additionalMetaTags}${faviconLink}
+${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
   <script type="importmap">
-  ${JSON.stringify({ imports: importMap }, null, 2)}
+  {
+    "imports": {
+      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",
+      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",
+      "0x1/router": "/0x1/router.js?v=${cacheBust}",
+      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link": "/0x1/router.js?v=${cacheBust}",
+      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",
+      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",
+      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"
+    }
+  }
   </script>
 </head>
 <body class="bg-slate-900 text-white">
@@ -2311,25 +2158,51 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMet
     window.process={env:{NODE_ENV:'development'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js" type="module"></script>${pwaScripts}
   <script>
-    // Live reload functionality
-    if (typeof WebSocket !== 'undefined') {
-      const ws = new WebSocket(\`ws://\${location.host}/__0x1_ws\`);
-      ws.addEventListener('message', (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'reload') {
-          console.log('🔄 Reloading due to file change:', data.filename || 'unknown');
-          location.reload();
+    // LIVE RELOAD for development
+    let lastCompileTime = null;
+    
+    // Auto-detect the server URL base on current location
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
+    
+    function connectWebSocket() {
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'reload' || message.type === 'file-changed') {
+            console.log('[0x1 Dev] Reloading due to file change:', message.filename || 'unknown');
+            window.location.reload();
+          }
+        } catch (error) {
+          console.debug('[0x1 Dev] Non-JSON message received:', event.data);
         }
-      });
-      ws.addEventListener('close', () => {
-        console.log('🔌 Live reload disconnected');
-      });
+      };
+      
+      ws.onopen = () => {
+        console.log('[0x1 Dev] Live reload connected');
+      };
+      
+      ws.onclose = () => {
+        console.log('[0x1 Dev] Live reload disconnected, reconnecting in 1s...');
+        setTimeout(connectWebSocket, 1000);
+      };
+      
+      ws.onerror = (error) => {
+        console.warn('[0x1 Dev] Live reload error:', error);
+      };
     }
+    
+    // Start live reload connection
+    connectWebSocket();
   </script>
+  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
 </body>
 </html>`;
+
+    return html;
   }
 
   /**
@@ -2778,5 +2651,14 @@ connect();
       }
       return this.createErrorResponse(error);
     }
+  }
+
+  /**
+   * Generate the main HTML page with live reload (fallback method)
+   */
+  private async generateIndexHtml(): Promise<string> {
+    // Use the route-specific method with homepage route
+    const homeRoute = this.state.routes.find(route => route.path === '/');
+    return await this.generateIndexHtmlForRoute(homeRoute, '/');
   }
 }

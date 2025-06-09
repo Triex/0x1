@@ -1941,43 +1941,12 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     // CRITICAL: Load actual project configuration for proper metadata
     const projectConfig = await configManager.loadProjectConfig();
     
-    // CRITICAL: Extract metadata from homepage component (like Next.js 15)
+    // CRITICAL: Extract metadata from homepage component (for the default HTML file)
+    // In production builds, we generate one HTML file but support client-side routing
     let pageMetadata = null;
     const homeRoute = this.state.routes.find(route => route.path === '/');
     if (homeRoute) {
-      // Find the source file for the homepage
-      const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
-      let sourceFile = null;
-      
-      for (const ext of sourceExtensions) {
-        const potentialPath = join(
-          this.options.projectPath,
-          homeRoute.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
-        );
-        if (existsSync(potentialPath)) {
-          sourceFile = potentialPath;
-          break;
-        }
-      }
-      
-      if (sourceFile) {
-        try {
-          // Use the existing metadata extraction system
-          const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
-          const extractedMetadata = await extractMetadataFromFile(sourceFile);
-          
-          if (extractedMetadata) {
-            pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
-            if (!this.options.silent) {
-              logger.info(`✅ Extracted metadata from homepage: ${pageMetadata.title || 'No title'}`);
-            }
-          }
-        } catch (error) {
-          if (!this.options.silent) {
-            logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
-          }
-        }
-      }
+      pageMetadata = await this.extractMetadataFromRoute(homeRoute);
     }
     
     // Generate CSS link tags for external dependencies
@@ -2080,6 +2049,48 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 </html>`;
 
     await Bun.write(join(outputPath, 'index.html'), html);
+  }
+
+  /**
+   * Extract metadata from a specific route component
+   */
+  private async extractMetadataFromRoute(route: Route): Promise<any> {
+    // Find the source file for this route
+    const sourceExtensions = ['.tsx', '.ts', '.jsx', '.js'];
+    let sourceFile = null;
+    
+    for (const ext of sourceExtensions) {
+      const potentialPath = join(
+        this.options.projectPath,
+        route.componentPath.replace(/^\//, '').replace(/\.js$/, ext)
+      );
+      if (existsSync(potentialPath)) {
+        sourceFile = potentialPath;
+        break;
+      }
+    }
+    
+    if (sourceFile) {
+      try {
+        // Use the existing metadata extraction system
+        const { extractMetadataFromFile, mergeMetadata, DEFAULT_METADATA } = await import('../../core/metadata');
+        const extractedMetadata = await extractMetadataFromFile(sourceFile);
+        
+        if (extractedMetadata) {
+          const pageMetadata = mergeMetadata(extractedMetadata, DEFAULT_METADATA);
+          if (!this.options.silent) {
+            logger.info(`✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || 'No title'}`);
+          }
+          return pageMetadata;
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to extract metadata from ${sourceFile}: ${error}`);
+        }
+      }
+    }
+    
+    return null;
   }
 
   private async copyStaticAssets(outputPath: string): Promise<void> {
