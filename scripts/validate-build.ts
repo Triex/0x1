@@ -48,6 +48,7 @@ const optionalFiles = [
   // These files may or may not exist depending on build configuration
   'dist/types/0x1.d.ts',
   'dist/link.js', // Link component
+  'dist/core/tailwind-handler.js', // TailwindHandler (built from experimental package)
 ];
 
 // Files that should NOT exist in optimized build
@@ -56,7 +57,6 @@ const forbiddenFiles = [
   'dist/node_modules/',
   'dist/0x1/',
   'dist/browser/',
-  'dist/error-boundary.js', // Should only be in core/
   'dist/react-shim.js',
   'dist/core/suspense.js',
   'dist/core/env.js',

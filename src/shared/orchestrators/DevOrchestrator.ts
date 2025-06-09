@@ -1266,7 +1266,7 @@ if (typeof globalThis !== 'undefined') {
         sourceFilePath: sourcePath,
         projectPath: this.options.projectPath,
         mode: 'development',
-        debug: this.options.debug
+        debug: this.options.debug || false // Only enable when explicitly debugging
       });
 
       if (this.options.debug) {
@@ -1418,54 +1418,136 @@ if (typeof globalThis !== 'undefined') {
         return this.createNotFoundResponse('External package CSS not found');
       }
       
-      // CRITICAL FIX: Restore working Tailwind v4 processing from dev-server.bak.ts
+      // CRITICAL FIX: Use CSS configuration system for intelligent processing
       if (reqPath === '/styles.css' || reqPath === '/dist/styles.css' || reqPath === '/globals.css') {
-        // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
-        const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
+        // Get CSS configuration from ConfigurationManager
+        const configManager = getConfigurationManager(this.options.projectPath);
+        const cssConfig = await configManager.getCSSConfig();
         
-        if (isV4Available) {
-          if (!this.options.silent) {
-            logger.info(`🌈 Processing Tailwind CSS v4 from ${reqPath}`);
-          }
+        if (!this.options.silent) {
+          logger.info(`🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === '0x1-enhanced' ? 'Dev Lightning mode' : 'Standard mode'})`);
+        }
 
-          // Use working Tailwind v4 processing
-          let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
-          if (!inputFile) {
-            inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
-          }
-
-          // Only proceed if we have a valid input file
-          if (inputFile) {
-            // Start Tailwind v4 process (minimal logging)
+        // Try 0x1 Enhanced TailwindHandler if configured
+        if (cssConfig.processor === '0x1-enhanced') {
+          try {
+            if (!this.options.silent) {
+              logger.info('⚡ Using 0x1 Enhanced TailwindHandler for development...');
+            }
+            
+            // Use dynamic import with constructed path to avoid TS resolution
+            let processTailwindFast;
             try {
-              const tailwindProcess = await tailwindV4Handler.startProcess(
-                this.options.projectPath,
-                inputFile,
-                join(this.options.projectPath, 'dist', 'styles.css')
-              );
-
-              if (tailwindProcess && tailwindProcess.success) {
-                const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
-                if (existsSync(cssPath)) {
-                  const cssContent = readFileSync(cssPath, 'utf-8');
-                  
-                  if (!this.options.silent) {
-                    logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
-                  }
-
-                  return new Response(cssContent, {
-                    headers: {
-                      'Content-Type': 'text/css; charset=utf-8',
-                      'Cache-Control': 'no-cache',
-                      'X-Framework': '0x1',
-                      'X-CSS-Engine': 'Tailwind-v4'
-                    }
-                  });
-                }
+              // Try built framework path first
+              const distPath = ['..', '..', 'dist', 'core', 'tailwind-handler.js'].join('/');
+              const builtHandler = await import(distPath);
+              processTailwindFast = builtHandler.processTailwindFast;
+            } catch {
+              try {
+                // Fallback to experimental path during development
+                const expPath = ['..', '..', '..', '0x1-experimental', 'tailwind-handler', 'TailwindHandler.js'].join('/');
+                const expHandler = await import(expPath);
+                processTailwindFast = expHandler.processTailwindFast;
+              } catch {
+                throw new Error('TailwindHandler not available');
               }
-            } catch (tailwindError) {
-              if (this.options.debug) {
-                logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+            }
+            
+            const result = await processTailwindFast(this.options.projectPath, {
+              outputPath: join(this.options.projectPath, 'dist', 'styles.css'),
+              config: {
+                content: cssConfig.content || [
+                  'app/**/*.{js,ts,jsx,tsx}',
+                  'components/**/*.{js,ts,jsx,tsx}',
+                  'pages/**/*.{js,ts,jsx,tsx}',
+                  '**/*.{html,js,ts,jsx,tsx}'
+                ],
+                darkMode: cssConfig.darkMode,
+                theme: cssConfig.theme
+              }
+            });
+            
+            if (result.success && result.css.length > 1000) {
+              const cacheStatus = result.fromCache ? '(cached)' : '(fresh)';
+              
+              if (!this.options.silent) {
+                logger.success(`✅ 0x1 Enhanced CSS: ${result.processingTime.toFixed(1)}ms ${cacheStatus} (${(result.css.length / 1024).toFixed(1)}KB)`);
+              }
+
+              return new Response(result.css, {
+                headers: {
+                  'Content-Type': 'text/css; charset=utf-8',
+                  'Cache-Control': 'no-cache',
+                  'X-Framework': '0x1',
+                  'X-CSS-Engine': '0x1-Enhanced',
+                  'X-Processing-Time': `${result.processingTime}ms`,
+                  'X-Cache-Hit': result.fromCache.toString()
+                }
+              });
+            } else {
+              if (!this.options.silent) {
+                logger.warn('⚠️ 0x1 Enhanced handler produced minimal CSS, falling back...');
+              }
+            }
+          } catch (enhancedError) {
+            if (this.options.debug) {
+              logger.debug(`[DevOrchestrator] Enhanced handler failed: ${enhancedError}`);
+            }
+            if (!this.options.silent) {
+              logger.info('💠 Falling back to Tailwind v4...');
+            }
+          }
+        }
+
+        // Use Tailwind v4 (either as primary choice or fallback)
+        if (cssConfig.processor === 'tailwind-v4' || cssConfig.processor === '0x1-enhanced') {
+          // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
+          const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
+          
+          if (isV4Available) {
+            if (!this.options.silent) {
+              logger.info(`🌈 Processing Tailwind CSS v4 from ${reqPath}`);
+            }
+
+            // Use working Tailwind v4 processing
+            let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
+            if (!inputFile) {
+              inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
+            }
+
+            // Only proceed if we have a valid input file
+            if (inputFile) {
+              // Start Tailwind v4 process (minimal logging)
+              try {
+                const tailwindProcess = await tailwindV4Handler.startProcess(
+                  this.options.projectPath,
+                  inputFile,
+                  join(this.options.projectPath, 'dist', 'styles.css')
+                );
+
+                if (tailwindProcess && tailwindProcess.success) {
+                  const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
+                  if (existsSync(cssPath)) {
+                    const cssContent = readFileSync(cssPath, 'utf-8');
+                    
+                    if (!this.options.silent) {
+                      logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
+                    }
+
+                    return new Response(cssContent, {
+                      headers: {
+                        'Content-Type': 'text/css; charset=utf-8',
+                        'Cache-Control': 'no-cache',
+                        'X-Framework': '0x1',
+                        'X-CSS-Engine': 'Tailwind-v4'
+                      }
+                    });
+                  }
+                }
+              } catch (tailwindError) {
+                if (this.options.debug) {
+                  logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+                }
               }
             }
           }
