@@ -11,6 +11,7 @@ import { logger } from '../../cli/utils/logger';
 // Import shared core utilities for SINGLE SOURCE OF TRUTH
 import { getConfigurationManager } from '../core/ConfigurationManager';
 import { ImportTransformer } from '../core/ImportTransformer';
+import { injectPWAIntoHTML, PWAHandler, type PWAConfig } from '../core/PWAHandler';
 import { transpilationEngine } from '../core/TranspilationEngine';
 
 // CRITICAL FIX: Import working Tailwind v4 handler from DevOrchestrator (SINGLE SOURCE OF TRUTH)
@@ -2774,36 +2775,42 @@ export default function ErrorComponent(props) {
       logger.info('🌐 Generating route-specific HTML files for crawlers + SPA file for users...');
     }
 
-    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+    // SINGLE SOURCE OF TRUTH: Use ConfigurationManager for PWA metadata
     const configManager = getConfigurationManager(this.options.projectPath);
-    const pwaMetadata = await configManager.getPWAMetadata();
-    const projectConfig = await configManager.loadProjectConfig();
+    let pwaConfig: PWAConfig | null = null;
+    let projectConfig: any = {};
     
-    // Generate shared HTML resources
-    const resources = await this.generateSharedHtmlResources(outputPath, pwaMetadata);
-
-    // CRITICAL PWA FIX: Auto-inject service worker registration
-    if (pwaMetadata.scripts.length > 0) {
-      resources.pwaScripts += '\n  ' + pwaMetadata.scripts.join('\n  ');
+    try {
+      const pwaMetadata = await configManager.getPWAMetadata();
+      projectConfig = await configManager.loadProjectConfig();
       
-      // Add automatic service worker registration if PWA is enabled
+      // Extract PWA config from project config if available
       if (projectConfig?.pwa) {
-        resources.pwaScripts += `
-  <script>
-    // Auto-register service worker for PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', async () => {
-        try {
-          const registration = await navigator.serviceWorker.register('/service-worker.js');
-          console.log('✅ Service Worker registered:', registration.scope);
-        } catch (error) {
-          console.error('❌ Service Worker registration failed:', error);
-        }
-      });
-    }
-  </script>`;
+        pwaConfig = projectConfig.pwa;
+      }
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`PWA configuration loading failed: ${error}`);
       }
     }
+
+    // SINGLE SOURCE OF TRUTH: Use shared PWA handler
+    const pwaHandler = PWAHandler.create({
+      mode: 'production',
+      projectPath: this.options.projectPath,
+      outputPath,
+      silent: this.options.silent,
+      debug: !this.options.silent
+    });
+
+    const pwaResources = await pwaHandler.generatePWAResources(pwaConfig);
+    
+    // Log PWA status using shared handler
+    const hasIcons = await this.iconsExist(pwaConfig?.iconsPath || '/icons');
+    pwaHandler.logPWAStatus(pwaConfig, hasIcons);
+    
+    // Generate shared HTML resources
+    const resources = await this.generateSharedHtmlResources(outputPath, pwaResources);
 
     // Generate main SPA file for users
     await this.generateMainSpaFile(outputPath, projectConfig, resources);
@@ -2812,14 +2819,29 @@ export default function ErrorComponent(props) {
     await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, resources);
 
     if (!this.options.silent) {
-      logger.success(`✅ ✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
+      logger.success(`✅ Generated HTML files: 1 SPA + ${this.state.routes.length} route-specific files`);
     }
   }
 
   /**
-   * Generate shared HTML resources used by all HTML files
+   * Check if PWA icons exist (using shared logic patterns)
    */
-  private async generateSharedHtmlResources(outputPath: string, pwaMetadata: any) {
+  private async iconsExist(iconsPath: string): Promise<boolean> {
+    if (!iconsPath) return false;
+
+    const filesystemPath = iconsPath.startsWith('/') 
+      ? join(this.options.projectPath, 'public', iconsPath.substring(1))
+      : join(this.options.projectPath, iconsPath);
+
+    const essentialIcons = ['icon-192x192.png', 'icon-512x512.png'];
+    return essentialIcons.some(icon => existsSync(join(filesystemPath, icon)));
+  }
+
+  /**
+   * Generate shared HTML resources used by all HTML files
+   * UPDATED: Uses PWA resources from shared handler
+   */
+  private async generateSharedHtmlResources(outputPath: string, pwaResources: any) {
     // Generate favicon link
     let faviconLink = '';
     const faviconPath = join(outputPath, 'favicon.svg');
@@ -2837,42 +2859,37 @@ export default function ErrorComponent(props) {
       .map(cssFile => `  <link rel="stylesheet" href="${cssFile}">`)
       .join('\n');
 
-    // PWA resources
-    const manifestLink = pwaMetadata.manifestLink || '';
-    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
-      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
-      : '';
-    const pwaScripts = pwaMetadata.scripts.length > 0
-      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
-      : '';
-
     // Cache-busting timestamp
     const cacheBust = Date.now();
 
-    return { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust };
+    return { 
+      faviconLink, 
+      externalCssLinks, 
+      pwaResources, // Use PWA resources from shared handler
+      cacheBust 
+    };
   }
 
   /**
    * Generate main SPA file (index.html) - for users browsing the site
-   * This file uses client-side routing and metadata updates
+   * UPDATED: Uses shared PWA handler for injection
    */
   private async generateMainSpaFile(outputPath: string, projectConfig: any, resources: any) {
-    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = resources;
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
 
     // Use project config for the main SPA file (users will get dynamic metadata updates)
     const pageTitle = projectConfig.name || 'My 0x1 App';
     const pageDescription = projectConfig.description || '0x1 Framework application';
 
-    const spaHtml = `<!DOCTYPE html>
+    let spaHtml = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
-  <script type="importmap">
+${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + '\n' : ''}  <script type="importmap">
   {
     "imports": {
       "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",
@@ -2898,9 +2915,17 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     window.process={env:{NODE_ENV:'production'}};
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
-  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
+  <script src="/app.js?v=${cacheBust}" type="module"></script>
 </body>
 </html>`;
+
+    // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
+    spaHtml = injectPWAIntoHTML(spaHtml, {
+      mode: 'production',
+      projectPath: this.options.projectPath,
+      outputPath,
+      silent: this.options.silent
+    }, pwaResources);
 
     await Bun.write(join(outputPath, 'index.html'), spaHtml);
 
@@ -2911,10 +2936,10 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
 
   /**
    * Generate route-specific HTML files - for crawlers and external tools
-   * Each route gets its own HTML file with proper metadata baked in
+   * UPDATED: Uses shared PWA handler for injection
    */
   private async generateCrawlerOptimizedRouteFiles(outputPath: string, projectConfig: any, resources: any) {
-    const { faviconLink, externalCssLinks, manifestLink, pwaMetaTags, pwaScripts, cacheBust } = resources;
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
 
     for (const route of this.state.routes) {
       try {
@@ -2945,16 +2970,15 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
         }
 
         // Generate HTML file for this route
-        const routeHtml = `<!DOCTYPE html>
+        let routeHtml = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
-  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->
+${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks ? externalCssLinks + '\n' : ''}  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->
   <script type="importmap">
   {
     "imports": {
@@ -2982,9 +3006,17 @@ ${externalCssLinks ? externalCssLinks + '\n' : ''}${pwaMetaTags}
     (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
   </script>
   <!-- CRAWLER OPTIMIZATION: SPA functionality still works for users -->
-  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
+  <script src="/app.js?v=${cacheBust}" type="module"></script>
 </body>
 </html>`;
+
+        // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
+        routeHtml = injectPWAIntoHTML(routeHtml, {
+          mode: 'production',
+          projectPath: this.options.projectPath,
+          outputPath,
+          silent: this.options.silent
+        }, pwaResources);
 
         // Determine the output file path for this route
         const routeOutputPath = this.getRouteOutputPath(outputPath, route.path);

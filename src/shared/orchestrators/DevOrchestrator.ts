@@ -25,6 +25,7 @@ import { serveStaticFile } from '../../cli/server/middleware/static-files';
 
 // CRITICAL FIX: Import Tailwind v4 handler from working implementation
 import { tailwindV4Handler } from '../../cli/commands/utils/server/tailwind-v4';
+import { injectPWAIntoHTML, PWAConfig, PWAHandler } from '../core/PWAHandler';
 
 // WORKING: Import actual working handlers from dev-server.bak.ts
 
@@ -2121,67 +2122,82 @@ if (document.readyState === 'loading') {
    * Generate HTML with metadata specific to a route
    */
   private async generateIndexHtmlForRoute(route: Route | undefined, reqPath: string): Promise<string> {
-    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
+    // SINGLE SOURCE OF TRUTH: Use ConfigurationManager for PWA metadata
     const configManager = getConfigurationManager(this.options.projectPath);
-    let pwaMetadata: { manifestLink?: string; metaTags: string[]; scripts: string[] } = {
-      metaTags: [],
-      scripts: []
-    };
-    
-    try {
-      pwaMetadata = await configManager.getPWAMetadata();
-    } catch (error) {
-      if (this.options.debug) {
-        logger.debug(`PWA metadata loading failed: ${error}`);
-      }
-    }
-    
-    // Load project configuration
-    let projectConfig;
+    let pwaConfig: PWAConfig | null = null;
+    let projectConfig: any = {};
+
     try {
       projectConfig = await configManager.loadProjectConfig();
+
+      // Extract PWA config from project config if available
+      if (projectConfig?.pwa) {
+        pwaConfig = projectConfig.pwa;
+      }
     } catch (error) {
       if (this.options.debug) {
-        logger.debug(`Project config loading failed: ${error}`);
+        logger.debug(`PWA configuration loading failed: ${error}`);
       }
       projectConfig = {
-        name: 'My 0x1 App',
-        description: '0x1 Framework development environment'
+        name: "My 0x1 App",
+        description: "0x1 Framework development environment",
       };
     }
-    
+
+    // SINGLE SOURCE OF TRUTH: Use shared PWA handler
+    const pwaHandler = PWAHandler.create({
+      mode: "development",
+      projectPath: this.options.projectPath,
+      silent: this.options.silent,
+      debug: this.options.debug,
+    });
+
+    const pwaResources = await pwaHandler.generatePWAResources(pwaConfig);
+
+    // Log PWA status using shared handler
+    const hasIcons = await this.iconsExist(pwaConfig?.iconsPath || "/icons");
+    pwaHandler.logPWAStatus(pwaConfig, hasIcons);
+
     // CRITICAL: Extract metadata from the SPECIFIC route's component (not just homepage)
     // FIXED: Use client-side metadata updates (same as production) instead of server-side extraction
     const pageMetadata = null; // Client-side metadata updates handle this
     if (route && this.options.debug) {
-      logger.debug(`Route ${route.path} will use client-side metadata updates (same as production)`);
+      logger.debug(
+        `Route ${route.path} will use client-side metadata updates (same as production)`
+      );
     }
-    
+
     // CRITICAL: Dynamically discover external packages and their CSS - RESTORED FROM WORKING VERSION
     const externalCssLinks: string[] = [];
     const externalImports: Record<string, string> = {};
-    
+
     // ENHANCED: Scan for CSS imports in source files first (most reliable)
     const sourceFiles = await this.findSourceFiles();
     const cssImportPatterns = new Set<string>();
-    
+
     for (const filePath of sourceFiles) {
       try {
-        const content = readFileSync(filePath, 'utf-8');
-        
+        const content = readFileSync(filePath, "utf-8");
+
         // Find CSS imports like: import '@0x1js/highlighter/styles'
-        const cssImportMatches = content.match(/import\s+['"]([^'"]+\/styles?)['"];?/g);
+        const cssImportMatches = content.match(
+          /import\s+['"]([^'"]+\/styles?)['"];?/g
+        );
         if (cssImportMatches) {
           for (const match of cssImportMatches) {
-            const pathMatch = match.match(/import\s+['"]([^'"]+\/styles?)['"];?/);
+            const pathMatch = match.match(
+              /import\s+['"]([^'"]+\/styles?)['"];?/
+            );
             if (pathMatch) {
               cssImportPatterns.add(pathMatch[1]);
             }
           }
         }
-        
+
         // Also find direct CSS file imports
-        const directCssMatches = content.match(/import\s+['"]([^'"]+\.css)['"];?/g);
+        const directCssMatches = content.match(
+          /import\s+['"]([^'"]+\.css)['"];?/g
+        );
         if (directCssMatches) {
           for (const match of directCssMatches) {
             const pathMatch = match.match(/import\s+['"]([^'"]+\.css)['"];?/);
@@ -2194,34 +2210,40 @@ if (document.readyState === 'loading') {
         // Silent fail for individual files
       }
     }
-    
+
     // Process discovered CSS imports
     for (const cssImport of cssImportPatterns) {
-      if (cssImport.startsWith('@')) {
+      if (cssImport.startsWith("@")) {
         // Scoped package CSS import like @0x1js/highlighter/styles
-        const parts = cssImport.split('/');
+        const parts = cssImport.split("/");
         if (parts.length >= 2) {
           const packageName = `${parts[0]}/${parts[1]}`; // @0x1js/highlighter
-          const subPath = parts.slice(2).join('/'); // styles
-          
+          const subPath = parts.slice(2).join("/"); // styles
+
           // Check if this package exists in node_modules
-          const packagePath = join(this.options.projectPath, 'node_modules', packageName);
+          const packagePath = join(
+            this.options.projectPath,
+            "node_modules",
+            packageName
+          );
           if (existsSync(packagePath)) {
             // Look for CSS files in the package
             const possibleCssPaths = [
-              join(packagePath, 'dist', 'styles.css'),
-              join(packagePath, 'dist', `${subPath}.css`),
+              join(packagePath, "dist", "styles.css"),
+              join(packagePath, "dist", `${subPath}.css`),
               join(packagePath, `${subPath}.css`),
-              join(packagePath, 'styles.css'),
-              join(packagePath, 'dist', 'index.css'),
-              join(packagePath, 'index.css')
+              join(packagePath, "styles.css"),
+              join(packagePath, "dist", "index.css"),
+              join(packagePath, "index.css"),
             ];
-            
+
             for (const cssPath of possibleCssPaths) {
               if (existsSync(cssPath)) {
-                const cssUrl = `/node_modules/${packageName}/dist/${cssPath.split('/').pop()}`;
-                externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
-                
+                const cssUrl = `/node_modules/${packageName}/dist/${cssPath.split("/").pop()}`;
+                externalCssLinks.push(
+                  `  <link rel="stylesheet" href="${cssUrl}">`
+                );
+
                 if (this.options.debug) {
                   logger.debug(`Found CSS for ${cssImport}: ${cssUrl}`);
                 }
@@ -2230,45 +2252,52 @@ if (document.readyState === 'loading') {
             }
           }
         }
-      } else if (cssImport.includes('/')) {
+      } else if (cssImport.includes("/")) {
         // Regular package CSS import
         const cssUrl = `/node_modules/${cssImport}`;
         externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
       }
     }
-    
+
     // FALLBACK: Scan node_modules for any scoped packages that have CSS files
-    const nodeModulesPath = join(this.options.projectPath, 'node_modules');
+    const nodeModulesPath = join(this.options.projectPath, "node_modules");
     if (existsSync(nodeModulesPath)) {
       try {
         const items = readdirSync(nodeModulesPath, { withFileTypes: true });
-        
+
         for (const item of items) {
-          if (item.isDirectory() && item.name.startsWith('@')) {
+          if (item.isDirectory() && item.name.startsWith("@")) {
             // This is a scope directory like @0x1js
             const scopePath = join(nodeModulesPath, item.name);
             try {
-              const scopeItems = readdirSync(scopePath, { withFileTypes: true });
-              
+              const scopeItems = readdirSync(scopePath, {
+                withFileTypes: true,
+              });
+
               for (const scopeItem of scopeItems) {
                 if (scopeItem.isDirectory()) {
                   const packageName = `${item.name}/${scopeItem.name}`;
                   const packagePath = join(scopePath, scopeItem.name);
-                  
+
                   // Add to import map
-                  externalImports[packageName] = `/node_modules/${packageName}/index.js`;
-                  
+                  externalImports[packageName] =
+                    `/node_modules/${packageName}/index.js`;
+
                   // Check for CSS files (only if not already added above)
-                  const alreadyAdded = externalCssLinks.some(link => link.includes(packageName));
+                  const alreadyAdded = externalCssLinks.some((link) =>
+                    link.includes(packageName)
+                  );
                   if (!alreadyAdded) {
-                    const distPath = join(packagePath, 'dist');
+                    const distPath = join(packagePath, "dist");
                     if (existsSync(distPath)) {
                       try {
                         const distFiles = readdirSync(distPath);
                         for (const file of distFiles) {
-                          if (file.endsWith('.css')) {
+                          if (file.endsWith(".css")) {
                             const cssUrl = `/node_modules/${packageName}/dist/${file}`;
-                            externalCssLinks.push(`  <link rel="stylesheet" href="${cssUrl}">`);
+                            externalCssLinks.push(
+                              `  <link rel="stylesheet" href="${cssUrl}">`
+                            );
                           }
                         }
                       } catch (e) {
@@ -2287,7 +2316,7 @@ if (document.readyState === 'loading') {
         // Silent fail if node_modules doesn't exist or isn't readable
       }
     }
-    
+
     // Build complete import map with external packages
     const importMap = {
       "0x1": "/node_modules/0x1/index.js",
@@ -2303,52 +2332,47 @@ if (document.readyState === 'loading') {
       "0x1/link.js": "/0x1/router.js",
       "0x1/hooks": "/0x1/hooks.js",
       "0x1/hooks.js": "/0x1/hooks.js",
-      ...externalImports
+      ...externalImports,
     };
-    
+
     // Generate favicon link (consistent with existing logic)
-    let faviconLink = '';
+    let faviconLink = "";
     const faviconSearchDirs = [
-      join(this.options.projectPath, 'public'),
-      join(this.options.projectPath, 'app'),
-      join(this.options.projectPath, 'src')
+      join(this.options.projectPath, "public"),
+      join(this.options.projectPath, "app"),
+      join(this.options.projectPath, "src"),
     ];
-    
+
     for (const dir of faviconSearchDirs) {
-      const faviconSvg = join(dir, 'favicon.svg');
-      const faviconIco = join(dir, 'favicon.ico');
-      const faviconPng = join(dir, 'favicon.png');
-      
+      const faviconSvg = join(dir, "favicon.svg");
+      const faviconIco = join(dir, "favicon.ico");
+      const faviconPng = join(dir, "favicon.png");
+
       if (existsSync(faviconSvg)) {
-        faviconLink = '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+        faviconLink =
+          '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
         break;
       } else if (existsSync(faviconIco)) {
-        faviconLink = '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        faviconLink =
+          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
         break;
       } else if (existsSync(faviconPng)) {
-        faviconLink = '  <link rel="icon" href="/favicon.png" type="image/png">';
+        faviconLink =
+          '  <link rel="icon" href="/favicon.png" type="image/png">';
         break;
       }
     }
-    
-    // PWA support
-    const manifestLink = pwaMetadata.manifestLink || '';
-    const pwaMetaTags = pwaMetadata.metaTags.length > 0 
-      ? '\n' + pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join('\n')
-      : '';
-    const pwaScripts = pwaMetadata.scripts.length > 0
-      ? '\n' + pwaMetadata.scripts.map((script: string) => `  ${script}`).join('\n')
-      : '';
-    
+
     // Use project config for server-side HTML (client-side metadata will override)
     // SINGLE SOURCE OF TRUTH: Same as production - client handles page-specific metadata
-    const pageTitle = `${projectConfig.name || 'My 0x1 App'} - Development`;
-    const pageDescription = projectConfig.description || '0x1 Framework development environment';
-    const additionalMetaTags = ''; // Client-side metadata will handle this
-    
+    const pageTitle = `${projectConfig.name || "My 0x1 App"} - Development`;
+    const pageDescription =
+      projectConfig.description || "0x1 Framework development environment";
+    const additionalMetaTags = ""; // Client-side metadata will handle this
+
     // Cache-busting timestamp
     const cacheBust = Date.now();
-    
+
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -2356,9 +2380,8 @@ if (document.readyState === 'loading') {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${additionalMetaTags}${faviconLink ? faviconLink + '\n' : ''}${manifestLink ? manifestLink + '\n' : ''}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
-${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMetaTags}
-  <script type="importmap">
+${additionalMetaTags}${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${externalCssLinks.length > 0 ? externalCssLinks.join("\n") + "\n" : ""}  <script type="importmap">
   ${JSON.stringify({ imports: importMap }, null, 2)}
   </script>
 </head>
@@ -2408,11 +2431,21 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join('\n') + '\n' : ''}${pwaMet
     // Start live reload connection
     connectWebSocket();
   </script>
-  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts}
+  <script src="/app.js?v=${cacheBust}" type="module"></script>
 </body>
 </html>`;
 
-    return html;
+    // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
+    return injectPWAIntoHTML(
+      html,
+      {
+        mode: "development",
+        projectPath: this.options.projectPath,
+        silent: this.options.silent,
+        debug: this.options.debug,
+      },
+      pwaResources
+    );
   }
 
   /**
@@ -2870,5 +2903,19 @@ connect();
     // Use the route-specific method with homepage route
     const homeRoute = this.state.routes.find(route => route.path === '/');
     return await this.generateIndexHtmlForRoute(homeRoute, '/');
+  }
+
+  /**
+   * Check if PWA icons exist (shared logic with BuildOrchestrator)
+   */
+  private async iconsExist(iconsPath: string): Promise<boolean> {
+    if (!iconsPath) return false;
+
+    const filesystemPath = iconsPath.startsWith('/') 
+      ? join(this.options.projectPath, 'public', iconsPath.substring(1))
+      : join(this.options.projectPath, iconsPath);
+
+    const essentialIcons = ['icon-192x192.png', 'icon-512x512.png'];
+    return essentialIcons.some(icon => existsSync(join(filesystemPath, icon)));
   }
 }
