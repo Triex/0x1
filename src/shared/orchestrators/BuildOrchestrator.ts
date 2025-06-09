@@ -85,9 +85,7 @@ export class BuildOrchestrator {
       const outputPath = join(this.options.projectPath, this.options.outDir!);
     
       if (!this.options.silent) {
-        logger.info(
-          "🚀 Building 0x1 application using working backup patterns..."
-        );
+        logger.info("🚀 Building 0x1 application...");
       }
 
       // Phase 1: Clean and prepare
@@ -323,9 +321,7 @@ export class BuildOrchestrator {
     outputPath: string
   ): Promise<void> {
     if (!this.options.silent) {
-      logger.info(
-        "🧩 Generating components using DevOrchestrator exact logic..."
-      );
+      logger.info("🧩 Generating components...");
     }
 
     // CRITICAL FIX: Follow DevOrchestrator pattern exactly - generate ONLY standalone components
@@ -338,14 +334,12 @@ export class BuildOrchestrator {
           route.componentPath,
           outputPath
         );
-        
-        if (!this.options.silent) {
-          logger.debug(`Generated route: ${route.componentPath}`);
-        }
       } catch (error) {
-        logger.warn(
-          `Failed to generate route ${route.componentPath}: ${error}`
-        );
+        if (!this.options.silent) {
+          logger.warn(
+            `Failed to generate route ${route.componentPath}: ${error}`
+          );
+        }
       }
     }
 
@@ -365,12 +359,10 @@ export class BuildOrchestrator {
           layoutPath,
           outputPath
         );
-        
-        if (!this.options.silent) {
-          logger.debug(`Generated layout: ${layoutPath}`);
-        }
       } catch (error) {
+        if (!this.options.silent) {
         logger.warn(`Failed to generate layout ${layoutPath}: ${error}`);
+        }
       }
     }
 
@@ -382,14 +374,12 @@ export class BuildOrchestrator {
           componentUrlPath,
           outputPath
         );
-    
-        if (!this.options.silent) {
-          logger.debug(`Generated component: ${componentUrlPath}`);
-        }
       } catch (error) {
-        logger.warn(
-          `Failed to generate component ${component.relativePath}: ${error}`
-        );
+        if (!this.options.silent) {
+          logger.warn(
+            `Failed to generate component ${component.relativePath}: ${error}`
+          );
+        }
       }
     }
   }
@@ -603,9 +593,7 @@ export class BuildOrchestrator {
     outputPath: string
   ): Promise<void> {
     if (!this.options.silent) {
-      logger.info(
-        "📦 Copying framework files using DevOrchestrator working pattern..."
-      );
+      logger.info("📦 Copying framework files...");
     }
 
     const frameworkPath = this.getFrameworkPath();
@@ -635,10 +623,6 @@ export class BuildOrchestrator {
           // Write to both locations to ensure compatibility
           await Bun.write(join(framework0x1Dir, file), content);
           await Bun.write(join(nodeModulesDir, file), content);
-          
-          if (!this.options.silent) {
-            logger.debug(`Copied framework file: ${file}`);
-          }
         }
       }
     }
@@ -663,11 +647,6 @@ export class BuildOrchestrator {
       "index.js"
     );
 
-    if (!this.options.silent) {
-      logger.info(`🔍 Looking for router source: ${routerSourcePath}`);
-      logger.info(`📁 Router source exists: ${existsSync(routerSourcePath)}`);
-    }
-
     // CRITICAL: Try multiple router locations since npm packages structure differently
     const possibleRouterPaths = [
       routerSourcePath, // Original path
@@ -678,15 +657,6 @@ export class BuildOrchestrator {
       join(frameworkPath, "src", "router.js"), // Source JS
     ];
 
-    if (!this.options.silent) {
-      logger.info(`🔍 Checking router locations...`);
-      for (const path of possibleRouterPaths) {
-        logger.info(
-          `📁 ${path}: ${existsSync(path) ? "✅ EXISTS" : "❌ NOT FOUND"}`
-        );
-      }
-    }
-
     // Find first existing router file
     const actualRouterPath = possibleRouterPaths.find((path) =>
       existsSync(path)
@@ -694,9 +664,7 @@ export class BuildOrchestrator {
 
     if (!actualRouterPath) {
       if (!this.options.silent) {
-        logger.warn(
-          `⚠️ No dedicated router file found, checking if router is embedded in main package...`
-        );
+        logger.warn("⚠️ No dedicated router file found, checking embedded router...");
 
         // Check if the main dist files contain router functionality
         const mainDistFiles = [
@@ -729,13 +697,7 @@ export class BuildOrchestrator {
           }
         }
 
-        logger.error(
-          `❌ CRITICAL: No router found anywhere in framework package`
-        );
-        logger.info(`🔍 Framework path: ${frameworkPath}`);
-        logger.info(
-          `📁 Framework contents: ${existsSync(frameworkPath) ? readdirSync(frameworkPath).join(", ") : "PATH NOT FOUND"}`
-        );
+        logger.error("❌ CRITICAL: No router found anywhere in framework package");
       }
 
       // Continue without router - generate a minimal fallback
@@ -748,7 +710,7 @@ export class BuildOrchestrator {
     }
 
     if (!this.options.silent) {
-      logger.success(`✅ Found router at: ${actualRouterPath}`);
+      logger.success(`✅ Found router at: ${actualRouterPath.replace(frameworkPath, "")}`);
     }
 
     const routerContent = readFileSync(actualRouterPath, "utf-8");
@@ -807,7 +769,7 @@ export class BuildOrchestrator {
     // BEST PRACTICE: Parse content directly to find actual classes/functions (ZERO ASSUMPTIONS)
     if (!this.options.silent) {
       logger.info(
-        "🎯 Parsing router content for actual classes and functions (ZERO HARDCODING)..."
+        "🎯 Parsing router content for classes and functions..."
       );
     }
 
@@ -875,6 +837,84 @@ export class BuildOrchestrator {
 
     // Start with the transformed content
     let finalRouterContent = routerContent;
+
+    // CRITICAL: Apply COMPREHENSIVE JSX normalization (exact same as DevOrchestrator)
+    if (!this.options.silent) {
+      logger.info("🔧 Applying comprehensive JSX normalization to router...");
+    }
+    
+    // 1. Check for existing JSX imports/declarations comprehensively
+    const hasExistingJsxImports = 
+      // Import statements
+      finalRouterContent.includes('jsx-runtime.js') ||
+      finalRouterContent.includes('jsx-runtime"') ||
+      finalRouterContent.includes('jsx-dev-runtime') ||
+      finalRouterContent.includes('import { jsx') ||
+      finalRouterContent.includes('import {jsx') ||
+      finalRouterContent.includes('from "0x1/jsx') ||
+      finalRouterContent.includes("from '0x1/jsx") ||
+      // Variable declarations
+      finalRouterContent.includes('const jsx') ||
+      finalRouterContent.includes('let jsx') ||
+      finalRouterContent.includes('var jsx') ||
+      finalRouterContent.includes('jsx =') ||
+      // Function declarations
+      finalRouterContent.includes('function jsx') ||
+      // Window assignments
+      finalRouterContent.includes('window.jsx') ||
+      // Already has jsx defined in any way
+      /\bjsx\s*[=:]/m.test(finalRouterContent) ||
+      /\bjsx\s*\(/m.test(finalRouterContent);
+    
+    // 2. Only add JSX runtime imports if they don't already exist
+    if (!hasExistingJsxImports) {
+      const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
+      finalRouterContent = jsxImport + finalRouterContent;
+      
+      if (!this.options.silent) {
+        logger.info("✅ Added JSX runtime imports to router");
+      }
+    } else {
+      if (!this.options.silent) {
+        logger.info("✅ JSX runtime imports already exist in router");
+      }
+    }
+    
+    // 3. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
+    finalRouterContent = finalRouterContent
+      .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+      .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+      .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+      .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+
+    // 4. Handle mixed alphanumeric patterns
+    finalRouterContent = finalRouterContent
+      .replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV')
+      .replace(/jsx_[0-9a-z]+/gi, 'jsx')
+      .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
+      .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+    
+    // 5. Ultra aggressive catch-all patterns
+    finalRouterContent = finalRouterContent
+      .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
+      .replace(/\bjsx_\w+/g, 'jsx')
+      .replace(/\bjsxs_\w+/g, 'jsxs')
+      .replace(/\bFragment_\w+/g, 'Fragment');
+
+    // 6. Transform imports to browser-resolvable URLs (exact same as DevOrchestrator)
+    finalRouterContent = finalRouterContent
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+        'import { $1 } from "/components/$2.js"')
+      .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+      .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+        'import { $1 } from "/0x1/jsx-runtime.js"')
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+        'import { $1 } from "/0x1/jsx-runtime.js"')
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+        'import { $1 } from "/0x1/router.js"')
+      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+        'import { $1 } from "/node_modules/0x1/index.js"');
 
     // FIXED: Check for existing exports more robustly
     const hasExistingRouterExport =
@@ -1003,8 +1043,8 @@ class MinimalRouter {
         const result = route.component();
         if (result && typeof result === 'object') {
           this.renderComponent(result, this.rootElement);
-        }
-      } catch (error) {
+    }
+  } catch (error) {
         this.rootElement.innerHTML = \`<div style="padding: 20px; color: red;">Router Error: \${error.message}</div>\`;
       }
     } else {
@@ -1035,7 +1075,7 @@ class MinimalRouter {
             element.className = value;
           } else if (key.startsWith('on') && typeof value === 'function') {
             element.addEventListener(key.slice(2).toLowerCase(), value);
-          } else {
+        } else {
             element.setAttribute(key, value);
           }
         });
@@ -1240,62 +1280,75 @@ if (typeof window !== 'undefined') {
   }
 
   // CRITICAL: Generate hooks using DevOrchestrator's exact logic (fixes hook initialization)
-  private async generateHooksUsingDevOrchestratorLogic(frameworkPath: string, framework0x1Dir: string): Promise<void> {
+  private async generateHooksUsingDevOrchestratorLogic(
+    frameworkPath: string,
+    framework0x1Dir: string
+  ): Promise<void> {
     try {
-      const hooksSourcePath = join(frameworkPath, 'src', 'core', 'hooks.ts');
-      const hooksDistPath = join(frameworkPath, 'dist', 'hooks.js');
-      
+      const hooksSourcePath = join(frameworkPath, "src", "core", "hooks.ts");
+      const hooksDistPath = join(frameworkPath, "dist", "hooks.js");
+
       if (!this.options.silent) {
         logger.info(`🔍 Looking for hooks source: ${hooksSourcePath}`);
         logger.info(`🔍 Looking for hooks dist: ${hooksDistPath}`);
       }
-      
+
       // SINGLE SOURCE OF TRUTH: Use exact same transpilation as DevOrchestrator
-      let hooksContent = '';
-      
+      let hooksContent = "";
+
       // DEVELOPMENT SCENARIO: Transpile from source (preferred)
       if (existsSync(hooksSourcePath)) {
         if (!this.options.silent) {
-          logger.info(`✅ Found hooks source, transpiling from: ${hooksSourcePath}`);
+          logger.info(
+            `✅ Found hooks source, transpiling from: ${hooksSourcePath}`
+          );
         }
-        
+
         const transpiled = await Bun.build({
           entrypoints: [hooksSourcePath],
-          target: 'browser',
-          format: 'esm',
+          target: "browser",
+          format: "esm",
           minify: false,
-          sourcemap: 'none',
+          sourcemap: "none",
           define: {
-            'process.env.NODE_ENV': JSON.stringify('production')
+            "process.env.NODE_ENV": JSON.stringify("production"),
           },
-          external: []
+          external: [],
         });
-        
+
         if (!transpiled.success || transpiled.outputs.length === 0) {
-          throw new Error(`Failed to transpile hooks from source: ${transpiled.logs?.map(l => l.message).join(', ')}`);
+          throw new Error(
+            `Failed to transpile hooks from source: ${transpiled.logs?.map((l) => l.message).join(", ")}`
+          );
         }
-        
+
         for (const output of transpiled.outputs) {
           hooksContent += await output.text();
         }
-        
-      // PRODUCTION SCENARIO: Use dist file
+
+        // PRODUCTION SCENARIO: Use dist file
       } else if (existsSync(hooksDistPath)) {
         if (!this.options.silent) {
           logger.info(`✅ Found hooks dist, using: ${hooksDistPath}`);
         }
-        
-        hooksContent = readFileSync(hooksDistPath, 'utf-8');
-        
+
+        hooksContent = readFileSync(hooksDistPath, "utf-8");
+
         // Handle npm package redirects
-        if (hooksContent.length < 200 && hooksContent.includes('export') && hooksContent.includes('from')) {
-          const redirectMatch = hooksContent.match(/export\s*\*\s*from\s*['"]\.\/([^'"]+)['"];?/);
+        if (
+          hooksContent.length < 200 &&
+          hooksContent.includes("export") &&
+          hooksContent.includes("from")
+        ) {
+          const redirectMatch = hooksContent.match(
+            /export\s*\*\s*from\s*['"]\.\/([^'"]+)['"];?/
+          );
           if (redirectMatch) {
             const actualFileName = redirectMatch[1];
-            const actualFilePath = join(frameworkPath, 'dist', actualFileName);
-            
+            const actualFilePath = join(frameworkPath, "dist", actualFileName);
+
             if (existsSync(actualFilePath)) {
-              hooksContent = readFileSync(actualFilePath, 'utf-8');
+              hooksContent = readFileSync(actualFilePath, "utf-8");
               if (!this.options.silent) {
                 logger.success(`✅ Resolved hooks from: ${actualFileName}`);
               }
@@ -1303,150 +1356,39 @@ if (typeof window !== 'undefined') {
           }
         }
       } else {
-        throw new Error(`No hooks found at ${hooksSourcePath} or ${hooksDistPath}`);
+        throw new Error(
+          `No hooks found at ${hooksSourcePath} or ${hooksDistPath}`
+        );
       }
-      
+
       if (!hooksContent || hooksContent.length < 100) {
         throw new Error(`Invalid hooks content: ${hooksContent.length} bytes`);
       }
-      
-      // SINGLE SOURCE OF TRUTH: Add exact same browser compatibility as DevOrchestrator
-      const browserCompatCode = `
 
+      // CRITICAL FIX: Use EXACT same browser compatibility as DevOrchestrator (NOT custom implementations!)
+      const browserCompatCode = `
 if (typeof window !== 'undefined') {
   // Initialize React-compatible global context
   window.React = window.React || {};
   
-  // CREATE BROWSER-COMPATIBLE HOOK IMPLEMENTATIONS (not just expose original hooks)
-  
-  // Simple state management for production builds
-  const stateStorage = new Map();
-  let componentCounter = 0;
-  
-  function browserUseState(initialValue) {
-    // No context checking - just work!
-    const computedInitialValue = typeof initialValue === 'function' ? initialValue() : initialValue;
-    
-    // Simple fallback state management
-    const stateId = 'state_' + (++componentCounter);
-    
-    if (!stateStorage.has(stateId)) {
-      stateStorage.set(stateId, computedInitialValue);
-    }
-    
-    const currentValue = stateStorage.get(stateId);
-    
-    const setValue = (newValue) => {
-      const nextValue = typeof newValue === 'function' ? newValue(currentValue) : newValue;
-      stateStorage.set(stateId, nextValue);
-      
-      // Trigger re-render if possible
-      if (window.__0x1_triggerUpdate) {
-        window.__0x1_triggerUpdate();
-      }
-    };
-    
-    return [currentValue, setValue];
-  }
-  
-  function browserUseEffect(effect, deps) {
-    // Simple effect execution - no context checking
-    setTimeout(() => {
-      try {
-        const cleanup = effect();
-        if (typeof cleanup === 'function') {
-          // Store cleanup for later if needed
-          window.__0x1_cleanupFunctions = window.__0x1_cleanupFunctions || [];
-          window.__0x1_cleanupFunctions.push(cleanup);
-        }
-      } catch (error) {
-        console.warn('[0x1 Hooks] useEffect error:', error);
-      }
-    }, 0);
-  }
-  
-  function browserUseLayoutEffect(effect, deps) {
-    // Same as useEffect for simplicity
-    return browserUseEffect(effect, deps);
-  }
-  
-  function browserUseMemo(factory, deps) {
-    // Simple memoization
-    try {
-      return factory();
-    } catch (error) {
-      console.warn('[0x1 Hooks] useMemo error:', error);
-      return undefined;
-    }
-  }
-  
-  function browserUseCallback(callback, deps) {
-    // Just return the callback
-    return callback;
-  }
-  
-  function browserUseRef(initialValue) {
-    // Simple ref implementation
-    return { current: initialValue };
-  }
-  
-  // Simple fallback implementations for custom hooks
-  function browserUseClickOutside() {
-    return { current: null };
-  }
-  
-  function browserUseFetch() {
-    return { data: null, loading: false, error: null };
-  }
-  
-  function browserUseForm() {
-    return {};
-  }
-  
-  function browserUseLocalStorage(initialValue) {
-    // Use browserUseState as fallback
-    return browserUseState(initialValue);
-  }
-  
-  // BROWSER-COMPATIBLE HOOK FUNCTIONS (no context checking!)
-  const hookFunctions = {
-    useState: browserUseState,
-    useEffect: browserUseEffect,
-    useLayoutEffect: browserUseLayoutEffect,
-    useMemo: browserUseMemo,
-    useCallback: browserUseCallback,
-    useRef: browserUseRef,
-    useClickOutside: browserUseClickOutside,
-    useFetch: browserUseFetch,
-    useForm: browserUseForm,
-    useLocalStorage: browserUseLocalStorage
-  };
-  
-  // Make browser-compatible hooks available globally
-  Object.assign(window, hookFunctions);
+  // Make hooks available globally (no complex context checking) - EXACT SAME AS DEVORCHESTRATOR
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
   
   // Also make available in React namespace for compatibility
-  Object.assign(window.React, hookFunctions);
+  Object.assign(window.React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
   
-  // Set the context functions that JSX runtime looks for
-  window.__0x1_enterComponentContext = function(componentId, updateCallback) {
-    // Simple context entry for JSX runtime compatibility
-  };
-  
-  window.__0x1_exitComponentContext = function() {
-    // Simple context exit for JSX runtime compatibility
-  };
-  
-  globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
-  globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
-  
-  // Global hooks registry (same as DevOrchestrator)
+  // Global hooks registry (EXACT SAME AS DEVORCHESTRATOR)
   window.__0x1_hooks = {
-    ...hookFunctions,
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage,
     isInitialized: true,
-    contextReady: true,
-    enterComponentContext: window.__0x1_enterComponentContext,
-    exitComponentContext: window.__0x1_exitComponentContext
+    contextReady: true
   };
   
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
@@ -1457,16 +1399,17 @@ if (typeof window !== 'undefined') {
   window.__0x1_component_context_ready = true;
 }
 `;
-      
+          
       // CLEAN APPROACH: Just append browser compatibility (no patching)
       const finalContent = hooksContent + browserCompatCode;
-      
-      await Bun.write(join(framework0x1Dir, 'hooks.js'), finalContent);
-      
+
+      await Bun.write(join(framework0x1Dir, "hooks.js"), finalContent);
+
       if (!this.options.silent) {
-        logger.success(`✅ Generated clean hooks.js: ${(finalContent.length / 1024).toFixed(1)}KB`);
+        logger.success(
+          `✅ Generated hooks.js using EXACT DevOrchestrator pattern: ${(finalContent.length / 1024).toFixed(1)}KB`
+        );
       }
-      
     } catch (error) {
       const errorMsg = `CRITICAL BUILD FAILURE: Hooks generation failed - ${error}`;
       logger.error(errorMsg);
@@ -1614,8 +1557,8 @@ export default {
     );
 
     // Generate app.js with client-side metadata updates for production SPA
-    const appScript = `// 0x1 Framework App Bundle - Production Ready with Client-Side Metadata Updates
-console.log('[0x1 App] Starting production app...');
+    const appScript = `// 0x1 Framework App Bundle - Production Ready
+const DEBUG = false; // Set to false for production
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
@@ -1714,10 +1657,10 @@ async function updatePageMetadata(route) {
         }
       }
       
-      console.log('[0x1 App] Updated page metadata for:', route.path);
+      if (DEBUG) console.log('[0x1 App] Updated page metadata for:', route.path);
     }
   } catch (error) {
-    console.warn('[0x1 App] Failed to update metadata for route:', route.path, error);
+    if (DEBUG) console.warn('[0x1 App] Failed to update metadata for route:', route.path, error);
   }
 }
 
@@ -1731,26 +1674,26 @@ async function loadLayoutOnce(layoutPath) {
   }
   
   try {
-    console.log('[0x1 App] 📄 Loading layout:', layoutPath);
+    if (DEBUG) console.log('[0x1 App] Loading layout:', layoutPath);
     const layoutModule = await import(layoutPath);
     
     if (layoutModule && layoutModule.default) {
-      console.log('[0x1 App] ✅ Layout loaded successfully:', layoutPath);
+      if (DEBUG) console.log('[0x1 App] Layout loaded successfully:', layoutPath);
       layoutCache.set(layoutPath, layoutModule.default);
       return layoutModule.default;
     } else {
-      console.warn('[0x1 App] ⚠️ Layout has no default export:', layoutPath);
+      if (DEBUG) console.warn('[0x1 App] Layout has no default export:', layoutPath);
       const fallbackLayout = ({ children }) => {
-        console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+        if (DEBUG) console.warn('[0x1 App] Using fallback layout for:', layoutPath);
         return children;
       };
       layoutCache.set(layoutPath, fallbackLayout);
       return fallbackLayout;
     }
   } catch (error) {
-    console.error('[0x1 App] ❌ Failed to load layout:', layoutPath, error);
+    if (DEBUG) console.error('[0x1 App] Failed to load layout:', layoutPath, error);
     const fallbackLayout = ({ children }) => {
-      console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+      if (DEBUG) console.warn('[0x1 App] Using fallback layout for:', layoutPath);
       return children;
     };
     layoutCache.set(layoutPath, fallbackLayout);
@@ -1763,15 +1706,15 @@ async function loadLayoutHierarchy(layouts) {
   const cacheKey = layouts.map(l => l.componentPath).join('|');
   
   if (hierarchyCache.has(cacheKey)) {
-    console.log('[0x1 App] ✅ Using cached layout hierarchy:', layouts.length, 'layouts');
+    if (DEBUG) console.log('[0x1 App] Using cached layout hierarchy:', layouts.length, 'layouts');
     return hierarchyCache.get(cacheKey);
   }
   
-  console.log('[0x1 App] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
+  if (DEBUG) console.log('[0x1 App] Loading layout hierarchy...', layouts.length, 'layouts');
   
   // Ensure hook context is available before loading any layouts
   if (typeof window.useState !== 'function') {
-    console.warn('[0x1 App] ⚠️ Hook context not available, waiting...');
+    if (DEBUG) console.warn('[0x1 App] Hook context not available, waiting...');
     
     // Wait for hooks to be available
     await new Promise((resolve) => {
@@ -1795,7 +1738,7 @@ async function loadLayoutHierarchy(layouts) {
   // CRITICAL: Cache the loaded hierarchy
   hierarchyCache.set(cacheKey, loadedLayouts);
   
-  console.log('[0x1 App] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
+  if (DEBUG) console.log('[0x1 App] Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
   return loadedLayouts;
 }
 
@@ -1819,7 +1762,7 @@ function composeNestedLayouts(pageComponent, layouts) {
           ...props 
         });
       } catch (error) {
-        console.error('[0x1] Layout composition error at level', i, ':', error);
+        if (DEBUG) console.error('[0x1] Layout composition error at level', i, ':', error);
         wrappedComponent = children;
       }
     }
@@ -1831,10 +1774,10 @@ function composeNestedLayouts(pageComponent, layouts) {
 // Production-ready initialization (same as DevOrchestrator)
 async function initApp() {
   try {
-    console.log('[0x1 App] 🚀 Starting production initialization...');
+    if (DEBUG) console.log('[0x1 App] Starting production initialization...');
     
     // Step 1: Load and initialize essential dependencies FIRST
-    console.log('[0x1 App] 🎯 Loading essential dependencies...');
+    if (DEBUG) console.log('[0x1 App] Loading essential dependencies...');
     
     // Load hooks and ensure they're fully initialized
     await new Promise((resolve, reject) => {
@@ -1842,13 +1785,13 @@ async function initApp() {
     hooksScript.type = 'module';
     hooksScript.src = '/0x1/hooks.js';
       hooksScript.onload = () => {
-        console.log('[0x1 App] ✅ Hooks system loaded');
+        if (DEBUG) console.log('[0x1 App] Hooks system loaded');
         
         // Wait a tick to ensure hooks are fully initialized
         setTimeout(() => {
           // Verify hooks are available
           if (typeof window.useState === 'function') {
-            console.log('[0x1 App] ✅ Hook context verified');
+            if (DEBUG) console.log('[0x1 App] Hook context verified');
             resolve();
           } else {
             reject(new Error('Hook system not properly initialized'));
@@ -1860,7 +1803,7 @@ async function initApp() {
     });
     
     // Step 2: Initialize component context globals BEFORE loading any components
-    console.log('[0x1 App] 🔧 Setting up component context...');
+    if (DEBUG) console.log('[0x1 App] Setting up component context...');
     
     // Ensure React-compatible globals are available
     if (!window.React) {
@@ -1874,10 +1817,33 @@ async function initApp() {
       }
     });
     
-    console.log('[0x1 App] ✅ Component context ready');
+    if (DEBUG) console.log('[0x1 App] Component context ready');
+    
+    // CRITICAL: Load JSX runtime BEFORE router to prevent fallback rendering
+    if (DEBUG) console.log('[0x1 App] Loading JSX runtime...');
+    await new Promise((resolve, reject) => {
+      const jsxScript = document.createElement('script');
+      jsxScript.type = 'module';
+      jsxScript.src = '/0x1/jsx-runtime.js';
+      jsxScript.onload = () => {
+        if (DEBUG) console.log('[0x1 App] JSX runtime loaded');
+        
+        // Wait for JSX functions to be available
+        setTimeout(() => {
+          if (typeof window.jsx === 'function' || typeof window.jsxDEV === 'function') {
+            if (DEBUG) console.log('[0x1 App] JSX runtime verified');
+            resolve();
+          } else {
+            reject(new Error('JSX runtime not properly initialized'));
+          }
+        }, 50);
+      };
+      jsxScript.onerror = reject;
+      document.head.appendChild(jsxScript);
+    });
     
     // Step 3: Create router
-    console.log('[0x1 App] 🧭 Loading router...');
+    if (DEBUG) console.log('[0x1 App] Loading router...');
     const routerModule = await import('/0x1/router.js');
     const { Router } = routerModule;
     
@@ -1967,7 +1933,7 @@ async function initApp() {
               const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
               return composedComponent(props);
             } else {
-              console.warn('[0x1] Component has no default export:', route.path);
+              if (DEBUG) console.warn('[0x1] Component has no default export:', route.path);
               return {
                 type: 'div',
                 props: { 
@@ -1978,7 +1944,7 @@ async function initApp() {
               };
             }
           } catch (error) {
-            console.error('[0x1] Route component error:', route.path, error);
+            if (DEBUG) console.error('[0x1] Route component error:', route.path, error);
             return {
               type: 'div',
               props: { 
@@ -1996,7 +1962,7 @@ async function initApp() {
         });
         
       } catch (error) {
-        console.error('[0x1] Failed to register route:', route.path, error);
+        if (DEBUG) console.error('[0x1] Failed to register route:', route.path, error);
       }
     }
     
@@ -2012,10 +1978,10 @@ async function initApp() {
     
     router.navigate(currentPath, false);
     
-    console.log('[0x1] ✅ App initialized successfully with metadata support');
+    console.log('[0x1] App initialized successfully');
     
   } catch (error) {
-    console.error('[0x1] ❌ Initialization failed:', error);
+    console.error('[0x1] Initialization failed:', error);
     
     const appElement = document.getElementById('app');
     if (appElement) {
@@ -3192,11 +3158,27 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
   }
 
   private normalizeJsxFunctionCalls(content: string): string {
-    // SIMPLE: Just handle the most common hashed function patterns
-    content = content.replace(/jsx_[a-zA-Z0-9]+/g, "jsx");
-    content = content.replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs");
-    content = content.replace(/jsxDEV_[a-zA-Z0-9]+/g, "jsxDEV");
-    content = content.replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
+    // COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
+    // Replace mangled JSX function names with proper ones
+    content = content
+      .replace(/jsxDEV_[a-zA-Z0-9]+/g, "jsxDEV")
+      .replace(/jsx_[a-zA-Z0-9]+/g, "jsx")
+      .replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs")
+      .replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
+
+    // Handle mixed alphanumeric patterns
+    content = content
+      .replace(/jsxDEV_[0-9a-z]+/gi, "jsxDEV")
+      .replace(/jsx_[0-9a-z]+/gi, "jsx")
+      .replace(/jsxs_[0-9a-z]+/gi, "jsxs")
+      .replace(/Fragment_[0-9a-z]+/gi, "Fragment");
+
+    // Ultra aggressive catch-all patterns
+    content = content
+      .replace(/\bjsxDEV_\w+/g, "jsxDEV")
+      .replace(/\bjsx_\w+/g, "jsx")
+      .replace(/\bjsxs_\w+/g, "jsxs")
+      .replace(/\bFragment_\w+/g, "Fragment");
     
     return content;
   }
@@ -3633,7 +3615,4 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
 
     return join(outputPath, fileName);
   }
-} 
-
-
-
+}

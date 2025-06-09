@@ -3,7 +3,7 @@
  * Builds only essential framework files for distribution with production optimizations
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 // Generate cache-busting hash
@@ -18,16 +18,16 @@ const consoleLogRemovalPlugin = {
     build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args: any) => {
       const contents = await Bun.file(args.path).text();
       
-      // CRITICAL FIX: Only remove console.log statements, don't modify JSX
-      // Be very careful with regex to avoid breaking JSX syntax
+      // CRITICAL FIX: Only remove console.log statements, don't modify JSX or function calls
+      // Be extremely careful with regex to avoid breaking JSX syntax
       const processedContents = contents
-        // Only match complete console.log statements with semicolons or line endings
-        .replace(/console\.log\([^)]*\);?(\r?\n|$)/g, '/* console.log removed */;\n')
-        // Also handle console.log without semicolons at end of lines
-        .replace(/console\.log\([^)]*\)(?=\s*[\r\n])/g, '/* console.log removed */')
-        // Handle debug statements
-        .replace(/console\.debug\([^)]*\);?(\r?\n|$)/g, '/* console.debug removed */;\n')
-        .replace(/console\.debug\([^)]*\)(?=\s*[\r\n])/g, '/* console.debug removed */');
+        // Only match standalone console.log statements (not within JSX)
+        .replace(/^\s*console\.log\([^)]*\);?\s*$/gm, '/* console.log removed */')
+        // Handle console.log with line-ending context but preserve JSX
+        .replace(/(?<!jsx|jsxs|jsxDEV|createElement)\s*console\.log\([^)]*\);?(?=\s*[\r\n])/g, '/* console.log removed */')
+        // Handle debug statements similarly
+        .replace(/^\s*console\.debug\([^)]*\);?\s*$/gm, '/* console.debug removed */')
+        .replace(/(?<!jsx|jsxs|jsxDEV|createElement)\s*console\.debug\([^)]*\);?(?=\s*[\r\n])/g, '/* console.debug removed */');
       
       return {
         contents: processedContents,
@@ -651,7 +651,7 @@ export declare function processTailwindFast(
       // CRITICAL FIX: Apply JSX normalization to 0x1-router package too
       let routerContent = await Bun.file(routerSource).text();
       
-      console.log('🔧 Applying JSX normalization to 0x1-router package...');
+      console.log('🔧 Applying comprehensive JSX normalization to 0x1-router package...');
       
       // 1. Add JSX runtime imports at the beginning (if not already present)
       if (!routerContent.includes('jsx-runtime.js')) {
@@ -659,31 +659,50 @@ export declare function processTailwindFast(
         routerContent = jsxImport + routerContent;
       }
       
-      // 2. Apply aggressive JSX function normalization (exact same as BuildOrchestrator)
-      routerContent = routerContent.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
-      routerContent = routerContent.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
-      routerContent = routerContent.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
-      routerContent = routerContent.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
-      
+      // 2. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
+      // Replace mangled JSX function names with proper ones
+      routerContent = routerContent
+        .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+        .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+        .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+        .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+
       // 3. Handle mixed alphanumeric patterns
-      routerContent = routerContent.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
-      routerContent = routerContent.replace(/jsx_[0-9a-z]+/gi, 'jsx');
-      routerContent = routerContent.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
-      routerContent = routerContent.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+      routerContent = routerContent
+        .replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV')
+        .replace(/jsx_[0-9a-z]+/gi, 'jsx')
+        .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
+        .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
       
       // 4. Ultra aggressive catch-all patterns
-      routerContent = routerContent.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
-      routerContent = routerContent.replace(/\bjsx_\w+/g, 'jsx');
-      routerContent = routerContent.replace(/\bjsxs_\w+/g, 'jsxs');
-      routerContent = routerContent.replace(/\bFragment_\w+/g, 'Fragment');
+      routerContent = routerContent
+        .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
+        .replace(/\bjsx_\w+/g, 'jsx')
+        .replace(/\bjsxs_\w+/g, 'jsxs')
+        .replace(/\bFragment_\w+/g, 'Fragment');
+
+      // 5. CRITICAL: Transform imports to browser-resolvable URLs
+      routerContent = routerContent
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+          'import { $1 } from "/components/$2.js"')
+        .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
+        .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+          'import { $1 } from "/0x1/jsx-runtime.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+          'import { $1 } from "/0x1/jsx-runtime.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+          'import { $1 } from "/0x1/router.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+          'import { $1 } from "/node_modules/0x1/index.js"');
       
       // Write the normalized router content
       await Bun.write(routerDest, routerContent);
       
-      // CRITICAL FIX: Manually fix the Link export (auto-detection is broken)
+      // CRITICAL FIX: Apply the exact Link export fix from BuildOrchestrator
       let finalContent = await Bun.file(routerDest).text();
       
-      // Find and replace the incorrect Link export
+      // EXACT same Link export logic as BuildOrchestrator (which works in DevOrchestrator)
       finalContent = finalContent.replace(
         /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
         (match, before, after) => {
@@ -691,8 +710,8 @@ export declare function processTailwindFast(
           if (finalContent.includes('RouterLink')) {
             return match.replace(/\w+\s+as\s+Link/, 'RouterLink as Link');
           }
-          // Look for function that creates <a> elements
-          const linkFunctionMatch = finalContent.match(/function\s+(\w+)\([^{]*\{[^}]*createElement\(["']a["']\)/);
+          // Look for function that creates <a> elements or calls jsx/createElement
+          const linkFunctionMatch = finalContent.match(/function\s+(\w+)\([^{]*\{[^}]*(?:createElement\(["']a["']|jsx\(["']a["'])/);
           if (linkFunctionMatch) {
             const correctLinkFunction = linkFunctionMatch[1];
             return match.replace(/\w+\s+as\s+Link/, `${correctLinkFunction} as Link`);
@@ -724,29 +743,33 @@ export declare function processTailwindFast(
         const outputPath = outputs[0].path;
         let content = await Bun.file(outputPath).text();
         
-        console.log('🔧 Applying JSX normalization to router.js...');
+        console.log('🔧 Applying comprehensive JSX normalization to router.js...');
         
         // 1. Add JSX runtime imports at the beginning
         const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
         content = jsxImport + content;
         
-        // 2. Apply aggressive JSX function normalization (exact same as BuildOrchestrator)
-        content = content.replace(/jsxDEV_[a-zA-Z0-9_]+/g, 'jsxDEV');
-        content = content.replace(/jsx_[a-zA-Z0-9_]+/g, 'jsx');
-        content = content.replace(/jsxs_[a-zA-Z0-9_]+/g, 'jsxs');
-        content = content.replace(/Fragment_[a-zA-Z0-9_]+/g, 'Fragment');
+        // 2. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
+        // Replace mangled JSX function names with proper ones
+        content = content
+          .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
+          .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
+          .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
+          .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
         
         // 3. Handle mixed alphanumeric patterns
-        content = content.replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV');
-        content = content.replace(/jsx_[0-9a-z]+/gi, 'jsx');
-        content = content.replace(/jsxs_[0-9a-z]+/gi, 'jsxs');
-        content = content.replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
+        content = content
+          .replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV')
+          .replace(/jsx_[0-9a-z]+/gi, 'jsx')
+          .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
+          .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
         
         // 4. Ultra aggressive catch-all patterns
-        content = content.replace(/\bjsxDEV_\w+/g, 'jsxDEV');
-        content = content.replace(/\bjsx_\w+/g, 'jsx');
-        content = content.replace(/\bjsxs_\w+/g, 'jsxs');
-        content = content.replace(/\bFragment_\w+/g, 'Fragment');
+        content = content
+          .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
+          .replace(/\bjsx_\w+/g, 'jsx')
+          .replace(/\bjsxs_\w+/g, 'jsxs')
+          .replace(/\bFragment_\w+/g, 'Fragment');
         
         // 5. Transform imports to browser-resolvable URLs
         content = content
@@ -766,10 +789,10 @@ export declare function processTailwindFast(
         // Write the normalized router content
         await Bun.write(outputPath, content);
         
-        // CRITICAL FIX: Manually fix the Link export (auto-detection is broken)
+        // CRITICAL FIX: Apply the exact Link export fix from BuildOrchestrator
         let finalContent = await Bun.file(outputPath).text();
         
-        // Find and replace the incorrect Link export
+        // EXACT same Link export logic as BuildOrchestrator (which works in DevOrchestrator)
         finalContent = finalContent.replace(
           /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
           (match, before, after) => {
@@ -868,12 +891,77 @@ export declare function processTailwindFast(
       throw new Error("Build validation failed");
     }
 
-    // Calculate bundle sizes
-    const indexSize = (await Bun.file(join(distDir, "index.js")).arrayBuffer()).byteLength;
+    // Calculate bundle sizes properly
+    let indexSize = 0;
+    let jsxRuntimeSize = 0;
+    let totalCoreSize = 0;
+    
+    // Check for main bundle (could be hashed)
+    const indexPath = join(distDir, "index.js");
+    if (existsSync(indexPath)) {
+      try {
+        const content = await Bun.file(indexPath).text();
+        indexSize = Buffer.byteLength(content, 'utf8');
+        
+        // If it's a redirect file, find the actual hashed file
+        if (content.includes('index-') && content.length < 200) {
+          const hashMatch = content.match(/index-([a-f0-9]+)\.js/);
+          if (hashMatch) {
+            const hashedPath = join(distDir, `index-${hashMatch[1]}.js`);
+            if (existsSync(hashedPath)) {
+              const hashedContent = await Bun.file(hashedPath).text();
+              indexSize = Buffer.byteLength(hashedContent, 'utf8');
+            }
+          }
+        }
+      } catch {
+        indexSize = 0;
+      }
+    }
+    
+    // Check for JSX runtime (could be hashed)
+    const jsxRuntimeFilePath = join(distDir, "jsx-runtime.js");
+    if (existsSync(jsxRuntimeFilePath)) {
+      try {
+        const content = await Bun.file(jsxRuntimeFilePath).text();
+        jsxRuntimeSize = Buffer.byteLength(content, 'utf8');
+        
+        // If it's a redirect file, find the actual hashed file
+        if (content.includes('jsx-runtime-') && content.length < 200) {
+          const hashMatch = content.match(/jsx-runtime-([a-f0-9]+)\.js/);
+          if (hashMatch) {
+            const hashedPath = join(distDir, `jsx-runtime-${hashMatch[1]}.js`);
+            if (existsSync(hashedPath)) {
+              const hashedContent = await Bun.file(hashedPath).text();
+              jsxRuntimeSize = Buffer.byteLength(hashedContent, 'utf8');
+            }
+          }
+        }
+      } catch {
+        jsxRuntimeSize = 0;
+      }
+    }
+    
+    // Calculate total core size (essential files only)
+    const coreFiles = ['hooks.js', 'jsx-runtime.js', 'router.js', 'index.js'];
+    for (const file of coreFiles) {
+      const filePath = join(distDir, file);
+      if (existsSync(filePath)) {
+        try {
+          const content = await Bun.file(filePath).text();
+          totalCoreSize += Buffer.byteLength(content, 'utf8');
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    }
+    
     const totalSize = await calculateTotalSize(distDir);
 
     console.log("\n📦 Build Summary:");
     console.log(`  • Main bundle: ${(indexSize / 1024).toFixed(1)} KB`);
+    console.log(`  • JSX runtime: ${(jsxRuntimeSize / 1024).toFixed(1)} KB`);
+    console.log(`  • Core files: ${(totalCoreSize / 1024).toFixed(1)} KB`);
     console.log(`  • Total size: ${(totalSize / 1024).toFixed(1)} KB`);
     console.log(`  • Files: ${requiredFiles.length} essential files`);
 
@@ -889,17 +977,34 @@ async function calculateTotalSize(dir: string): Promise<number> {
   let totalSize = 0;
   
   try {
-    // Use a more compatible approach instead of Bun.spawn().text()
-    const result = await Bun.spawn(['find', dir, '-type', 'f', '-exec', 'stat', '-f%z', '{}', '+'], { 
-      stdout: 'pipe' 
-    });
+    // Read all files in the directory recursively
+    const scanDir = (dirPath: string) => {
+      try {
+        const items = readdirSync(dirPath, { withFileTypes: true });
+        
+        for (const item of items) {
+          const itemPath = join(dirPath, item.name);
+          
+          if (item.isDirectory()) {
+            scanDir(itemPath);
+          } else if (item.isFile()) {
+            try {
+              const stats = statSync(itemPath);
+              totalSize += stats.size;
+            } catch {
+              // Skip files that can't be read
+            }
+          }
+        }
+      } catch {
+        // Skip directories that can't be read
+      }
+    };
     
-    const output = await new Response(result.stdout).text();
-    const sizes = output.trim().split('\n').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
-    totalSize = sizes.reduce((sum, size) => sum + size, 0);
+    scanDir(dir);
   } catch {
-    // Fallback calculation
-    totalSize = 100000; // Rough estimate
+    // Fallback estimate if scanning fails
+    totalSize = 250000; // 250KB estimate
   }
   
   return totalSize;

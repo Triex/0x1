@@ -163,9 +163,47 @@ async function validateBuild() {
   
   // Calculate and report bundle sizes
   try {
-    const indexSize = (await Bun.file('dist/index.js').arrayBuffer()).byteLength;
-    const jsxRuntimeSize = (await Bun.file('dist/jsx-runtime.js').arrayBuffer()).byteLength;
-    const jsxDevRuntimeSize = (await Bun.file('dist/jsx-dev-runtime.js').arrayBuffer()).byteLength;
+    // Helper function to get actual file size (handles redirects to hashed files)
+    const getFileSize = async (filePath: string): Promise<number> => {
+      if (!existsSync(filePath)) return 0;
+      
+      try {
+        const content = await Bun.file(filePath).text();
+        
+        // Check if it's a redirect file (small and contains export from hashed file)
+        if (content.length < 200 && content.includes('export') && content.includes('from')) {
+          // Look for hashed file reference
+          if (filePath.includes('index.js')) {
+            const hashMatch = content.match(/index-([a-f0-9]+)\.js/);
+            if (hashMatch) {
+              const hashedPath = join('dist', `index-${hashMatch[1]}.js`);
+              if (existsSync(hashedPath)) {
+                const hashedContent = await Bun.file(hashedPath).text();
+                return Buffer.byteLength(hashedContent, 'utf8');
+              }
+            }
+          } else if (filePath.includes('jsx-runtime.js')) {
+            const hashMatch = content.match(/jsx-runtime-([a-f0-9]+)\.js/);
+            if (hashMatch) {
+              const hashedPath = join('dist', `jsx-runtime-${hashMatch[1]}.js`);
+              if (existsSync(hashedPath)) {
+                const hashedContent = await Bun.file(hashedPath).text();
+                return Buffer.byteLength(hashedContent, 'utf8');
+              }
+            }
+          }
+        }
+        
+        // Not a redirect file, return actual size
+        return Buffer.byteLength(content, 'utf8');
+      } catch {
+        return 0;
+      }
+    };
+    
+    const indexSize = await getFileSize('dist/index.js');
+    const jsxRuntimeSize = await getFileSize('dist/jsx-runtime.js');
+    const jsxDevRuntimeSize = await getFileSize('dist/jsx-dev-runtime.js');
     
     console.log('✅ Build validation passed!');
     console.log(`📦 Optimized framework built successfully:`);
