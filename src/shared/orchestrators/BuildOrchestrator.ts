@@ -841,31 +841,100 @@ export default function ErrorComponent(props) {
       logger.info("🎯 Using ACTUAL router from shared core (SINGLE SOURCE OF TRUTH)...");
     }
 
-    // Look for the actual router implementation
+    // ENHANCED: Comprehensive router search paths for all environments (local + Vercel)
     const routerSearchPaths = [
-      join(frameworkPath, "0x1-router", "dist", "index.js"), // Built router
-      join(frameworkPath, "0x1-router", "src", "index.ts"),  // Source router
-      join(frameworkPath, "dist", "router.js"),              // Framework dist
-      join(frameworkPath, "src", "router.ts"),               // Framework source
+      // Built router locations
+      join(frameworkPath, "0x1-router", "dist", "index.js"),
+      join(frameworkPath, "0x1-router", "dist", "index.mjs"),
+      join(frameworkPath, "0x1-router", "index.js"),
+      
+      // Source router locations  
+      join(frameworkPath, "0x1-router", "src", "index.ts"),
+      join(frameworkPath, "0x1-router", "src", "index.js"),
+      
+      // Framework dist locations
+      join(frameworkPath, "dist", "router.js"),
+      join(frameworkPath, "dist", "0x1-router.js"),
+      join(frameworkPath, "dist", "index.js"),
+      
+      // Framework source locations
+      join(frameworkPath, "src", "router.ts"),
+      join(frameworkPath, "src", "router.js"),
+      
+      // Vercel-specific paths (npm package structure)
+      join(frameworkPath, "node_modules", "0x1-router", "dist", "index.js"),
+      join(frameworkPath, "node_modules", "0x1-router", "src", "index.ts"),
+      
+      // Package root variations
+      join(frameworkPath, "router.js"),
+      join(frameworkPath, "router.ts"),
+      join(frameworkPath, "index.js"),
+      join(frameworkPath, "index.ts"),
     ];
 
     let actualRouterPath = null;
     let actualRouterContent = "";
 
-    // Find the actual router
+    // Find the actual router with comprehensive logging
+    if (!this.options.silent) {
+      logger.info(`🔍 Searching for router in ${routerSearchPaths.length} locations...`);
+    }
+
     for (const path of routerSearchPaths) {
       if (existsSync(path)) {
-        actualRouterPath = path;
-        if (!this.options.silent) {
-          logger.success(`✅ Found actual router at: ${path.replace(frameworkPath, "")}`);
+        // Verify it's actually a router file by checking content
+        try {
+          const testContent = readFileSync(path, "utf-8");
+          if (testContent.includes("class Router") || 
+              testContent.includes("export.*Router") ||
+              testContent.includes("router") ||
+              testContent.length > 1000) { // Substantial file
+            actualRouterPath = path;
+            if (!this.options.silent) {
+              logger.success(`✅ Found actual router at: ${path.replace(frameworkPath, "")}`);
+              logger.info(`📄 Router file size: ${(testContent.length / 1024).toFixed(1)}KB`);
+            }
+            break;
+          } else {
+            if (!this.options.silent) {
+              logger.debug(`⚠️ File exists but doesn't look like router: ${path.replace(frameworkPath, "")} (${testContent.length} bytes)`);
+            }
+          }
+        } catch (error) {
+          if (!this.options.silent) {
+            logger.debug(`⚠️ Could not read potential router file: ${path.replace(frameworkPath, "")} - ${error}`);
+          }
         }
-        break;
       }
     }
 
     if (!actualRouterPath) {
-      logger.error("❌ CRITICAL: No actual router found in shared core!");
-      throw new Error("Router not found in shared core - violates SINGLE SOURCE OF TRUTH");
+      // CRITICAL: Enhanced error reporting for debugging
+      if (!this.options.silent) {
+        logger.error("❌ CRITICAL: No actual router found in shared core!");
+        logger.error(`🔍 Searched paths:`);
+        routerSearchPaths.forEach(path => {
+          const exists = existsSync(path);
+          logger.error(`   ${exists ? "✓" : "✗"} ${path.replace(frameworkPath, "")}`);
+        });
+        
+        // List what IS available in the framework directory
+        try {
+          const frameworkContents = readdirSync(frameworkPath);
+          logger.error(`📁 Framework directory contents: ${frameworkContents.join(", ")}`);
+          
+          // Check if there's a 0x1-router subdirectory
+          const routerDir = join(frameworkPath, "0x1-router");
+          if (existsSync(routerDir)) {
+            const routerContents = readdirSync(routerDir);
+            logger.error(`📁 0x1-router directory contents: ${routerContents.join(", ")}`);
+          }
+        } catch (error) {
+          logger.error(`❌ Could not list framework directory: ${error}`);
+        }
+      }
+      
+      throw new Error(`Router not found in shared core - violates SINGLE SOURCE OF TRUTH. Framework path: ${frameworkPath}`);
     }
 
     // Read and process the actual router
@@ -876,31 +945,56 @@ export default function ErrorComponent(props) {
       }
       
       const sourceCode = readFileSync(actualRouterPath, "utf-8");
-      const transpiled = await Bun.build({
-        entrypoints: [actualRouterPath],
-        target: "browser",
-        format: "esm",
-        minify: false,
-        sourcemap: "none",
-        define: {
-          "process.env.NODE_ENV": JSON.stringify("production"),
-        },
-      });
+      
+      try {
+        const transpiled = await Bun.build({
+          entrypoints: [actualRouterPath],
+          target: "browser",
+          format: "esm",
+          minify: false,
+          sourcemap: "none",
+          define: {
+            "process.env.NODE_ENV": JSON.stringify("production"),
+          },
+        });
 
-      if (transpiled.success && transpiled.outputs.length > 0) {
-        for (const output of transpiled.outputs) {
-          actualRouterContent += await output.text();
+        if (transpiled.success && transpiled.outputs.length > 0) {
+          for (const output of transpiled.outputs) {
+            actualRouterContent += await output.text();
+          }
+          if (!this.options.silent) {
+            logger.success(`✅ Router transpiled successfully: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
+          }
+        } else {
+          throw new Error(`Failed to transpile actual router: ${transpiled.logs?.map(l => l.message).join(", ")}`);
         }
-      } else {
-        throw new Error(`Failed to transpile actual router: ${transpiled.logs?.map(l => l.message).join(", ")}`);
+      } catch (buildError) {
+        if (!this.options.silent) {
+          logger.warn(`⚠️ Bun.build failed, trying manual transpilation: ${buildError}`);
+        }
+        
+        // Fallback: Basic manual transpilation for simple cases
+        actualRouterContent = sourceCode
+          .replace(/export\s+type\s+[^;]+;/g, '') // Remove type exports
+          .replace(/import\s+type\s+[^;]+;/g, '') // Remove type imports
+          .replace(/:\s*[A-Z][A-Za-z0-9<>[\]|&\s]*(?=[,){}=])/g, '') // Remove type annotations
+          .replace(/interface\s+[^{]+\{[^}]*\}/g, '') // Remove interfaces
+          .replace(/type\s+[^=]+=\s*[^;]+;/g, ''); // Remove type aliases
+          
+        if (!this.options.silent) {
+          logger.info(`⚠️ Used manual transpilation fallback: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
+        }
       }
     } else {
       // Use JavaScript router directly
       actualRouterContent = readFileSync(actualRouterPath, "utf-8");
+      if (!this.options.silent) {
+        logger.success(`✅ Using JavaScript router directly: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
+      }
     }
 
     if (!actualRouterContent || actualRouterContent.length < 1000) {
-      throw new Error("Actual router content is invalid or too small");
+      throw new Error(`Actual router content is invalid or too small: ${actualRouterContent.length} bytes`);
     }
 
     // CRITICAL: Apply production optimizations to ACTUAL router
@@ -912,6 +1006,7 @@ export default function ErrorComponent(props) {
 
     if (!this.options.silent) {
       logger.success(`✅ ACTUAL router deployed: ${(actualRouterContent.length / 1024).toFixed(1)}KB (SINGLE SOURCE OF TRUTH)`);
+      logger.success(`✅ Router available at: /0x1/router.js and /node_modules/0x1/router.js`);
     }
   }
 
@@ -3817,19 +3912,30 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
 
           for (const iconFile of essentialIcons) {
             if (iconFiles.includes(iconFile)) {
-              // CRITICAL FIX: Use correct URL path (not filesystem path)
-              const iconUrl = iconDirPath.includes("public") 
-                ? `/public/icons/${iconFile}` // Keep existing path if in public
-                : `/icons/${iconFile}`;       // Use correct path
-                
-              precacheResources.push(iconUrl);
-              if (!this.options.silent) {
-                logger.debug(`✅ Adding icon to precache: ${iconUrl}`);
+              // CRITICAL FIX: Verify the icon actually exists before caching
+              const iconFilePath = join(iconDirPath, iconFile);
+              if (existsSync(iconFilePath)) {
+                // CRITICAL FIX: Use correct URL path (not filesystem path)
+                const iconUrl = iconDirPath.includes("public") 
+                  ? `/public/icons/${iconFile}` // Keep existing path if in public
+                  : `/icons/${iconFile}`;       // Use correct path
+                  
+                precacheResources.push(iconUrl);
+                if (!this.options.silent) {
+                  logger.debug(`✅ Adding icon to precache: ${iconUrl} (verified exists)`);
+                }
+              } else {
+                if (!this.options.silent) {
+                  logger.debug(`⚠️ Icon file not found, skipping: ${iconFilePath}`);
+                }
               }
             }
           }
         } catch (error) {
           // Silent fail for icon directory scanning
+          if (!this.options.silent) {
+            logger.debug(`⚠️ Error scanning icon directory ${iconDirPath}: ${error}`);
+          }
         }
         break; // Only check the first existing icon directory
       }
