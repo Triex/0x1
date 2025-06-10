@@ -1760,82 +1760,29 @@ if (typeof window !== 'undefined') {
 
       // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly
-if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
-  // Initialize React compatibility
-  window['React'] = window['React'] || {};
-  
-  // IMMEDIATE: Access hooks from the module scope - no delays
-  try {
-    // Make hooks available immediately from the module scope
-    const hookFunctions = {
-      useState: typeof useState !== 'undefined' ? useState : null,
-      useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
-      useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
-      useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
-      useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
-      useRef: typeof useRef !== 'undefined' ? useRef : null,
-      useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
-      useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
-      useForm: typeof useForm !== 'undefined' ? useForm : null,
-      useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null
-    };
-    
-    // IMMEDIATE: Assign hooks to window - available instantly
-    Object.keys(hookFunctions).forEach(function(hookName) {
-      if (hookFunctions[hookName] && typeof hookFunctions[hookName] === 'function') {
-        window[hookName] = hookFunctions[hookName];
-        if (window['React']) {
-          window['React'][hookName] = hookFunctions[hookName];
-        }
-      }
-    });
-    
-    // IMMEDIATE: Set up context functions
-    const contextFunctions = {
-      enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
-      exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
-      triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
-    };
-    
-    window['__0x1_enterComponentContext'] = contextFunctions.enterComponentContext;
-    window['__0x1_exitComponentContext'] = contextFunctions.exitComponentContext;
-    window['__0x1_triggerUpdate'] = contextFunctions.triggerComponentUpdate;
-    
-    if (typeof globalThis !== 'undefined') {
-      globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
-      globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
-    }
-    
-    // IMMEDIATE: Global hooks registry - available instantly
-    window['__0x1_hooks'] = Object.assign({
-      isInitialized: true,
-      contextReady: true,
-      enterComponentContext: window['__0x1_enterComponentContext'],
-      exitComponentContext: window['__0x1_exitComponentContext'],
-      triggerUpdate: window['__0x1_triggerUpdate']
-    }, hookFunctions, contextFunctions);
-    
-    // IMMEDIATE: Mark as done - no delays
-    window['__0x1_hooks_init_done'] = true;
-    window['__0x1_component_context_ready'] = true;
-    
-    console.log('[0x1 Hooks] Hooks system initialized (immediate)');
-    
-  } catch (error) {
-    console.error('[0x1 Hooks] IMMEDIATE initialization failed:', error);
-    
-    // Emergency fallback: create minimal working hooks immediately
-    window['useState'] = function(initialValue) {
-      console.warn('[0x1 Hooks] Using emergency fallback useState');
-      return [initialValue, function() {}];
-    };
-    window['useEffect'] = function() {
-      console.warn('[0x1 Hooks] Using emergency fallback useEffect');
-    };
-    window['__0x1_hooks_init_done'] = true;
-    window['__0x1_component_context_ready'] = true;
+// CRITICAL FIX: Enhance the existing browser compatibility to also set hooks directly on window
+if (typeof window !== 'undefined') {
+  // Call the existing initialization function
+  if (typeof u === 'function') {
+    u();
   }
+  
+  // CRITICAL FIX: Also set hooks directly on window for immediate availability
+  if (window.React) {
+    // Copy all React hooks directly to window
+    if (window.React.useState) window.useState = window.React.useState;
+    if (window.React.useEffect) window.useEffect = window.React.useEffect;
+    if (window.React.useLayoutEffect) window.useLayoutEffect = window.React.useLayoutEffect;
+    if (window.React.useMemo) window.useMemo = window.React.useMemo;
+    if (window.React.useCallback) window.useCallback = window.React.useCallback;
+    if (window.React.useRef) window.useRef = window.React.useRef;
+  }
+  
+  // Ensure initialization flags are set
+  window.__0x1_hooks_init_done = true;
+  window.__0x1_component_context_ready = true;
+  
+  console.log('[0x1 Hooks] Hooks system initialized (immediate)');
 }
 `;
 
