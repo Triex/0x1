@@ -1757,50 +1757,95 @@ if (typeof window !== 'undefined') {
 
       // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: Just use the original hooks system - it was working fine!
+// CRITICAL FIX: Browser compatibility that waits for all exports to be defined
 if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
-  // Initialize React compatibility
-  window['React'] = window['React'] || {};
-  
-  // CRITICAL FIX: Use the ACTUAL exported hook functions directly
-  // These are the real hooks that were working perfectly before
-  Object.assign(window, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
-  
-  // Also make available in React namespace for compatibility  
-  Object.assign(window['React'], {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
-  
-  // Set up context functions
-  window['__0x1_enterComponentContext'] = enterComponentContext || function() {};
-  window['__0x1_exitComponentContext'] = exitComponentContext || function() {};
-  window['__0x1_triggerUpdate'] = triggerComponentUpdate || function() {};
-  
-  if (typeof globalThis !== 'undefined') {
-    globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
-    globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
-  }
-  
-  // Global hooks registry with the REAL working hooks
-  window['__0x1_hooks'] = {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage,
-    isInitialized: true,
-    contextReady: true,
-    enterComponentContext: window['__0x1_enterComponentContext'],
-    exitComponentContext: window['__0x1_exitComponentContext'],
-    triggerUpdate: window['__0x1_triggerUpdate']
-  };
-  
-  // Mark as done
-  window['__0x1_hooks_init_done'] = true;
-  window['__0x1_component_context_ready'] = true;
-  
-  console.log('[0x1 Hooks] Hooks system initialized (no fallback)');
+  // Wait for the module to fully load before accessing exports
+  setTimeout(function() {
+    try {
+      // Initialize React compatibility
+      window['React'] = window['React'] || {};
+      
+      // CRITICAL FIX: Access hooks from the module scope safely
+      // Use try-catch to handle cases where hooks might not be available yet
+      const moduleScope = (function() {
+        try {
+          // Try to access hooks from the current module scope
+          return {
+            useState: typeof useState !== 'undefined' ? useState : null,
+            useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
+            useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
+            useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
+            useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
+            useRef: typeof useRef !== 'undefined' ? useRef : null,
+            useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
+            useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
+            useForm: typeof useForm !== 'undefined' ? useForm : null,
+            useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null,
+            enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
+            exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
+            triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
+          };
+        } catch (error) {
+          console.warn('[0x1 Hooks] Could not access module scope:', error);
+          return {};
+        }
+      })();
+      
+      // Only assign hooks that are actually available
+      Object.keys(moduleScope).forEach(function(hookName) {
+        if (moduleScope[hookName] && typeof moduleScope[hookName] === 'function') {
+          window[hookName] = moduleScope[hookName];
+          if (window['React']) {
+            window['React'][hookName] = moduleScope[hookName];
+          }
+        }
+      });
+      
+      // Set up context functions
+      window['__0x1_enterComponentContext'] = moduleScope.enterComponentContext || function() {};
+      window['__0x1_exitComponentContext'] = moduleScope.exitComponentContext || function() {};
+      window['__0x1_triggerUpdate'] = moduleScope.triggerComponentUpdate || function() {};
+      
+      if (typeof globalThis !== 'undefined') {
+        globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
+        globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
+      }
+      
+      // Global hooks registry with the available hooks
+      window['__0x1_hooks'] = Object.assign({
+        isInitialized: true,
+        contextReady: true,
+        enterComponentContext: window['__0x1_enterComponentContext'],
+        exitComponentContext: window['__0x1_exitComponentContext'],
+        triggerUpdate: window['__0x1_triggerUpdate']
+      }, moduleScope);
+      
+      // Mark as done
+      window['__0x1_hooks_init_done'] = true;
+      window['__0x1_component_context_ready'] = true;
+      
+      console.log('[0x1 Hooks] Hooks system initialized (no fallback)');
+      
+    } catch (error) {
+      console.error('[0x1 Hooks] Browser compatibility initialization failed:', error);
+      
+      // Fallback: create minimal working hooks to prevent total failure
+      const createFallbackHook = function(hookName) {
+        return function() {
+          console.warn('[0x1 Hooks] Using fallback for ' + hookName + ' - full hooks system failed to initialize');
+          if (hookName === 'useState') {
+            return [null, function() {}];
+          }
+          return function() {};
+        };
+      };
+      
+      window['useState'] = createFallbackHook('useState');
+      window['useEffect'] = createFallbackHook('useEffect');
+      window['__0x1_hooks_init_done'] = true;
+      window['__0x1_component_context_ready'] = true;
+    }
+  }, 0); // Execute after current execution stack
 }
 `;
 
