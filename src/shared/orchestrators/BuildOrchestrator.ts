@@ -544,6 +544,20 @@ export class BuildOrchestrator {
         debug: false,
       });
 
+      // CRITICAL: Force JSX object returns, prevent HTML generation
+      content = content.replace(
+        /return\s+`<html[^`]*`/g,
+        'return { type: "div", props: { children: ["HTML generation prevented"] } }'
+      );
+      content = content.replace(
+        /return\s+`<!DOCTYPE[^`]*`/g,
+        'return { type: "div", props: { children: ["DOCTYPE generation prevented"] } }'
+      );
+      content = content.replace(
+        /return\s+`<body[^`]*`/g,
+        'return { type: "div", props: { children: ["BODY generation prevented"] } }'
+      );
+
       return content;
     } catch (error) {
       logger.warn(
@@ -644,40 +658,31 @@ export class BuildOrchestrator {
    * CRITICAL FIX: Validate component output to ensure it's proper component code, not HTML
    */
   private validateComponentOutput(content: string, sourcePath: string): string {
-    // Check if the content looks like HTML instead of JavaScript
+    // CRITICAL FIX: Detect and prevent HTML generation
     if (
       content.trim().startsWith("<!DOCTYPE") ||
       content.trim().startsWith("<html") ||
       content.includes("<head>") ||
-      content.includes("<body>")
+      content.includes("<body>") ||
+      content.includes('<div id="app">')
     ) {
       logger.error(
-        `CRITICAL ERROR: Component ${sourcePath} is generating HTML instead of JSX! This causes nested HTML.`
+        `🚨 CRITICAL: Component ${sourcePath} is generating complete HTML pages! This causes nested HTML.`
       );
 
-      // Generate a proper error component that returns JSX objects
-      return this.generateProperErrorComponent(
-        sourcePath,
-        "Component generated HTML instead of JSX"
+      // Extract just the component logic, strip HTML wrapper
+      const componentMatch = content.match(
+        /export\s+default\s+function[^{]*{[\s\S]*?return\s+([\s\S]*?);?\s*}/
       );
-    }
+      if (componentMatch) {
+        const jsxReturn = componentMatch[1];
+        return `export default function Component(props) { return ${jsxReturn}; }`;
+      }
 
-    // Ensure the component has proper JSX runtime imports
-    if (
-      !content.includes("jsx") &&
-      !content.includes("createElement") &&
-      (content.includes("<") || content.includes("React"))
-    ) {
-      // Add JSX runtime if missing
-      const lines = content.split("\n");
-      const importIndex =
-        lines.findIndex((line) => line.startsWith("import ")) + 1 || 0;
-      lines.splice(
-        importIndex,
-        0,
-        'import { jsx, jsxs, jsxDEV } from "/0x1/jsx-runtime.js";'
-      );
-      content = lines.join("\n");
+      // Fallback: create safe component
+      return `export default function SafeComponent(props) { 
+      return { type: 'div', props: { children: ['Component Error: Generated HTML instead of JSX'] } }; 
+    }`;
     }
 
     return content;
@@ -1079,6 +1084,41 @@ export default function ErrorComponent(props) {
       }
     }
 
+    // VERCEL FALLBACK: Try to find any class/function that could work
+    if (!routerClassName && !linkFunctionName) {
+      if (!this.options.silent) {
+        logger.warn(
+          "🚨 VERCEL FALLBACK: No Router/Link detected, trying alternative detection..."
+        );
+      }
+
+      // Look for any class that has router-like methods
+      const classPattern =
+        /class\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:navigate|addRoute|routes)[^}]*}/;
+      const classMatch = routerContent.match(classPattern);
+      if (classMatch) {
+        routerClassName = classMatch[1];
+        if (!this.options.silent) {
+          logger.success(
+            `✅ VERCEL FALLBACK: Found router-like class: ${routerClassName}`
+          );
+        }
+      }
+
+      // Look for any function that creates links
+      const linkPattern =
+        /(?:function|const|var)\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:href|onClick)[^}]*}/;
+      const linkMatch = routerContent.match(linkPattern);
+      if (linkMatch && linkMatch[1] !== routerClassName) {
+        linkFunctionName = linkMatch[1];
+        if (!this.options.silent) {
+          logger.success(
+            `✅ VERCEL FALLBACK: Found link-like function: ${linkFunctionName}`
+          );
+        }
+      }
+    }
+        
     // Start with the transformed content
     let finalRouterContent = routerContent;
 
