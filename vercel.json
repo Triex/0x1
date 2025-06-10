@@ -1,10 +1,11 @@
 {
   "framework": null,
   "buildCommand": "bun run build",
+  "outputDirectory": "dist",
   "installCommand": "bun install",
   "rewrites": [
     {
-      "source": "/((?!api|_next|_static|favicon.ico|robots.txt|sitemap.xml|manifest.json|service-worker.js|icons|styles.css|app.js|0x1|node_modules).*)",
+      "source": "/((?!api|_next|_static|favicon.ico|robots.txt|sitemap.xml|manifest.json|service-worker.js|icons|styles.css|app.js|0x1|node_modules|.*\\.(js|css|svg|png|jpg|jpeg|ico|woff2?)).*)",
       "destination": "/index.html"
     }
   ],
@@ -18,7 +19,7 @@
         },
         {
           "key": "Cache-Control",
-          "value": "no-cache"
+          "value": "no-cache, no-store, must-revalidate"
         }
       ]
     },
@@ -31,5 +32,7 @@
         }
       ]
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 } 

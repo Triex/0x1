@@ -940,7 +940,7 @@ export default function ErrorComponent(props) {
     // Read and process the actual router
     if (actualRouterPath.endsWith(".ts")) {
       // Transpile TypeScript router
-      if (!this.options.silent) {
+    if (!this.options.silent) {
         logger.info("🔧 Transpiling actual router from TypeScript...");
       }
       
@@ -963,7 +963,7 @@ export default function ErrorComponent(props) {
             actualRouterContent += await output.text();
           }
           if (!this.options.silent) {
-            logger.success(`✅ Router transpiled successfully: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
+                logger.success(`✅ Router transpiled successfully: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
           }
         } else {
           throw new Error(`Failed to transpile actual router: ${transpiled.logs?.map(l => l.message).join(", ")}`);
@@ -1134,12 +1134,12 @@ export default function ErrorComponent(props) {
         if (minifiedMatch) {
           const minifiedName = minifiedMatch[1];
           optimized += `\n// CRITICAL: Export minified router as Router\nexport { ${minifiedName} as Router };\n`;
-          if (!this.options.silent) {
+        if (!this.options.silent) {
             logger.info(`✅ Added export for minified router: export { ${minifiedName} as Router }`);
           }
         } else {
           optimized += "\n// CRITICAL: Fallback router export\nexport const Router = class Router {};\n";
-          if (!this.options.silent) {
+        if (!this.options.silent) {
             logger.warn("⚠️ Could not identify router class, added fallback export");
           }
         }
@@ -1214,7 +1214,7 @@ export default function ErrorComponent(props) {
           if (!this.options.silent) {
             logger.info(`✅ Strategy 1 - Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
           }
-        } else {
+    } else {
           // Strategy 2: Find the function that creates anchor elements
           const linkFunctionMatch = optimized.match(/function\s+([a-zA-Z])\s*\([^)]*\)\s*\{[^}]*createElement\s*\(\s*["']a["'][^}]*href[^}]*\}/);
           if (linkFunctionMatch) {
@@ -1247,7 +1247,7 @@ export default function ErrorComponent(props) {
                 if (exportedFunctionMatch) {
                   const exportName = exportedFunctionMatch[1];
                   optimized += `\n// CRITICAL FIX: Nuclear option - export single-letter function as Link\nexport { ${exportName} as Link };\n`;
-                  if (!this.options.silent) {
+    if (!this.options.silent) {
                     logger.info(`✅ Strategy 5 (Nuclear) - Added Link alias for any export: export { ${exportName} as Link }`);
                   }
                 } else {
@@ -1720,11 +1720,41 @@ export function Link(props) {
   try {
     // CRITICAL FIX: Normalize children to array format that minified router expects
     let normalizedProps = { ...props };
+    
+    // CRITICAL FIX: Handle children normalization for minified router compatibility
     if (normalizedProps.children !== undefined && normalizedProps.children !== null) {
-      // Ensure children is always an array for minified router compatibility
-      if (!Array.isArray(normalizedProps.children)) {
+      // ALWAYS ensure children is an array for minified router compatibility
+      if (Array.isArray(normalizedProps.children)) {
+        // Already an array, but ensure each item is properly formatted
+        normalizedProps.children = normalizedProps.children.map(child => {
+          if (typeof child === 'string' || typeof child === 'number') {
+            return child;
+          }
+          return child;
+        });
+      } else if (typeof normalizedProps.children === 'string' || typeof normalizedProps.children === 'number') {
+        // Convert string/number to array
+        normalizedProps.children = [normalizedProps.children];
+      } else if (normalizedProps.children && typeof normalizedProps.children === 'object') {
+        // Convert object to array
+        normalizedProps.children = [normalizedProps.children];
+      } else {
+        // Fallback: wrap in array
         normalizedProps.children = [normalizedProps.children];
       }
+      
+      // CRITICAL FIX: Filter out null/undefined children to prevent forEach errors
+      normalizedProps.children = normalizedProps.children.filter(child => 
+        child !== null && child !== undefined
+      );
+      
+      // CRITICAL FIX: If no valid children after filtering, provide empty array
+      if (normalizedProps.children.length === 0) {
+        normalizedProps.children = [];
+      }
+    } else {
+      // No children provided, set empty array
+      normalizedProps.children = [];
     }
     
     // Call the router Link function with normalized props
@@ -2323,12 +2353,12 @@ async function initApp() {
     try {
       // Try as constructor first (new RouterConstructor)
       router = new RouterConstructor({
-        rootElement: appElement,
-        mode: 'history',
-        debug: false,
-        base: '/',
-        notFoundComponent: notFoundComponent
-      });
+      rootElement: appElement,
+      mode: 'history',
+      debug: false,
+      base: '/',
+      notFoundComponent: notFoundComponent
+    });
       console.log('[0x1 App] ✅ Router created using constructor pattern');
     } catch (constructorError) {
       try {
@@ -3853,7 +3883,7 @@ export default function ErrorComponent(props) {
                   try {
                     const iconContent = readFileSync(srcPath);
                     await Bun.write(destPath, iconContent);
-                    if (!this.options.silent) {
+      if (!this.options.silent) {
                       logger.debug(`✅ Copied icon: ${file} -> /icons/${file}`);
                     }
                   } catch (error) {
@@ -4271,75 +4301,78 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
       }
     }
 
-    // CRITICAL FIX: Correct PWA icon path discovery (fix 404 errors)
-    // Icons should be at /icons/, not /public/icons/
-    const iconSearchPaths = [
-      join(outputPath, "icons"),           // /icons/ (correct)
-      join(outputPath, "public", "icons"), // /public/icons/ (if mistakenly placed here)
-    ];
+    // CRITICAL FIX: Conservative PWA icon detection - only add icons that ACTUALLY exist
+    // and are accessible at their URL paths
+    const iconDirPath = join(outputPath, "icons");
     
-    for (const iconDirPath of iconSearchPaths) {
-      if (existsSync(iconDirPath)) {
-        try {
-          const iconFiles = readdirSync(iconDirPath);
-          const essentialIcons = [
-            "icon-192x192.png", 
-            "icon-512x512.png",
-            "icon-144x144.png", // Fix the specific 404 error from logs
-            "icon-96x96.png",
-            "icon-72x72.png",
-            "icon-48x48.png"
-          ];
+    if (existsSync(iconDirPath)) {
+      try {
+        const iconFiles = readdirSync(iconDirPath);
+        
+        // CRITICAL FIX: Only add icons that are both in the filesystem AND verifiable
+        const essentialIcons = [
+          "icon-192x192.png", 
+          "icon-512x512.png"
+        ];
 
-          for (const iconFile of essentialIcons) {
-            if (iconFiles.includes(iconFile)) {
-              // CRITICAL FIX: Verify the icon actually exists before caching
-              const iconFilePath = join(iconDirPath, iconFile);
-              if (existsSync(iconFilePath)) {
-                // CRITICAL FIX: Use correct URL path - always /icons/, never /public/icons/
+        for (const iconFile of essentialIcons) {
+          const iconFilePath = join(iconDirPath, iconFile);
+          if (existsSync(iconFilePath)) {
+            // CRITICAL FIX: Verify file is readable and not empty
+            try {
+              const stats = statSync(iconFilePath);
+              if (stats.size > 0) {
                 const iconUrl = `/icons/${iconFile}`;
-                  
                 precacheResources.push(iconUrl);
                 if (!this.options.silent) {
-                  logger.debug(`✅ Adding icon to precache: ${iconUrl} (verified exists)`);
+                  logger.debug(`✅ Adding verified icon to precache: ${iconUrl} (${stats.size} bytes)`);
                 }
               } else {
                 if (!this.options.silent) {
-                  logger.debug(`⚠️ Icon file not found, skipping: ${iconFilePath}`);
+                  logger.debug(`⚠️ Icon file exists but is empty, skipping: ${iconFilePath}`);
                 }
+              }
+            } catch (statError) {
+              if (!this.options.silent) {
+                logger.debug(`⚠️ Cannot verify icon file, skipping: ${iconFilePath} - ${statError}`);
               }
             }
           }
-        } catch (error) {
-          // Silent fail for icon directory scanning
-          if (!this.options.silent) {
-            logger.debug(`⚠️ Error scanning icon directory ${iconDirPath}: ${error}`);
-          }
         }
-        break; // Only check the first existing icon directory
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.debug(`⚠️ Error scanning icon directory ${iconDirPath}: ${error}`);
+        }
+      }
+    } else {
+      if (!this.options.silent) {
+        logger.debug(`⚠️ Icons directory does not exist: ${iconDirPath}`);
       }
     }
 
-    // Add external CSS files that were actually copied
-    for (const cssFile of this.state.dependencies.cssFiles) {
-      const cssPath = join(
-        outputPath,
-        cssFile.startsWith("/") ? cssFile.substring(1) : cssFile
-      );
-      if (existsSync(cssPath)) {
-        precacheResources.push(
-          cssFile.startsWith("/") ? cssFile : `/${cssFile}`
-        );
+    // CRITICAL FIX: Don't add external CSS files to precache as they may not be accessible
+    // External CSS files are served differently and may cause cache failures
+    if (!this.options.silent) {
+      logger.debug(`⚠️ Skipping external CSS files from precache to prevent 404s`);
+    }
+
+    // CRITICAL FIX: Add framework files that are guaranteed to exist
+    const frameworkFiles = ["/0x1/hooks.js", "/0x1/jsx-runtime.js", "/0x1/router.js"];
+    for (const frameworkFile of frameworkFiles) {
+      const frameworkPath = join(outputPath, frameworkFile.substring(1));
+      if (existsSync(frameworkPath)) {
+        precacheResources.push(frameworkFile);
         if (!this.options.silent) {
-          logger.debug(`✅ Adding external CSS to precache: ${cssFile}`);
+          logger.debug(`✅ Adding framework file to precache: ${frameworkFile}`);
         }
       }
     }
 
     if (!this.options.silent) {
       logger.info(
-        `🗂️ Generated precache list: ${precacheResources.length} resources`
+        `🗂️ Generated conservative precache list: ${precacheResources.length} verified resources`
       );
+      logger.info(`📋 Precache resources: ${precacheResources.join(", ")}`);
     }
 
     return precacheResources;
@@ -4421,3 +4454,4 @@ console.log('[0x1] Fallback router module loaded');
     return cleaned;
   }
 }
+
