@@ -1188,10 +1188,20 @@ export default function ErrorComponent(props) {
     // CRITICAL FIX: Handle the case where RouterLink exists in content but is not exported
     if ((hasRouterLinkInContent || hasLinkFunctionInContent) && !hasLinkExport) {
       if (hasRouterLinkExport) {
-        // RouterLink is exported, create Link alias
-        optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
-        if (!this.options.silent) {
-          logger.info(`✅ Added Link alias: export { RouterLink as Link }`);
+        // CRITICAL FIX: Find the actual minified name that's exported as RouterLink
+        const minifiedRouterLinkMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
+        if (minifiedRouterLinkMatch) {
+          const minifiedName = minifiedRouterLinkMatch[1];
+          optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
+          if (!this.options.silent) {
+            logger.info(`✅ Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
+          }
+        } else {
+          // Fallback: RouterLink is exported but not minified
+          optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
+          if (!this.options.silent) {
+            logger.info(`✅ Added Link alias: export { RouterLink as Link }`);
+          }
         }
       } else {
         // CRITICAL FIX: RouterLink exists in content but not exported - find the minified function
