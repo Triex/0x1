@@ -874,12 +874,35 @@ class Router {
           jsx.type === Symbol.for("react.fragment") ||
           jsx.type === Symbol.for("React.Fragment")
         ) {
-          // Fragment - render children without wrapper
-          const children = jsx.children || jsx.props?.children || [];
-          const childArray = Array.isArray(children) ? children : [children];
+          // Fragment - render children without wrapper with BULLETPROOF children handling
+          let normalizedChildren: any[] = [];
+
+          try {
+            const rawChildren = jsx.children || jsx.props?.children;
+            
+            // ALWAYS ensure we have a proper array
+            if (rawChildren === null || rawChildren === undefined) {
+              normalizedChildren = [];
+            } else if (Array.isArray(rawChildren)) {
+              // Already an array, but filter out null/undefined
+              normalizedChildren = rawChildren.filter(child => child !== null && child !== undefined);
+            } else {
+              // Single value, wrap in array
+              normalizedChildren = [rawChildren];
+            }
+          } catch (error) {
+            console.warn('[0x1 Router] Error normalizing fragment children:', error);
+            normalizedChildren = [];
+          }
+
+          // Final safety check before forEach
+          if (!Array.isArray(normalizedChildren)) {
+            console.warn('[0x1 Router] Fragment children normalization failed, forcing array');
+            normalizedChildren = [];
+          }
 
           const fragment = document.createDocumentFragment();
-          childArray.forEach((child: any) => {
+          normalizedChildren.forEach((child: any) => {
             const childElement = this.jsxToDom(child, routeId);
             if (childElement) {
               fragment.appendChild(childElement);
@@ -1046,23 +1069,39 @@ class Router {
             });
           }
 
-          // Handle children - check multiple possible locations
-          const children =
-            jsx.__isVNode && jsx.children !== undefined
-              ? Array.isArray(jsx.children)
-                ? jsx.children
-                : [jsx.children]
-              : jsx.children !== undefined  // NEW: Check direct jsx.children first
-                ? Array.isArray(jsx.children)
-                  ? jsx.children
-                  : [jsx.children]
-                : jsx.props?.children
-                  ? Array.isArray(jsx.props.children)
-                    ? jsx.props.children
-                    : [jsx.props.children]
-                  : [];
+          // BULLETPROOF children normalization - prevents forEach errors
+          let normalizedChildren: any[] = [];
 
-          children.forEach((child: any) => {
+          try {
+            // Get raw children from multiple possible locations
+            const rawChildren = jsx.__isVNode && jsx.children !== undefined
+              ? jsx.children
+              : jsx.children !== undefined
+                ? jsx.children
+                : jsx.props?.children;
+
+            // ALWAYS ensure we have a proper array
+            if (rawChildren === null || rawChildren === undefined) {
+              normalizedChildren = [];
+            } else if (Array.isArray(rawChildren)) {
+              // Already an array, but filter out null/undefined
+              normalizedChildren = rawChildren.filter(child => child !== null && child !== undefined);
+            } else {
+              // Single value, wrap in array
+              normalizedChildren = [rawChildren];
+            }
+          } catch (error) {
+            console.warn('[0x1 Router] Error normalizing children:', error);
+            normalizedChildren = [];
+          }
+
+          // Final safety check before forEach
+          if (!Array.isArray(normalizedChildren)) {
+            console.warn('[0x1 Router] Children normalization failed, forcing array');
+            normalizedChildren = [];
+          }
+
+          normalizedChildren.forEach((child: any) => {
             if (
               child === null ||
               child === undefined ||
