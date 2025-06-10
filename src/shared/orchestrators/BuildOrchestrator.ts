@@ -1152,15 +1152,17 @@ export default function ErrorComponent(props) {
 
     // CRITICAL FIX: Add Link alias only if RouterLink exists but Link doesn't
     // Handle both normal and minified RouterLink exports
-    const hasRouterLink = optimized.includes("RouterLink") || 
-                         optimized.includes("export { RouterLink }") || 
-                         optimized.includes("export {RouterLink}") ||
-                         optimized.match(/export\s*\{[^}]*RouterLink[^}]*\}/) ||
-                         // CRITICAL FIX: Handle minified RouterLink exports (single letters)
-                         optimized.match(/export\s*\{[^}]*[A-Z]\s*as\s*RouterLink[^}]*\}/) ||
-                         optimized.match(/export\s*\{[^}]*[a-z]\s*as\s*RouterLink[^}]*\}/) ||
-                         // Look for any function that might be RouterLink in minified code
-                         (optimized.includes("function") && optimized.includes("href") && optimized.includes("onClick"));
+    const hasRouterLinkInContent = optimized.includes("RouterLink");
+    
+    // CRITICAL FIX: Check if RouterLink is actually exported (not just in content)
+    const hasRouterLinkExport = optimized.includes("export { RouterLink }") || 
+                               optimized.includes("export {RouterLink}") ||
+                               optimized.match(/export\s*\{[^}]*RouterLink[^}]*\}/) ||
+                               // Handle minified RouterLink exports (single letters)
+                               optimized.match(/export\s*\{[^}]*[A-Z]\s*as\s*RouterLink[^}]*\}/) ||
+                               optimized.match(/export\s*\{[^}]*[a-z]\s*as\s*RouterLink[^}]*\}/);
+    
+    const hasLinkFunctionInContent = optimized.includes("function") && optimized.includes("href") && optimized.includes("onClick");
     
     const hasLinkExport = optimized.includes("export { Link }") || 
                          optimized.includes("export {Link}") ||
@@ -1173,85 +1175,80 @@ export default function ErrorComponent(props) {
 
     if (!this.options.silent) {
       logger.info(`🔍 Link alias detection:`);
-      logger.info(`   RouterLink detected: ${hasRouterLink}`);
+      logger.info(`   RouterLink in content: ${hasRouterLinkInContent}`);
+      logger.info(`   RouterLink exported: ${hasRouterLinkExport}`);
       logger.info(`   Link export detected: ${hasLinkExport}`);
-      logger.info(`   Router content includes RouterLink: ${optimized.includes("RouterLink")}`);
-      logger.info(`   Router content includes function+href+onClick: ${optimized.includes("function") && optimized.includes("href") && optimized.includes("onClick")}`);
+      logger.info(`   Router content includes function+href+onClick: ${hasLinkFunctionInContent}`);
       
       // Show a sample of export lines for debugging
-      const exportLines = optimized.split('\n').filter(line => line.includes('export')).slice(0, 5);
+      const exportLines = optimized.split('\n').filter(line => line.includes('export')).slice(0, 3);
       logger.info(`   Sample export lines: ${exportLines.join(' | ')}`);
     }
 
-    if (hasRouterLink && !hasLinkExport) {
-      // CRITICAL FIX: For minified routers, find the actual RouterLink function and export it as Link
-      if (optimized.includes("RouterLink")) {
-        // Normal case - RouterLink is not minified
+    // CRITICAL FIX: Handle the case where RouterLink exists in content but is not exported
+    if ((hasRouterLinkInContent || hasLinkFunctionInContent) && !hasLinkExport) {
+      if (hasRouterLinkExport) {
+        // RouterLink is exported, create Link alias
         optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
+        if (!this.options.silent) {
+          logger.info(`✅ Added Link alias: export { RouterLink as Link }`);
+        }
       } else {
-        // CRITICAL FIX: Minified case - find the actual function that creates links
-        // Look for function that creates anchor elements and has href/onClick properties
-        const linkFunctionMatch = optimized.match(/function\s+([a-zA-Z])\s*\([^)]*\)\s*\{[^}]*createElement\s*\(\s*["']a["'][^}]*href[^}]*\}/);
-        if (linkFunctionMatch) {
-          const linkFunctionName = linkFunctionMatch[1];
-          optimized += `\n// CRITICAL FIX: Export minified Link function as Link\nexport { ${linkFunctionName} as Link };\n`;
+        // CRITICAL FIX: RouterLink exists in content but not exported - find the minified function
+        
+        // Strategy 1: Find minified RouterLink from export statement patterns
+        const minifiedExportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
+        if (minifiedExportMatch) {
+          const minifiedName = minifiedExportMatch[1];
+          optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
           if (!this.options.silent) {
-            logger.info(`✅ Added Link alias for minified function: export { ${linkFunctionName} as Link }`);
+            logger.info(`✅ Strategy 1 - Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
           }
         } else {
-          // Alternative: look for any single-letter function that handles links
-          const anyLinkMatch = optimized.match(/function\s+([a-z])\s*\([^)]*\)\s*\{[^}]*(?:href|className|onClick)[^}]*createElement[^}]*\}/);
-          if (anyLinkMatch) {
-            const functionName = anyLinkMatch[1];
-            optimized += `\n// CRITICAL FIX: Export detected link function as Link\nexport { ${functionName} as Link };\n`;
+          // Strategy 2: Find the function that creates anchor elements
+          const linkFunctionMatch = optimized.match(/function\s+([a-zA-Z])\s*\([^)]*\)\s*\{[^}]*createElement\s*\(\s*["']a["'][^}]*href[^}]*\}/);
+          if (linkFunctionMatch) {
+            const linkFunctionName = linkFunctionMatch[1];
+            optimized += `\n// CRITICAL FIX: Export detected Link function as Link\nexport { ${linkFunctionName} as Link };\n`;
             if (!this.options.silent) {
-              logger.info(`✅ Added Link alias for detected link function: export { ${functionName} as Link }`);
+              logger.info(`✅ Strategy 2 - Added Link alias for detected function: export { ${linkFunctionName} as Link }`);
             }
           } else {
-            // Nuclear option: find the minified RouterLink from export and create Link alias
-            const minifiedExportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
-            if (minifiedExportMatch) {
-              const minifiedName = minifiedExportMatch[1];
-              optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
+            // Strategy 3: Look for function that handles link-like properties
+            const anyLinkMatch = optimized.match(/function\s+([a-z])\s*\([^)]*\)\s*\{[^}]*(?:href|className|onClick)[^}]*createElement[^}]*\}/);
+            if (anyLinkMatch) {
+              const functionName = anyLinkMatch[1];
+              optimized += `\n// CRITICAL FIX: Export detected link-like function as Link\nexport { ${functionName} as Link };\n`;
               if (!this.options.silent) {
-                logger.info(`✅ Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
+                logger.info(`✅ Strategy 3 - Added Link alias for link-like function: export { ${functionName} as Link }`);
               }
             } else {
-              // Final fallback: look for any function in exports that might be RouterLink
-              const exportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])[^}]*\}/);
-              if (exportMatch) {
-                const anyExportName = exportMatch[1];
-                optimized += `\n// CRITICAL FIX: Fallback export any function as Link\nexport { ${anyExportName} as Link };\n`;
+              // Strategy 4: Find any function that creates type 'a' elements (more aggressive pattern)
+              const typeAMatch = optimized.match(/function\s+([a-zA-Z])[^{]*\{[^}]*(?:type\s*:\s*["']a["']|jsx\s*\(\s*["']a["'])/);
+              if (typeAMatch) {
+                const functionName = typeAMatch[1];
+                optimized += `\n// CRITICAL FIX: Export detected anchor function as Link\nexport { ${functionName} as Link };\n`;
                 if (!this.options.silent) {
-                  logger.info(`✅ Fallback - added Link alias: export { ${anyExportName} as Link }`);
+                  logger.info(`✅ Strategy 4 - Added Link alias for anchor function: export { ${functionName} as Link }`);
+                }
+              } else {
+                // Strategy 5: Nuclear option - find any exported single-letter function
+                const exportedFunctionMatch = optimized.match(/export\s*\{[^}]*([a-z])[^}]*\}/);
+                if (exportedFunctionMatch) {
+                  const exportName = exportedFunctionMatch[1];
+                  optimized += `\n// CRITICAL FIX: Nuclear option - export single-letter function as Link\nexport { ${exportName} as Link };\n`;
+                  if (!this.options.silent) {
+                    logger.info(`✅ Strategy 5 (Nuclear) - Added Link alias for any export: export { ${exportName} as Link }`);
+                  }
+                } else {
+                  // Final fallback: Create a basic Link function
+                  optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  const a = document.createElement('a');\n  a.href = props.href;\n  a.className = props.className || '';\n  a.onclick = (e) => {\n    e.preventDefault();\n    if (props.href && props.href.startsWith('/')) {\n      window.history.pushState(null, '', props.href);\n      window.dispatchEvent(new PopStateEvent('popstate'));\n    }\n  };\n  if (props.children) {\n    if (typeof props.children === 'string') {\n      a.textContent = props.children;\n    } else if (Array.isArray(props.children)) {\n      props.children.forEach(child => {\n        if (typeof child === 'string') {\n          a.appendChild(document.createTextNode(child));\n        } else {\n          a.appendChild(child);\n        }\n      });\n    }\n  }\n  return a;\n}\nexport { __0x1_FallbackLink as Link };\n`;
+                  if (!this.options.silent) {
+                    logger.info(`✅ Final Fallback - Created basic Link function`);
+                  }
                 }
               }
             }
-          }
-        }
-      }
-      
-      if (!this.options.silent) {
-        logger.info("✅ Added Link alias for RouterLink export (Vercel compatibility fix)");
-      }
-    } else if (!hasRouterLink && !hasLinkExport) {
-      // CRITICAL FIX: If no RouterLink found at all, this might be a severely minified router
-      // Force add a Link export by finding any function that looks like it creates links
-      const anyLinkFunction = optimized.match(/function\s+([A-Za-z]+)[^{]*\{[^}]*(?:type\s*:\s*["']a["']|jsx\s*\(\s*["']a["'])/);
-      if (anyLinkFunction) {
-        const functionName = anyLinkFunction[1];
-        optimized += `\n// CRITICAL FIX: Force export detected link function as Link\nexport { ${functionName} as Link };\n`;
-        if (!this.options.silent) {
-          logger.info(`✅ Force-added Link alias for detected function: export { ${functionName} as Link }`);
-        }
-      } else {
-        // Nuclear option: find ANY single-letter export and assume it might be RouterLink
-        const anyExport = optimized.match(/export\s*\{\s*([A-Za-z])\s*[^}]*\}/);
-        if (anyExport) {
-          const exportName = anyExport[1];
-          optimized += `\n// CRITICAL FIX: Nuclear option - export any detected export as Link\nexport { ${exportName} as Link };\n`;
-          if (!this.options.silent) {
-            logger.info(`✅ Nuclear option - added Link alias for any export: export { ${exportName} as Link }`);
           }
         }
       }
