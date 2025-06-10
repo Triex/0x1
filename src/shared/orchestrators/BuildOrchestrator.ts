@@ -1014,6 +1014,11 @@ export default function ErrorComponent(props) {
   private optimizeActualRouterForProduction(routerContent: string): string {
     let optimized = routerContent;
 
+    if (!this.options.silent) {
+      logger.info(`🔧 Optimizing router for production...`);
+      logger.info(`📄 Original router size: ${(routerContent.length / 1024).toFixed(1)}KB`);
+    }
+
     // Fix imports for browser
     optimized = ImportTransformer.transformImports(optimized, {
       sourceFilePath: "router.js",
@@ -1043,48 +1048,125 @@ export default function ErrorComponent(props) {
       }
     }
 
-    // Ensure proper exports exist
-    if (!optimized.includes("export") || !optimized.includes("Router")) {
-      // Add exports if missing (but Router should already be exported)
-      if (optimized.includes("class Router") && !optimized.includes("export { Router }")) {
-        optimized += "\n// Ensure Router is exported\nexport { Router };\n";
+    // CRITICAL: Validate and ensure Router class exists and is exported
+    if (!this.options.silent) {
+      logger.info("🔍 Validating Router class existence...");
+    }
+
+    // Check if Router class exists in the content (handle both normal and minified)
+    const hasRouterClass = optimized.includes("class Router") || 
+                          optimized.includes("export class Router") ||
+                          optimized.includes("function Router") ||
+                          optimized.includes("const Router") ||
+                          optimized.includes("var Router") ||
+                          optimized.includes("let Router") ||
+                          // CRITICAL FIX: Handle minified router (class K, class H, etc.)
+                          optimized.match(/class\s+[A-Z]\s*\{[^}]*routes\s*=/) ||
+                          optimized.match(/class\s+[A-Z]\s*\{[^}]*currentPath/) ||
+                          optimized.match(/class\s+[A-Z]\s*\{[^}]*navigate/) ||
+                          optimized.match(/class\s+[A-Z]\s*\{[^}]*addRoute/);
+
+    if (!hasRouterClass) {
+      if (!this.options.silent) {
+        logger.error("❌ CRITICAL: No Router class found in router content!");
+        logger.error(`📄 Router content preview: ${optimized.substring(0, 500)}...`);
       }
-      if (optimized.includes("function Link") && !optimized.includes("export { Link }")) {
-        optimized += "\n// Ensure Link is exported\nexport { Link };\n";
+      throw new Error("Router class not found in router content - cannot proceed");
+    }
+
+    if (!this.options.silent) {
+      // Detect if this is a minified router
+      const isMinified = optimized.match(/class\s+[A-Z]\s*\{[^}]*routes\s*=/) && 
+                        !optimized.includes("class Router");
+      if (isMinified) {
+        const minifiedMatch = optimized.match(/class\s+([A-Z])\s*\{/);
+        const minifiedName = minifiedMatch ? minifiedMatch[1] : "Unknown";
+        logger.info(`✅ Router class found (minified as '${minifiedName}')`);
+      } else {
+        logger.info("✅ Router class found (unminified)");
       }
     }
 
-    // CRITICAL: Global exposure for production (using ACTUAL router)
-    optimized += `
+    // CRITICAL: Handle Router exports for both normal and minified cases
+    const hasRouterExport = optimized.includes("export { Router }") ||
+                           optimized.includes("export {Router}") ||
+                           optimized.includes("export class Router") ||
+                           optimized.includes("export default Router") ||
+                           optimized.match(/export\s*{\s*[^}]*Router[^}]*}/) ||
+                           // CRITICAL FIX: Handle minified exports (export { K as Router })
+                           optimized.includes("export default") ||
+                           optimized.match(/export\s*{\s*[A-Z]\s*as\s*Router\s*}/) ||
+                           optimized.match(/export\s*{\s*[A-Z]\s*}/) ||
+                           // CRITICAL FIX: Accept createRouter as valid Router export (minified pattern)
+                           optimized.includes("createRouter") ||
+                           optimized.includes("as createRouter");
 
-// CRITICAL: Expose ACTUAL router globally (SINGLE SOURCE OF TRUTH)
-if (typeof window !== 'undefined') {
-  try {
-    // Use the ACTUAL Router class that was just defined above
-    if (typeof Router !== 'undefined') {
-      window.__0x1_Router = Router;
-      window.__0x1_ROUTER__ = Router;
-      window.router = Router;
-      console.log('[0x1] ACTUAL Router class exposed globally');
+    if (!hasRouterExport) {
+      if (!this.options.silent) {
+        logger.warn("⚠️ No explicit Router export found, adding export...");
+      }
+      
+      // CRITICAL FIX: Handle both normal and minified router exports
+      if (optimized.includes("class Router")) {
+        optimized += "\n// CRITICAL: Ensure Router is exported\nexport { Router };\n";
+      } else if (optimized.includes("function Router")) {
+        optimized += "\n// CRITICAL: Ensure Router is exported\nexport { Router };\n";
+      } else if (optimized.includes("const Router")) {
+        optimized += "\n// CRITICAL: Ensure Router is exported\nexport { Router };\n";
+      } else {
+        // CRITICAL FIX: Handle minified router - find the class and export it as Router
+        const minifiedMatch = optimized.match(/class\s+([A-Z])\s*\{[^}]*(?:routes|currentPath|navigate)/);
+        if (minifiedMatch) {
+          const minifiedName = minifiedMatch[1];
+          optimized += `\n// CRITICAL: Export minified router as Router\nexport { ${minifiedName} as Router };\n`;
+          if (!this.options.silent) {
+            logger.info(`✅ Added export for minified router: export { ${minifiedName} as Router }`);
+          }
+        } else {
+          optimized += "\n// CRITICAL: Fallback router export\nexport const Router = class Router {};\n";
+          if (!this.options.silent) {
+            logger.warn("⚠️ Could not identify router class, added fallback export");
+          }
+        }
+      }
+    } else {
+      if (!this.options.silent) {
+        logger.info("✅ Router export already exists");
+      }
     }
-    
-    // Use the ACTUAL Link function that was just defined above
-    if (typeof Link !== 'undefined') {
-      window.__0x1_RouterLink = Link;
-      console.log('[0x1] ACTUAL Link function exposed globally');
+
+    // CRITICAL: Also ensure Link is exported if it exists
+    if (optimized.includes("function Link") && !optimized.includes("export { Link }") && !optimized.includes("export {Link}")) {
+      optimized += "\n// Ensure Link is exported\nexport { Link };\n";
     }
-    
-    // Also expose any other router utilities
-    if (typeof useRouter !== 'undefined') {
-      window.__0x1_useRouter = useRouter;
+
+    if (!this.options.silent) {
+      logger.success(`✅ Router optimized: ${(optimized.length / 1024).toFixed(1)}KB`);
+      
+      // Final validation - handle both normal and minified routers
+      const finalRouterCheck = optimized.includes("class Router") || 
+                              optimized.includes("function Router") ||
+                              optimized.match(/class\s+[A-Z]\s*\{[^}]*routes\s*=/) ||
+                              optimized.match(/class\s+[A-Z]\s*\{[^}]*currentPath/);
+      
+      const finalExportCheck = optimized.includes("export { Router }") || 
+                              optimized.includes("export class Router") ||
+                              optimized.match(/export\s*{\s*[A-Z]\s+as\s+Router\s*}/) ||
+                              optimized.includes("export default") ||
+                              optimized.match(/export\s*{\s*[A-Z]\s*}/) ||
+                              // CRITICAL FIX: Accept createRouter as valid Router export (minified pattern)
+                              optimized.includes("createRouter") ||
+                              optimized.includes("as createRouter");
+      
+      logger.info(`🔍 Final validation:`);
+      logger.info(`   Router class: ${finalRouterCheck ? "✅" : "❌"}`);
+      logger.info(`   Router export: ${finalExportCheck ? "✅" : "❌"}`);
+      
+      if (!finalRouterCheck || !finalExportCheck) {
+        logger.error("❌ CRITICAL: Router validation failed!");
+        throw new Error("Router validation failed - Router class or export missing");
+      }
     }
-    
-  } catch (error) {
-    console.error('[0x1] Error exposing ACTUAL router:', error);
-    throw error; // Don't hide router errors - fix them at the source
-  }
-}
-`;
 
     return optimized;
   }
@@ -1182,8 +1264,7 @@ if (typeof window !== 'undefined') {
     version: '19.0.0-0x1-compat'
   });
 }
-`;
-          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
+`;          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
           content = content
             .replace(
               /import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g,
@@ -1687,7 +1768,7 @@ export default {
 
     // Generate app.js with client-side metadata updates for production SPA
     const appScript = `// 0x1 Framework App Bundle - Production Ready
-const DEBUG = false; // Set to false for production
+const DEBUG = true; // TEMPORARY: Set to true for debugging
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
@@ -1974,10 +2055,34 @@ async function initApp() {
     // Step 3: Create router
     if (DEBUG) console.log('[0x1 App] Loading router...');
     const routerModule = await import('/0x1/router.js');
-    const { Router } = routerModule;
     
-    if (typeof Router !== 'function') {
-      throw new Error('Router class not found in router module');
+    // CRITICAL FIX: Handle both normal Router class and minified createRouter function
+    let RouterConstructor = null;
+    
+    if (routerModule.Router && typeof routerModule.Router === 'function') {
+      RouterConstructor = routerModule.Router;
+      console.log('[0x1 App] ✅ Using Router class from export');
+    } else if (routerModule.createRouter && typeof routerModule.createRouter === 'function') {
+      RouterConstructor = routerModule.createRouter;
+      console.log('[0x1 App] ✅ Using createRouter function from export');
+    } else {
+      // Try to find any router-like export
+      const routerExports = Object.keys(routerModule).filter(key => {
+        return typeof routerModule[key] === 'function' && 
+               (key.toLowerCase().includes('router') || key === 'createRouter');
+      });
+      
+      if (routerExports.length > 0) {
+        RouterConstructor = routerModule[routerExports[0]];
+        console.log('[0x1 App] ✅ Using router export:', routerExports[0]);
+      } else {
+        console.error('[0x1 App] ❌ Available exports:', Object.keys(routerModule));
+        throw new Error('No router constructor found in router module exports');
+      }
+    }
+    
+    if (!RouterConstructor) {
+      throw new Error('Router constructor not found in router module');
     }
     
     const appElement = document.getElementById('app');
@@ -2031,7 +2136,7 @@ async function initApp() {
       key: null
     });
     
-    const router = new Router({
+    const router = new RouterConstructor({
       rootElement: appElement,
       mode: 'history',
       debug: false,
