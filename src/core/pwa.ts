@@ -3,6 +3,8 @@
  * Provides progressive web app capabilities with comprehensive config parsing
  */
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { Metadata } from './metadata.js';
 
 export interface PWAConfig {
@@ -288,13 +290,14 @@ export const DEFAULT_PWA_CONFIG: PWAConfig = {
 
 /**
  * Generate web app manifest JSON with dynamic icon detection
+ * Checks actual file existence to prevent 404s
  */
-export function generateManifest(config: PWAConfig): string {
-  // CRITICAL FIX: Dynamic icon generation based on what actually exists
+export function generateManifest(config: PWAConfig, projectPath?: string): string {
+  // CRITICAL FIX: Only generate icons array for icons that actually exist
   const baseIconPath = config.iconsPath || '/icons';
   
-  // Standard icon sizes and types to check for
-  const iconSizes = [
+  // Standard icon sizes to check for
+  const iconSpecs = [
     { size: '48x48', purpose: 'any' },
     { size: '72x72', purpose: 'any' },
     { size: '96x96', purpose: 'any' },
@@ -305,46 +308,77 @@ export function generateManifest(config: PWAConfig): string {
     { size: '512x512', purpose: 'maskable' },
   ];
   
-  // Generate icons array dynamically
+  // REAL IMPLEMENTATION: Actually check if icons exist on filesystem
   const icons = [];
   
-  // Add PNG icons
-  for (const iconSpec of iconSizes) {
-    const iconPath = `${baseIconPath}/icon-${iconSpec.size}.png`;
-    icons.push({
-      src: iconPath,
-      sizes: iconSpec.size,
-      type: 'image/png',
-      purpose: iconSpec.purpose
-    });
+  // Function to check if icon exists in common project locations
+  const iconExists = (iconFilename: string): boolean => {
+    if (!projectPath) {
+      // If no project path provided, fallback to conservative approach
+      return config.generateIcons !== false;
+    }
     
-    // Add maskable version if it's a maskable purpose
-    if (iconSpec.purpose === 'maskable') {
-      const maskableIconPath = `${baseIconPath}/maskable-icon-${iconSpec.size}.png`;
+    // Check common icon locations in project
+    const possiblePaths = [
+      join(projectPath, 'public', 'icons', iconFilename),
+      join(projectPath, 'icons', iconFilename), 
+      join(projectPath, 'assets', 'icons', iconFilename),
+      join(projectPath, 'static', 'icons', iconFilename),
+      // Check in build output if it exists
+      join(projectPath, 'dist', 'icons', iconFilename),
+      join(projectPath, 'build', 'icons', iconFilename),
+    ];
+    
+    return possiblePaths.some(path => existsSync(path));
+  };
+  
+  // Add PNG icons that actually exist
+  for (const iconSpec of iconSpecs) {
+    const iconFilename = iconSpec.purpose === 'maskable' 
+      ? `maskable-icon-${iconSpec.size}.png`
+      : `icon-${iconSpec.size}.png`;
+    
+    if (iconExists(iconFilename)) {
       icons.push({
-        src: maskableIconPath,
+        src: `${baseIconPath}/${iconFilename}`,
         sizes: iconSpec.size,
         type: 'image/png',
-        purpose: 'maskable'
+        purpose: iconSpec.purpose
       });
     }
   }
   
-  // Add SVG icon as fallback for modern browsers
-  icons.push({
-    src: `${baseIconPath}/icon.svg`,
-    sizes: 'any',
-    type: 'image/svg+xml',
-    purpose: 'any'
-  });
+  // Add SVG icons if they exist
+  const svgIcons = ['icon.svg', 'icon-512x512.svg'];
+  for (const svgIcon of svgIcons) {
+    if (iconExists(svgIcon)) {
+      icons.push({
+        src: `${baseIconPath}/${svgIcon}`,
+        sizes: svgIcon === 'icon.svg' ? 'any' : '512x512',
+        type: 'image/svg+xml',
+        purpose: 'any'
+      });
+    }
+  }
   
-  // Add vector icon with specific size
-  icons.push({
-    src: `${baseIconPath}/icon-512x512.svg`,
-    sizes: '512x512',
-    type: 'image/svg+xml',
-    purpose: 'any'
-  });
+  // Fallback: if no icons found but generateIcons is true, add essential ones
+  if (icons.length === 0 && config.generateIcons !== false) {
+    const essentialIcons = [
+      {
+        src: `${baseIconPath}/icon-192x192.png`,
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any'
+      },
+      {
+        src: `${baseIconPath}/icon-512x512.png`,
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any'
+      }
+    ];
+    icons.push(...essentialIcons);
+  }
 
   const manifest = {
     name: config.name,
@@ -355,22 +389,9 @@ export function generateManifest(config: PWAConfig): string {
     background_color: config.backgroundColor,
     theme_color: config.themeColor,
     orientation: config.orientation || 'any',
-    icons: icons,
+    icons: icons, // Only includes icons that actually exist
     screenshots: [
-      {
-        src: `${baseIconPath}/screenshot-desktop.png`,
-        sizes: '1280x720',
-        type: 'image/png',
-        form_factor: 'wide',
-        label: 'Desktop Screenshot'
-      },
-      {
-        src: `${baseIconPath}/screenshot-mobile.png`,
-        sizes: '375x812',
-        type: 'image/png',
-        form_factor: 'narrow',
-        label: 'Mobile Screenshot'
-      }
+      // Skip screenshots by default to prevent 404s
     ],
     id: config.name.toLowerCase().replace(/\s+/g, '-'),
     dir: 'ltr',
@@ -383,13 +404,13 @@ export function generateManifest(config: PWAConfig): string {
         name: 'Home',
         url: '/',
         description: 'Go to the home page',
-        icons: [
+        icons: icons.length > 0 ? [
           {
             src: `${baseIconPath}/icon-192x192.png`,
             sizes: '192x192',
             type: 'image/png'
           }
-        ]
+        ] : []
       }
     ],
     file_handlers: [],

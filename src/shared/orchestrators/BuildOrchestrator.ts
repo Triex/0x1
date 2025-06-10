@@ -1189,29 +1189,43 @@ export default function ErrorComponent(props) {
         // Normal case - RouterLink is not minified
         optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
       } else {
-        // CRITICAL FIX: Minified case - find any export that looks like RouterLink and alias it
-        // Look for patterns like: export { F as RouterLink } or export { F }
-        const minifiedRouterLinkMatch = optimized.match(/export\s*\{\s*([A-Za-z])\s*(?:as\s*RouterLink)?\s*[^}]*\}/);
-        if (minifiedRouterLinkMatch) {
-          const minifiedName = minifiedRouterLinkMatch[1];
-          optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link for component compatibility\nexport { ${minifiedName} as Link };\n`;
+        // CRITICAL FIX: Minified case - find the actual function that creates links
+        // Look for function that creates anchor elements and has href/onClick properties
+        const linkFunctionMatch = optimized.match(/function\s+([a-zA-Z])\s*\([^)]*\)\s*\{[^}]*createElement\s*\(\s*["']a["'][^}]*href[^}]*\}/);
+        if (linkFunctionMatch) {
+          const linkFunctionName = linkFunctionMatch[1];
+          optimized += `\n// CRITICAL FIX: Export minified Link function as Link\nexport { ${linkFunctionName} as Link };\n`;
           if (!this.options.silent) {
-            logger.info(`✅ Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
+            logger.info(`✅ Added Link alias for minified function: export { ${linkFunctionName} as Link }`);
           }
         } else {
-          // Fallback: look for any function that creates anchor elements
-          const linkFunctionMatch = optimized.match(/function\s+([A-Za-z]+)\s*\([^)]*\)\s*\{[^}]*type:\s*["']a["'][^}]*\}/);
-          if (linkFunctionMatch) {
-            const linkFunctionName = linkFunctionMatch[1];
-            optimized += `\n// CRITICAL FIX: Export detected Link function as Link\nexport { ${linkFunctionName} as Link };\n`;
+          // Alternative: look for any single-letter function that handles links
+          const anyLinkMatch = optimized.match(/function\s+([a-z])\s*\([^)]*\)\s*\{[^}]*(?:href|className|onClick)[^}]*createElement[^}]*\}/);
+          if (anyLinkMatch) {
+            const functionName = anyLinkMatch[1];
+            optimized += `\n// CRITICAL FIX: Export detected link function as Link\nexport { ${functionName} as Link };\n`;
             if (!this.options.silent) {
-              logger.info(`✅ Added Link alias for detected Link function: export { ${linkFunctionName} as Link }`);
+              logger.info(`✅ Added Link alias for detected link function: export { ${functionName} as Link }`);
             }
           } else {
-            // Last resort: add a generic Link export that will work
-            optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
-            if (!this.options.silent) {
-              logger.info("✅ Added generic Link alias as fallback");
+            // Nuclear option: find the minified RouterLink from export and create Link alias
+            const minifiedExportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
+            if (minifiedExportMatch) {
+              const minifiedName = minifiedExportMatch[1];
+              optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
+              if (!this.options.silent) {
+                logger.info(`✅ Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
+              }
+            } else {
+              // Final fallback: look for any function in exports that might be RouterLink
+              const exportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])[^}]*\}/);
+              if (exportMatch) {
+                const anyExportName = exportMatch[1];
+                optimized += `\n// CRITICAL FIX: Fallback export any function as Link\nexport { ${anyExportName} as Link };\n`;
+                if (!this.options.silent) {
+                  logger.info(`✅ Fallback - added Link alias: export { ${anyExportName} as Link }`);
+                }
+              }
             }
           }
         }
@@ -3848,6 +3862,9 @@ export default function ErrorComponent(props) {
       
       // Update PWA config with correct icon path
       pwaConfig.iconsPath = actualIconsPath;
+      
+      // CRITICAL FIX: Set generateIcons flag based on whether icons actually exist
+      pwaConfig.generateIcons = foundIconsAt !== null;
       
       if (!this.options.silent) {
         if (foundIconsAt) {

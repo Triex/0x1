@@ -95,7 +95,7 @@ export async function addPWA(options: PWACommandOptions = {}, customProjectPath?
 
   // Create manifest.json
   const manifestSpin = logger.spinner('Creating manifest.json');
-  const manifestJson = generateManifest(pwaConfig);
+  const manifestJson = generateManifest(pwaConfig, projectPath);
   await Bun.write(
     join(projectPath, 'public', 'manifest.json'),
     manifestJson
