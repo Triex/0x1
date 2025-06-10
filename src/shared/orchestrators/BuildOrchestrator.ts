@@ -1164,8 +1164,12 @@ export default function ErrorComponent(props) {
     
     const hasLinkExport = optimized.includes("export { Link }") || 
                          optimized.includes("export {Link}") ||
-                         optimized.match(/export\s*\{[^}]*\bas\s+Link[^}]*\}/) ||
-                         optimized.match(/export\s*\{[^}]*Link[^}]*\}/);
+                         // CRITICAL FIX: Only match actual Link exports, not RouterLink/RouterNavLink
+                         optimized.match(/export\s*\{[^}]*\bas\s+Link\s*[,}]/) ||
+                         optimized.match(/export\s*\{[^}]*,\s*Link\s*[,}]/) ||
+                         optimized.match(/export\s*\{\s*Link\s*[,}]/) ||
+                         // Check for Link as the target of an alias (X as Link)
+                         optimized.match(/export\s*\{[^}]*\w+\s+as\s+Link\s*[,}]/);
 
     if (!this.options.silent) {
       logger.info(`🔍 Link alias detection:`);
@@ -3778,12 +3782,79 @@ export default function ErrorComponent(props) {
     // CRITICAL FIX: Update PWA config with accurate precache resources
     if (pwaConfig) {
       pwaConfig.precacheResources = accuratePrecacheResources;
-      // CRITICAL FIX: Ensure icon paths are always /icons/, never /public/icons/
-      pwaConfig.iconsPath = "/icons";
+      
+      // CRITICAL FIX: Smart icon path detection and correction
+      const iconDetectionPaths = [
+        join(this.options.projectPath, "public", "icons"),  // /public/icons/ (filesystem)
+        join(this.options.projectPath, "icons"),            // /icons/ (filesystem)
+        join(outputPath, "icons"),                          // Already copied to output
+        join(outputPath, "public", "icons"),               // Copied to output/public/icons
+      ];
+      
+      let actualIconsPath = "/icons"; // Default URL path
+      let foundIconsAt = null;
+      
+      // Check where icons actually exist
+      for (const iconPath of iconDetectionPaths) {
+        if (existsSync(iconPath)) {
+          const iconFiles = readdirSync(iconPath);
+          const hasEssentialIcons = ["icon-192x192.png", "icon-512x512.png", "icon-144x144.png"]
+            .some(icon => iconFiles.includes(icon) || iconFiles.includes(icon.replace('.png', '.svg')));
+          
+          if (hasEssentialIcons) {
+            foundIconsAt = iconPath;
+            
+            // Determine correct URL path based on where icons were found
+            if (iconPath.includes("public/icons")) {
+              // Icons are in public/icons, but we want them served at /icons/
+              actualIconsPath = "/icons";
+              
+              // CRITICAL FIX: Copy icons from public/icons to output/icons for correct serving
+              const outputIconsPath = join(outputPath, "icons");
+              if (!existsSync(outputIconsPath)) {
+                mkdirSync(outputIconsPath, { recursive: true });
+              }
+              
+              // Copy all icon files to the correct location
+              for (const file of iconFiles) {
+                if (file.endsWith('.png') || file.endsWith('.svg') || file.endsWith('.ico')) {
+                  const srcPath = join(iconPath, file);
+                  const destPath = join(outputIconsPath, file);
+                  try {
+                    const iconContent = readFileSync(srcPath);
+                    await Bun.write(destPath, iconContent);
+                    if (!this.options.silent) {
+                      logger.debug(`✅ Copied icon: ${file} -> /icons/${file}`);
+                    }
+                  } catch (error) {
+                    if (!this.options.silent) {
+                      logger.warn(`⚠️ Failed to copy icon ${file}: ${error}`);
+                    }
+                  }
+                }
+              }
+              
+              if (!this.options.silent) {
+                logger.info(`✅ Copied icons from ${iconPath.replace(this.options.projectPath, "")} to /icons/ for correct serving`);
+              }
+            } else {
+              // Icons are already in the right place
+              actualIconsPath = "/icons";
+            }
+            break;
+          }
+        }
+      }
+      
+      // Update PWA config with correct icon path
+      pwaConfig.iconsPath = actualIconsPath;
+      
       if (!this.options.silent) {
-        logger.info(
-          `🔧 Updated PWA config with ${accuratePrecacheResources.length} validated precache resources`
-        );
+        if (foundIconsAt) {
+          logger.info(`🎨 PWA icons detected at: ${foundIconsAt.replace(this.options.projectPath, "")} -> serving at ${actualIconsPath}`);
+        } else {
+          logger.warn(`⚠️ No PWA icons found, manifest will reference ${actualIconsPath} (may cause 404s)`);
+        }
       }
     } else {
       // Create minimal PWA config with accurate resources for service worker generation

@@ -287,9 +287,65 @@ export const DEFAULT_PWA_CONFIG: PWAConfig = {
 };
 
 /**
- * Generate web app manifest JSON
+ * Generate web app manifest JSON with dynamic icon detection
  */
 export function generateManifest(config: PWAConfig): string {
+  // CRITICAL FIX: Dynamic icon generation based on what actually exists
+  const baseIconPath = config.iconsPath || '/icons';
+  
+  // Standard icon sizes and types to check for
+  const iconSizes = [
+    { size: '48x48', purpose: 'any' },
+    { size: '72x72', purpose: 'any' },
+    { size: '96x96', purpose: 'any' },
+    { size: '144x144', purpose: 'any' },
+    { size: '192x192', purpose: 'any' },
+    { size: '512x512', purpose: 'any' },
+    { size: '192x192', purpose: 'maskable' },
+    { size: '512x512', purpose: 'maskable' },
+  ];
+  
+  // Generate icons array dynamically
+  const icons = [];
+  
+  // Add PNG icons
+  for (const iconSpec of iconSizes) {
+    const iconPath = `${baseIconPath}/icon-${iconSpec.size}.png`;
+    icons.push({
+      src: iconPath,
+      sizes: iconSpec.size,
+      type: 'image/png',
+      purpose: iconSpec.purpose
+    });
+    
+    // Add maskable version if it's a maskable purpose
+    if (iconSpec.purpose === 'maskable') {
+      const maskableIconPath = `${baseIconPath}/maskable-icon-${iconSpec.size}.png`;
+      icons.push({
+        src: maskableIconPath,
+        sizes: iconSpec.size,
+        type: 'image/png',
+        purpose: 'maskable'
+      });
+    }
+  }
+  
+  // Add SVG icon as fallback for modern browsers
+  icons.push({
+    src: `${baseIconPath}/icon.svg`,
+    sizes: 'any',
+    type: 'image/svg+xml',
+    purpose: 'any'
+  });
+  
+  // Add vector icon with specific size
+  icons.push({
+    src: `${baseIconPath}/icon-512x512.svg`,
+    sizes: '512x512',
+    type: 'image/svg+xml',
+    purpose: 'any'
+  });
+
   const manifest = {
     name: config.name,
     short_name: config.shortName,
@@ -299,49 +355,17 @@ export function generateManifest(config: PWAConfig): string {
     background_color: config.backgroundColor,
     theme_color: config.themeColor,
     orientation: config.orientation || 'any',
-    icons: [
-      {
-        src: `${config.iconsPath || '/icons'}/icon-192x192.png`,
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'any'
-      },
-      {
-        src: `${config.iconsPath || '/icons'}/icon-512x512.png`,
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'any'
-      },
-      {
-        src: `${config.iconsPath || '/icons'}/maskable-icon-192x192.png`,
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'maskable'
-      },
-      {
-        src: `${config.iconsPath || '/icons'}/maskable-icon-512x512.png`,
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'maskable'
-      },
-      // Keep SVG as fallback for modern browsers
-      {
-        src: `${config.iconsPath || '/icons'}/icon-512x512.svg`,
-        sizes: 'any',
-        type: 'image/svg+xml',
-        purpose: 'any'
-      }
-    ],
+    icons: icons,
     screenshots: [
       {
-        src: `${config.iconsPath || '/icons'}/screenshot-desktop.png`,
+        src: `${baseIconPath}/screenshot-desktop.png`,
         sizes: '1280x720',
         type: 'image/png',
         form_factor: 'wide',
         label: 'Desktop Screenshot'
       },
       {
-        src: `${config.iconsPath || '/icons'}/screenshot-mobile.png`,
+        src: `${baseIconPath}/screenshot-mobile.png`,
         sizes: '375x812',
         type: 'image/png',
         form_factor: 'narrow',
@@ -361,7 +385,7 @@ export function generateManifest(config: PWAConfig): string {
         description: 'Go to the home page',
         icons: [
           {
-            src: `${config.iconsPath || '/icons'}/icon-192x192.png`,
+            src: `${baseIconPath}/icon-192x192.png`,
             sizes: '192x192',
             type: 'image/png'
           }
