@@ -1757,95 +1757,82 @@ if (typeof window !== 'undefined') {
 
       // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: Browser compatibility that waits for all exports to be defined
+// CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly
 if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
-  // Wait for the module to fully load before accessing exports
-  setTimeout(function() {
-    try {
-      // Initialize React compatibility
-      window['React'] = window['React'] || {};
-      
-      // CRITICAL FIX: Access hooks from the module scope safely
-      // Use try-catch to handle cases where hooks might not be available yet
-      const moduleScope = (function() {
-        try {
-          // Try to access hooks from the current module scope
-          return {
-            useState: typeof useState !== 'undefined' ? useState : null,
-            useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
-            useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
-            useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
-            useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
-            useRef: typeof useRef !== 'undefined' ? useRef : null,
-            useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
-            useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
-            useForm: typeof useForm !== 'undefined' ? useForm : null,
-            useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null,
-            enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
-            exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
-            triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
-          };
-        } catch (error) {
-          console.warn('[0x1 Hooks] Could not access module scope:', error);
-          return {};
+  // Initialize React compatibility
+  window['React'] = window['React'] || {};
+  
+  // IMMEDIATE: Access hooks from the module scope - no delays
+  try {
+    // Make hooks available immediately from the module scope
+    const hookFunctions = {
+      useState: typeof useState !== 'undefined' ? useState : null,
+      useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
+      useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
+      useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
+      useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
+      useRef: typeof useRef !== 'undefined' ? useRef : null,
+      useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
+      useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
+      useForm: typeof useForm !== 'undefined' ? useForm : null,
+      useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null
+    };
+    
+    // IMMEDIATE: Assign hooks to window - available instantly
+    Object.keys(hookFunctions).forEach(function(hookName) {
+      if (hookFunctions[hookName] && typeof hookFunctions[hookName] === 'function') {
+        window[hookName] = hookFunctions[hookName];
+        if (window['React']) {
+          window['React'][hookName] = hookFunctions[hookName];
         }
-      })();
-      
-      // Only assign hooks that are actually available
-      Object.keys(moduleScope).forEach(function(hookName) {
-        if (moduleScope[hookName] && typeof moduleScope[hookName] === 'function') {
-          window[hookName] = moduleScope[hookName];
-          if (window['React']) {
-            window['React'][hookName] = moduleScope[hookName];
-          }
-        }
-      });
-      
-      // Set up context functions
-      window['__0x1_enterComponentContext'] = moduleScope.enterComponentContext || function() {};
-      window['__0x1_exitComponentContext'] = moduleScope.exitComponentContext || function() {};
-      window['__0x1_triggerUpdate'] = moduleScope.triggerComponentUpdate || function() {};
-      
-      if (typeof globalThis !== 'undefined') {
-        globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
-        globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
       }
-      
-      // Global hooks registry with the available hooks
-      window['__0x1_hooks'] = Object.assign({
-        isInitialized: true,
-        contextReady: true,
-        enterComponentContext: window['__0x1_enterComponentContext'],
-        exitComponentContext: window['__0x1_exitComponentContext'],
-        triggerUpdate: window['__0x1_triggerUpdate']
-      }, moduleScope);
-      
-      // Mark as done
-      window['__0x1_hooks_init_done'] = true;
-      window['__0x1_component_context_ready'] = true;
-      
-      console.log('[0x1 Hooks] Hooks system initialized (no fallback)');
-      
-    } catch (error) {
-      console.error('[0x1 Hooks] Browser compatibility initialization failed:', error);
-      
-      // Fallback: create minimal working hooks to prevent total failure
-      const createFallbackHook = function(hookName) {
-        return function() {
-          console.warn('[0x1 Hooks] Using fallback for ' + hookName + ' - full hooks system failed to initialize');
-          if (hookName === 'useState') {
-            return [null, function() {}];
-          }
-          return function() {};
-        };
-      };
-      
-      window['useState'] = createFallbackHook('useState');
-      window['useEffect'] = createFallbackHook('useEffect');
-      window['__0x1_hooks_init_done'] = true;
-      window['__0x1_component_context_ready'] = true;
+    });
+    
+    // IMMEDIATE: Set up context functions
+    const contextFunctions = {
+      enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
+      exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
+      triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
+    };
+    
+    window['__0x1_enterComponentContext'] = contextFunctions.enterComponentContext;
+    window['__0x1_exitComponentContext'] = contextFunctions.exitComponentContext;
+    window['__0x1_triggerUpdate'] = contextFunctions.triggerComponentUpdate;
+    
+    if (typeof globalThis !== 'undefined') {
+      globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
+      globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
     }
-  }, 0); // Execute after current execution stack
+    
+    // IMMEDIATE: Global hooks registry - available instantly
+    window['__0x1_hooks'] = Object.assign({
+      isInitialized: true,
+      contextReady: true,
+      enterComponentContext: window['__0x1_enterComponentContext'],
+      exitComponentContext: window['__0x1_exitComponentContext'],
+      triggerUpdate: window['__0x1_triggerUpdate']
+    }, hookFunctions, contextFunctions);
+    
+    // IMMEDIATE: Mark as done - no delays
+    window['__0x1_hooks_init_done'] = true;
+    window['__0x1_component_context_ready'] = true;
+    
+    console.log('[0x1 Hooks] Hooks system initialized (immediate)');
+    
+  } catch (error) {
+    console.error('[0x1 Hooks] IMMEDIATE initialization failed:', error);
+    
+    // Emergency fallback: create minimal working hooks immediately
+    window['useState'] = function(initialValue) {
+      console.warn('[0x1 Hooks] Using emergency fallback useState');
+      return [initialValue, function() {}];
+    };
+    window['useEffect'] = function() {
+      console.warn('[0x1 Hooks] Using emergency fallback useEffect');
+    };
+    window['__0x1_hooks_init_done'] = true;
+    window['__0x1_component_context_ready'] = true;
+  }
 }
 `;
 
@@ -2355,16 +2342,16 @@ async function initApp() {
       hooksScript.onload = () => {
         if (DEBUG) console.log('[0x1 App] Hooks system loaded');
         
-        // Wait a tick to ensure hooks are fully initialized
-        setTimeout(() => {
-          // Verify hooks are available
-          if (typeof window.useState === 'function') {
-            if (DEBUG) console.log('[0x1 App] Hook context verified');
-            resolve();
-          } else {
-            reject(new Error('Hook system not properly initialized'));
-          }
-        }, 50); // Small delay to ensure initialization
+        // IMMEDIATE: Check if hooks are available right now - no delays
+        if (typeof window.useState === 'function' || 
+            window.__0x1_hooks_init_done === true ||
+            (window.__0x1_hooks && window.__0x1_hooks.isInitialized === true)) {
+          if (DEBUG) console.log('[0x1 App] Hook context verified (immediate)');
+          resolve();
+        } else {
+          // If not immediately available, this is an error - hooks should be instant
+          reject(new Error('Hook system not properly initialized - hooks should be available immediately after module load'));
+        }
       };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
@@ -2396,15 +2383,14 @@ async function initApp() {
       jsxScript.onload = () => {
         if (DEBUG) console.log('[0x1 App] JSX runtime loaded');
         
-        // Wait for JSX functions to be available
-        setTimeout(() => {
-          if (typeof window.jsx === 'function' || typeof window.jsxDEV === 'function') {
-            if (DEBUG) console.log('[0x1 App] JSX runtime verified');
-            resolve();
-          } else {
-            reject(new Error('JSX runtime not properly initialized'));
-          }
-        }, 50);
+        // IMMEDIATE: Check if JSX functions are available right now - no delays
+        if (typeof window.jsx === 'function' || typeof window.jsxDEV === 'function') {
+          if (DEBUG) console.log('[0x1 App] JSX runtime verified (immediate)');
+          resolve();
+        } else {
+          // If not immediately available, this is an error - JSX should be instant
+          reject(new Error('JSX runtime not properly initialized - JSX should be available immediately after module load'));
+        }
       };
       jsxScript.onerror = reject;
       document.head.appendChild(jsxScript);
