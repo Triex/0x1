@@ -3864,50 +3864,44 @@ export default function ErrorComponent(props) {
           if (hasEssentialIcons) {
             foundIconsAt = iconPath;
             
-            // Determine correct URL path based on where icons were found
-            if (iconPath.includes("public/icons")) {
-              // Icons are in public/icons, but we want them served at /icons/
-              actualIconsPath = "/icons";
-              
-              // CRITICAL FIX: Copy icons from public/icons to output/icons for correct serving
-              const outputIconsPath = join(outputPath, "icons");
-              if (!existsSync(outputIconsPath)) {
-                mkdirSync(outputIconsPath, { recursive: true });
-              }
-              
-              // Copy all icon files to the correct location
-              for (const file of iconFiles) {
-                if (file.endsWith('.png') || file.endsWith('.svg') || file.endsWith('.ico')) {
-                  const srcPath = join(iconPath, file);
-                  const destPath = join(outputIconsPath, file);
-                  try {
-                    const iconContent = readFileSync(srcPath);
-                    await Bun.write(destPath, iconContent);
-      if (!this.options.silent) {
-                      logger.debug(`✅ Copied icon: ${file} -> /icons/${file}`);
-                    }
-                  } catch (error) {
-                    if (!this.options.silent) {
-                      logger.warn(`⚠️ Failed to copy icon ${file}: ${error}`);
-                    }
+            // CRITICAL FIX: ALWAYS serve at /icons/ regardless of filesystem location
+            actualIconsPath = "/icons";
+            
+            // CRITICAL FIX: Copy icons from ANY source location to output/icons for correct serving
+            const outputIconsPath = join(outputPath, "icons");
+            if (!existsSync(outputIconsPath)) {
+              mkdirSync(outputIconsPath, { recursive: true });
+            }
+            
+            // Copy all icon files to the correct location
+            for (const file of iconFiles) {
+              if (file.endsWith('.png') || file.endsWith('.svg') || file.endsWith('.ico')) {
+                const srcPath = join(iconPath, file);
+                const destPath = join(outputIconsPath, file);
+                try {
+                  const iconContent = readFileSync(srcPath);
+                  await Bun.write(destPath, iconContent);
+                  if (!this.options.silent) {
+                    logger.debug(`✅ Copied icon: ${file} -> /icons/${file}`);
+                  }
+                } catch (error) {
+                  if (!this.options.silent) {
+                    logger.warn(`⚠️ Failed to copy icon ${file}: ${error}`);
                   }
                 }
               }
-              
-              if (!this.options.silent) {
-                logger.info(`✅ Copied icons from ${iconPath.replace(this.options.projectPath, "")} to /icons/ for correct serving`);
-              }
-            } else {
-              // Icons are already in the right place
-              actualIconsPath = "/icons";
             }
-            break;
+            
+            if (!this.options.silent) {
+              logger.info(`✅ Copied icons from ${iconPath.replace(this.options.projectPath, "")} to /icons/ for correct serving`);
+            }
+            break; // Found icons, stop searching
           }
         }
       }
       
-      // Update PWA config with correct icon path
-      pwaConfig.iconsPath = actualIconsPath;
+      // CRITICAL FIX: Update PWA config with correct icon path - NEVER use /public/icons/
+      pwaConfig.iconsPath = "/icons"; // ALWAYS use /icons/ for URL serving
       
       // CRITICAL FIX: Set generateIcons flag based on whether icons actually exist
       pwaConfig.generateIcons = foundIconsAt !== null;
@@ -3953,6 +3947,27 @@ export default function ErrorComponent(props) {
     });
 
     const pwaResources = await pwaHandler.generatePWAResources(pwaConfig);
+
+    // CRITICAL FIX: Generate actual PWA files (manifest.json and service-worker.js)
+    if (pwaConfig) {
+      // Generate manifest.json with corrected icon paths
+      const { generateManifest, generateServiceWorker } = await import("../../core/pwa");
+      
+      // Fix type compatibility by creating a compatible config
+      const compatiblePwaConfig = pwaConfig as any; // Type assertion to bypass compatibility issues
+      
+      const manifestJson = generateManifest(compatiblePwaConfig, this.options.projectPath);
+      await Bun.write(join(outputPath, "manifest.json"), manifestJson);
+      
+      // Generate service-worker.js with validated precache resources
+      const serviceWorkerJs = generateServiceWorker(compatiblePwaConfig);
+      await Bun.write(join(outputPath, "service-worker.js"), serviceWorkerJs);
+      
+      if (!this.options.silent) {
+        logger.info(`✅ Generated PWA files: manifest.json and service-worker.js with corrected icon paths`);
+        logger.info(`📱 PWA manifest uses icon path: ${pwaConfig.iconsPath}`);
+      }
+    }
 
     // Log PWA status using shared handler
     const hasIcons = await this.iconsExist(pwaConfig?.iconsPath || "/icons");
