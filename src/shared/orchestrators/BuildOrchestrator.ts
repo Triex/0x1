@@ -544,7 +544,7 @@ export class BuildOrchestrator {
         debug: false,
       });
 
-      // CRITICAL: Force JSX object returns, prevent HTML generation
+      // CRITICAL FIX: Force JSX object returns, prevent HTML generation
       content = content.replace(
         /return\s+`<html[^`]*`/g,
         'return { type: "div", props: { children: ["HTML generation prevented"] } }'
@@ -556,6 +556,13 @@ export class BuildOrchestrator {
       content = content.replace(
         /return\s+`<body[^`]*`/g,
         'return { type: "div", props: { children: ["BODY generation prevented"] } }'
+      );
+
+      // CRITICAL FIX: Simple prevention of router context returns
+      // Replace any obvious router context returns with error messages
+      content = content.replace(
+        /return\s+\{\s*currentPath.*navigate.*\}/g,
+        'return { type: "div", props: { children: ["Error: Component returned router context instead of JSX"] } }'
       );
 
       return content;
@@ -1035,51 +1042,106 @@ export default function ErrorComponent(props) {
         logger.info(`🔍 Found functions: ${allFunctions.join(", ")}`);
       }
 
+      // CRITICAL FIX: Handle minified/mangled router code (Vercel issue)
+      // In production builds, Router might become 'h' and Link might become 'g'
+      const isMinified = allClasses.some(name => name && name.length === 1) || 
+                        allFunctions.some(name => name && name.length === 1);
+      
+      if (isMinified && !this.options.silent) {
+        logger.warn(`⚠️ DETECTED MINIFIED ROUTER CODE - applying production compatibility fixes`);
+      }
+
       // Try to find Router-like class
       if (!routerClassName) {
-        routerClassName =
-          allClasses.find(
-            (name) =>
-              name &&
-              name.length > 1 &&
-              !["h", "f", "v", "g"].includes(name) &&
-              (name.toLowerCase().includes("router") || exportNames.has(name))
-          ) ??
-          allClasses.find(
-            (name) =>
-              name && name.length > 1 && !["h", "f", "v", "g"].includes(name)
-          ) ??
-          null;
+        if (isMinified) {
+          // For minified code, look for any class that has router-like methods
+          const routerClassPattern = /class\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:navigate|addRoute|routes|init)[^}]*}/;
+          const routerMatch = routerContent.match(routerClassPattern);
+          if (routerMatch) {
+            routerClassName = routerMatch[1];
+            if (!this.options.silent) {
+              logger.warn(`⚠️ MINIFIED ROUTER: Using router-like class: ${routerClassName}`);
+            }
+          } else {
+            // Fallback: use the first class found if it has constructor patterns
+            routerClassName = allClasses.find(name => 
+              name && name.length >= 1 && 
+              routerContent.includes(`new ${name}(`) || 
+              routerContent.includes(`class ${name}`)
+            ) || allClasses[0] || null;
+            
+            if (routerClassName && !this.options.silent) {
+              logger.warn(`⚠️ MINIFIED ROUTER FALLBACK: Using first class as Router: ${routerClassName}`);
+            }
+          }
+        } else {
+          // Non-minified code - use original logic
+          routerClassName =
+            allClasses.find(
+              (name) =>
+                name &&
+                name.length > 1 &&
+                !["h", "f", "v", "g"].includes(name) &&
+                (name.toLowerCase().includes("router") || exportNames.has(name))
+            ) ??
+            allClasses.find(
+              (name) =>
+                name && name.length > 1 && !["h", "f", "v", "g"].includes(name)
+            ) ??
+            null;
 
-        if (routerClassName && !this.options.silent) {
-          logger.warn(`⚠️ Using detected class as Router: ${routerClassName}`);
+          if (routerClassName && !this.options.silent) {
+            logger.warn(`⚠️ Using detected class as Router: ${routerClassName}`);
+          }
         }
       }
 
       // Try to find Link-like function
       if (!linkFunctionName) {
-        linkFunctionName =
-          allFunctions.find(
-            (name) =>
-              name &&
-              name.length > 1 &&
-              name !== routerClassName &&
-              !["h", "f", "v", "g"].includes(name) &&
-              (name.toLowerCase().includes("link") || exportNames.has(name))
-          ) ??
-          allFunctions.find(
-            (name) =>
-              name &&
-              name.length > 1 &&
-              name !== routerClassName &&
-              !["h", "f", "v", "g"].includes(name)
-          ) ??
-          null;
+        if (isMinified) {
+          // For minified code, look for any function that creates DOM elements
+          const linkFunctionPattern = /(?:function|const|var)\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:createElement|jsx|type.*props)[^}]*}/;
+          const linkMatch = routerContent.match(linkFunctionPattern);
+          if (linkMatch && linkMatch[1] !== routerClassName) {
+            linkFunctionName = linkMatch[1];
+            if (!this.options.silent) {
+              logger.warn(`⚠️ MINIFIED ROUTER: Using link-like function: ${linkFunctionName}`);
+            }
+          } else {
+            // Fallback: use any function that's not the router class
+            linkFunctionName = allFunctions.find(name => 
+              name && name.length >= 1 && name !== routerClassName
+            ) || null;
+            
+            if (linkFunctionName && !this.options.silent) {
+              logger.warn(`⚠️ MINIFIED ROUTER FALLBACK: Using function as Link: ${linkFunctionName}`);
+            }
+          }
+        } else {
+          // Non-minified code - use original logic
+          linkFunctionName =
+            allFunctions.find(
+              (name) =>
+                name &&
+                name.length > 1 &&
+                name !== routerClassName &&
+                !["h", "f", "v", "g"].includes(name) &&
+                (name.toLowerCase().includes("link") || exportNames.has(name))
+            ) ??
+            allFunctions.find(
+              (name) =>
+                name &&
+                name.length > 1 &&
+                name !== routerClassName &&
+                !["h", "f", "v", "g"].includes(name)
+            ) ??
+            null;
 
-        if (linkFunctionName && !this.options.silent) {
-          logger.warn(
-            `⚠️ Using detected function as Link: ${linkFunctionName}`
-          );
+          if (linkFunctionName && !this.options.silent) {
+            logger.warn(
+              `⚠️ Using detected function as Link: ${linkFunctionName}`
+            );
+          }
         }
       }
     }
@@ -1655,7 +1717,7 @@ export function Router(...args) {
   throw new Error('[0x1] Router not loaded - router module may not be loaded yet');
 }
 
-// CRITICAL: Link component wrapper to fix class constructor error (same as DevOrchestrator)
+// CRITICAL FIX: Enhanced Link component wrapper to handle minified router functions (Vercel fix)
 export function Link(props) {
   // Get the actual Link function from the router
   const RouterLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || null;
@@ -1667,7 +1729,7 @@ export function Link(props) {
       className: props.className,
       onClick: (e) => {
         e.preventDefault();
-        if (props.href.startsWith('/')) {
+        if (props.href && props.href.startsWith('/')) {
           window.history.pushState(null, '', props.href);
           window.dispatchEvent(new PopStateEvent('popstate'));
         }
@@ -1676,26 +1738,154 @@ export function Link(props) {
     });
   }
   
-  // Call the router Link and convert plain object to JSX
-  const linkResult = RouterLink(props);
-  
-  // CRITICAL FIX: Detect and convert hyperscript objects to JSX objects
-  if (linkResult && typeof linkResult === 'object') {
-    // Check if it's a hyperscript object (has constructor name 'h')
-    if (linkResult.constructor && linkResult.constructor.name === 'h') {
-      console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
-      const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
-      return jsx(linkResult.type || 'a', linkResult.props || {});
+  // CRITICAL FIX: Robust handling of minified router Link functions
+  try {
+    // Call the router Link function
+    const linkResult = RouterLink(props);
+    
+    // CRITICAL FIX: Handle various return types from minified routers
+    if (!linkResult) {
+      console.warn('[0x1] Router Link returned null/undefined, using fallback');
+      return jsx('a', {
+        href: props.href,
+        className: props.className,
+        onClick: (e) => {
+          e.preventDefault();
+          if (props.href && props.href.startsWith('/')) {
+            window.history.pushState(null, '', props.href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        },
+        children: props.children
+      });
     }
     
-    // If it returns a plain object, convert it to JSX
-    if (linkResult.type && linkResult.props) {
-      const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || ((type, props) => ({type, props}));
-      return jsx(linkResult.type, linkResult.props);
+    // If it's already a valid JSX object with type and props, return it
+    if (linkResult && typeof linkResult === 'object' && 
+        (linkResult.type || linkResult.$$typeof)) {
+      return linkResult;
     }
+    
+    // CRITICAL FIX: Handle hyperscript objects (minified router issue)
+    if (linkResult && typeof linkResult === 'object' && linkResult.constructor) {
+      const constructorName = linkResult.constructor.name;
+      
+      // Check if it's a hyperscript object (constructor name 'h' or similar)
+      if (constructorName === 'h' || constructorName.length === 1) {
+        console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
+        return jsx(linkResult.type || 'a', {
+          ...linkResult.props,
+          href: props.href,
+          className: props.className,
+          children: props.children
+        });
+      }
+      
+      // Check if it has hyperscript-like properties
+      if (linkResult.nodeName || linkResult.attributes) {
+        console.warn('[0x1] Router Link returned hyperscript-like object, converting to JSX');
+        return jsx(linkResult.nodeName || 'a', {
+          ...linkResult.attributes,
+          href: props.href,
+          className: props.className,
+          children: props.children
+        });
+      }
+    }
+    
+    // CRITICAL FIX: Handle DOM elements returned by minified routers
+    if (linkResult && typeof linkResult === 'object' && linkResult.nodeType) {
+      console.warn('[0x1] Router Link returned DOM element, converting to JSX');
+      return jsx('a', {
+        href: props.href,
+        className: props.className,
+        onClick: (e) => {
+          e.preventDefault();
+          if (props.href && props.href.startsWith('/')) {
+            window.history.pushState(null, '', props.href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        },
+        children: props.children
+      });
+    }
+    
+    // CRITICAL FIX: Handle string returns (should not happen but safety net)
+    if (typeof linkResult === 'string') {
+      console.warn('[0x1] Router Link returned string, converting to JSX');
+      return jsx('a', {
+        href: props.href,
+        className: props.className,
+        onClick: (e) => {
+          e.preventDefault();
+          if (props.href && props.href.startsWith('/')) {
+            window.history.pushState(null, '', props.href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        },
+        children: props.children
+      });
+    }
+    
+    // CRITICAL FIX: Handle functions returned by minified routers  
+    if (typeof linkResult === 'function') {
+      console.warn('[0x1] Router Link returned function, calling it and converting result');
+      try {
+        const functionResult = linkResult(props);
+        if (functionResult && typeof functionResult === 'object' && functionResult.type) {
+          return functionResult;
+        }
+      } catch (error) {
+        console.warn('[0x1] Router Link function call failed:', error);
+      }
+      
+      // Fallback if function call fails
+      return jsx('a', {
+        href: props.href,
+        className: props.className,
+        onClick: (e) => {
+          e.preventDefault();
+          if (props.href && props.href.startsWith('/')) {
+            window.history.pushState(null, '', props.href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        },
+        children: props.children
+      });
+    }
+    
+    // If we can't identify the return type, log it and use fallback
+    console.warn('[0x1] Router Link returned unrecognized type:', typeof linkResult, linkResult);
+    return jsx('a', {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href && props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      },
+      children: props.children
+    });
+    
+  } catch (error) {
+    console.error('[0x1] Router Link error:', error);
+    
+    // Final fallback - always works
+    return jsx('a', {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href && props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      },
+      children: props.children
+    });
   }
-  
-  return linkResult;
 }
 
 export const version = '0.1.0';
@@ -3936,22 +4126,36 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
       }
     }
 
-    // Dynamically discover PWA icons if they exist
-    const iconPaths = ["/icons", "/public/icons"];
-    for (const iconDir of iconPaths) {
-      const iconDirPath = join(outputPath, iconDir.substring(1));
+    // CRITICAL FIX: Correct PWA icon path discovery (fix 404 errors)
+    // Icons should be at /icons/, not /public/icons/
+    const iconSearchPaths = [
+      join(outputPath, "icons"),           // /icons/ (correct)
+      join(outputPath, "public", "icons"), // /public/icons/ (if mistakenly placed here)
+    ];
+    
+    for (const iconDirPath of iconSearchPaths) {
       if (existsSync(iconDirPath)) {
         try {
           const iconFiles = readdirSync(iconDirPath);
-          const essentialIcons = ["icon-192x192.png", "icon-512x512.png"];
+          const essentialIcons = [
+            "icon-192x192.png", 
+            "icon-512x512.png",
+            "icon-144x144.png", // Fix the specific 404 error from logs
+            "icon-96x96.png",
+            "icon-72x72.png",
+            "icon-48x48.png"
+          ];
 
           for (const iconFile of essentialIcons) {
             if (iconFiles.includes(iconFile)) {
-              precacheResources.push(`${iconDir}/${iconFile}`);
+              // CRITICAL FIX: Use correct URL path (not filesystem path)
+              const iconUrl = iconDirPath.includes("public") 
+                ? `/public/icons/${iconFile}` // Keep existing path if in public
+                : `/icons/${iconFile}`;       // Use correct path
+                
+              precacheResources.push(iconUrl);
               if (!this.options.silent) {
-                logger.debug(
-                  `✅ Adding icon to precache: ${iconDir}/${iconFile}`
-                );
+                logger.debug(`✅ Adding icon to precache: ${iconUrl}`);
               }
             }
           }
