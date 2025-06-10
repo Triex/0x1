@@ -1252,7 +1252,7 @@ export default function ErrorComponent(props) {
                   }
                 } else {
                   // Final fallback: Create a basic Link function
-                  optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  const a = document.createElement('a');\n  a.href = props.href;\n  a.className = props.className || '';\n  a.onclick = (e) => {\n    e.preventDefault();\n    if (props.href && props.href.startsWith('/')) {\n      window.history.pushState(null, '', props.href);\n      window.dispatchEvent(new PopStateEvent('popstate'));\n    }\n  };\n  if (props.children) {\n    if (typeof props.children === 'string') {\n      a.textContent = props.children;\n    } else if (Array.isArray(props.children)) {\n      props.children.forEach(child => {\n        if (typeof child === 'string') {\n          a.appendChild(document.createTextNode(child));\n        } else {\n          a.appendChild(child);\n        }\n      });\n    }\n  }\n  return a;\n}\nexport { __0x1_FallbackLink as Link };\n`;
+                  optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  const a = document.createElement('a');\n  a.href = props.href;\n  a.className = props.className || '';\n  a.onclick = (e) => {\n    e.preventDefault();\n    if (props.href && props.href.startsWith('/')) {\n      window.history.pushState(null, '', props.href);\n      window.dispatchEvent(new PopStateEvent('popstate'));\n    }\n  };\n  if (props.children) {\n    if (typeof props.children === 'string') {\n      a.textContent = props.children;\n    } else if (Array.isArray(props.children)) {\n      props.children.forEach(child => {\n        if (typeof child === 'string') {\n          a.appendChild(document.createTextNode(child));\n        } else {\n          a.appendChild(child);\n        }\n      });\n    } else {\n      // CRITICAL FIX: Handle single JSX objects and other non-array children\n      if (typeof props.children === 'object') {\n        // JSX object - convert to text for fallback\n        a.textContent = '[JSX Object]';\n      } else {\n        // Other types - convert to string\n        a.textContent = String(props.children);\n      }\n    }\n  }\n  return a;\n}\nexport { __0x1_FallbackLink as Link };\n`;
                   if (!this.options.silent) {
                     logger.info(`✅ Final Fallback - Created basic Link function`);
                   }
@@ -1716,48 +1716,38 @@ export function Link(props) {
     });
   }
   
-  // CRITICAL FIX: Robust handling of minified router Link functions
+  // CRITICAL FIX: Comprehensive children normalization for minified router
   try {
-    // CRITICAL FIX: Normalize children to array format that minified router expects
     let normalizedProps = { ...props };
     
-    // CRITICAL FIX: Handle children normalization for minified router compatibility
-    if (normalizedProps.children !== undefined && normalizedProps.children !== null) {
-      // ALWAYS ensure children is an array for minified router compatibility
-      if (Array.isArray(normalizedProps.children)) {
-        // Already an array, but ensure each item is properly formatted
-        normalizedProps.children = normalizedProps.children.map(child => {
-          if (typeof child === 'string' || typeof child === 'number') {
-            return child;
-          }
-          return child;
-        });
-      } else if (typeof normalizedProps.children === 'string' || typeof normalizedProps.children === 'number') {
-        // Convert string/number to array
-        normalizedProps.children = [normalizedProps.children];
-      } else if (normalizedProps.children && typeof normalizedProps.children === 'object') {
-        // Convert object to array
-        normalizedProps.children = [normalizedProps.children];
-      } else {
-        // Fallback: wrap in array
-        normalizedProps.children = [normalizedProps.children];
+    // CRITICAL FIX: Always ensure children is a flat array that supports forEach
+    const normalizeChildren = (children) => {
+      if (children === null || children === undefined) {
+        return [];
       }
       
-      // CRITICAL FIX: Filter out null/undefined children to prevent forEach errors
-      normalizedProps.children = normalizedProps.children.filter(child => 
-        child !== null && child !== undefined
-      );
-      
-      // CRITICAL FIX: If no valid children after filtering, provide empty array
-      if (normalizedProps.children.length === 0) {
-        normalizedProps.children = [];
+      if (Array.isArray(children)) {
+        // Flatten nested arrays and filter out null/undefined
+        return children.flat(Infinity).filter(child => 
+          child !== null && child !== undefined
+        );
       }
-    } else {
-      // No children provided, set empty array
-      normalizedProps.children = [];
-    }
+      
+      if (typeof children === 'string' || typeof children === 'number') {
+        return [children];
+      }
+      
+      if (typeof children === 'object' && children !== null) {
+        return [children];
+      }
+      
+      // For anything else, wrap in array
+      return [children];
+    };
     
-    // Call the router Link function with normalized props
+    normalizedProps.children = normalizeChildren(props.children);
+    
+    // Call the router Link function with properly normalized props
     const linkResult = RouterLink(normalizedProps);
     
     // CRITICAL FIX: Handle various return types from minified routers
@@ -1777,42 +1767,15 @@ export function Link(props) {
       });
     }
     
-    // If it's already a valid JSX object with type and props, return it
+    // If it's already a valid JSX object, return it
     if (linkResult && typeof linkResult === 'object' && 
         (linkResult.type || linkResult.$$typeof)) {
       return linkResult;
     }
     
-    // CRITICAL FIX: Handle hyperscript objects (minified router issue)
-    if (linkResult && typeof linkResult === 'object' && linkResult.constructor) {
-      const constructorName = linkResult.constructor.name;
-      
-      // Check if it's a hyperscript object (constructor name 'h' or similar)
-      if (constructorName === 'h' || constructorName.length === 1) {
-        console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
-        return jsx(linkResult.type || 'a', {
-          ...linkResult.props,
-          href: props.href,
-          className: props.className,
-          children: props.children
-        });
-      }
-      
-      // Check if it has hyperscript-like properties
-      if (linkResult.nodeName || linkResult.attributes) {
-        console.warn('[0x1] Router Link returned hyperscript-like object, converting to JSX');
-        return jsx(linkResult.nodeName || 'a', {
-          ...linkResult.attributes,
-          href: props.href,
-          className: props.className,
-          children: props.children
-        });
-      }
-    }
-    
-    // CRITICAL FIX: Handle DOM elements returned by minified routers
-    if (linkResult && typeof linkResult === 'object' && linkResult.nodeType) {
-      console.warn('[0x1] Router Link returned DOM element, converting to JSX');
+    // CRITICAL FIX: Handle DOM elements or other objects
+    if (linkResult && typeof linkResult === 'object') {
+      // Convert any object to a proper JSX structure
       return jsx('a', {
         href: props.href,
         className: props.className,
@@ -1827,52 +1790,7 @@ export function Link(props) {
       });
     }
     
-    // CRITICAL FIX: Handle string returns (should not happen but safety net)
-    if (typeof linkResult === 'string') {
-      console.warn('[0x1] Router Link returned string, converting to JSX');
-      return jsx('a', {
-        href: props.href,
-        className: props.className,
-        onClick: (e) => {
-          e.preventDefault();
-          if (props.href && props.href.startsWith('/')) {
-            window.history.pushState(null, '', props.href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        },
-        children: props.children
-      });
-    }
-    
-    // CRITICAL FIX: Handle functions returned by minified routers  
-    if (typeof linkResult === 'function') {
-      console.warn('[0x1] Router Link returned function, calling it and converting result');
-      try {
-        const functionResult = linkResult(props);
-        if (functionResult && typeof functionResult === 'object' && functionResult.type) {
-          return functionResult;
-        }
-      } catch (error) {
-        console.warn('[0x1] Router Link function call failed:', error);
-      }
-      
-      // Fallback if function call fails
-      return jsx('a', {
-        href: props.href,
-        className: props.className,
-        onClick: (e) => {
-          e.preventDefault();
-          if (props.href && props.href.startsWith('/')) {
-            window.history.pushState(null, '', props.href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        },
-        children: props.children
-      });
-    }
-    
-    // If we can't identify the return type, log it and use fallback
-    console.warn('[0x1] Router Link returned unrecognized type:', typeof linkResult, linkResult);
+    // For any other return type, use fallback
     return jsx('a', {
       href: props.href,
       className: props.className,
@@ -1889,7 +1807,7 @@ export function Link(props) {
   } catch (error) {
     console.error('[0x1] Router Link error:', error);
     
-    // Final fallback - always works
+    // Always return a working fallback
     return jsx('a', {
       href: props.href,
       className: props.className,
@@ -3955,6 +3873,29 @@ export default function ErrorComponent(props) {
       
       // Fix type compatibility by creating a compatible config
       const compatiblePwaConfig = pwaConfig as any; // Type assertion to bypass compatibility issues
+      
+      // CRITICAL FIX: Only generate manifest with icons that actually exist
+      const actualIconSizes = [];
+      const iconSizes = ['72', '96', '128', '144', '152', '192', '384', '512'];
+      
+      for (const size of iconSizes) {
+        const iconPath = join(outputPath, 'icons', `icon-${size}x${size}.png`);
+        if (existsSync(iconPath)) {
+          actualIconSizes.push(size);
+        }
+      }
+      
+      // Override icons in config to only include existing ones
+      if (actualIconSizes.length > 0) {
+        compatiblePwaConfig.icons = actualIconSizes.map(size => ({
+          src: `/icons/icon-${size}x${size}.png`,
+          sizes: `${size}x${size}`,
+          type: 'image/png'
+        }));
+      } else {
+        // No icons found, use empty array to prevent 404s
+        compatiblePwaConfig.icons = [];
+      }
       
       const manifestJson = generateManifest(compatiblePwaConfig, this.options.projectPath);
       await Bun.write(join(outputPath, "manifest.json"), manifestJson);

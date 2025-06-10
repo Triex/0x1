@@ -3,13 +3,29 @@
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
   "installCommand": "bun install",
-  "rewrites": [
-    {
-      "source": "/((?!api/|_next/|_static/|favicon|robots|sitemap|manifest|service-worker|icons/|styles|app\\.js|0x1/|node_modules/|\\.).*)",
-      "destination": "/index.html"
-    }
-  ],
   "headers": [
+    {
+      "source": "/0x1/(.*)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.js",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        }
+      ]
+    },
     {
       "source": "/service-worker.js",
       "headers": [
@@ -22,15 +38,19 @@
           "value": "no-cache, no-store, must-revalidate"
         }
       ]
+    }
+  ],
+  "routes": [
+    {
+      "src": "/0x1/(.*)",
+      "dest": "/0x1/$1"
     },
     {
-      "source": "/(.*\\.(js|css|svg|png|jpg|jpeg|ico|woff2?))",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "cleanUrls": true,
