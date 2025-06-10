@@ -811,11 +811,45 @@ async function downloadTemplate(templateType: string, tempDir: string): Promise<
     
     await extractProcess.exited;
     
-    // Return the path to the specific template
+    // CRITICAL FIX: The extracted archive will have the structure:
+    // extracted/0x1-templates/full/ (not extracted/0x1-templates/full/)
     const templateDir = join(extractDir, templatePath);
     
+    // Check if template exists in expected location
     if (!existsSync(templateDir)) {
-      throw new Error(`Template ${templateType} not found in downloaded archive`);
+      // Try alternative path structures that might exist after extraction
+      const alternativePaths = [
+        join(extractDir, `0x1-main/${templatePath}`),
+        join(extractDir, `0x1-master/${templatePath}`),
+        join(extractDir, templateType), // Direct template folder
+        join(extractDir, `templates/${templateType}`), // In case templates moved
+      ];
+      
+      let foundPath = null;
+      for (const altPath of alternativePaths) {
+        if (existsSync(altPath)) {
+          foundPath = altPath;
+          break;
+        }
+      }
+      
+      if (!foundPath) {
+        // List contents to debug what was actually extracted
+        logger.debug('Extracted contents:');
+        try {
+          const contents = readdirSync(extractDir, { recursive: true });
+          contents.slice(0, 20).forEach(item => logger.debug(`  ${item}`));
+          if (contents.length > 20) {
+            logger.debug(`  ... and ${contents.length - 20} more items`);
+          }
+        } catch (e) {
+          logger.debug('Could not list extracted contents');
+        }
+        
+        throw new Error(`Template ${templateType} not found in downloaded archive. Expected at: ${templateDir}`);
+      }
+      
+      return foundPath;
     }
     
     return templateDir;
@@ -906,7 +940,51 @@ async function copyTemplate(
           if (existsSync(tempDir)) {
             await Bun.spawn(['rm', '-rf', tempDir], { stdout: 'inherit' }).exited;
           }
-          throw error;
+          
+          // ENHANCED FALLBACK: Use enhanced standard template if download fails
+          logger.warn(`Failed to download ${templateType} template: ${error}`);
+          logger.info(`⚡ Falling back to enhanced 'standard' template with additional features...`);
+          
+          try {
+            // Try to find the standard template as fallback
+            const standardTemplatePaths = [
+              join(currentDir, '../../../templates-cli', 'standard'),
+              join(currentDir, '../../templates', 'standard'),
+              join(currentDir, '../templates', 'standard'),
+              join(currentDir, '../../../0x1-templates', 'standard'),
+              join(process.cwd(), '0x1-templates', 'standard'),
+            ];
+            
+            const standardSourcePath = standardTemplatePaths.find(path => existsSync(path));
+            
+            if (standardSourcePath) {
+              // Copy standard template with enhanced features
+              await copyTemplateFiles(standardSourcePath, projectPath, {
+                useTailwind: true, // Force Tailwind for enhanced template
+                complexity: 'standard',
+                useStateManagement: true, // Force state management for enhanced template
+                themeMode,
+                isMinimalStructure: false,
+                projectStructure: 'app'
+              });
+              
+              logger.success(`✅ Enhanced standard template applied successfully as fallback for ${templateType}`);
+              logger.info(`💡 Tip: You can manually add ${templateType}-specific features later`);
+              
+              // Update package.json to indicate this was a fallback
+              await updatePackageJson(projectPath, 'standard', { 
+                useTailwind: true, 
+                useStateManagement: true 
+              });
+              
+              return; // Early return since we've handled everything
+            } else {
+              throw new Error('No fallback template found either');
+            }
+          } catch (fallbackError) {
+            logger.error(`Fallback to standard template also failed: ${fallbackError}`);
+            throw new Error(`Failed to set up ${templateType} template and fallback failed: ${error}`);
+          }
         }
         
         // Early return since we've already copied the files
@@ -1270,7 +1348,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.359' // Use current version with caret for compatibility
+      "0x1": '^0.0.360' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'
