@@ -1405,7 +1405,7 @@ function __0x1_RouterLink(props) {
     globalThis['__0x1_Link'] = __0x1_RouterLink;
   }
 
-  console.log('[0x1 Router] MINIFICATION-SAFE Link wrapper installed');
+  // console.log('[0x1 Router] MINIFICATION-SAFE Link wrapper installed');
 
 })();
 
@@ -1568,64 +1568,10 @@ if (typeof window !== 'undefined') {
     createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
   });
   
-  console.log('[0x1 JSX] Production-ready runtime loaded');
-
-  // Override JSX functions with enhanced object validation (preserving global availability)
-  const ensureJsxObject = (type, props, key) => {
-    if (typeof type === 'string') {
-      return {
-        type: type,
-        props: props || {},
-        children: (props && props.children) ? (Array.isArray(props.children) ? props.children : [props.children]) : [],
-        key: key || null
-      };
-    }
-    if (typeof type === 'function') {
-      // Call component function and ensure result is JSX object
-      const result = type(props || {});
-      if (typeof result === 'string') {
-        console.warn('[0x1] Component returned HTML string instead of JSX object:', type.name || 'Anonymous');
-        // Convert HTML string back to JSX object (emergency fallback)
-        return {
-          type: 'div',
-          props: { dangerouslySetInnerHTML: { __html: result } },
-          children: [],
-          key: key || null
-        };
-      }
-      // CRITICAL FIX: Prevent hyperscript objects from being returned
-      if (result && typeof result === 'object' && result.constructor && result.constructor.name === 'h') {
-        console.warn('[0x1] Component returned hyperscript object, converting to JSX:', type.name || 'Anonymous');
-        return {
-          type: result.type || 'div',
-          props: result.props || {},
-          children: result.children || [],
-          key: key || null
-        };
-      }
-      return result;
-    }
-    return {
-      type: type,
-      props: props || {},
-      children: [],
-      key: key || null
-    };
-  };
-
-  // Enhance global JSX functions with validation while keeping them available
-  const originalJsx = window.jsx;
-  const originalJsxs = window.jsxs;
-  const originalJsxDEV = window.jsxDEV;
-  const originalCreateElement = window.createElement;
-
-  window.jsx = (type, props, key) => ensureJsxObject(type, props, key);
-  window.jsxs = (type, props, key) => ensureJsxObject(type, props, key);
-  window.jsxDEV = (type, props, key) => ensureJsxObject(type, props, key);
-  window.createElement = (type, props, ...children) => {
-    const childArray = children.flat().filter(child => child != null);
-    return ensureJsxObject(type, { ...props, children: childArray.length === 1 ? childArray[0] : childArray });
-  };
+  // Only log in development
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
+    console.log('[0x1 JSX] Production-ready runtime loaded');
+  }
 }
 `;          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
           content = content
@@ -1782,7 +1728,10 @@ if (typeof window !== 'undefined') {
   window.__0x1_hooks_init_done = true;
   window.__0x1_component_context_ready = true;
   
-  console.log('[0x1 Hooks] Hooks system initialized (immediate)');
+  // Only log in development
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
+    console.log('[0x1 Hooks] Hooks system initialized');
+  }
 }
 `;
 
@@ -1809,7 +1758,10 @@ if (typeof window !== 'undefined') {
   ): Promise<void> {
     // Use EXACT same pattern as DevOrchestrator's framework module
     const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
-console.log('[0x1] Framework module loaded - dynamic runtime version');
+// Only log in development
+if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
+  console.log('[0x1] Framework module loaded - dynamic runtime version');
+}
 
 // CRITICAL FIX: MINIFICATION-SAFE hook resolution using string access
 const createHookGetter = function(hookName) {
@@ -2063,7 +2015,7 @@ export default {
 
     // Generate app.js with client-side metadata updates for production SPA
     const appScript = `// 0x1 Framework App Bundle - Production Ready
-const DEBUG = true; // TEMPORARY: Set to true for debugging
+const DEBUG = false; // PRODUCTION: Disable verbose logging
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
@@ -2393,22 +2345,22 @@ async function initApp() {
     
     // Log all available exports for debugging
     const availableExports = Object.keys(routerModule);
-    console.log('[0x1 App] Available router exports:', availableExports);
+    // console.log('[0x1 App] Available router exports:', availableExports);
     
     // Method 1: Try standard Router class
     if (routerModule.Router && typeof routerModule.Router === 'function') {
       RouterConstructor = routerModule.Router;
-      console.log('[0x1 App] ✅ Using Router class from export');
+      // console.log('[0x1 App] ✅ Using Router class from export');
     }
     // Method 2: Try createRouter function
     else if (routerModule.createRouter && typeof routerModule.createRouter === 'function') {
       RouterConstructor = routerModule.createRouter;
-      console.log('[0x1 App] ✅ Using createRouter function from export');
+      // console.log('[0x1 App] ✅ Using createRouter function from export');
     }
     // Method 3: Try default export
     else if (routerModule.default && typeof routerModule.default === 'function') {
       RouterConstructor = routerModule.default;
-      console.log('[0x1 App] ✅ Using default export as router');
+      // console.log('[0x1 App] ✅ Using default export as router');
     }
     // Method 4: CRITICAL FIX - Find ANY function that can create router instances
     else {
@@ -2423,7 +2375,7 @@ async function initApp() {
                  typeof testInstance.navigate === 'function' ||
                  typeof testInstance.init === 'function')) {
               RouterConstructor = exportValue;
-              console.log('[0x1 App] ✅ Found router constructor via testing:', exportName);
+              // console.log('[0x1 App] ✅ Found router constructor via testing:', exportName);
               break;
             }
           } catch (error) {
@@ -2435,7 +2387,7 @@ async function initApp() {
                    typeof testInstance.navigate === 'function' ||
                    typeof testInstance.init === 'function')) {
                 RouterConstructor = exportValue;
-                console.log('[0x1 App] ✅ Found router factory via testing:', exportName);
+                // console.log('[0x1 App] ✅ Found router factory via testing:', exportName);
                 break;
               }
             } catch (factoryError) {
@@ -4019,8 +3971,8 @@ export default function ErrorComponent(props) {
       for (const iconPath of iconDetectionPaths) {
         if (existsSync(iconPath)) {
           const iconFiles = readdirSync(iconPath);
-          const hasEssentialIcons = ["icon-192x192.png", "icon-512x512.png", "icon-144x144.png"]
-            .some(icon => iconFiles.includes(icon) || iconFiles.includes(icon.replace('.png', '.svg')));
+          const hasEssentialIcons = ["icon-192x192.png", "icon-512x512.png", "icon-192x192.svg", "icon-512x512.svg"]
+            .some(icon => iconFiles.includes(icon));
           
           if (hasEssentialIcons) {
             foundIconsAt = iconPath;
@@ -4122,18 +4074,23 @@ export default function ErrorComponent(props) {
       const iconSizes = ['72', '96', '128', '144', '152', '192', '384', '512'];
       
       for (const size of iconSizes) {
-        const iconPath = join(outputPath, 'icons', `icon-${size}x${size}.png`);
-        if (existsSync(iconPath)) {
-          actualIconSizes.push(size);
+        // Check for PNG first, then SVG
+        const pngIconPath = join(outputPath, 'icons', `icon-${size}x${size}.png`);
+        const svgIconPath = join(outputPath, 'icons', `icon-${size}x${size}.svg`);
+        
+        if (existsSync(pngIconPath)) {
+          actualIconSizes.push({ size, format: 'png' });
+        } else if (existsSync(svgIconPath)) {
+          actualIconSizes.push({ size, format: 'svg' });
         }
       }
       
       // Override icons in config to only include existing ones
       if (actualIconSizes.length > 0) {
-        compatiblePwaConfig.icons = actualIconSizes.map(size => ({
-          src: `/icons/icon-${size}x${size}.png`,
+        compatiblePwaConfig.icons = actualIconSizes.map(({ size, format }) => ({
+          src: `/icons/icon-${size}x${size}.${format}`,
           sizes: `${size}x${size}`,
-          type: 'image/png'
+          type: format === 'svg' ? 'image/svg+xml' : 'image/png'
         }));
       } else {
         // No icons found, use empty array to prevent 404s
@@ -4186,7 +4143,7 @@ export default function ErrorComponent(props) {
       ? join(this.options.projectPath, "public", iconsPath.substring(1))
       : join(this.options.projectPath, iconsPath);
 
-    const essentialIcons = ["icon-192x192.png", "icon-512x512.png"];
+    const essentialIcons = ["icon-192x192.png", "icon-512x512.png", "icon-192x192.svg", "icon-512x512.svg"];
     return essentialIcons.some((icon) =>
       existsSync(join(filesystemPath, icon))
     );
@@ -4511,7 +4468,9 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
         // CRITICAL FIX: Only add icons that are both in the filesystem AND verifiable
         const essentialIcons = [
           "icon-192x192.png", 
-          "icon-512x512.png"
+          "icon-512x512.png",
+          "icon-192x192.svg",
+          "icon-512x512.svg"
         ];
 
           for (const iconFile of essentialIcons) {
