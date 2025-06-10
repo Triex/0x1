@@ -3186,10 +3186,14 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
    * Extract metadata from a specific route component
    */
   private async extractMetadataFromRoute(route: Route): Promise<any> {
-    // Find the source file for this route
+    // Find the source file for this route with better path resolution
     const sourceExtensions = [".tsx", ".ts", ".jsx", ".js"];
     let sourceFile = null;
 
+    // CRITICAL FIX: Better path resolution for Next.js-style routes
+    // Route.componentPath is like "/app/docs/page.js" but source is "app/docs/page.tsx"
+    
+    // Method 1: Direct mapping from componentPath
     for (const ext of sourceExtensions) {
       const potentialPath = join(
         this.options.projectPath,
@@ -3198,6 +3202,52 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
       if (existsSync(potentialPath)) {
         sourceFile = potentialPath;
         break;
+      }
+    }
+
+    // Method 2: If not found, try Next.js-style path mapping
+    if (!sourceFile && route.path !== "/") {
+      // For route "/docs", try "app/docs/page.tsx", "app/docs/index.tsx", etc.
+      const routeSegments = route.path.split("/").filter(Boolean);
+      const possiblePaths = [
+        // Next.js style: app/docs/page.tsx
+        join(this.options.projectPath, "app", ...routeSegments, "page.tsx"),
+        join(this.options.projectPath, "app", ...routeSegments, "page.jsx"),
+        join(this.options.projectPath, "app", ...routeSegments, "page.ts"),
+        join(this.options.projectPath, "app", ...routeSegments, "page.js"),
+        // Index style: app/docs/index.tsx
+        join(this.options.projectPath, "app", ...routeSegments, "index.tsx"),
+        join(this.options.projectPath, "app", ...routeSegments, "index.jsx"),
+        join(this.options.projectPath, "app", ...routeSegments, "index.ts"),
+        join(this.options.projectPath, "app", ...routeSegments, "index.js"),
+      ];
+
+      for (const path of possiblePaths) {
+        if (existsSync(path)) {
+          sourceFile = path;
+          break;
+        }
+      }
+    }
+
+    // Method 3: For root route, try app/page.tsx
+    if (!sourceFile && route.path === "/") {
+      const rootPaths = [
+        join(this.options.projectPath, "app", "page.tsx"),
+        join(this.options.projectPath, "app", "page.jsx"),
+        join(this.options.projectPath, "app", "page.ts"),
+        join(this.options.projectPath, "app", "page.js"),
+        join(this.options.projectPath, "app", "index.tsx"),
+        join(this.options.projectPath, "app", "index.jsx"),
+        join(this.options.projectPath, "app", "index.ts"),
+        join(this.options.projectPath, "app", "index.js"),
+      ];
+
+      for (const path of rootPaths) {
+        if (existsSync(path)) {
+          sourceFile = path;
+          break;
+        }
       }
     }
 
@@ -3215,7 +3265,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
           );
           if (!this.options.silent) {
             logger.info(
-              `✅ Extracted metadata from route ${route.path}: ${pageMetadata.title || "No title"}`
+              `✅ Extracted metadata from route ${route.path}: "${pageMetadata.title || "No title"}" from ${sourceFile.replace(this.options.projectPath, "")}`
             );
           }
           return pageMetadata;
@@ -3226,6 +3276,12 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
             `Failed to extract metadata from ${sourceFile}: ${error}`
           );
         }
+      }
+    } else {
+      if (!this.options.silent) {
+        logger.warn(
+          `No source file found for route ${route.path} (componentPath: ${route.componentPath})`
+        );
       }
     }
 
@@ -4120,12 +4176,14 @@ export default function ErrorComponent(props) {
       pwaResources
     );
 
-    // CRITICAL FIX: Generate ONLY main SPA file - no route-specific files to prevent nested HTML
+    // CRITICAL FIX: Generate BOTH main SPA file AND route-specific files for proper metadata
+    // Main SPA for users, route-specific for crawlers/social media
     await this.generateMainSpaFile(outputPath, projectConfig, resources);
+    await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, resources);
 
     if (!this.options.silent) {
       logger.success(
-        `✅ Generated HTML files: 1 SPA file only (CRITICAL FIX: route-specific files disabled to prevent nested HTML)`
+        `✅ Generated HTML files: 1 SPA file + ${this.state.routes.length} crawler-optimized files for proper metadata`
       );
       logger.success(
         `✅ Service worker configured with ${accuratePrecacheResources.length} validated resources`
@@ -4276,6 +4334,16 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
       resources;
 
     for (const route of this.state.routes) {
+      // CRITICAL FIX: Skip root route to avoid overriding main SPA file
+      if (route.path === "/") {
+        if (!this.options.silent) {
+          logger.info(
+            `⏭️ Skipping root route - main SPA file handles this with dynamic metadata`
+          );
+        }
+        continue;
+      }
+
       try {
         // Extract metadata for this specific route
         const routeMetadata = await this.extractMetadataFromRoute(route);
@@ -4305,8 +4373,8 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
             }
           }
         } else {
-          // Fallback to project config
-          pageTitle = projectConfig.name || "My 0x1 App";
+          // Fallback to project config with route-specific title
+          pageTitle = `${route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1)} | ${projectConfig.name || "My 0x1 App"}`;
           pageDescription =
             projectConfig.description || "0x1 Framework application";
         }
@@ -4398,11 +4466,13 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
    */
   private getRouteOutputPath(outputPath: string, routePath: string): string {
     if (routePath === "/") {
-      // Homepage is handled by the main SPA file
+      // Homepage gets overridden by the main SPA file (index.html)
+      // So we skip generating a separate file for the root route
       return join(outputPath, "index.html");
     }
 
-    // Convert route path to file path
+    // Convert route path to file path for non-root routes
+    // "/docs" -> "docs.html" 
     // "/about" -> "about.html"
     // "/tools" -> "tools.html"
     // "/blog/post" -> "blog/post.html"
