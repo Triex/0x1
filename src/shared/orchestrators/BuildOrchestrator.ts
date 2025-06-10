@@ -837,7 +837,7 @@ export default function ErrorComponent(props) {
     framework0x1Dir: string,
     nodeModulesDir: string
   ): Promise<void> {
-    if (!this.options.silent) {
+      if (!this.options.silent) {
       logger.info("🎯 Using ACTUAL router from shared core (SINGLE SOURCE OF TRUTH)...");
     }
 
@@ -855,7 +855,7 @@ export default function ErrorComponent(props) {
       // Framework dist locations
       join(frameworkPath, "dist", "router.js"),
       join(frameworkPath, "dist", "0x1-router.js"),
-      join(frameworkPath, "dist", "index.js"),
+          join(frameworkPath, "dist", "index.js"),
       
       // Framework source locations
       join(frameworkPath, "src", "router.ts"),
@@ -876,7 +876,7 @@ export default function ErrorComponent(props) {
     let actualRouterContent = "";
 
     // Find the actual router with comprehensive logging
-    if (!this.options.silent) {
+              if (!this.options.silent) {
       logger.info(`🔍 Searching for router in ${routerSearchPaths.length} locations...`);
     }
 
@@ -910,7 +910,7 @@ export default function ErrorComponent(props) {
 
     if (!actualRouterPath) {
       // CRITICAL: Enhanced error reporting for debugging
-      if (!this.options.silent) {
+    if (!this.options.silent) {
         logger.error("❌ CRITICAL: No actual router found in shared core!");
         logger.error(`🔍 Searched paths:`);
         routerSearchPaths.forEach(path => {
@@ -962,14 +962,14 @@ export default function ErrorComponent(props) {
           for (const output of transpiled.outputs) {
             actualRouterContent += await output.text();
           }
-          if (!this.options.silent) {
+      if (!this.options.silent) {
                 logger.success(`✅ Router transpiled successfully: ${(actualRouterContent.length / 1024).toFixed(1)}KB`);
-          }
+      }
         } else {
           throw new Error(`Failed to transpile actual router: ${transpiled.logs?.map(l => l.message).join(", ")}`);
-        }
+    }
       } catch (buildError) {
-        if (!this.options.silent) {
+    if (!this.options.silent) {
           logger.warn(`⚠️ Bun.build failed, trying manual transpilation: ${buildError}`);
         }
         
@@ -1049,7 +1049,7 @@ export default function ErrorComponent(props) {
     }
 
     // CRITICAL: Validate and ensure Router class exists and is exported
-    if (!this.options.silent) {
+      if (!this.options.silent) {
       logger.info("🔍 Validating Router class existence...");
     }
 
@@ -1150,117 +1150,187 @@ export default function ErrorComponent(props) {
       }
     }
 
-    // CRITICAL FIX: Add Link alias only if RouterLink exists but Link doesn't
-    // Handle both normal and minified RouterLink exports
+    // CRITICAL FIX: SMART Link export handling to prevent duplicates
     const hasRouterLinkInContent = optimized.includes("RouterLink");
-    
-    // CRITICAL FIX: Check if RouterLink is actually exported (not just in content)
-    const hasRouterLinkExport = optimized.includes("export { RouterLink }") || 
-                               optimized.includes("export {RouterLink}") ||
-                               optimized.match(/export\s*\{[^}]*RouterLink[^}]*\}/) ||
-                               // Handle minified RouterLink exports (single letters)
-                               optimized.match(/export\s*\{[^}]*[A-Z]\s*as\s*RouterLink[^}]*\}/) ||
-                               optimized.match(/export\s*\{[^}]*[a-z]\s*as\s*RouterLink[^}]*\}/);
-    
     const hasLinkFunctionInContent = optimized.includes("function") && optimized.includes("href") && optimized.includes("onClick");
     
-    const hasLinkExport = optimized.includes("export { Link }") || 
-                         optimized.includes("export {Link}") ||
-                         // CRITICAL FIX: Only match actual Link exports, not RouterLink/RouterNavLink
-                         optimized.match(/export\s*\{[^}]*\bas\s+Link\s*[,}]/) ||
-                         optimized.match(/export\s*\{[^}]*,\s*Link\s*[,}]/) ||
-                         optimized.match(/export\s*\{\s*Link\s*[,}]/) ||
-                         // Check for Link as the target of an alias (X as Link)
-                         optimized.match(/export\s*\{[^}]*\w+\s+as\s+Link\s*[,}]/);
+    // CRITICAL FIX: Detect existing Link exports more accurately
+    const hasExistingLinkExport = optimized.includes("export { Link }") || 
+                                 optimized.includes("export {Link}") ||
+                                 optimized.match(/export\s*\{[^}]*\bLink\b[^}]*\}/) ||
+                                 optimized.match(/export\s*\{[^}]*\bas\s+Link\s*[,}]/) ||
+                                 optimized.match(/export\s*\{[^}]*,\s*Link\s*[,}]/) ||
+                                 optimized.match(/export\s*\{\s*Link\s*[,}]/) ||
+                                 optimized.match(/export\s*\{[^}]*\w+\s+as\s+Link\s*[,}]/);
 
     if (!this.options.silent) {
-      logger.info(`🔍 Link alias detection:`);
+      logger.info(`🔍 Link export detection:`);
       logger.info(`   RouterLink in content: ${hasRouterLinkInContent}`);
-      logger.info(`   RouterLink exported: ${hasRouterLinkExport}`);
-      logger.info(`   Link export detected: ${hasLinkExport}`);
-      logger.info(`   Router content includes function+href+onClick: ${hasLinkFunctionInContent}`);
-      
-      // Show a sample of export lines for debugging
-      const exportLines = optimized.split('\n').filter(line => line.includes('export')).slice(0, 3);
-      logger.info(`   Sample export lines: ${exportLines.join(' | ')}`);
+      logger.info(`   Link function pattern: ${hasLinkFunctionInContent}`);
+      logger.info(`   Existing Link export: ${hasExistingLinkExport ? "Found" : "None"}`);
     }
 
-    // CRITICAL FIX: Handle the case where RouterLink exists in content but is not exported
-    if ((hasRouterLinkInContent || hasLinkFunctionInContent) && !hasLinkExport) {
-      if (hasRouterLinkExport) {
-        // CRITICAL FIX: Find the actual minified name that's exported as RouterLink
-        const minifiedRouterLinkMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
-        if (minifiedRouterLinkMatch) {
-          const minifiedName = minifiedRouterLinkMatch[1];
-          optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
-          if (!this.options.silent) {
-            logger.info(`✅ Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
-          }
-        } else {
-          // Fallback: RouterLink is exported but not minified
-          optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
-          if (!this.options.silent) {
-            logger.info(`✅ Added Link alias: export { RouterLink as Link }`);
-          }
+    // CRITICAL FIX: Only add bulletproof wrapper if there's a RouterLink function to wrap
+    // AND handle existing Link exports properly
+    if (hasRouterLinkInContent || hasLinkFunctionInContent) {
+      // Find the actual minified RouterLink function name if it exists
+      let routerLinkFunctionName = 'RouterLink';
+      const minifiedRouterLinkMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
+      if (minifiedRouterLinkMatch) {
+        routerLinkFunctionName = minifiedRouterLinkMatch[1];
+        if (!this.options.silent) {
+          logger.info(`✅ Found minified RouterLink function: ${routerLinkFunctionName}`);
         }
-      } else {
-        // CRITICAL FIX: RouterLink exists in content but not exported - find the minified function
+      }
+
+      // CRITICAL FIX: Remove any existing Link exports to prevent duplicates
+      if (hasExistingLinkExport) {
+        if (!this.options.silent) {
+          logger.info(`🔧 Removing existing Link export to prevent duplicates...`);
+        }
         
-        // Strategy 1: Find minified RouterLink from export statement patterns
-        const minifiedExportMatch = optimized.match(/export\s*\{[^}]*([a-zA-Z])\s*as\s*RouterLink[^}]*\}/);
-        if (minifiedExportMatch) {
-          const minifiedName = minifiedExportMatch[1];
-          optimized += `\n// CRITICAL FIX: Export minified RouterLink as Link\nexport { ${minifiedName} as Link };\n`;
-          if (!this.options.silent) {
-            logger.info(`✅ Strategy 1 - Added Link alias for minified RouterLink: export { ${minifiedName} as Link }`);
-          }
-    } else {
-          // Strategy 2: Find the function that creates anchor elements
-          const linkFunctionMatch = optimized.match(/function\s+([a-zA-Z])\s*\([^)]*\)\s*\{[^}]*createElement\s*\(\s*["']a["'][^}]*href[^}]*\}/);
-          if (linkFunctionMatch) {
-            const linkFunctionName = linkFunctionMatch[1];
-            optimized += `\n// CRITICAL FIX: Export detected Link function as Link\nexport { ${linkFunctionName} as Link };\n`;
-            if (!this.options.silent) {
-              logger.info(`✅ Strategy 2 - Added Link alias for detected function: export { ${linkFunctionName} as Link }`);
+        // CRITICAL FIX: Handle complex export statements properly
+        // Pattern: export{D as useSearchParams,M as useRouter,H as useParams,P as default,A as createRouter,L as Router,B as Redirect,O as NavLink,F as Link}
+        
+        // First, handle the complex multi-export case with detailed logging
+        let removalCount = 0;
+        optimized = optimized.replace(/export\s*\{([^}]+)\}/g, (match, exportList) => {
+          // Parse the export list and remove Link-related exports
+          const exports = exportList.split(',').map((exp: string) => exp.trim());
+          
+          const filteredExports = exports.filter((exp: string) => {
+            // Remove any export that ends with "as Link" or is just "Link"
+            const shouldRemove = exp.match(/\bas\s+Link$/) || exp === 'Link';
+            if (shouldRemove) {
+              removalCount++;
             }
-          } else {
-            // Strategy 3: Look for function that handles link-like properties
-            const anyLinkMatch = optimized.match(/function\s+([a-z])\s*\([^)]*\)\s*\{[^}]*(?:href|className|onClick)[^}]*createElement[^}]*\}/);
-            if (anyLinkMatch) {
-              const functionName = anyLinkMatch[1];
-              optimized += `\n// CRITICAL FIX: Export detected link-like function as Link\nexport { ${functionName} as Link };\n`;
-              if (!this.options.silent) {
-                logger.info(`✅ Strategy 3 - Added Link alias for link-like function: export { ${functionName} as Link }`);
-              }
-            } else {
-              // Strategy 4: Find any function that creates type 'a' elements (more aggressive pattern)
-              const typeAMatch = optimized.match(/function\s+([a-zA-Z])[^{]*\{[^}]*(?:type\s*:\s*["']a["']|jsx\s*\(\s*["']a["'])/);
-              if (typeAMatch) {
-                const functionName = typeAMatch[1];
-                optimized += `\n// CRITICAL FIX: Export detected anchor function as Link\nexport { ${functionName} as Link };\n`;
-                if (!this.options.silent) {
-                  logger.info(`✅ Strategy 4 - Added Link alias for anchor function: export { ${functionName} as Link }`);
-                }
-              } else {
-                // Strategy 5: Nuclear option - find any exported single-letter function
-                const exportedFunctionMatch = optimized.match(/export\s*\{[^}]*([a-z])[^}]*\}/);
-                if (exportedFunctionMatch) {
-                  const exportName = exportedFunctionMatch[1];
-                  optimized += `\n// CRITICAL FIX: Nuclear option - export single-letter function as Link\nexport { ${exportName} as Link };\n`;
-    if (!this.options.silent) {
-                    logger.info(`✅ Strategy 5 (Nuclear) - Added Link alias for any export: export { ${exportName} as Link }`);
-                  }
-                } else {
-                  // Final fallback: Create a basic Link function
-                  optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  const a = document.createElement('a');\n  a.href = props.href;\n  a.className = props.className || '';\n  a.onclick = (e) => {\n    e.preventDefault();\n    if (props.href && props.href.startsWith('/')) {\n      window.history.pushState(null, '', props.href);\n      window.dispatchEvent(new PopStateEvent('popstate'));\n    }\n  };\n  if (props.children) {\n    if (typeof props.children === 'string') {\n      a.textContent = props.children;\n    } else if (Array.isArray(props.children)) {\n      props.children.forEach(child => {\n        if (typeof child === 'string') {\n          a.appendChild(document.createTextNode(child));\n        } else {\n          a.appendChild(child);\n        }\n      });\n    } else {\n      // CRITICAL FIX: Handle single JSX objects and other non-array children\n      if (typeof props.children === 'object') {\n        // JSX object - convert to text for fallback\n        a.textContent = '[JSX Object]';\n      } else {\n        // Other types - convert to string\n        a.textContent = String(props.children);\n      }\n    }\n  }\n  return a;\n}\nexport { __0x1_FallbackLink as Link };\n`;
-                  if (!this.options.silent) {
-                    logger.info(`✅ Final Fallback - Created basic Link function`);
-                  }
-                }
-              }
-            }
+            return !shouldRemove;
+          });
+          
+          // If we removed all exports, return empty string
+          if (filteredExports.length === 0) {
+            return '// Removed empty export statement';
           }
+          
+          // Reconstruct the export statement
+          return `export{${filteredExports.join(',')}}`;
+        });
+        
+        // Handle other Link export patterns as fallback (with logging)
+        const beforeFallback = optimized;
+        optimized = optimized.replace(/export\s*\{\s*Link\s*\}/g, '// Removed standalone Link export');
+        optimized = optimized.replace(/export\s*\{\s*Link\s*,/g, 'export {');
+        optimized = optimized.replace(/,\s*Link\s*\}/g, '}');
+        optimized = optimized.replace(/,\s*Link\s*,/g, ',');
+        
+        const fallbackChanges = beforeFallback !== optimized;
+        if (!this.options.silent) {
+          logger.info(`✅ Link export removal completed - ${removalCount} primary + ${fallbackChanges ? 'some' : '0'} fallback removals`);
         }
+      }
+
+      // Add the bulletproof Link wrapper function
+      const linkWrapperFunction = `
+// CRITICAL FIX: Complete replacement Link function (bulletproof children handling)
+function __0x1_BulletproofLink(props) {
+  // BULLETPROOF children normalization
+  let normalizedChildren = [];
+  try {
+    const rawChildren = props.children;
+    
+    if (rawChildren === null || rawChildren === undefined || rawChildren === false || rawChildren === true) {
+      normalizedChildren = [];
+    } else if (Array.isArray(rawChildren)) {
+      normalizedChildren = rawChildren.filter(child => 
+        child !== null && child !== undefined && child !== false && child !== true
+      );
+    } else if (typeof rawChildren === 'string' || typeof rawChildren === 'number') {
+      normalizedChildren = [rawChildren];
+    } else if (typeof rawChildren === 'object' && rawChildren !== null) {
+      normalizedChildren = [rawChildren];
+    } else {
+      normalizedChildren = [String(rawChildren)];
+    }
+  } catch (error) {
+    console.warn('[0x1 Router] Children normalization failed:', error);
+    normalizedChildren = [];
+  }
+
+  // Final safety check
+  if (!Array.isArray(normalizedChildren)) {
+    normalizedChildren = [];
+  }
+
+  // Determine final scroll behavior
+  const finalScrollBehavior = props.scrollToTop ? 'top' : props.scrollBehavior;
+
+  // Return complete JSX Link structure with proper navigation
+  return {
+    type: 'a',
+    props: {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        // Always prevent default browser navigation for internal links
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Only handle internal links (starting with /)
+        if (props.href && props.href.startsWith('/')) {
+          // Get current router instance
+          const router = (typeof window !== 'undefined' && window.__0x1_ROUTER__) || 
+                        (typeof window !== 'undefined' && window.__0x1_router) || 
+                        (typeof window !== 'undefined' && window.router) || null;
+          
+          if (router && typeof router.navigate === 'function') {
+            // Use router for proper client-side navigation with scroll behavior
+            router.navigate(props.href, true, finalScrollBehavior);
+          } else if (typeof window !== 'undefined') {
+            // Fallback: use history API for client-side navigation
+            window.history.pushState(null, '', props.href);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        } else if (props.href) {
+          // External links - allow normal navigation
+          window.location.href = props.href;
+        }
+      },
+      children: normalizedChildren
+    }
+  };
+}
+
+// CRITICAL: Replace the original RouterLink with our bulletproof version
+if (typeof RouterLink !== 'undefined') {
+  RouterLink = __0x1_BulletproofLink;
+}
+
+// CRITICAL: Register globally for framework module access
+if (typeof window !== 'undefined') {
+  window.__0x1_RouterLink = __0x1_BulletproofLink;
+  window.__0x1_Link = __0x1_BulletproofLink;
+}
+
+// CRITICAL FIX: Export the bulletproof wrapper as Link (SINGLE export to replace any removed ones)
+export { __0x1_BulletproofLink as Link };
+`;
+
+      // Add the wrapper function to the router
+      optimized += linkWrapperFunction;
+
+      if (!this.options.silent) {
+        logger.info(`✅ Added bulletproof Link wrapper function (replaced existing exports to prevent duplicates)`);
+      }
+    } else {
+      // No RouterLink found, add basic Link function
+      if (!this.options.silent) {
+        logger.info(`⚠️ No RouterLink found, creating basic Link function...`);
+      }
+      
+      optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  return {\n    type: 'a',\n    props: {\n      href: props.href,\n      className: props.className,\n      onClick: (e) => {\n        e.preventDefault();\n        if (props.href && props.href.startsWith('/')) {\n          window.history.pushState(null, '', props.href);\n          window.dispatchEvent(new PopStateEvent('popstate'));\n        }\n      },\n      children: Array.isArray(props.children) ? props.children : (props.children ? [props.children] : [])\n    }\n  };\nexport { __0x1_FallbackLink as Link };\n`;
+      
+      if (!this.options.silent) {
+        logger.info(`✅ Added fallback Link function`);
       }
     }
 
@@ -1289,14 +1359,35 @@ export default function ErrorComponent(props) {
                               // CRITICAL FIX: Accept createRouter as valid Router export (minified pattern)
                               optimized.includes("createRouter") ||
                               optimized.includes("as createRouter");
+
+      // CRITICAL FIX: Check for duplicate Link exports (avoid double-counting same statement)
+      const linkExportMatches1 = optimized.match(/export\s*\{[^}]*\bLink\b[^}]*\}/g) || [];
+      const linkExportMatches2 = optimized.match(/export\s*\{\s*[^}]*as\s+Link\s*[,}]/g) || [];
+      
+      // Use Set to deduplicate - avoid counting same export statement twice
+      const allLinkExports = new Set([...linkExportMatches1, ...linkExportMatches2]);
+      const linkExportCount = allLinkExports.size;
       
       logger.info(`🔍 Final validation:`);
       logger.info(`   Router class: ${finalRouterCheck ? "✅" : "❌"}`);
       logger.info(`   Router export: ${finalExportCheck ? "✅" : "❌"}`);
+      logger.info(`   Link export count: ${linkExportCount} ${linkExportCount === 1 ? "✅" : linkExportCount === 0 ? "⚠️" : "❌ DUPLICATE!"}`);
+      
+      if (linkExportCount > 1) {
+        logger.error(`❌ CRITICAL: Multiple Link exports detected:`);
+        Array.from(allLinkExports).forEach((match, i) => {
+          logger.error(`     Export ${i + 1}: ${match}`);
+        });
+      }
       
       if (!finalRouterCheck || !finalExportCheck) {
         logger.error("❌ CRITICAL: Router validation failed!");
         throw new Error("Router validation failed - Router class or export missing");
+      }
+      
+      if (linkExportCount > 1) {
+        logger.error("❌ CRITICAL: Duplicate Link exports detected!");
+        throw new Error("Duplicate Link exports found - this will cause syntax errors");
       }
     }
 
@@ -1697,11 +1788,26 @@ export function Router(...args) {
 
 // CRITICAL FIX: Enhanced Link component wrapper to handle minified router functions (Vercel fix)
 export function Link(props) {
-  // Get the actual Link function from the router
-  const RouterLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || null;
+  // CRITICAL: Use the bulletproof wrapper instead of raw RouterLink
+  const BulletproofLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || 
+                         (typeof window !== 'undefined' && window.__0x1_Link) || null;
   
-  if (!RouterLink) {
-    // Fallback if router not loaded yet
+  if (!BulletproofLink) {
+    // Fallback if router not loaded yet - with bulletproof children handling
+    let fallbackChildren = [];
+    try {
+      const rawChildren = props.children;
+      if (rawChildren === null || rawChildren === undefined) {
+        fallbackChildren = [];
+      } else if (Array.isArray(rawChildren)) {
+        fallbackChildren = rawChildren.filter(child => child !== null && child !== undefined);
+      } else {
+        fallbackChildren = [rawChildren];
+      }
+    } catch {
+      fallbackChildren = [];
+    }
+    
     return jsx('a', {
       href: props.href,
       className: props.className,
@@ -1712,102 +1818,31 @@ export function Link(props) {
           window.dispatchEvent(new PopStateEvent('popstate'));
         }
       },
-      children: props.children
+      children: fallbackChildren
     });
   }
   
-  // CRITICAL FIX: Comprehensive children normalization for minified router
+  // Use the bulletproof wrapper - it handles all the children normalization
   try {
-    let normalizedProps = { ...props };
-    
-    // CRITICAL FIX: Always ensure children is a flat array that supports forEach
-    const normalizeChildren = (children) => {
-      if (children === null || children === undefined) {
-        return [];
-      }
-      
-      if (Array.isArray(children)) {
-        // Flatten nested arrays and filter out null/undefined
-        return children.flat(Infinity).filter(child => 
-          child !== null && child !== undefined
-        );
-      }
-      
-      if (typeof children === 'string' || typeof children === 'number') {
-        return [children];
-      }
-      
-      if (typeof children === 'object' && children !== null) {
-        return [children];
-      }
-      
-      // For anything else, wrap in array
-      return [children];
-    };
-    
-    normalizedProps.children = normalizeChildren(props.children);
-    
-    // Call the router Link function with properly normalized props
-    const linkResult = RouterLink(normalizedProps);
-    
-    // CRITICAL FIX: Handle various return types from minified routers
-    if (!linkResult) {
-      console.warn('[0x1] Router Link returned null/undefined, using fallback');
-      return jsx('a', {
-        href: props.href,
-        className: props.className,
-        onClick: (e) => {
-          e.preventDefault();
-          if (props.href && props.href.startsWith('/')) {
-            window.history.pushState(null, '', props.href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        },
-        children: props.children
-      });
-    }
-    
-    // If it's already a valid JSX object, return it
-    if (linkResult && typeof linkResult === 'object' && 
-        (linkResult.type || linkResult.$$typeof)) {
-      return linkResult;
-    }
-    
-    // CRITICAL FIX: Handle DOM elements or other objects
-    if (linkResult && typeof linkResult === 'object') {
-      // Convert any object to a proper JSX structure
-      return jsx('a', {
-        href: props.href,
-        className: props.className,
-        onClick: (e) => {
-          e.preventDefault();
-          if (props.href && props.href.startsWith('/')) {
-            window.history.pushState(null, '', props.href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        },
-        children: props.children
-      });
-    }
-    
-    // For any other return type, use fallback
-    return jsx('a', {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        e.preventDefault();
-        if (props.href && props.href.startsWith('/')) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
-      },
-      children: props.children
-    });
-    
+    return BulletproofLink(props);
   } catch (error) {
-    console.error('[0x1] Router Link error:', error);
+    console.error('[0x1] Framework Link error:', error);
     
-    // Always return a working fallback
+    // BULLETPROOF FALLBACK: Always return a working link
+    let fallbackChildren = [];
+    try {
+      const rawChildren = props.children;
+      if (rawChildren === null || rawChildren === undefined) {
+        fallbackChildren = [];
+      } else if (Array.isArray(rawChildren)) {
+        fallbackChildren = rawChildren.filter(child => child !== null && child !== undefined);
+      } else {
+        fallbackChildren = [rawChildren];
+      }
+    } catch {
+      fallbackChildren = [];
+    }
+    
     return jsx('a', {
       href: props.href,
       className: props.className,
@@ -1818,7 +1853,7 @@ export function Link(props) {
           window.dispatchEvent(new PopStateEvent('popstate'));
         }
       },
-      children: props.children
+      children: fallbackChildren
     });
   }
 }
@@ -3799,7 +3834,7 @@ export default function ErrorComponent(props) {
                 try {
                   const iconContent = readFileSync(srcPath);
                   await Bun.write(destPath, iconContent);
-                  if (!this.options.silent) {
+      if (!this.options.silent) {
                     logger.debug(`✅ Copied icon: ${file} -> /icons/${file}`);
                   }
                 } catch (error) {
@@ -4261,9 +4296,9 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
     // and are accessible at their URL paths
     const iconDirPath = join(outputPath, "icons");
     
-    if (existsSync(iconDirPath)) {
-      try {
-        const iconFiles = readdirSync(iconDirPath);
+      if (existsSync(iconDirPath)) {
+        try {
+          const iconFiles = readdirSync(iconDirPath);
         
         // CRITICAL FIX: Only add icons that are both in the filesystem AND verifiable
         const essentialIcons = [
@@ -4271,7 +4306,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
           "icon-512x512.png"
         ];
 
-        for (const iconFile of essentialIcons) {
+          for (const iconFile of essentialIcons) {
           const iconFilePath = join(iconDirPath, iconFile);
           if (existsSync(iconFilePath)) {
             // CRITICAL FIX: Verify file is readable and not empty
@@ -4280,7 +4315,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
               if (stats.size > 0) {
                 const iconUrl = `/icons/${iconFile}`;
                 precacheResources.push(iconUrl);
-                if (!this.options.silent) {
+      if (!this.options.silent) {
                   logger.debug(`✅ Adding verified icon to precache: ${iconUrl} (${stats.size} bytes)`);
                 }
               } else {
@@ -4292,10 +4327,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
               if (!this.options.silent) {
                 logger.debug(`⚠️ Cannot verify icon file, skipping: ${iconFilePath} - ${statError}`);
               }
+              }
             }
           }
-        }
-      } catch (error) {
+        } catch (error) {
         if (!this.options.silent) {
           logger.debug(`⚠️ Error scanning icon directory ${iconDirPath}: ${error}`);
         }
@@ -4308,7 +4343,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
 
     // CRITICAL FIX: Don't add external CSS files to precache as they may not be accessible
     // External CSS files are served differently and may cause cache failures
-    if (!this.options.silent) {
+        if (!this.options.silent) {
       logger.debug(`⚠️ Skipping external CSS files from precache to prevent 404s`);
     }
 
