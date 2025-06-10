@@ -1718,8 +1718,17 @@ export function Link(props) {
   
   // CRITICAL FIX: Robust handling of minified router Link functions
   try {
-    // Call the router Link function
-    const linkResult = RouterLink(props);
+    // CRITICAL FIX: Normalize children to array format that minified router expects
+    let normalizedProps = { ...props };
+    if (normalizedProps.children !== undefined && normalizedProps.children !== null) {
+      // Ensure children is always an array for minified router compatibility
+      if (!Array.isArray(normalizedProps.children)) {
+        normalizedProps.children = [normalizedProps.children];
+      }
+    }
+    
+    // Call the router Link function with normalized props
+    const linkResult = RouterLink(normalizedProps);
     
     // CRITICAL FIX: Handle various return types from minified routers
     if (!linkResult) {

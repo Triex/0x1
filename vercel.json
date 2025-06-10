@@ -1,38 +1,35 @@
 {
-  "buildCommand": "0x1 build",
-  "outputDirectory": "dist",
-  "installCommand": "bun install",
   "framework": null,
+  "buildCommand": "bun run build",
+  "installCommand": "bun install",
+  "rewrites": [
+    {
+      "source": "/((?!api|_next|_static|favicon.ico|robots.txt|sitemap.xml|manifest.json|service-worker.js|icons|styles.css|app.js|0x1|node_modules).*)",
+      "destination": "/index.html"
+    }
+  ],
   "headers": [
     {
-      "source": "/0x1/(.*)",
+      "source": "/service-worker.js",
       "headers": [
         {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
+          "key": "Service-Worker-Allowed",
+          "value": "/"
         },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/(.*\\.(js|css|svg|png|jpg|jpeg|ico|woff2?))",
+      "headers": [
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
         }
       ]
-    },
-    {
-      "source": "/(.*)\\.js",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        }
-      ]
     }
-  ],
-  "rewrites": [
-    {
-      "source": "/0x1/(.*)",
-      "destination": "/0x1/$1"
-    }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false
+  ]
 } 
