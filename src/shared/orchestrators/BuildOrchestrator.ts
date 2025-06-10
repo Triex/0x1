@@ -1064,7 +1064,12 @@ export default function ErrorComponent(props) {
                           optimized.match(/class\s+[A-Z]\s*\{[^}]*routes\s*=/) ||
                           optimized.match(/class\s+[A-Z]\s*\{[^}]*currentPath/) ||
                           optimized.match(/class\s+[A-Z]\s*\{[^}]*navigate/) ||
-                          optimized.match(/class\s+[A-Z]\s*\{[^}]*addRoute/);
+                          optimized.match(/class\s+[A-Z]\s*\{[^}]*addRoute/) ||
+                          // CRITICAL FIX: Handle minified router classes (single lowercase letter too)
+                          optimized.match(/class\s+[a-zA-Z]\s*\{[^}]*routes\s*=/) ||
+                          optimized.match(/class\s+[a-zA-Z]\s*\{[^}]*currentPath/) ||
+                          optimized.match(/class\s+[a-zA-Z]\s*\{[^}]*listeners/) ||
+                          optimized.match(/class\s+[a-zA-Z]\s*\{[^}]*middleware/);
 
     if (!hasRouterClass) {
       if (!this.options.silent) {
@@ -1083,7 +1088,14 @@ export default function ErrorComponent(props) {
         const minifiedName = minifiedMatch ? minifiedMatch[1] : "Unknown";
         logger.info(`✅ Router class found (minified as '${minifiedName}')`);
       } else {
-        logger.info("✅ Router class found (unminified)");
+        // CRITICAL FIX: Also check for lowercase minified classes (like class h)
+        const lowercaseMinified = optimized.match(/class\s+([a-z])\s*\{[^}]*(?:routes|currentPath|listeners)/);
+        if (lowercaseMinified) {
+          const minifiedName = lowercaseMinified[1];
+          logger.info(`✅ Router class found (minified as '${minifiedName}')`);
+        } else {
+          logger.info("✅ Router class found (unminified)");
+        }
       }
     }
 
@@ -1097,6 +1109,9 @@ export default function ErrorComponent(props) {
                            optimized.includes("export default") ||
                            optimized.match(/export\s*{\s*[A-Z]\s*as\s*Router\s*}/) ||
                            optimized.match(/export\s*{\s*[A-Z]\s*}/) ||
+                           // CRITICAL FIX: Handle lowercase minified exports (export { h as Router })
+                           optimized.match(/export\s*{\s*[a-z]\s*as\s*Router\s*}/) ||
+                           optimized.match(/export\s*{\s*[a-z]\s*}/) ||
                            // CRITICAL FIX: Accept createRouter as valid Router export (minified pattern)
                            optimized.includes("createRouter") ||
                            optimized.includes("as createRouter");
@@ -1147,13 +1162,21 @@ export default function ErrorComponent(props) {
       const finalRouterCheck = optimized.includes("class Router") || 
                               optimized.includes("function Router") ||
                               optimized.match(/class\s+[A-Z]\s*\{[^}]*routes\s*=/) ||
-                              optimized.match(/class\s+[A-Z]\s*\{[^}]*currentPath/);
+                              optimized.match(/class\s+[A-Z]\s*\{[^}]*currentPath/) ||
+                              // CRITICAL FIX: Handle lowercase minified classes like "class h"
+                              optimized.match(/class\s+[a-z]\s*\{[^}]*routes\s*=/) ||
+                              optimized.match(/class\s+[a-z]\s*\{[^}]*currentPath/) ||
+                              optimized.match(/class\s+[a-z]\s*\{[^}]*listeners/) ||
+                              optimized.match(/class\s+[a-z]\s*\{[^}]*middleware/);
       
       const finalExportCheck = optimized.includes("export { Router }") || 
                               optimized.includes("export class Router") ||
-                              optimized.match(/export\s*{\s*[A-Z]\s+as\s+Router\s*}/) ||
+                              optimized.match(/export\s*{\s*[A-Z]\s*as\s*Router\s*}/) ||
                               optimized.includes("export default") ||
                               optimized.match(/export\s*{\s*[A-Z]\s*}/) ||
+                              // CRITICAL FIX: Handle lowercase minified exports
+                              optimized.match(/export\s*{\s*[a-z]\s*as\s*Router\s*}/) ||
+                              optimized.match(/export\s*{\s*[a-z]\s*}/) ||
                               // CRITICAL FIX: Accept createRouter as valid Router export (minified pattern)
                               optimized.includes("createRouter") ||
                               optimized.includes("as createRouter");
