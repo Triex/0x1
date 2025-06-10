@@ -1150,6 +1150,24 @@ export default function ErrorComponent(props) {
       }
     }
 
+    // CRITICAL FIX: Add Link alias only if RouterLink exists but Link doesn't
+    const hasRouterLink = optimized.includes("RouterLink") && 
+                         (optimized.includes("export { RouterLink }") || 
+                          optimized.includes("export {RouterLink}") ||
+                          optimized.match(/export\s*\{[^}]*RouterLink[^}]*\}/));
+    
+    const hasLinkExport = optimized.includes("export { Link }") || 
+                         optimized.includes("export {Link}") ||
+                         optimized.match(/export\s*\{[^}]*\bas\s+Link[^}]*\}/) ||
+                         optimized.match(/export\s*\{[^}]*Link[^}]*\}/);
+
+    if (hasRouterLink && !hasLinkExport) {
+      optimized += "\n// CRITICAL FIX: Export RouterLink as Link for component compatibility\nexport { RouterLink as Link };\n";
+      if (!this.options.silent) {
+        logger.info("✅ Added Link alias for RouterLink export (Vercel compatibility fix)");
+      }
+    }
+
     if (!this.options.silent) {
       logger.success(`✅ Router optimized: ${(optimized.length / 1024).toFixed(1)}KB`);
       

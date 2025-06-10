@@ -41,7 +41,7 @@ const DEFAULT_OPTIONS = {
   backgroundColor: "#ffffff",
   text: "",
   subtext: "0x1", // Default 0x1 branding
-  outputPath: "public/icons",
+  outputPath: "icons",
 };
 
 /**
@@ -364,8 +364,8 @@ export async function generateBasicIcons(
     // Pass theme if provided
     theme: projectOptions.theme || 'classic',
     logoText: projectOptions.logoText,
-    // For basic icons, we'll put them in public/icons by default
-    outputPath: 'public/icons'
+    // For basic icons, we'll put them in icons by default
+    outputPath: 'icons'
   };
   
   // Determine the correct base path based on the project structure
@@ -436,20 +436,20 @@ export async function generateAllIcons(
   const theme = typedConfig.theme || 'classic';
   
   // CRITICAL FIX: Convert URL path to filesystem path
-  // "/icons" (URL path) -> "public/icons" (filesystem path)
-  let filesystemPath: string;
+  // "/icons" (URL path) -> "icons" (filesystem path)
+  let iconsPath: string;
   
   if (pwaConfig.iconsPath) {
     if (pwaConfig.iconsPath.startsWith('/')) {
-      // URL path like "/icons" -> filesystem path "public/icons"
-      filesystemPath = `public${pwaConfig.iconsPath}`;
+      // URL path like "/icons" -> filesystem path "icons"
+      iconsPath = pwaConfig.iconsPath.substring(1); // Remove leading slash
     } else {
-      // Already a filesystem path like "public/icons"
-      filesystemPath = pwaConfig.iconsPath;
+      // Already a filesystem path like "icons"
+      iconsPath = pwaConfig.iconsPath;
     }
   } else {
-    // Default to public/icons
-    filesystemPath = DEFAULT_OPTIONS.outputPath;
+    // Default to icons
+    iconsPath = 'icons';
   }
   
   // Prepare options from PWA config with proper type handling
@@ -461,7 +461,7 @@ export async function generateAllIcons(
     subtext: pwaConfig.shortName,
     theme,
     logoText,
-    outputPath: filesystemPath
+    outputPath: iconsPath
   };
   
   // Merge with provided options
@@ -476,7 +476,7 @@ export async function generateAllIcons(
     ]);
     
     console.log('All PWA icons generated successfully!');
-    console.log(`Icons generated to: ${filesystemPath}`);
+    console.log(`Icons generated to: ${iconsPath}`);
     console.log(`Icons will be served from: ${pwaConfig.iconsPath || '/icons'}`);
   } catch (error) {
     console.error('Error generating PWA icons:', error instanceof Error ? error.message : String(error));
