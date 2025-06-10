@@ -4,15 +4,26 @@
  * Uses working patterns with shared core utilities
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { logger } from '../../cli/utils/logger';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { logger } from "../../cli/utils/logger";
 
 // Import shared core utilities for SINGLE SOURCE OF TRUTH
-import { getConfigurationManager } from '../core/ConfigurationManager';
-import { ImportTransformer } from '../core/ImportTransformer';
-import { injectPWAIntoHTML, PWAHandler, type PWAConfig } from '../core/PWAHandler';
-import { transpilationEngine } from '../core/TranspilationEngine';
+import { getConfigurationManager } from "../core/ConfigurationManager";
+import { ImportTransformer } from "../core/ImportTransformer";
+import {
+  injectPWAIntoHTML,
+  PWAHandler,
+  type PWAConfig,
+} from "../core/PWAHandler";
+import { transpilationEngine } from "../core/TranspilationEngine";
 
 // CRITICAL FIX: Import working Tailwind v4 handler from DevOrchestrator (SINGLE SOURCE OF TRUTH)
 
@@ -64,7 +75,7 @@ export class BuildOrchestrator {
       minify: true,
       ...options,
     };
-    
+
     this.state = {
       routes: [],
       components: [],
@@ -81,9 +92,9 @@ export class BuildOrchestrator {
 
   async build(): Promise<BuildResult> {
     try {
-    this.startTime = Date.now();
+      this.startTime = Date.now();
       const outputPath = join(this.options.projectPath, this.options.outDir!);
-    
+
       if (!this.options.silent) {
         logger.info("🚀 Building 0x1 application...");
       }
@@ -150,10 +161,10 @@ export class BuildOrchestrator {
   private async discoverRoutesUsingWorkingPattern(): Promise<Route[]> {
     // EXACT same pattern as working version
     const routes: Route[] = [];
-    
+
     const scanDirectory = (
-      dirPath: string, 
-      routePath: string = "", 
+      dirPath: string,
+      routePath: string = "",
       parentLayouts: Array<{ path: string; componentPath: string }> = []
     ) => {
       try {
@@ -171,8 +182,8 @@ export class BuildOrchestrator {
         if (layoutFiles.length > 0) {
           const actualLayoutFile = layoutFiles[0];
           const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
-          currentLayouts.push({ 
-            path: routePath || "/", 
+          currentLayouts.push({
+            path: routePath || "/",
             componentPath: layoutComponentPath,
           });
         }
@@ -185,9 +196,9 @@ export class BuildOrchestrator {
         if (pageFiles.length > 0) {
           const actualFile = pageFiles[0];
           const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
-          
-          routes.push({ 
-            path: routePath || "/", 
+
+          routes.push({
+            path: routePath || "/",
             componentPath: componentPath,
             layouts: currentLayouts,
           });
@@ -258,10 +269,10 @@ export class BuildOrchestrator {
       ): void => {
         try {
           const items = readdirSync(dirPath, { withFileTypes: true });
-          
+
           for (const item of items) {
             const itemPath = join(dirPath, item.name);
-            
+
             if (
               item.isDirectory() &&
               !item.name.startsWith(".") &&
@@ -363,7 +374,7 @@ export class BuildOrchestrator {
         );
       } catch (error) {
         if (!this.options.silent) {
-        logger.warn(`Failed to generate layout ${layoutPath}: ${error}`);
+          logger.warn(`Failed to generate layout ${layoutPath}: ${error}`);
         }
       }
     }
@@ -393,11 +404,11 @@ export class BuildOrchestrator {
   ): Promise<void> {
     try {
       // Find the route source file
-        const sourcePath = this.findRouteSourceFile(route);
-        if (!sourcePath) {
+      const sourcePath = this.findRouteSourceFile(route);
+      if (!sourcePath) {
         logger.warn(`No source file found for route: ${route.componentPath}`);
         return;
-        }
+      }
 
       const sourceCode = readFileSync(sourcePath, "utf-8");
 
@@ -406,7 +417,7 @@ export class BuildOrchestrator {
         sourceCode,
         sourcePath
       );
-      
+
       // Write to output
       const outputComponentPath = join(
         outputPath,
@@ -414,7 +425,7 @@ export class BuildOrchestrator {
       );
       mkdirSync(join(outputComponentPath, ".."), { recursive: true });
       writeFileSync(outputComponentPath, transpiledContent);
-      } catch (error) {
+    } catch (error) {
       logger.warn(
         `Failed to generate route component ${route.componentPath}: ${error}`
       );
@@ -428,15 +439,6 @@ export class BuildOrchestrator {
   ): Promise<string> {
     // SINGLE SOURCE OF TRUTH: Use the exact same logic that works perfectly in DevOrchestrator
     return this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
-  }
-
-  // CRITICAL FIX: Generate proper error components that return JSX objects
-  private generateProperErrorComponent(
-    filePath: string,
-    errorMessage: string
-  ): string {
-    // Use the same simple approach as DevOrchestrator - no complex JSX object validation
-    return this.generateErrorComponent(filePath, errorMessage);
   }
 
   // Helper method to find route source files (restored)
@@ -463,14 +465,14 @@ export class BuildOrchestrator {
       route.componentPath.replace(/^\//, "").replace(/\.js$/, "")
     );
     const extensions = [".tsx", ".jsx", ".ts", ".js"];
-    
+
     for (const ext of extensions) {
       const sourcePath = basePath + ext;
       if (existsSync(sourcePath)) {
         return sourcePath;
       }
     }
-    
+
     return null;
   }
 
@@ -498,10 +500,10 @@ export class BuildOrchestrator {
         // CRITICAL: Use EXACT same JSX configuration as DevOrchestrator
         tsconfig: JSON.stringify({
           compilerOptions: {
-            jsx: 'react-jsx',
-            jsxImportSource: '0x1'
-          }
-        })
+            jsx: "react-jsx",
+            jsxImportSource: "0x1",
+          },
+        }),
       });
 
       // Use transformSync like DevOrchestrator (no await needed)
@@ -509,29 +511,36 @@ export class BuildOrchestrator {
 
       // CRITICAL: Apply EXACT same fixes as DevOrchestrator
       // Check if JSX is used but import is missing
-      const hasJSX = content.includes('jsxDEV') || content.includes('jsx(');
-      const hasJSXImport = content.includes('from "0x1/jsx-dev-runtime"') || content.includes('from "0x1/jsx-runtime"');
-      
+      const hasJSX = content.includes("jsxDEV") || content.includes("jsx(");
+      const hasJSXImport =
+        content.includes('from "0x1/jsx-dev-runtime"') ||
+        content.includes('from "0x1/jsx-runtime"');
+
       if (hasJSX && !hasJSXImport) {
         // Add JSX runtime import at the top (same as DevOrchestrator)
-        const lines = content.split('\n');
-        const importIndex = lines.findIndex(line => line.startsWith('import ')) + 1 || 0;
-        lines.splice(importIndex, 0, 'import { jsxDEV } from "0x1/jsx-dev-runtime";');
-        content = lines.join('\n');
+        const lines = content.split("\n");
+        const importIndex =
+          lines.findIndex((line) => line.startsWith("import ")) + 1 || 0;
+        lines.splice(
+          importIndex,
+          0,
+          'import { jsxDEV } from "0x1/jsx-dev-runtime";'
+        );
+        content = lines.join("\n");
       }
 
       // CRITICAL: Replace mangled JSX function names with proper ones (same as DevOrchestrator)
       content = content
-        .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
-        .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
-        .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
-        .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
+        .replace(/jsxDEV_[a-zA-Z0-9]+/g, "jsxDEV")
+        .replace(/jsx_[a-zA-Z0-9]+/g, "jsx")
+        .replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs")
+        .replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
 
       // CRITICAL: Use unified ImportTransformer for robust import handling
       content = ImportTransformer.transformImports(content, {
         sourceFilePath: sourcePath,
         projectPath: this.options.projectPath,
-        mode: 'production',
+        mode: "production",
         debug: false,
       });
 
@@ -540,7 +549,7 @@ export class BuildOrchestrator {
       logger.warn(
         `DevOrchestrator-style transpilation failed for ${sourcePath}: ${error}`
       );
-      
+
       // Return simple error component (no complex validation)
       return this.generateErrorComponent(sourcePath, String(error));
     }
@@ -593,21 +602,142 @@ export class BuildOrchestrator {
     }
   }
 
+  /**
+   * CRITICAL FIX: Transpile component to ensure it returns JSX objects, not HTML strings
+   */
+  private async transpileComponentForProperJSX(
+    sourceCode: string,
+    sourcePath: string
+  ): Promise<string> {
+    try {
+      // Use the unified TranspilationEngine for consistent results
+      const result = await transpilationEngine.transpile({
+        sourceCode,
+        sourcePath,
+        options: {
+          mode: "production",
+          sourcePath,
+          projectPath: this.options.projectPath,
+          minify: false,
+          target: "browser",
+          jsxRuntime: "automatic",
+          debug: !this.options.silent,
+        },
+      });
+
+      if (result.errors.length > 0) {
+        logger.warn(
+          `Transpilation warnings for ${sourcePath}: ${result.errors.map((e) => e.message).join(", ")}`
+        );
+      }
+
+      return result.code;
+    } catch (error) {
+      logger.warn(`Unified transpilation failed for ${sourcePath}: ${error}`);
+
+      // Fallback to DevOrchestrator-style transpilation
+      return this.transpileUsingDevOrchestratorLogic(sourceCode, sourcePath);
+    }
+  }
+
+  /**
+   * CRITICAL FIX: Validate component output to ensure it's proper component code, not HTML
+   */
+  private validateComponentOutput(content: string, sourcePath: string): string {
+    // Check if the content looks like HTML instead of JavaScript
+    if (
+      content.trim().startsWith("<!DOCTYPE") ||
+      content.trim().startsWith("<html") ||
+      content.includes("<head>") ||
+      content.includes("<body>")
+    ) {
+      logger.error(
+        `CRITICAL ERROR: Component ${sourcePath} is generating HTML instead of JSX! This causes nested HTML.`
+      );
+
+      // Generate a proper error component that returns JSX objects
+      return this.generateProperErrorComponent(
+        sourcePath,
+        "Component generated HTML instead of JSX"
+      );
+    }
+
+    // Ensure the component has proper JSX runtime imports
+    if (
+      !content.includes("jsx") &&
+      !content.includes("createElement") &&
+      (content.includes("<") || content.includes("React"))
+    ) {
+      // Add JSX runtime if missing
+      const lines = content.split("\n");
+      const importIndex =
+        lines.findIndex((line) => line.startsWith("import ")) + 1 || 0;
+      lines.splice(
+        importIndex,
+        0,
+        'import { jsx, jsxs, jsxDEV } from "/0x1/jsx-runtime.js";'
+      );
+      content = lines.join("\n");
+    }
+
+    return content;
+  }
+
+  /**
+   * CRITICAL FIX: Generate proper error component that returns JSX objects only
+   */
+  private generateProperErrorComponent(
+    sourcePath: string,
+    errorMessage: string
+  ): string {
+    const safePath = sourcePath.replace(/'/g, "\\'");
+    const safeError = errorMessage.replace(/'/g, "\\'");
+
+    return `
+// CRITICAL FIX: Error component that returns JSX objects only (no HTML)
+import { jsx } from "/0x1/jsx-runtime.js";
+
+export default function ErrorComponent(props) {
+  return jsx('div', {
+    className: 'p-6 bg-red-50 border border-red-200 rounded-lg m-4',
+    style: { color: '#dc2626' },
+    children: [
+      jsx('h3', {
+        className: 'font-bold mb-2',
+        children: 'Component Error',
+        key: 'title'
+      }),
+      jsx('p', {
+        className: 'mb-2',
+        children: 'File: ${safePath}',
+        key: 'file'
+      }),
+      jsx('p', {
+        className: 'text-sm',
+        children: 'Error: ${safeError}',
+        key: 'error'
+      })
+    ]
+  });
+}
+`;
+  }
+
   // EXACT same logic as DevOrchestrator.generatePossiblePaths
   private generatePossiblePathsLikeDevOrchestrator(
     relativePath: string
   ): string[] {
     const extensions = [".tsx", ".jsx", ".ts", ".js"];
     const basePath = join(this.options.projectPath, relativePath);
-    
+
     // For layout and page files, we need to be extra careful about path resolution
     const paths: string[] = [];
-    
+
     // Standard extensions for the exact path
     for (const ext of extensions) {
       paths.push(`${basePath}${ext}`);
     }
-    
+
     // Special handling for app directory structure
     if (relativePath.startsWith("app/")) {
       const appRelativePath = relativePath.substring(4); // Remove 'app/' prefix
@@ -616,12 +746,12 @@ export class BuildOrchestrator {
         "app",
         appRelativePath
       );
-      
+
       for (const ext of extensions) {
         paths.push(`${appBasePath}${ext}`);
       }
     }
-    
+
     return paths;
   }
 
@@ -638,24 +768,24 @@ export class BuildOrchestrator {
     // Create framework directories
     const framework0x1Dir = join(outputPath, "0x1");
     const nodeModulesDir = join(outputPath, "node_modules", "0x1");
-    
+
     // CRITICAL FIX: Copy ALL framework files including hashed versions (same as DevOrchestrator)
     if (existsSync(frameworkDistPath)) {
       const allFrameworkFiles = readdirSync(frameworkDistPath).filter(
         (file) => file.endsWith(".js") || file.endsWith(".css")
       );
-      
+
       if (!this.options.silent) {
         logger.info(
           `Found ${allFrameworkFiles.length} framework files to copy`
         );
       }
-      
+
       for (const file of allFrameworkFiles) {
         const srcPath = join(frameworkDistPath, file);
         if (existsSync(srcPath)) {
           const content = readFileSync(srcPath, "utf-8");
-          
+
           // Write to both locations to ensure compatibility
           await Bun.write(join(framework0x1Dir, file), content);
           await Bun.write(join(nodeModulesDir, file), content);
@@ -700,7 +830,9 @@ export class BuildOrchestrator {
 
     if (!actualRouterPath) {
       if (!this.options.silent) {
-        logger.warn("⚠️ No dedicated router file found, checking embedded router...");
+        logger.warn(
+          "⚠️ No dedicated router file found, checking embedded router..."
+        );
 
         // Check if the main dist files contain router functionality
         const mainDistFiles = [
@@ -733,7 +865,9 @@ export class BuildOrchestrator {
           }
         }
 
-        logger.error("❌ CRITICAL: No router found anywhere in framework package");
+        logger.error(
+          "❌ CRITICAL: No router found anywhere in framework package"
+        );
       }
 
       // Continue without router - generate a minimal fallback
@@ -746,7 +880,9 @@ export class BuildOrchestrator {
     }
 
     if (!this.options.silent) {
-      logger.success(`✅ Found router at: ${actualRouterPath.replace(frameworkPath, "")}`);
+      logger.success(
+        `✅ Found router at: ${actualRouterPath.replace(frameworkPath, "")}`
+      );
     }
 
     const routerContent = readFileSync(actualRouterPath, "utf-8");
@@ -773,15 +909,15 @@ export class BuildOrchestrator {
         `📄 Processing router content: ${routerContent.length} bytes`
       );
     }
-      
-      // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
-      if (!this.options.silent) {
+
+    // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
+    if (!this.options.silent) {
       logger.info(
         "🔧 Applying ImportTransformer to router for comprehensive fixes..."
       );
-      }
-      
-      try {
+    }
+
+    try {
       const transformedContent = ImportTransformer.transformImports(
         routerContent,
         {
@@ -791,412 +927,243 @@ export class BuildOrchestrator {
           debug: !this.options.silent,
         }
       );
-        
-        routerContent = transformedContent;
-        if (!this.options.silent) {
+
+      routerContent = transformedContent;
+      if (!this.options.silent) {
         logger.info("✅ ImportTransformer applied successfully to router");
+      }
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.error(`❌ ImportTransformer failed for router: ${error}`);
+      }
+    }
+
+    // CRITICAL FIX: Better router detection - look for export patterns
+    if (!this.options.silent) {
+      logger.info("🎯 Looking for actual Router exports in router content...");
+    }
+
+    // Look for explicit Router exports
+    const exportMatches = routerContent.match(/export\s*\{\s*([^}]+)\s*\}/g);
+    const exportNames = new Set<string>();
+
+    if (exportMatches) {
+      for (const match of exportMatches) {
+        const namesMatch = match.match(/export\s*\{\s*([^}]+)\s*\}/);
+        if (namesMatch) {
+          const names = namesMatch[1].split(",").map((n) => {
+            const trimmed = n.trim();
+            // Handle "SomeClass as Router" patterns
+            const asMatch = trimmed.match(/(.+)\s+as\s+(.+)/);
+            return asMatch ? asMatch[2].trim() : trimmed;
+          });
+          names.forEach((name) => exportNames.add(name));
         }
-      } catch (error) {
-        if (!this.options.silent) {
-          logger.error(`❌ ImportTransformer failed for router: ${error}`);
+      }
+    }
+
+    // Also look for direct export statements
+    const directExportMatches = routerContent.match(
+      /export\s+(class|function)\s+([A-Za-z_][A-Za-z0-9_]*)/g
+    );
+    if (directExportMatches) {
+      for (const match of directExportMatches) {
+        const nameMatch = match.match(
+          /export\s+(?:class|function)\s+([A-Za-z_][A-Za-z0-9_]*)/
+        );
+        if (nameMatch) {
+          exportNames.add(nameMatch[1]);
         }
+      }
     }
 
-    // BEST PRACTICE: Parse content directly to find actual classes/functions (ZERO ASSUMPTIONS)
     if (!this.options.silent) {
-      logger.info(
-        "🎯 Parsing router content for classes and functions..."
-      );
+      logger.info(`🔍 Found exports: ${Array.from(exportNames).join(", ")}`);
     }
 
-    // Find ALL classes in the router content
-    const classMatches = routerContent.match(
-      /class\s+([a-zA-Z_][a-zA-Z0-9_]*)/g
-    );
-    const allClasses = classMatches
-      ? classMatches
-          .map((match) => {
-            const nameMatch = match.match(/class\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-            return nameMatch ? nameMatch[1] : null;
-          })
-          .filter(Boolean)
-      : [];
+    // Look for Router and Link in exports
+    let routerClassName: string | null = null;
+    let linkFunctionName: string | null = null;
 
-    // Find ALL functions that handle navigation/links
-    const functionMatches = routerContent.match(
-      /(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)[^=]*(?:=\s*(?:\([^)]*\)\s*=>|function)|\s*\([^)]*\))[^{]*{[^}]*(?:href|navigate|click|pushState)[^}]*}/g
-    );
-    const allFunctions = functionMatches
-      ? functionMatches
-          .map((match) => {
-            const nameMatch = match.match(
-              /(?:function\s+|const\s+|var\s+)([a-zA-Z_][a-zA-Z0-9_]*)/
-            );
-            return nameMatch ? nameMatch[1] : null;
-          })
-          .filter(Boolean)
-      : [];
-
-    if (!this.options.silent) {
-      logger.info(`🔍 Found classes: ${allClasses.join(", ") || "none"}`);
-      logger.info(
-        `🔍 Found navigation functions: ${allFunctions.join(", ") || "none"}`
-      );
+    // Prioritize actual "Router" and "Link" exports
+    if (exportNames.has("Router")) {
+      routerClassName = "Router";
+      if (!this.options.silent) {
+        logger.success(`✅ Found Router export: ${routerClassName}`);
+      }
     }
 
-    // Determine the Router class (prioritize Router-like names)
-    const routerClassName =
-      allClasses.find(
-        (name) =>
-          name?.toLowerCase().includes("router") ||
-          name === "Router" ||
-          name === "AppRouter"
-      ) || allClasses[0]; // Fallback to first class
+    if (exportNames.has("Link")) {
+      linkFunctionName = "Link";
+      if (!this.options.silent) {
+        logger.success(`✅ Found Link export: ${linkFunctionName}`);
+      }
+    }
 
-    // Determine the Link function (prioritize Link-like names)
-    const linkFunctionName =
-      allFunctions.find(
-        (name) =>
-          name?.toLowerCase().includes("link") ||
-          name === "Link" ||
-          name === "AppLink"
-      ) || allFunctions.find((name) => name !== routerClassName); // Exclude router class
+    // If no direct Router/Link exports, look for classes and functions
+    if (!routerClassName || !linkFunctionName) {
+      const classMatches = routerContent.match(
+        /class\s+([A-Za-z_][A-Za-z0-9_]*)/g
+      );
+      const functionMatches = routerContent.match(
+        /(?:function\s+|const\s+|var\s+)([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(?:\([^)]*\)\s*=>|function)|\s*\([^)]*\))/g
+      );
 
-    if (!this.options.silent) {
-      logger.info(
-        `🎯 Selected Router class: ${routerClassName || "none detected"}`
-      );
-      logger.info(
-        `🎯 Selected Link function: ${linkFunctionName || "none detected"}`
-      );
+      const allClasses = classMatches
+        ? classMatches
+            .map((m) => m.match(/class\s+([A-Za-z_][A-Za-z0-9_]*)/)?.[1])
+            .filter(Boolean)
+        : [];
+      const allFunctions = functionMatches
+        ? functionMatches
+            .map(
+              (m) =>
+                m.match(
+                  /(?:function\s+|const\s+|var\s+)([A-Za-z_][A-Za-z0-9_]*)/
+                )?.[1]
+            )
+            .filter(Boolean)
+        : [];
+
+      if (!this.options.silent) {
+        logger.info(`🔍 Found classes: ${allClasses.join(", ")}`);
+        logger.info(`🔍 Found functions: ${allFunctions.join(", ")}`);
+      }
+
+      // Try to find Router-like class
+      if (!routerClassName) {
+        routerClassName =
+          allClasses.find(
+            (name) =>
+              name &&
+              name.length > 1 &&
+              !["h", "f", "v", "g"].includes(name) &&
+              (name.toLowerCase().includes("router") || exportNames.has(name))
+          ) ??
+          allClasses.find(
+            (name) =>
+              name && name.length > 1 && !["h", "f", "v", "g"].includes(name)
+          ) ??
+          null;
+
+        if (routerClassName && !this.options.silent) {
+          logger.warn(`⚠️ Using detected class as Router: ${routerClassName}`);
+        }
+      }
+
+      // Try to find Link-like function
+      if (!linkFunctionName) {
+        linkFunctionName =
+          allFunctions.find(
+            (name) =>
+              name &&
+              name.length > 1 &&
+              name !== routerClassName &&
+              !["h", "f", "v", "g"].includes(name) &&
+              (name.toLowerCase().includes("link") || exportNames.has(name))
+          ) ??
+          allFunctions.find(
+            (name) =>
+              name &&
+              name.length > 1 &&
+              name !== routerClassName &&
+              !["h", "f", "v", "g"].includes(name)
+          ) ??
+          null;
+
+        if (linkFunctionName && !this.options.silent) {
+          logger.warn(
+            `⚠️ Using detected function as Link: ${linkFunctionName}`
+          );
+        }
+      }
     }
 
     // Start with the transformed content
     let finalRouterContent = routerContent;
 
-    // CRITICAL: Apply COMPREHENSIVE JSX normalization (exact same as DevOrchestrator)
-    if (!this.options.silent) {
-      logger.info("🔧 Applying comprehensive JSX normalization to router...");
-    }
-    
-    // 1. Check for existing JSX imports/declarations comprehensively
-    const hasExistingJsxImports = 
-      // Import statements
-      finalRouterContent.includes('jsx-runtime.js') ||
-      finalRouterContent.includes('jsx-runtime"') ||
-      finalRouterContent.includes('jsx-dev-runtime') ||
-      finalRouterContent.includes('import { jsx') ||
-      finalRouterContent.includes('import {jsx') ||
-      finalRouterContent.includes('from "0x1/jsx') ||
-      finalRouterContent.includes("from '0x1/jsx") ||
-      // Variable declarations
-      finalRouterContent.includes('const jsx') ||
-      finalRouterContent.includes('let jsx') ||
-      finalRouterContent.includes('var jsx') ||
-      finalRouterContent.includes('jsx =') ||
-      // Function declarations
-      finalRouterContent.includes('function jsx') ||
-      // Window assignments
-      finalRouterContent.includes('window.jsx') ||
-      // Already has jsx defined in any way
-      /\bjsx\s*[=:]/m.test(finalRouterContent) ||
-      /\bjsx\s*\(/m.test(finalRouterContent);
-    
-    // 2. Only add JSX runtime imports if they don't already exist
-    if (!hasExistingJsxImports) {
-      const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
+    // CRITICAL FIX: Only add JSX imports if they don't conflict with existing declarations
+    if (
+      !finalRouterContent.includes("jsx-runtime") &&
+      !finalRouterContent.includes("import { jsx") &&
+      !finalRouterContent.includes("const jsx") &&
+      !finalRouterContent.includes("var jsx") &&
+      !finalRouterContent.includes("let jsx")
+    ) {
+      const jsxImport =
+        'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
       finalRouterContent = jsxImport + finalRouterContent;
-      
-      if (!this.options.silent) {
-        logger.info("✅ Added JSX runtime imports to router");
-      }
-    } else {
-      if (!this.options.silent) {
-        logger.info("✅ JSX runtime imports already exist in router");
-      }
-    }
-    
-    // 3. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
-    finalRouterContent = finalRouterContent
-      .replace(/jsxDEV_[a-zA-Z0-9]+/g, 'jsxDEV')
-      .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
-      .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
-      .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
-
-    // 4. Handle mixed alphanumeric patterns
-    finalRouterContent = finalRouterContent
-      .replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV')
-      .replace(/jsx_[0-9a-z]+/gi, 'jsx')
-      .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
-      .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
-    
-    // 5. Ultra aggressive catch-all patterns
-    finalRouterContent = finalRouterContent
-      .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
-      .replace(/\bjsx_\w+/g, 'jsx')
-      .replace(/\bjsxs_\w+/g, 'jsxs')
-      .replace(/\bFragment_\w+/g, 'Fragment');
-
-    // 6. Transform imports to browser-resolvable URLs (exact same as DevOrchestrator)
-    finalRouterContent = finalRouterContent
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
-        'import { $1 } from "/components/$2.js"')
-      .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
-      .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
-        'import { $1 } from "/0x1/jsx-runtime.js"')
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
-        'import { $1 } from "/0x1/jsx-runtime.js"')
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
-        'import { $1 } from "/0x1/router.js"')
-      .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
-        'import { $1 } from "/node_modules/0x1/index.js"');
-
-    // FIXED: Check for existing exports more robustly
-    const hasExistingRouterExport =
-      /export\s*\{[^}]*\b(Router|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Router)\b[^}]*\}/.test(
-        finalRouterContent
-      );
-    const hasExistingLinkExport =
-      /export\s*\{[^}]*\b(Link|[a-zA-Z_][a-zA-Z0-9_]*\s+as\s+Link)\b[^}]*\}/.test(
-        finalRouterContent
-      );
-
-    // Only add exports if they don't already exist
-    if (routerClassName && !hasExistingRouterExport) {
-      if (!this.options.silent) {
-        logger.info(`➕ Adding Router export: ${routerClassName}`);
-      }
-
-      const exportMatch = finalRouterContent.match(/export\s*\{([^}]*)\}/);
-      if (exportMatch) {
-        const currentExports = exportMatch[1].trim();
-        const newExports = currentExports
-          ? `${currentExports}, ${routerClassName} as Router`
-          : `${routerClassName} as Router`;
-        finalRouterContent = finalRouterContent.replace(
-          /export\s*\{[^}]*\}/,
-          `export { ${newExports} }`
-        );
-      } else {
-        finalRouterContent += `\nexport { ${routerClassName} as Router };\n`;
-      }
     }
 
-    if (linkFunctionName && !hasExistingLinkExport) {
-      if (!this.options.silent) {
-        logger.info(`➕ Adding Link export: ${linkFunctionName}`);
-      }
+    // Ensure Router and Link are exported (check for existing exports first)
+    const hasRouterExport =
+      finalRouterContent.includes(`export { ${routerClassName} as Router }`) ||
+      finalRouterContent.includes(`export { Router }`) ||
+      /export\s*{\s*[^}]*\bRouter\b[^}]*}/.test(finalRouterContent);
 
-      const exportMatch = finalRouterContent.match(/export\s*\{([^}]*)\}/);
-      if (exportMatch) {
-        const currentExports = exportMatch[1].trim();
-        const newExports = currentExports
-          ? `${currentExports}, ${linkFunctionName} as Link`
-          : `${linkFunctionName} as Link`;
-        finalRouterContent = finalRouterContent.replace(
-          /export\s*\{[^}]*\}/,
-          `export { ${newExports} }`
-        );
-      } else {
-        finalRouterContent += `\nexport { ${linkFunctionName} as Link };\n`;
-      }
+    const hasLinkExport =
+      finalRouterContent.includes(`export { ${linkFunctionName} as Link }`) ||
+      finalRouterContent.includes(`export { Link }`) ||
+      /export\s*{\s*[^}]*\bLink\b[^}]*}/.test(finalRouterContent);
+
+    if (routerClassName && !hasRouterExport) {
+      finalRouterContent += `\nexport { ${routerClassName} as Router };\n`;
     }
 
-    // Add global exposure with ACTUAL detected names (only if we found components)
-    if (routerClassName || linkFunctionName) {
-      finalRouterContent += `
+    if (linkFunctionName && !hasLinkExport) {
+      finalRouterContent += `\nexport { ${linkFunctionName} as Link };\n`;
+    }
 
-// SINGLE SOURCE OF TRUTH: Expose ACTUAL detected router components
+    // CRITICAL: Expose the ACTUAL router globally (use dynamic lookup to avoid reference errors)
+    finalRouterContent += `
+
+// CRITICAL: Expose ACTUAL router components globally
 if (typeof window !== 'undefined') {
-${routerClassName ? `  window.__0x1_Router = ${routerClassName};` : "  // No Router class detected"}
+  // Use dynamic lookup to avoid "Router is not defined" errors
+  const moduleExports = {};
+  try {
+    // Try to find the Router class in current module scope
+${
+  routerClassName
+    ? `    if (typeof ${routerClassName} !== 'undefined') {
+      window.__0x1_Router = ${routerClassName};
+      window.__0x1_ROUTER__ = ${routerClassName};
+      window.router = ${routerClassName};
+      console.log('[0x1] Router class exposed:', '${routerClassName}');
+    } else {
+      console.error('[0x1] Router class ${routerClassName} not found in scope');
+    }`
+    : `    console.error('[0x1] No Router class found!');`
+}
+    
 ${
   linkFunctionName
-    ? `  // CRITICAL FIX: Wrap Link function to prevent hyperscript objects
-  const originalLink = ${linkFunctionName};
-  window.__0x1_RouterLink = (props) => {
-    const result = originalLink(props);
-    
-    // Detect and convert hyperscript objects to JSX objects
-    if (result && typeof result === 'object' && result.constructor && result.constructor.name === 'h') {
-      console.warn('[0x1] Router Link returned hyperscript object, converting to JSX');
-      return {
-        type: result.type || 'a',
-        props: result.props || {},
-        children: result.children || result.props?.children || [],
-        key: null
-      };
-    }
-    
-    return result;
-  };`
-    : `  // No Link function detected - creating functional one
-  window.__0x1_RouterLink = (props) => ({
-    type: 'a',
-    props: {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        e.preventDefault();
-        if (props.href && props.href.startsWith('/')) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
-      },
-      children: props.children
-    }
-  });`
-}
-}`;
+    ? `    if (typeof ${linkFunctionName} !== 'undefined') {
+      window.__0x1_RouterLink = ${linkFunctionName};
+      console.log('[0x1] Link function exposed:', '${linkFunctionName}');
     } else {
-      // ONLY create minimal router if NO components were detected
-      if (!this.options.silent) {
-        logger.warn(
-          `⚠️ No router classes or functions detected - creating minimal working router`
-        );
-      }
-
-      finalRouterContent += `
-
-// MINIMAL WORKING ROUTER: Created because no router components detected
-class MinimalRouter {
-  constructor(options = {}) {
-    this.options = options;
-    this.routes = [];
-    this.currentPath = '/';
-    this.rootElement = options.rootElement;
-    
-    if (typeof window !== 'undefined') {
-      this.currentPath = window.location.pathname;
-      window.addEventListener('popstate', () => this.render());
-    }
-  }
-  
-  addRoute(path, component) {
-    this.routes.push({ path, component });
-  }
-  
-  navigate(path, pushState = true) {
-    this.currentPath = path;
-    if (typeof window !== 'undefined' && pushState) {
-      window.history.pushState({}, '', path);
-    }
-    this.render();
-  }
-  
-  render() {
-    if (!this.rootElement) return;
-    
-    const route = this.routes.find(r => r.path === this.currentPath) || 
-                  this.routes.find(r => r.path === '/');
-    
-    if (route && typeof route.component === 'function') {
-      try {
-        const result = route.component();
-        if (result && typeof result === 'object') {
-          this.renderComponent(result, this.rootElement);
-    }
+      console.error('[0x1] Link function ${linkFunctionName} not found in scope');
+    }`
+    : `    // Create basic Link function...`
+}
   } catch (error) {
-        this.rootElement.innerHTML = \`<div style="padding: 20px; color: red;">Router Error: \${error.message}</div>\`;
-      }
-    } else {
-      if (this.options.notFoundComponent && typeof this.options.notFoundComponent === 'function') {
-        const notFound = this.options.notFoundComponent();
-        this.renderComponent(notFound, this.rootElement);
-      } else {
-        this.rootElement.innerHTML = '<div style="padding: 20px;">404 - Page Not Found</div>';
-      }
-    }
+    console.error('[0x1] Error exposing router components:', error);
   }
-  
-  renderComponent(component, container) {
-    if (!component || !container) return;
-    
-    if (typeof component === 'string') {
-      container.innerHTML = component;
-      return;
-    }
-    
-    if (component.type && component.props) {
-      const element = document.createElement(component.type);
-      
-      if (component.props) {
-        Object.entries(component.props).forEach(([key, value]) => {
-          if (key === 'children') return;
-          if (key === 'className') {
-            element.className = value;
-          } else if (key.startsWith('on') && typeof value === 'function') {
-            element.addEventListener(key.slice(2).toLowerCase(), value);
-        } else {
-            element.setAttribute(key, value);
-          }
-        });
-      }
-      
-      if (component.props && component.props.children) {
-        const children = Array.isArray(component.props.children) ? component.props.children : [component.props.children];
-        children.forEach(child => {
-          if (typeof child === 'string') {
-            element.appendChild(document.createTextNode(child));
-          } else if (child && typeof child === 'object') {
-            const childDiv = document.createElement('div');
-            this.renderComponent(child, childDiv);
-            element.appendChild(childDiv.firstChild || childDiv);
-          }
-        });
-      }
-      
-      container.innerHTML = '';
-      container.appendChild(element);
-    }
-  }
-  
-  init() {
-    this.render();
-  }
-}
-
-const MinimalLink = (props) => ({
-  type: 'a',
-  props: {
-    href: props.href,
-    className: props.className,
-    onClick: (e) => {
-      e.preventDefault();
-      if (props.href && props.href.startsWith('/')) {
-        if (typeof window !== 'undefined' && window.history) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
-      }
-    },
-    children: props.children
-  }
-});
-
-export { MinimalRouter as Router, MinimalLink as Link };
-
-if (typeof window !== 'undefined') {
-  window.__0x1_Router = MinimalRouter;
-  window.__0x1_RouterLink = MinimalLink;
 }
 `;
-    }
 
     // Write the final router content
     await Bun.write(join(framework0x1Dir, "router.js"), finalRouterContent);
     await Bun.write(join(nodeModulesDir, "router.js"), finalRouterContent);
 
     if (!this.options.silent) {
-      logger.success(
-        `✅ Router processed using DIRECT CONTENT PARSING (NO DUPLICATES)`
-      );
-      logger.success(
-        `   Router class: ${routerClassName || "MinimalRouter (created)"}`
-      );
-      logger.success(
-        `   Link function: ${linkFunctionName || "MinimalLink (created)"}`
-      );
+      logger.success(`✅ Router processed and exposed globally`);
+      if (routerClassName) {
+        logger.success(`   Router class: ${routerClassName}`);
+      }
+      if (linkFunctionName) {
+        logger.success(`   Link function: ${linkFunctionName}`);
+      }
     }
   }
 
@@ -1262,7 +1229,7 @@ if (typeof window !== 'undefined') {
   ): Promise<void> {
     try {
       const runtimePath = join(frameworkPath, "src", "jsx-dev-runtime.ts");
-      
+
       if (existsSync(runtimePath)) {
         const transpiled = await Bun.build({
           entrypoints: [runtimePath],
@@ -1276,13 +1243,13 @@ if (typeof window !== 'undefined') {
           },
           external: [],
         });
-        
+
         if (transpiled.success && transpiled.outputs.length > 0) {
           let content = "";
           for (const output of transpiled.outputs) {
             content += await output.text();
           }
-          
+
           // CRITICAL FIX: Ensure JSX functions return objects, not HTML strings
           content += `
 if (typeof window !== 'undefined') {
@@ -1348,7 +1315,7 @@ if (typeof window !== 'undefined') {
     version: '19.0.0-0x1-compat'
   });
 }
-`;          
+`;
           // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
           content = content
             .replace(
@@ -1512,7 +1479,7 @@ if (typeof window !== 'undefined' && !window.__0x1_hooks_initialized) {
   console.log('[0x1 Hooks] Hooks already initialized, skipping duplicate load');
 }
 `;
-          
+
       // CLEAN APPROACH: Just append browser compatibility (no patching)
       const finalContent = hooksContent + browserCompatCode;
 
@@ -1715,11 +1682,11 @@ export default {
     // Use EXACT same pattern as DevOrchestrator (with layout composition)
     const routesJson = JSON.stringify(
       this.state.routes.map((route) => ({
-      path: route.path,
-      componentPath: route.componentPath,
+        path: route.path,
+        componentPath: route.componentPath,
         layouts: route.layouts || [],
-      })), 
-      null, 
+      })),
+      null,
       2
     );
 
@@ -2176,7 +2143,7 @@ if (document.readyState === 'loading') {
       const configManager = getConfigurationManager(this.options.projectPath);
       const cssConfig = await configManager.getCSSConfig();
 
-    if (!this.options.silent) {
+      if (!this.options.silent) {
         logger.info(
           `🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === "0x1-enhanced" ? "Lightning-fast mode" : "Standard mode"})`
         );
@@ -2277,111 +2244,111 @@ if (document.readyState === 'loading') {
         cssConfig.processor === "tailwind-v4" ||
         cssConfig.processor === "0x1-enhanced"
       ) {
-      // CRITICAL FIX: Use EXACT same Tailwind v4 processing as DevOrchestrator (SINGLE SOURCE OF TRUTH)
+        // CRITICAL FIX: Use EXACT same Tailwind v4 processing as DevOrchestrator (SINGLE SOURCE OF TRUTH)
         const { tailwindV4Handler } = await import(
           "../../cli/commands/utils/server/tailwind-v4"
         );
-      
-      // Check if Tailwind v4 is available first
+
+        // Check if Tailwind v4 is available first
         const isV4Available = await tailwindV4Handler.isAvailable(
           this.options.projectPath
         );
-      
-      if (isV4Available) {
-        if (!this.options.silent) {
-          logger.info(`🌈 Processing Tailwind CSS v4 for production build`);
-        }
 
-        // Use working Tailwind v4 processing
+        if (isV4Available) {
+          if (!this.options.silent) {
+            logger.info(`🌈 Processing Tailwind CSS v4 for production build`);
+          }
+
+          // Use working Tailwind v4 processing
           let inputFile = tailwindV4Handler.findInputFile(
             this.options.projectPath
           );
-        if (!inputFile) {
+          if (!inputFile) {
             inputFile = tailwindV4Handler.createDefaultInput(
               this.options.projectPath
             );
-        }
+          }
 
-        // Only proceed if we have a valid input file
-        if (inputFile) {
-          try {
+          // Only proceed if we have a valid input file
+          if (inputFile) {
+            try {
               const expectedCssPath = join(
                 this.options.projectPath,
                 "dist",
                 "styles.css"
               );
-            
-            if (!this.options.silent) {
+
+              if (!this.options.silent) {
                 logger.debug(
                   `🔍 Tailwind v4 expected output: ${expectedCssPath}`
                 );
-            }
-            
-            const tailwindProcess = await tailwindV4Handler.startProcess(
-              this.options.projectPath,
-              inputFile,
-              expectedCssPath
-            );
+              }
 
-            if (tailwindProcess && tailwindProcess.success) {
-              // Check if the CSS file was actually created
-              if (existsSync(expectedCssPath)) {
+              const tailwindProcess = await tailwindV4Handler.startProcess(
+                this.options.projectPath,
+                inputFile,
+                expectedCssPath
+              );
+
+              if (tailwindProcess && tailwindProcess.success) {
+                // Check if the CSS file was actually created
+                if (existsSync(expectedCssPath)) {
                   const cssContent = readFileSync(expectedCssPath, "utf-8");
-                
-                // Verify it's actually Tailwind v4 CSS (should start with /*! tailwindcss)
+
+                  // Verify it's actually Tailwind v4 CSS (should start with /*! tailwindcss)
                   if (
                     cssContent.includes("tailwindcss v4") ||
                     cssContent.includes("tailwindcss v3") ||
                     cssContent.includes("@layer")
                   ) {
-                  // CRITICAL: Copy PURE Tailwind CSS only - no additions
+                    // CRITICAL: Copy PURE Tailwind CSS only - no additions
                     await Bun.write(join(outputPath, "styles.css"), cssContent);
-                  
-                  // CRITICAL FIX: Also create hashed versions for compatibility
-                  await this.createHashedCssVersions(outputPath, cssContent);
 
-                  if (!this.options.silent) {
+                    // CRITICAL FIX: Also create hashed versions for compatibility
+                    await this.createHashedCssVersions(outputPath, cssContent);
+
+                    if (!this.options.silent) {
                       logger.success(
                         `✅ Tailwind CSS v4 processed successfully: ${(cssContent.length / 1024).toFixed(1)}KB (PURE)`
                       );
-                  }
-                  
-                  // CRITICAL: Return immediately to prevent any fallback processing
-                  return;
-                } else {
-                  if (!this.options.silent) {
+                    }
+
+                    // CRITICAL: Return immediately to prevent any fallback processing
+                    return;
+                  } else {
+                    if (!this.options.silent) {
                       logger.warn(
                         `⚠️ CSS file found but doesn't appear to be Tailwind v4 output`
                       );
+                    }
+                  }
+                } else {
+                  if (!this.options.silent) {
+                    logger.warn(
+                      `⚠️ Tailwind v4 reported success but no CSS file found at ${expectedCssPath}`
+                    );
                   }
                 }
               } else {
                 if (!this.options.silent) {
-                    logger.warn(
-                      `⚠️ Tailwind v4 reported success but no CSS file found at ${expectedCssPath}`
-                    );
-                }
-              }
-            } else {
-              if (!this.options.silent) {
                   logger.warn(
                     `⚠️ Tailwind v4 process failed or returned no success flag`
                   );
+                }
               }
+            } catch (tailwindError) {
+              if (!this.options.silent) {
+                logger.warn(`Tailwind v4 process failed: ${tailwindError}`);
+              }
+              // Continue to fallback only if Tailwind v4 fails
             }
-          } catch (tailwindError) {
+          } else {
             if (!this.options.silent) {
-              logger.warn(`Tailwind v4 process failed: ${tailwindError}`);
+              logger.warn(`⚠️ No Tailwind v4 input file found or created`);
             }
-            // Continue to fallback only if Tailwind v4 fails
           }
         } else {
           if (!this.options.silent) {
-            logger.warn(`⚠️ No Tailwind v4 input file found or created`);
-          }
-        }
-      } else {
-        if (!this.options.silent) {
             logger.info("💠 Tailwind v4 not available, using fallback CSS");
           }
         }
@@ -2412,7 +2379,7 @@ if (document.readyState === 'loading') {
         for (const cssPath of possiblePaths) {
           if (existsSync(cssPath)) {
             const cssContent = readFileSync(cssPath, "utf-8");
-            
+
             // If this is a Tailwind v4 file that we missed above, use it pure
             if (
               cssContent.includes("tailwindcss v4") ||
@@ -2424,19 +2391,19 @@ if (document.readyState === 'loading') {
                   `✅ Found Tailwind CSS in fallback: ${cssPath.replace(this.options.projectPath, "")} (${(cssContent.length / 1024).toFixed(1)}KB) - using PURE`
                 );
               }
-              
+
               // Use the pure Tailwind CSS without adding utilities
               await Bun.write(join(outputPath, "styles.css"), cssContent);
-              
+
               // CRITICAL FIX: Also create hashed versions for compatibility
               await this.createHashedCssVersions(outputPath, cssContent);
-              
+
               return;
             }
-            
+
             // Process regular CSS files
             let processedCss = cssContent;
-            
+
             // Process CSS to remove problematic imports
             processedCss = processedCss
               .replace(
@@ -2463,15 +2430,15 @@ if (document.readyState === 'loading') {
                 /@import\s+["']([^"'/][^"']*)["'];?/g,
                 "/* Package import removed: $1 */"
               );
-            
+
             // Add essential utilities only for true fallback CSS
             processedCss += this.getEssentialTailwindUtilities();
-            
+
             await Bun.write(join(outputPath, "styles.css"), processedCss);
-            
+
             // CRITICAL FIX: Also create hashed versions for compatibility
             await this.createHashedCssVersions(outputPath, processedCss);
-            
+
             if (!this.options.silent) {
               logger.success(
                 `✅ CSS processed with essential utilities: ${(processedCss.length / 1024).toFixed(1)}KB`
@@ -2485,10 +2452,10 @@ if (document.readyState === 'loading') {
       // Generate minimal CSS fallback only if no other CSS found
       const fallbackCss = this.getMinimalProductionCss();
       await Bun.write(join(outputPath, "styles.css"), fallbackCss);
-      
+
       // CRITICAL FIX: Also create hashed versions for compatibility
       await this.createHashedCssVersions(outputPath, fallbackCss);
-      
+
       if (!this.options.silent) {
         logger.info(
           `✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`
@@ -2496,14 +2463,14 @@ if (document.readyState === 'loading') {
       }
     } catch (error) {
       logger.warn(`CSS processing failed: ${error}`);
-      
+
       // Final fallback
       const fallbackCss = this.getMinimalProductionCss();
       await Bun.write(join(outputPath, "styles.css"), fallbackCss);
-      
+
       // CRITICAL FIX: Also create hashed versions for compatibility
       await this.createHashedCssVersions(outputPath, fallbackCss);
-      
+
       if (!this.options.silent) {
         logger.info(
           `✅ Generated minimal CSS fallback: ${(fallbackCss.length / 1024).toFixed(1)}KB`
@@ -2513,24 +2480,29 @@ if (document.readyState === 'loading') {
   }
 
   // CRITICAL FIX: Create hashed CSS versions that HTML expects
-  private async createHashedCssVersions(outputPath: string, cssContent: string): Promise<void> {
+  private async createHashedCssVersions(
+    outputPath: string,
+    cssContent: string
+  ): Promise<void> {
     // Generate a simple hash from the CSS content
-    const hash = cssContent.slice(0, 100).replace(/\W/g, '').slice(0, 8);
-    
+    const hash = cssContent.slice(0, 100).replace(/\W/g, "").slice(0, 8);
+
     // Create multiple versions to ensure compatibility
     const hashedVersions = [
       `styles-${hash}.css`,
       `styles-86ffec1c.css`, // Common pattern seen in logs
       `main-${hash}.css`,
-      `app-${hash}.css`
+      `app-${hash}.css`,
     ];
-    
+
     for (const hashedName of hashedVersions) {
       await Bun.write(join(outputPath, hashedName), cssContent);
     }
-    
+
     if (!this.options.silent) {
-      logger.info(`✅ Created hashed CSS versions: ${hashedVersions.join(', ')}`);
+      logger.info(
+        `✅ Created hashed CSS versions: ${hashedVersions.join(", ")}`
+      );
     }
   }
 
@@ -2656,7 +2628,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     const externalCssLinks = this.state.dependencies.cssFiles
       .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
       .join("\n");
-    
+
     // CRITICAL: Generate favicon link based on what was discovered
     let faviconLink = "";
     const faviconPath = join(outputPath, "favicon.svg");
@@ -2721,7 +2693,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
 
     // CRITICAL: Add cache-busting timestamp to prevent Safari iOS caching issues
     const cacheBust = Date.now();
-    
+
     const html = `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -2823,7 +2795,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         // Silent fail if no assets to copy
       }
     }
-    
+
     // CRITICAL: Intelligent favicon discovery and prioritization
     await this.handleFaviconDiscovery(outputPath);
   }
@@ -2841,16 +2813,16 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
       name: string;
       priority: number;
     }> = [];
-    
+
     // Search for favicons with priority system
     for (const dir of faviconSearchDirs) {
       if (!existsSync(dir)) continue;
-      
+
       try {
         const files = readdirSync(dir);
         for (const file of files) {
           const lowerFile = file.toLowerCase();
-          
+
           // Check if it's a favicon file
           if (lowerFile.startsWith("favicon")) {
             const ext = faviconExtensions.find((e) => lowerFile.endsWith(e));
@@ -2864,7 +2836,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
                     : ext === ".png"
                       ? 3
                       : 4;
-              
+
               foundFavicons.push({
                 path: join(dir, file),
                 name: file,
@@ -2877,10 +2849,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         // Silent fail for individual directories
       }
     }
-    
+
     // Sort by priority (lower number = higher priority)
     foundFavicons.sort((a, b) => a.priority - b.priority);
-    
+
     if (foundFavicons.length > 0) {
       const selectedFavicon = foundFavicons[0];
       const outputFaviconPath = join(
@@ -2888,16 +2860,16 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         "favicon" +
           selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf("."))
       );
-      
+
       try {
         const faviconContent = readFileSync(selectedFavicon.path);
         await Bun.write(outputFaviconPath, faviconContent);
-        
+
         if (!this.options.silent) {
           logger.success(
             `✅ Favicon copied: ${selectedFavicon.name} (${selectedFavicon.priority === 1 ? "SVG" : selectedFavicon.priority === 2 ? "ICO" : selectedFavicon.priority === 3 ? "PNG" : "JPG"})`
           );
-          
+
           if (foundFavicons.length > 1) {
             logger.info(
               `📋 Found ${foundFavicons.length} favicons, prioritized: ${foundFavicons.map((f) => f.name + (f === selectedFavicon ? " ✓" : "")).join(", ")}`
@@ -2921,7 +2893,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         0x00, 0x00,
       ]);
       await Bun.write(faviconPath, faviconData);
-      
+
       if (!this.options.silent) {
         logger.info(
           `📄 Generated default favicon.ico (no favicon found in public/ or app/)`
@@ -2936,10 +2908,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
     }
 
     const nodeModulesOutputPath = join(outputPath, "node_modules");
-    
+
     // CRITICAL: Dynamic detection of ALL scoped packages being imported
     const scopedPackages = await this.detectScopedPackageImports();
-    
+
     for (const packageName of scopedPackages) {
       const packageSourcePath = join(
         this.options.projectPath,
@@ -2947,7 +2919,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         packageName
       );
       const packageOutputPath = join(nodeModulesOutputPath, packageName);
-      
+
       if (existsSync(packageSourcePath)) {
         try {
           // Create the package directory structure
@@ -2955,54 +2927,59 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
           mkdirSync(join(nodeModulesOutputPath, packageDir), {
             recursive: true,
           });
-          
+
           // Copy the entire package
           await Bun.$`cp -r ${packageSourcePath} ${packageOutputPath}`;
-          
+
           // CRITICAL FIX: Dynamic CSS detection with proper naming that matches HTML
           const cssFiles = await this.detectPackageCssFiles(
             packageSourcePath,
             packageName
           );
-          
+
           for (const cssFile of cssFiles) {
             // CRITICAL FIX: Use correct naming scheme that matches what HTML expects
             // HTML expects: /-0x1js-highlighter-styles-86ffec1c.css
             // But we need to generate files with this exact pattern
-            const baseFileName = `${packageName.replace(/@/g, "").replace(/\//g, "-")}-${cssFile.name.replace('.css', '')}`;
-            
+            const baseFileName = `${packageName.replace(/@/g, "").replace(/\//g, "-")}-${cssFile.name.replace(".css", "")}`;
+
             // Check if this is a hashed file (contains hash-like patterns)
             const hasHashPattern = cssFile.name.match(/[a-f0-9]{8,}/);
             let finalFileName;
-            
+
             if (hasHashPattern) {
               // For hashed files, keep the original name but with proper prefix
               finalFileName = `-${baseFileName}.css`;
             } else {
               // For non-hashed files, add our own simple hash based on content
               const cssContent = readFileSync(cssFile.path, "utf-8");
-              const simpleHash = cssContent.slice(0, 100).replace(/\W/g, '').slice(0, 8);
+              const simpleHash = cssContent
+                .slice(0, 100)
+                .replace(/\W/g, "")
+                .slice(0, 8);
               finalFileName = `-${baseFileName}-${simpleHash}.css`;
             }
-            
+
             const cssOutputPath = join(outputPath, finalFileName);
             const cssContent = readFileSync(cssFile.path, "utf-8");
             writeFileSync(cssOutputPath, cssContent);
-            
+
             // CRITICAL: Also create variants without leading dash for compatibility
             const altFileName = finalFileName.substring(1); // Remove leading dash
             const altOutputPath = join(outputPath, altFileName);
             writeFileSync(altOutputPath, cssContent);
-            
+
             // Store CSS file info for HTML generation
             this.state.dependencies.cssFiles.push(finalFileName);
             this.state.dependencies.cssFiles.push(`/${altFileName}`);
-            
+
             if (!this.options.silent) {
-              logger.info(`✅ Copied CSS from ${packageName}: ${finalFileName} and ${altFileName}`);
+              logger.info(
+                `✅ Copied CSS from ${packageName}: ${finalFileName} and ${altFileName}`
+              );
             }
           }
-          
+
           if (!this.options.silent) {
             logger.info(`✅ Copied package: ${packageName}`);
           }
@@ -3025,14 +3002,14 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
    */
   private async detectScopedPackageImports(): Promise<string[]> {
     const scopedPackages = new Set<string>();
-    
+
     // Scan all source files for scoped imports
     const sourceFiles = await this.findAllSourceFiles();
-    
+
     for (const filePath of sourceFiles) {
       try {
         const content = readFileSync(filePath, "utf-8");
-        
+
         // Match all scoped package imports: @scope/package
         const scopedImportMatches = content.match(
           /from\s+["'](@[^/]+\/[^/"']+)/g
@@ -3045,7 +3022,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
             }
           }
         }
-        
+
         // Also match direct imports: import "@scope/package"
         const directImportMatches = content.match(
           /import\s+["'](@[^/]+\/[^/"']+)/g
@@ -3062,7 +3039,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         // Silent fail for individual files
       }
     }
-    
+
     return Array.from(scopedPackages);
   }
 
@@ -3075,7 +3052,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
     packageName: string
   ): Promise<Array<{ name: string; path: string }>> {
     const cssFiles: Array<{ name: string; path: string }> = [];
-    
+
     // Common CSS locations in packages
     const possibleCssDirs = [
       join(packagePath, "dist"),
@@ -3084,10 +3061,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
       join(packagePath, "styles"),
       packagePath, // root
     ];
-    
+
     for (const dir of possibleCssDirs) {
       if (!existsSync(dir)) continue;
-      
+
       try {
         const files = readdirSync(dir);
         for (const file of files) {
@@ -3105,7 +3082,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         // Silent fail for individual directories
       }
     }
-    
+
     return cssFiles;
   }
 
@@ -3116,26 +3093,26 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
   private async findAllSourceFiles(): Promise<string[]> {
     const files: string[] = [];
     const extensions = [".tsx", ".jsx", ".ts", ".js"];
-    
+
     // Dynamic directory discovery
     const scanDirs = ["app", "src", "components", "lib", "pages"];
-    
+
     for (const dir of scanDirs) {
       const fullDir = join(this.options.projectPath, dir);
       if (!existsSync(fullDir)) continue;
-      
+
       const scanRecursive = (dirPath: string, depth: number = 0) => {
         if (depth > 5) return; // Prevent infinite recursion
-        
+
         try {
           const items = readdirSync(dirPath, { withFileTypes: true });
-          
+
           for (const item of items) {
             if (item.name.startsWith(".") || item.name === "node_modules")
               continue;
-            
+
             const itemPath = join(dirPath, item.name);
-            
+
             if (item.isDirectory()) {
               scanRecursive(itemPath, depth + 1);
             } else if (extensions.some((ext) => item.name.endsWith(ext))) {
@@ -3146,10 +3123,10 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
           // Silent fail for individual directories
         }
       };
-      
+
       scanRecursive(fullDir);
     }
-    
+
     return files;
   }
 
@@ -3407,14 +3384,14 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
       .replace(/\bjsx_\w+/g, "jsx")
       .replace(/\bjsxs_\w+/g, "jsxs")
       .replace(/\bFragment_\w+/g, "Fragment");
-    
+
     return content;
   }
 
   private insertJsxRuntimePreamble(code: string): string {
     const lines = code.split("\n");
     let insertIndex = 0;
-    
+
     // Find end of imports
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -3429,9 +3406,9 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
         break;
       }
     }
-    
+
     const preamble = `// 0x1 Framework - JSX Runtime Access\nimport { jsx, jsxs, jsxDEV, Fragment, createElement } from '/0x1/jsx-runtime.js';`;
-    
+
     lines.splice(insertIndex, 0, preamble);
     return lines.join("\n");
   }
@@ -3442,7 +3419,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}${pwaMetaTags}
   ): string {
     const safePath = filePath.replace(/'/g, "\\'");
     const safeError = errorMessage.replace(/'/g, "\\'");
-    
+
     return `
 // Error component for failed transpilation: ${safePath}
 export default function ErrorComponent(props) {
@@ -3500,7 +3477,7 @@ export default function ErrorComponent(props) {
   ): Promise<void> {
     if (!this.options.silent) {
       logger.info(
-        "🌐 Generating main SPA file (route-specific files disabled to prevent nested HTML)..."
+        "🌐 Generating main SPA file only (CRITICAL FIX: route-specific files disabled to prevent nested HTML)..."
       );
     }
 
@@ -3526,13 +3503,16 @@ export default function ErrorComponent(props) {
     }
 
     // CRITICAL FIX: Generate accurate precache resources before PWA generation
-    const accuratePrecacheResources = await this.generateAccuratePrecacheResources(outputPath);
-    
+    const accuratePrecacheResources =
+      await this.generateAccuratePrecacheResources(outputPath);
+
     // CRITICAL FIX: Update PWA config with accurate precache resources
     if (pwaConfig) {
       pwaConfig.precacheResources = accuratePrecacheResources;
       if (!this.options.silent) {
-        logger.info(`🔧 Updated PWA config with ${accuratePrecacheResources.length} validated precache resources`);
+        logger.info(
+          `🔧 Updated PWA config with ${accuratePrecacheResources.length} validated precache resources`
+        );
       }
     } else {
       // Create minimal PWA config with accurate resources for service worker generation
@@ -3552,7 +3532,9 @@ export default function ErrorComponent(props) {
         offlineSupport: true,
       };
       if (!this.options.silent) {
-        logger.info(`🔧 Created PWA config with ${accuratePrecacheResources.length} validated precache resources`);
+        logger.info(
+          `🔧 Created PWA config with ${accuratePrecacheResources.length} validated precache resources`
+        );
       }
     }
 
@@ -3577,16 +3559,12 @@ export default function ErrorComponent(props) {
       pwaResources
     );
 
-    // Generate main SPA file for users
+    // CRITICAL FIX: Generate ONLY main SPA file - no route-specific files to prevent nested HTML
     await this.generateMainSpaFile(outputPath, projectConfig, resources);
-
-    // CRITICAL FIX: Disable route-specific file generation to prevent nested HTML
-    // The nested HTML issue is caused by generating route-specific HTML files
-    // await this.generateCrawlerOptimizedRouteFiles(outputPath, projectConfig, resources);
 
     if (!this.options.silent) {
       logger.success(
-        `✅ Generated HTML files: 1 SPA file (route-specific files disabled to prevent nested HTML)`
+        `✅ Generated HTML files: 1 SPA file only (CRITICAL FIX: route-specific files disabled to prevent nested HTML)`
       );
       logger.success(
         `✅ Service worker configured with ${accuratePrecacheResources.length} validated resources`
@@ -3879,20 +3857,20 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
    * Generate accurate precache resources based on what's actually built
    * CRITICAL FIX: Prevents service worker failures by only caching files that exist
    */
-  private async generateAccuratePrecacheResources(outputPath: string): Promise<string[]> {
+  private async generateAccuratePrecacheResources(
+    outputPath: string
+  ): Promise<string[]> {
     const precacheResources: string[] = [];
-    
+
     // Essential files that should always be cached if they exist
-    const essentialFiles = [
-      "/",
-      "/index.html", 
-      "/styles.css",
-      "/app.js"
-    ];
-    
+    const essentialFiles = ["/", "/index.html", "/styles.css", "/app.js"];
+
     // Check essential files
     for (const file of essentialFiles) {
-      const filePath = file === "/" ? join(outputPath, "index.html") : join(outputPath, file.substring(1));
+      const filePath =
+        file === "/"
+          ? join(outputPath, "index.html")
+          : join(outputPath, file.substring(1));
       if (existsSync(filePath)) {
         precacheResources.push(file);
         if (!this.options.silent) {
@@ -3904,7 +3882,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
         }
       }
     }
-    
+
     // Dynamically discover favicon
     const faviconFiles = ["favicon.svg", "favicon.ico", "favicon.png"];
     for (const faviconFile of faviconFiles) {
@@ -3917,7 +3895,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
         break; // Only add the first favicon found
       }
     }
-    
+
     // Dynamically discover PWA icons if they exist
     const iconPaths = ["/icons", "/public/icons"];
     for (const iconDir of iconPaths) {
@@ -3926,12 +3904,14 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
         try {
           const iconFiles = readdirSync(iconDirPath);
           const essentialIcons = ["icon-192x192.png", "icon-512x512.png"];
-          
+
           for (const iconFile of essentialIcons) {
             if (iconFiles.includes(iconFile)) {
               precacheResources.push(`${iconDir}/${iconFile}`);
               if (!this.options.silent) {
-                logger.debug(`✅ Adding icon to precache: ${iconDir}/${iconFile}`);
+                logger.debug(
+                  `✅ Adding icon to precache: ${iconDir}/${iconFile}`
+                );
               }
             }
           }
@@ -3941,27 +3921,37 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
         break; // Only check the first existing icon directory
       }
     }
-    
+
     // Add external CSS files that were actually copied
     for (const cssFile of this.state.dependencies.cssFiles) {
-      const cssPath = join(outputPath, cssFile.startsWith("/") ? cssFile.substring(1) : cssFile);
+      const cssPath = join(
+        outputPath,
+        cssFile.startsWith("/") ? cssFile.substring(1) : cssFile
+      );
       if (existsSync(cssPath)) {
-        precacheResources.push(cssFile.startsWith("/") ? cssFile : `/${cssFile}`);
+        precacheResources.push(
+          cssFile.startsWith("/") ? cssFile : `/${cssFile}`
+        );
         if (!this.options.silent) {
           logger.debug(`✅ Adding external CSS to precache: ${cssFile}`);
         }
       }
     }
-    
+
     if (!this.options.silent) {
-      logger.info(`🗂️ Generated precache list: ${precacheResources.length} resources`);
+      logger.info(
+        `🗂️ Generated precache list: ${precacheResources.length} resources`
+      );
     }
-    
+
     return precacheResources;
   }
 
   // SIMPLIFIED: Remove complex validation - DevOrchestrator works perfectly without it (SINGLE SOURCE OF TRUTH)
-  private validateAndFixComponentOutput(content: string, sourcePath: string): string {
+  private validateAndFixComponentOutput(
+    content: string,
+    sourcePath: string
+  ): string {
     // DevOrchestrator works perfectly without complex validation
     // Just return the content as-is like DevOrchestrator does
     return content;
