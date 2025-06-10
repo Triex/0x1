@@ -2056,28 +2056,69 @@ async function initApp() {
     if (DEBUG) console.log('[0x1 App] Loading router...');
     const routerModule = await import('/0x1/router.js');
     
-    // CRITICAL FIX: Handle both normal Router class and minified createRouter function
+    // CRITICAL FIX: Robust router detection for all export patterns (including minified)
     let RouterConstructor = null;
     
+    // Log all available exports for debugging
+    const availableExports = Object.keys(routerModule);
+    console.log('[0x1 App] Available router exports:', availableExports);
+    
+    // Method 1: Try standard Router class
     if (routerModule.Router && typeof routerModule.Router === 'function') {
       RouterConstructor = routerModule.Router;
       console.log('[0x1 App] ✅ Using Router class from export');
-    } else if (routerModule.createRouter && typeof routerModule.createRouter === 'function') {
+    }
+    // Method 2: Try createRouter function
+    else if (routerModule.createRouter && typeof routerModule.createRouter === 'function') {
       RouterConstructor = routerModule.createRouter;
       console.log('[0x1 App] ✅ Using createRouter function from export');
-    } else {
-      // Try to find any router-like export
-      const routerExports = Object.keys(routerModule).filter(key => {
-        return typeof routerModule[key] === 'function' && 
-               (key.toLowerCase().includes('router') || key === 'createRouter');
-      });
+    }
+    // Method 3: Try default export
+    else if (routerModule.default && typeof routerModule.default === 'function') {
+      RouterConstructor = routerModule.default;
+      console.log('[0x1 App] ✅ Using default export as router');
+    }
+    // Method 4: CRITICAL FIX - Find ANY function that can create router instances
+    else {
+      // Look for any function export that might be a router constructor
+      for (const [exportName, exportValue] of Object.entries(routerModule)) {
+        if (typeof exportValue === 'function') {
+          try {
+            // Test if this function can create a router-like object
+            const testInstance = new exportValue({});
+            if (testInstance && 
+                (typeof testInstance.addRoute === 'function' || 
+                 typeof testInstance.navigate === 'function' ||
+                 typeof testInstance.init === 'function')) {
+              RouterConstructor = exportValue;
+              console.log('[0x1 App] ✅ Found router constructor via testing:', exportName);
+              break;
+            }
+          } catch (error) {
+            // Try as factory function instead of constructor
+            try {
+              const testInstance = exportValue({});
+              if (testInstance && 
+                  (typeof testInstance.addRoute === 'function' || 
+                   typeof testInstance.navigate === 'function' ||
+                   typeof testInstance.init === 'function')) {
+                RouterConstructor = exportValue;
+                console.log('[0x1 App] ✅ Found router factory via testing:', exportName);
+                break;
+              }
+            } catch (factoryError) {
+              // This export is not a router, continue
+            }
+          }
+        }
+      }
       
-      if (routerExports.length > 0) {
-        RouterConstructor = routerModule[routerExports[0]];
-        console.log('[0x1 App] ✅ Using router export:', routerExports[0]);
-      } else {
-        console.error('[0x1 App] ❌ Available exports:', Object.keys(routerModule));
-        throw new Error('No router constructor found in router module exports');
+      // If still no router found, throw detailed error
+      if (!RouterConstructor) {
+        console.error('[0x1 App] ❌ No router constructor found in any export');
+        console.error('[0x1 App] ❌ Available exports:', availableExports);
+        console.error('[0x1 App] ❌ Export types:', availableExports.map(name => \`\${name}: \${typeof routerModule[name]}\`));
+        throw new Error(\`Router class not found in router module. Available exports: \${availableExports.join(', ')}\`);
       }
     }
     
@@ -2136,13 +2177,35 @@ async function initApp() {
       key: null
     });
     
-    const router = new RouterConstructor({
-      rootElement: appElement,
-      mode: 'history',
-      debug: false,
-      base: '/',
-      notFoundComponent: notFoundComponent
-    });
+    // CRITICAL FIX: Handle both constructor and factory patterns
+    let router;
+    try {
+      // Try as constructor first (new RouterConstructor)
+      router = new RouterConstructor({
+        rootElement: appElement,
+        mode: 'history',
+        debug: false,
+        base: '/',
+        notFoundComponent: notFoundComponent
+      });
+      console.log('[0x1 App] ✅ Router created using constructor pattern');
+    } catch (constructorError) {
+      try {
+        // Try as factory function (RouterConstructor())
+        router = RouterConstructor({
+          rootElement: appElement,
+          mode: 'history',
+          debug: false,
+          base: '/',
+          notFoundComponent: notFoundComponent
+        });
+        console.log('[0x1 App] ✅ Router created using factory pattern');
+      } catch (factoryError) {
+        console.error('[0x1 App] ❌ Failed to create router with constructor:', constructorError);
+        console.error('[0x1 App] ❌ Failed to create router with factory:', factoryError);
+        throw new Error(\`Failed to create router instance. Constructor error: \${constructorError.message}, Factory error: \${factoryError.message}\`);
+      }
+    }
     
     window.__0x1_ROUTER__ = router;
     window.__0x1_router = router;
@@ -4020,10 +4083,8 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
               // CRITICAL FIX: Verify the icon actually exists before caching
               const iconFilePath = join(iconDirPath, iconFile);
               if (existsSync(iconFilePath)) {
-                // CRITICAL FIX: Use correct URL path (not filesystem path)
-                const iconUrl = iconDirPath.includes("public") 
-                  ? `/public/icons/${iconFile}` // Keep existing path if in public
-                  : `/icons/${iconFile}`;       // Use correct path
+                // CRITICAL FIX: Use correct URL path - always /icons/, never /public/icons/
+                const iconUrl = `/icons/${iconFile}`;
                   
                 precacheResources.push(iconUrl);
                 if (!this.options.silent) {
