@@ -1327,7 +1327,8 @@ export { __0x1_BulletproofLink as Link };
         logger.info(`⚠️ No RouterLink found, creating basic Link function...`);
       }
       
-      optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  return {\n    type: 'a',\n    props: {\n      href: props.href,\n      className: props.className,\n      onClick: (e) => {\n        e.preventDefault();\n        if (props.href && props.href.startsWith('/')) {\n          window.history.pushState(null, '', props.href);\n          window.dispatchEvent(new PopStateEvent('popstate'));\n        }\n      },\n      children: Array.isArray(props.children) ? props.children : (props.children ? [props.children] : [])\n    }\n  };\nexport { __0x1_FallbackLink as Link };\n`;
+      optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  return {\n    type: 'a',\n    props: {\n      href: props.href,\n      className: props.className,\n      onClick: (e) => {\n        e.preventDefault();\n        if (props.href && props.href.startsWith('/')) {\n          window.history.pushState(null, '', props.href);\n          window.dispatchEvent(new PopStateEvent('popstate'));
+        }\n      },\n      children: Array.isArray(props.children) ? props.children : (props.children ? [props.children] : [])\n    }\n  };\nexport { __0x1_FallbackLink as Link };\n`;
       
       if (!this.options.silent) {
         logger.info(`✅ Added fallback Link function`);
@@ -1622,7 +1623,8 @@ if (typeof window !== 'undefined' && !window.__0x1_hooks_initialized) {
   // Initialize React-compatible global context
   window.React = window.React || {};
   
-  // Make hooks available globally (no complex context checking)
+  // CRITICAL FIX: Use the ACTUAL hook functions from this module, not browser fallbacks
+  // Make hooks available globally (using the real implementations)
   Object.assign(window, {
     useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
     useClickOutside, useFetch, useForm, useLocalStorage
@@ -1634,12 +1636,53 @@ if (typeof window !== 'undefined' && !window.__0x1_hooks_initialized) {
     useClickOutside, useFetch, useForm, useLocalStorage
   });
   
+  // CRITICAL FIX: Set up the context functions that components need
+  // Use the actual function names from the hooks module
+  if (typeof enterComponentContext === 'function') {
+    window.__0x1_enterComponentContext = enterComponentContext;
+    globalThis.__0x1_enterComponentContext = enterComponentContext;
+  }
+  if (typeof exitComponentContext === 'function') {
+    window.__0x1_exitComponentContext = exitComponentContext;
+    globalThis.__0x1_exitComponentContext = exitComponentContext;
+  }
+  if (typeof triggerComponentUpdate === 'function') {
+    window.__0x1_triggerUpdate = triggerComponentUpdate;
+  }
+  
+  // CRITICAL FIX: If the context functions don't exist, create minimal implementations
+  if (!window.__0x1_enterComponentContext) {
+    window.__0x1_enterComponentContext = function(componentId, updateCallback) {
+      // Minimal context implementation for production
+      console.debug('[0x1 Hooks] Context entered:', componentId);
+    };
+    globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
+  }
+  
+  if (!window.__0x1_exitComponentContext) {
+    window.__0x1_exitComponentContext = function() {
+      // Minimal context implementation for production
+      console.debug('[0x1 Hooks] Context exited');
+    };
+    globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
+  }
+  
+  if (!window.__0x1_triggerUpdate) {
+    window.__0x1_triggerUpdate = function(componentId) {
+      // Minimal update trigger for production
+      console.debug('[0x1 Hooks] Update triggered for:', componentId);
+    };
+  }
+  
   // Global hooks registry (SINGLE SOURCE OF TRUTH)
   window.__0x1_hooks = {
     useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
     useClickOutside, useFetch, useForm, useLocalStorage,
     isInitialized: true,
-    contextReady: true
+    contextReady: true,
+    enterComponentContext: window.__0x1_enterComponentContext,
+    exitComponentContext: window.__0x1_exitComponentContext,
+    triggerUpdate: window.__0x1_triggerUpdate
   };
   
   console.log('[0x1 Hooks] Production hooks initialized (single load)');
