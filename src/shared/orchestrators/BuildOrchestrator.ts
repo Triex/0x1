@@ -1150,11 +1150,6 @@ export default function ErrorComponent(props) {
       }
     }
 
-    // CRITICAL: Also ensure Link is exported if it exists
-    if (optimized.includes("function Link") && !optimized.includes("export { Link }") && !optimized.includes("export {Link}")) {
-      optimized += "\n// Ensure Link is exported\nexport { Link };\n";
-    }
-
     if (!this.options.silent) {
       logger.success(`✅ Router optimized: ${(optimized.length / 1024).toFixed(1)}KB`);
       
@@ -3694,6 +3689,8 @@ export default function ErrorComponent(props) {
     // CRITICAL FIX: Update PWA config with accurate precache resources
     if (pwaConfig) {
       pwaConfig.precacheResources = accuratePrecacheResources;
+      // CRITICAL FIX: Ensure icon paths are always /icons/, never /public/icons/
+      pwaConfig.iconsPath = "/icons";
       if (!this.options.silent) {
         logger.info(
           `🔧 Updated PWA config with ${accuratePrecacheResources.length} validated precache resources`
@@ -3712,7 +3709,7 @@ export default function ErrorComponent(props) {
         precacheResources: accuratePrecacheResources,
         cacheName: "0x1-cache-v1",
         cacheStrategy: "stale-while-revalidate",
-        iconsPath: "/icons",
+        iconsPath: "/icons", // CRITICAL FIX: Always use /icons/, never /public/icons/
         generateIcons: false,
         offlineSupport: true,
       };
