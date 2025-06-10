@@ -1248,7 +1248,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.348)
+### Current State (v0.0.349)
 - ✅ Full React Hooks API compatibility
 - ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component

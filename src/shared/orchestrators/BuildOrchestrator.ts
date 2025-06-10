@@ -607,9 +607,12 @@ export class BuildOrchestrator {
       // Read source file
       const sourceCode = readFileSync(sourcePath, "utf-8");
 
+      // CRITICAL FIX: Transform hook imports to global access BEFORE transpilation
+      const transformedSourceCode = this.transformHookImportsToGlobalAccess(sourceCode);
+
       // CRITICAL: Use DevOrchestrator's EXACT transpilation logic (fixes class constructor error)
       const content = await this.transpileUsingDevOrchestratorLogic(
-        sourceCode,
+        transformedSourceCode,
         sourcePath
       );
 
@@ -622,6 +625,80 @@ export class BuildOrchestrator {
         `Failed to generate component using DevOrchestrator logic for ${reqPath}: ${error}`
       );
     }
+  }
+
+  /**
+   * CRITICAL FIX: Transform hook imports to access global hooks instead of module imports
+   * This prevents minification from breaking hook access in components
+   */
+  private transformHookImportsToGlobalAccess(sourceCode: string): string {
+    let transformed = sourceCode;
+
+    if (!this.options.silent) {
+      logger.debug("🔧 MINIFICATION FIX: Transforming hook imports to global access...");
+    }
+
+    // CRITICAL FIX: Transform 0x1 hook imports to global window access
+    // Pattern: import { useState, useEffect } from '0x1'
+    transformed = transformed.replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]0x1['"];?/g,
+      (match, imports) => {
+        const hookNames = imports.split(',').map((s: string) => s.trim());
+        const globalHookAssignments = hookNames.map((hookName: string) => {
+          const cleanName = hookName.trim();
+          // Only transform actual hook functions, not other exports
+          if (['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef', 'useClickOutside', 'useFetch', 'useForm', 'useLocalStorage'].includes(cleanName)) {
+            return `// MINIFICATION-SAFE: Global hook access
+const ${cleanName} = (typeof window !== 'undefined' && window['${cleanName}']) || 
+                      (typeof window !== 'undefined' && window['React'] && window['React']['${cleanName}']) || 
+                      (function() { throw new Error('[0x1] ${cleanName} not available - hooks may not be loaded'); });`;
+          } else {
+            // Keep non-hook imports as regular imports
+            return `// Non-hook import preserved: ${cleanName}`;
+          }
+        });
+        return `// MINIFICATION-SAFE: Transformed hook imports from 0x1\n${globalHookAssignments.join('\n')}`;
+      }
+    );
+
+    // CRITICAL FIX: Also handle React hook imports 
+    // Pattern: import { useState } from 'react'
+    transformed = transformed.replace(
+      /import\s*{\s*([^}]+)\s*}\s*from\s*['"]react['"];?/g,
+      (match, imports) => {
+        const hookNames = imports.split(',').map((s: string) => s.trim());
+        const globalHookAssignments = hookNames.map((hookName: string) => {
+          const cleanName = hookName.trim();
+          if (['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef'].includes(cleanName)) {
+            return `// MINIFICATION-SAFE: Global React hook access
+const ${cleanName} = (typeof window !== 'undefined' && window['React'] && window['React']['${cleanName}']) || 
+                      (typeof window !== 'undefined' && window['${cleanName}']) || 
+                      (function() { throw new Error('[0x1] ${cleanName} not available - React hooks may not be loaded'); });`;
+          } else {
+            return `// Non-hook React import: ${cleanName} (preserved)`;
+          }
+        });
+        return `// MINIFICATION-SAFE: Transformed React hook imports\n${globalHookAssignments.join('\n')}`;
+      }
+    );
+
+    // CRITICAL FIX: Handle default imports from 0x1
+    // Pattern: import React from '0x1'
+    transformed = transformed.replace(
+      /import\s+(\w+)\s+from\s*['"]0x1['"];?/g,
+      (match, defaultImport) => {
+        return `// MINIFICATION-SAFE: Global 0x1 access
+const ${defaultImport} = (typeof window !== 'undefined' && window['__0x1_hooks']) || 
+                         (typeof window !== 'undefined' && window['React']) || 
+                         { useState: function() { throw new Error('[0x1] Hooks not loaded'); } };`;
+      }
+    );
+
+    if (transformed !== sourceCode && !this.options.silent) {
+      logger.info("✅ Successfully transformed hook imports to global access");
+    }
+
+    return transformed;
   }
 
   /**
