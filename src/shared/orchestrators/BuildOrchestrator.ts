@@ -97,6 +97,7 @@ export class BuildOrchestrator {
 
       if (!this.options.silent) {
         logger.info("🚀 Building 0x1 application...");
+        logger.warn("🔧 MINIFICATION FIX: Using minification-safe hooks for production...");
       }
 
       // Phase 1: Clean and prepare
@@ -1017,6 +1018,7 @@ export default function ErrorComponent(props) {
     if (!this.options.silent) {
       logger.info(`🔧 Optimizing router for production...`);
       logger.info(`📄 Original router size: ${(routerContent.length / 1024).toFixed(1)}KB`);
+      logger.warn(`🔧 MINIFICATION FIX: Using minification-safe router optimization...`);
     }
 
     // Fix imports for browser
@@ -1150,7 +1152,7 @@ export default function ErrorComponent(props) {
       }
     }
 
-    // CRITICAL FIX: SMART Link export handling to prevent duplicates
+    // CRITICAL FIX: MINIFICATION-SAFE Link export handling
     const hasRouterLinkInContent = optimized.includes("RouterLink");
     const hasLinkFunctionInContent = optimized.includes("function") && optimized.includes("href") && optimized.includes("onClick");
     
@@ -1229,27 +1231,30 @@ export default function ErrorComponent(props) {
         }
       }
 
-      // Add the bulletproof Link wrapper function
+      // CRITICAL FIX: MINIFICATION-SAFE Link wrapper function using string literals
       const linkWrapperFunction = `
-// CRITICAL FIX: Complete replacement Link function (bulletproof children handling)
-function __0x1_BulletproofLink(props) {
-  // BULLETPROOF children normalization
+// CRITICAL FIX: MINIFICATION-SAFE Link function that can't be broken by minifiers
+function __0x1_RouterLink(props) {
+  // MINIFICATION-SAFE: Use string access for all properties
+  const href = props['href'] || props.href;
+  const className = props['className'] || props.className;
+  const children = props['children'] || props.children;
+  
+  // BULLETPROOF children normalization using arrays and typeof checks
   let normalizedChildren = [];
   try {
-    const rawChildren = props.children;
-    
-    if (rawChildren === null || rawChildren === undefined || rawChildren === false || rawChildren === true) {
+    if (children === null || children === undefined || children === false || children === true) {
       normalizedChildren = [];
-    } else if (Array.isArray(rawChildren)) {
-      normalizedChildren = rawChildren.filter(child => 
-        child !== null && child !== undefined && child !== false && child !== true
-      );
-    } else if (typeof rawChildren === 'string' || typeof rawChildren === 'number') {
-      normalizedChildren = [rawChildren];
-    } else if (typeof rawChildren === 'object' && rawChildren !== null) {
-      normalizedChildren = [rawChildren];
+    } else if (typeof children === 'object' && Array.isArray && Array.isArray(children)) {
+      normalizedChildren = children.filter(function(child) {
+        return child !== null && child !== undefined && child !== false && child !== true;
+      });
+    } else if (typeof children === 'string' || typeof children === 'number') {
+      normalizedChildren = [children];
+    } else if (typeof children === 'object' && children !== null) {
+      normalizedChildren = [children];
     } else {
-      normalizedChildren = [String(rawChildren)];
+      normalizedChildren = [String(children)];
     }
   } catch (error) {
     console.warn('[0x1 Router] Children normalization failed:', error);
@@ -1257,86 +1262,140 @@ function __0x1_BulletproofLink(props) {
   }
 
   // Final safety check
-  if (!Array.isArray(normalizedChildren)) {
+  if (!Array.isArray || !Array.isArray(normalizedChildren)) {
     normalizedChildren = [];
   }
 
-  // Determine final scroll behavior
-  const finalScrollBehavior = props.scrollToTop ? 'top' : props.scrollBehavior;
-
-  // Return complete JSX Link structure with proper navigation
+  // MINIFICATION-SAFE: Return JSX structure using string literals
   return {
-    type: 'a',
-    props: {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        // Always prevent default browser navigation for internal links
-        e.preventDefault();
-        e.stopPropagation();
+    'type': 'a',
+    'props': {
+      'href': href,
+      'className': className,
+      'onClick': function(e) {
+        // MINIFICATION-SAFE: Use try-catch for all operations
+        try {
+          e['preventDefault']();
+          e['stopPropagation']();
 
-        // Only handle internal links (starting with /)
-        if (props.href && props.href.startsWith('/')) {
-          // Get current router instance
-          const router = (typeof window !== 'undefined' && window.__0x1_ROUTER__) || 
-                        (typeof window !== 'undefined' && window.__0x1_router) || 
-                        (typeof window !== 'undefined' && window.router) || null;
-          
-          if (router && typeof router.navigate === 'function') {
-            // Use router for proper client-side navigation with scroll behavior
-            router.navigate(props.href, true, finalScrollBehavior);
-          } else if (typeof window !== 'undefined') {
-            // Fallback: use history API for client-side navigation
-            window.history.pushState(null, '', props.href);
-            window.dispatchEvent(new PopStateEvent('popstate'));
+          // Only handle internal links (starting with /)
+          if (href && typeof href === 'string' && href.charAt(0) === '/') {
+            // MINIFICATION-SAFE: Get router using string access
+            const router = (typeof window !== 'undefined' && window['__0x1_ROUTER__']) || 
+                          (typeof window !== 'undefined' && window['__0x1_router']) || 
+                          (typeof window !== 'undefined' && window['router']) || null;
+            
+            if (router && typeof router['navigate'] === 'function') {
+              // Use router for proper client-side navigation
+              router['navigate'](href, true);
+            } else if (typeof window !== 'undefined' && window['history'] && window['history']['pushState']) {
+              // Fallback: use history API for client-side navigation
+              window['history']['pushState'](null, '', href);
+              if (window['dispatchEvent'] && typeof window['PopStateEvent'] === 'function') {
+                window['dispatchEvent'](new window['PopStateEvent']('popstate'));
+              }
+            }
+          } else if (href && typeof window !== 'undefined') {
+            // External links - allow normal navigation
+            window['location']['href'] = href;
           }
-        } else if (props.href) {
-          // External links - allow normal navigation
-          window.location.href = props.href;
+        } catch (error) {
+          console.error('[0x1 Router] Navigation error:', error);
         }
       },
-      children: normalizedChildren
+      'children': normalizedChildren
     }
   };
 }
 
-// CRITICAL: Replace the original RouterLink with our bulletproof version
-if (typeof RouterLink !== 'undefined') {
-  RouterLink = __0x1_BulletproofLink;
-}
+// MINIFICATION-SAFE: Make available globally using IIFE to avoid scope pollution
+(function() {
+  'use strict';
+  
+  if (typeof window !== 'undefined') {
+    window['__0x1_RouterLink'] = __0x1_RouterLink;
+    window['__0x1_Link'] = __0x1_RouterLink;
+  }
 
-// CRITICAL: Register globally for framework module access
-if (typeof window !== 'undefined') {
-  window.__0x1_RouterLink = __0x1_BulletproofLink;
-  window.__0x1_Link = __0x1_BulletproofLink;
-}
+  // MINIFICATION-SAFE: Replace the original RouterLink if it exists
+  if (typeof RouterLink !== 'undefined') {
+    RouterLink = __0x1_RouterLink;
+  }
 
-// CRITICAL FIX: Export the bulletproof wrapper as Link (SINGLE export to replace any removed ones)
-export { __0x1_BulletproofLink as Link };
+  // MINIFICATION-SAFE: Make available globally
+  if (typeof globalThis !== 'undefined') {
+    globalThis['__0x1_RouterLink'] = __0x1_RouterLink;
+    globalThis['__0x1_Link'] = __0x1_RouterLink;
+  }
+
+  console.log('[0x1 Router] MINIFICATION-SAFE Link wrapper installed');
+
+})();
+
+// CRITICAL FIX: Export the minification-safe wrapper as Link
+export { __0x1_RouterLink as Link };
 `;
 
       // Add the wrapper function to the router
       optimized += linkWrapperFunction;
 
       if (!this.options.silent) {
-        logger.info(`✅ Added bulletproof Link wrapper function (replaced existing exports to prevent duplicates)`);
+        logger.info(`✅ Added MINIFICATION-SAFE Link wrapper function`);
       }
     } else {
       // No RouterLink found, add basic Link function
       if (!this.options.silent) {
-        logger.info(`⚠️ No RouterLink found, creating basic Link function...`);
+        logger.info(`⚠️ No RouterLink found, creating MINIFICATION-SAFE Link function...`);
       }
       
-      optimized += `\n// CRITICAL FIX: Fallback - create basic Link function\nfunction __0x1_FallbackLink(props) {\n  return {\n    type: 'a',\n    props: {\n      href: props.href,\n      className: props.className,\n      onClick: (e) => {\n        e.preventDefault();\n        if (props.href && props.href.startsWith('/')) {\n          window.history.pushState(null, '', props.href);\n          window.dispatchEvent(new PopStateEvent('popstate'));
-        }\n      },\n      children: Array.isArray(props.children) ? props.children : (props.children ? [props.children] : [])\n    }\n  };\nexport { __0x1_FallbackLink as Link };\n`;
+      optimized += `\n// CRITICAL FIX: MINIFICATION-SAFE fallback Link function
+function __0x1_FallbackLink(props) {
+  return {
+    'type': 'a',
+    'props': {
+      'href': props['href'] || props.href,
+      'className': props['className'] || props.className,
+      'onClick': function(e) {
+        try {
+          e['preventDefault']();
+          const href = props['href'] || props.href;
+          if (href && typeof href === 'string' && href.charAt(0) === '/') {
+            if (typeof window !== 'undefined' && window['history'] && window['history']['pushState']) {
+              window['history']['pushState'](null, '', href);
+              if (window['dispatchEvent'] && typeof window['PopStateEvent'] === 'function') {
+                window['dispatchEvent'](new window['PopStateEvent']('popstate'));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[0x1 Router] Fallback Link error:', error);
+        }
+      },
+      'children': Array.isArray && Array.isArray(props.children) ? props.children : (props.children ? [props.children] : [])
+    }
+  };
+}
+
+// MINIFICATION-SAFE: Make available globally using IIFE
+(function() {
+  'use strict';
+  
+  if (typeof window !== 'undefined') {
+    window['__0x1_FallbackLink'] = __0x1_FallbackLink;
+  }
+  
+})();
+
+export { __0x1_FallbackLink as Link };
+`;
       
       if (!this.options.silent) {
-        logger.info(`✅ Added fallback Link function`);
+        logger.info(`✅ Added MINIFICATION-SAFE fallback Link function`);
       }
     }
 
     if (!this.options.silent) {
-      logger.success(`✅ Router optimized: ${(optimized.length / 1024).toFixed(1)}KB`);
+      logger.success(`✅ Router optimized with MINIFICATION-SAFE approach: ${(optimized.length / 1024).toFixed(1)}KB`);
       
       // Final validation - handle both normal and minified routers
       const finalRouterCheck = optimized.includes("class Router") || 
@@ -1541,6 +1600,11 @@ if (typeof window !== 'undefined') {
         logger.info(`🔍 Looking for hooks dist: ${hooksDistPath}`);
       }
 
+      // CRITICAL FIX: Use minification-safe approach for production
+      if (!this.options.silent) {
+        logger.warn("🔧 CRITICAL FIX: Using minification-safe hooks approach...");
+      }
+
       // SINGLE SOURCE OF TRUTH: Use exact same transpilation as DevOrchestrator
       let hooksContent = "";
 
@@ -1556,7 +1620,7 @@ if (typeof window !== 'undefined') {
           entrypoints: [hooksSourcePath],
           target: "browser",
           format: "esm",
-          minify: false,
+          minify: false, // CRITICAL FIX: Never minify hooks to prevent name mangling
           sourcemap: "none",
           define: {
             // CRITICAL FIX: Use development mode for consistency with JSX runtime
@@ -1614,94 +1678,84 @@ if (typeof window !== 'undefined') {
         throw new Error(`Invalid hooks content: ${hooksContent.length} bytes`);
       }
 
-      // CRITICAL FIX: SINGLE initialization - remove redundant multiple initializations
-      const browserCompatCode = `
-if (typeof window !== 'undefined' && !window.__0x1_hooks_initialized) {
-  // SINGLE INITIALIZATION FLAG to prevent multiple loading
-  window.__0x1_hooks_initialized = true;
+      // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
+      const minificationSafeBrowserCode = `
+// CRITICAL FIX: Minification-safe hooks initialization for production
+(function() {
+  'use strict';
   
-  // Initialize React-compatible global context
-  window.React = window.React || {};
+  if (typeof window === 'undefined') return;
   
-  // CRITICAL FIX: Use the ACTUAL hook functions from this module, not browser fallbacks
-  // Make hooks available globally (using the real implementations)
-  Object.assign(window, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
+  // MINIFICATION-SAFE: Use string literals that can't be mangled
+  const HOOK_NAMES = ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef', 'useClickOutside', 'useFetch', 'useForm', 'useLocalStorage'];
+  const CONTEXT_NAMES = ['__0x1_enterComponentContext', '__0x1_exitComponentContext', '__0x1_triggerUpdate'];
   
-  // Also make available in React namespace for compatibility
-  Object.assign(window.React, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
-  
-  // CRITICAL FIX: Set up the context functions that components need
-  // Use the actual function names from the hooks module
-  if (typeof enterComponentContext === 'function') {
-    window.__0x1_enterComponentContext = enterComponentContext;
-    globalThis.__0x1_enterComponentContext = enterComponentContext;
-  }
-  if (typeof exitComponentContext === 'function') {
-    window.__0x1_exitComponentContext = exitComponentContext;
-    globalThis.__0x1_exitComponentContext = exitComponentContext;
-  }
-  if (typeof triggerComponentUpdate === 'function') {
-    window.__0x1_triggerUpdate = triggerComponentUpdate;
+  // Prevent multiple initialization
+  if (window['__0x1_hooks_init_done']) {
+    console.log('[0x1 Hooks] Already initialized, skipping');
+    return;
   }
   
-  // CRITICAL FIX: If the context functions don't exist, create minimal implementations
-  if (!window.__0x1_enterComponentContext) {
-    window.__0x1_enterComponentContext = function(componentId, updateCallback) {
-      // Minimal context implementation for production
-      console.debug('[0x1 Hooks] Context entered:', componentId);
-    };
-    globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
+  // Initialize React compatibility
+  window['React'] = window['React'] || {};
+  
+  // MINIFICATION-SAFE: Copy actual hook functions using string access
+  for (let i = 0; i < HOOK_NAMES.length; i++) {
+    const hookName = HOOK_NAMES[i];
+    if (typeof window[hookName] === 'undefined' && typeof eval(hookName) === 'function') {
+      try {
+        window[hookName] = eval(hookName);
+        window['React'][hookName] = eval(hookName);
+      } catch (e) {
+        // Silent fail for missing hooks
+      }
+    }
   }
   
-  if (!window.__0x1_exitComponentContext) {
-    window.__0x1_exitComponentContext = function() {
-      // Minimal context implementation for production
-      console.debug('[0x1 Hooks] Context exited');
-    };
-    globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
+  // MINIFICATION-SAFE: Context functions with string access
+  for (let i = 0; i < CONTEXT_NAMES.length; i++) {
+    const contextName = CONTEXT_NAMES[i];
+    if (!window[contextName]) {
+      window[contextName] = function() {
+        // Minimal context function that works even when minified
+      };
+      if (typeof globalThis !== 'undefined') {
+        globalThis[contextName] = window[contextName];
+      }
+    }
   }
   
-  if (!window.__0x1_triggerUpdate) {
-    window.__0x1_triggerUpdate = function(componentId) {
-      // Minimal update trigger for production
-      console.debug('[0x1 Hooks] Update triggered for:', componentId);
-    };
-  }
-  
-  // Global hooks registry (SINGLE SOURCE OF TRUTH)
-  window.__0x1_hooks = {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage,
-    isInitialized: true,
-    contextReady: true,
-    enterComponentContext: window.__0x1_enterComponentContext,
-    exitComponentContext: window.__0x1_exitComponentContext,
-    triggerUpdate: window.__0x1_triggerUpdate
+  // MINIFICATION-SAFE: Global registry using string access
+  window['__0x1_hooks'] = {
+    'isInitialized': true,
+    'contextReady': true
   };
   
-  console.log('[0x1 Hooks] Production hooks initialized (single load)');
+  // Copy hooks to registry using string access
+  for (let i = 0; i < HOOK_NAMES.length; i++) {
+    const hookName = HOOK_NAMES[i];
+    if (window[hookName]) {
+      window['__0x1_hooks'][hookName] = window[hookName];
+    }
+  }
   
-  // Component context ready flag
-  window.__0x1_component_context_ready = true;
-} else if (typeof window !== 'undefined') {
-  console.log('[0x1 Hooks] Hooks already initialized, skipping duplicate load');
-}
+  // Mark as done
+  window['__0x1_hooks_init_done'] = true;
+  window['__0x1_component_context_ready'] = true;
+  
+  console.log('[0x1 Hooks] MINIFICATION-SAFE initialization complete');
+  
+})();
 `;
 
-      // CLEAN APPROACH: Just append browser compatibility (no patching)
-      const finalContent = hooksContent + browserCompatCode;
+      // CLEAN APPROACH: Just append minification-safe browser compatibility
+      const finalContent = hooksContent + minificationSafeBrowserCode;
 
       await Bun.write(join(framework0x1Dir, "hooks.js"), finalContent);
 
       if (!this.options.silent) {
         logger.success(
-          `✅ Generated hooks.js with SINGLE initialization: ${(finalContent.length / 1024).toFixed(1)}KB`
+          `✅ Generated MINIFICATION-SAFE hooks.js: ${(finalContent.length / 1024).toFixed(1)}KB`
         );
       }
     } catch (error) {
@@ -1719,15 +1773,20 @@ if (typeof window !== 'undefined' && !window.__0x1_hooks_initialized) {
     const cleanFrameworkModule = `// 0x1 Framework - Dynamic Runtime Hook Resolution (Build Version)
 console.log('[0x1] Framework module loaded - dynamic runtime version');
 
-// Create dynamic getters that resolve hooks at import time
-const createHookGetter = (hookName) => (...args) => {
-  if (typeof window !== 'undefined' && window.React && typeof window.React[hookName] === 'function') {
-    return window.React[hookName](...args);
-  }
-  if (typeof window !== 'undefined' && typeof window[hookName] === 'function') {
-    return window[hookName](...args);
-  }
-  throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+// CRITICAL FIX: MINIFICATION-SAFE hook resolution using string access
+const createHookGetter = function(hookName) {
+  return function() {
+    const args = Array.prototype.slice.call(arguments);
+    
+    // MINIFICATION-SAFE: Use string access to prevent mangling
+    if (typeof window !== 'undefined' && window['React'] && typeof window['React'][hookName] === 'function') {
+      return window['React'][hookName].apply(window['React'], args);
+    }
+    if (typeof window !== 'undefined' && typeof window[hookName] === 'function') {
+      return window[hookName].apply(window, args);
+    }
+    throw new Error('[0x1] ' + hookName + ' not available - hooks may not be loaded yet');
+  };
 };
 
 export const useState = createHookGetter('useState');
@@ -1740,18 +1799,18 @@ export const useFetch = createHookGetter('useFetch');
 export const useForm = createHookGetter('useForm');
 export const useLocalStorage = createHookGetter('useLocalStorage');
 
-// JSX runtime delegation
+// MINIFICATION-SAFE JSX runtime delegation using string access
 export function jsx(type, props, key) {
-  if (typeof window !== 'undefined' && window.jsx) {
+  if (typeof window !== 'undefined' && window['jsx']) {
     // CRITICAL FIX: Ensure the result is always a JSX object
-    const result = window.jsx(type, props, key);
+    const result = window['jsx'](type, props, key);
     if (typeof result === 'string') {
       console.warn('[0x1] JSX delegation returned HTML string, converting to object');
       return {
-        type: 'div',
-        props: { dangerouslySetInnerHTML: { __html: result } },
-        children: [],
-        key: key || null
+        'type': 'div',
+        'props': { 'dangerouslySetInnerHTML': { '__html': result } },
+        'children': [],
+        'key': key || null
       };
     }
     return result;
@@ -1760,16 +1819,16 @@ export function jsx(type, props, key) {
 }
 
 export function jsxs(type, props, key) {
-  if (typeof window !== 'undefined' && window.jsxs) {
+  if (typeof window !== 'undefined' && window['jsxs']) {
     // CRITICAL FIX: Ensure the result is always a JSX object
-    const result = window.jsxs(type, props, key);
+    const result = window['jsxs'](type, props, key);
     if (typeof result === 'string') {
       console.warn('[0x1] JSXs delegation returned HTML string, converting to object');
       return {
-        type: 'div',
-        props: { dangerouslySetInnerHTML: { __html: result } },
-        children: [],
-        key: key || null
+        'type': 'div',
+        'props': { 'dangerouslySetInnerHTML': { '__html': result } },
+        'children': [],
+        'key': key || null
       };
     }
     return result;
@@ -1778,16 +1837,16 @@ export function jsxs(type, props, key) {
 }
 
 export function jsxDEV(type, props, key, isStaticChildren, source, self) {
-  if (typeof window !== 'undefined' && window.jsxDEV) {
+  if (typeof window !== 'undefined' && window['jsxDEV']) {
     // CRITICAL FIX: Ensure the result is always a JSX object
-    const result = window.jsxDEV(type, props, key, isStaticChildren, source, self);
+    const result = window['jsxDEV'](type, props, key, isStaticChildren, source, self);
     if (typeof result === 'string') {
       console.warn('[0x1] JSXDev delegation returned HTML string, converting to object');
       return {
-        type: 'div',
-        props: { dangerouslySetInnerHTML: { __html: result } },
-        children: [],
-        key: key || null
+        'type': 'div',
+        'props': { 'dangerouslySetInnerHTML': { '__html': result } },
+        'children': [],
+        'key': key || null
       };
     }
     return result;
@@ -1795,17 +1854,19 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
   throw new Error('[0x1] JSX dev runtime not loaded');
 }
 
-export function createElement(type, props, ...children) {
-  if (typeof window !== 'undefined' && window.createElement) {
+export function createElement(type, props) {
+  const children = Array.prototype.slice.call(arguments, 2);
+  
+  if (typeof window !== 'undefined' && window['createElement']) {
     // CRITICAL FIX: Ensure the result is always a JSX object
-    const result = window.createElement(type, props, ...children);
+    const result = window['createElement'].apply(window, [type, props].concat(children));
     if (typeof result === 'string') {
       console.warn('[0x1] createElement delegation returned HTML string, converting to object');
       return {
-        type: 'div',
-        props: { dangerouslySetInnerHTML: { __html: result } },
-        children: [],
-        key: null
+        'type': 'div',
+        'props': { 'dangerouslySetInnerHTML': { '__html': result } },
+        'children': [],
+        'key': null
       };
     }
     return result;
@@ -1813,55 +1874,72 @@ export function createElement(type, props, ...children) {
   throw new Error('[0x1] JSX runtime not loaded');
 }
 
-export const Fragment = (() => {
-  if (typeof window !== 'undefined' && window.Fragment) {
-    return window.Fragment;
+// MINIFICATION-SAFE Fragment using string access
+export const Fragment = (function() {
+  if (typeof window !== 'undefined' && window['Fragment']) {
+    return window['Fragment'];
   }
-  return Symbol.for('react.fragment');
+  if (typeof Symbol !== 'undefined' && Symbol['for']) {
+    return Symbol['for']('react.fragment');
+  }
+  return 'Fragment';
 })();
 
-// CRITICAL: Router class delegation
-export function Router(...args) {
-  // Try to get Router from the router module
-  if (typeof window !== 'undefined' && window.__0x1_Router) {
-    return new window.__0x1_Router(...args);
+// CRITICAL: MINIFICATION-SAFE Router class delegation
+export function Router() {
+  const args = Array.prototype.slice.call(arguments);
+  
+  // MINIFICATION-SAFE: Try to get Router using string access
+  if (typeof window !== 'undefined' && window['__0x1_Router']) {
+    return new (Function.prototype.bind.apply(window['__0x1_Router'], [null].concat(args)))();
   }
   throw new Error('[0x1] Router not loaded - router module may not be loaded yet');
 }
 
-// CRITICAL FIX: Enhanced Link component wrapper to handle minified router functions (Vercel fix)
+// CRITICAL FIX: MINIFICATION-SAFE Link component wrapper that can't be broken by minifiers
 export function Link(props) {
-  // CRITICAL: Use the bulletproof wrapper instead of raw RouterLink
-  const BulletproofLink = (typeof window !== 'undefined' && window.__0x1_RouterLink) || 
-                         (typeof window !== 'undefined' && window.__0x1_Link) || null;
+  // MINIFICATION-SAFE: Use the bulletproof wrapper with string access
+  const BulletproofLink = (typeof window !== 'undefined' && window['__0x1_RouterLink']) || 
+                         (typeof window !== 'undefined' && window['__0x1_Link']) || null;
   
   if (!BulletproofLink) {
-    // Fallback if router not loaded yet - with bulletproof children handling
+    // MINIFICATION-SAFE fallback if router not loaded yet
     let fallbackChildren = [];
     try {
-      const rawChildren = props.children;
+      const rawChildren = props['children'] || props.children;
       if (rawChildren === null || rawChildren === undefined) {
         fallbackChildren = [];
-      } else if (Array.isArray(rawChildren)) {
-        fallbackChildren = rawChildren.filter(child => child !== null && child !== undefined);
+      } else if (Array.isArray && Array.isArray(rawChildren)) {
+        fallbackChildren = rawChildren.filter(function(child) {
+          return child !== null && child !== undefined;
+        });
       } else {
         fallbackChildren = [rawChildren];
       }
-    } catch {
+    } catch (e) {
       fallbackChildren = [];
     }
     
     return jsx('a', {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        e.preventDefault();
-        if (props.href && props.href.startsWith('/')) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
+      'href': props['href'] || props.href,
+      'className': props['className'] || props.className,
+      'onClick': function(e) {
+        try {
+          e['preventDefault']();
+          const href = props['href'] || props.href;
+          if (href && typeof href === 'string' && href.charAt(0) === '/') {
+            if (typeof window !== 'undefined' && window['history'] && window['history']['pushState']) {
+              window['history']['pushState'](null, '', href);
+              if (window['dispatchEvent'] && typeof window['PopStateEvent'] === 'function') {
+                window['dispatchEvent'](new window['PopStateEvent']('popstate'));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[0x1] Framework Link fallback error:', error);
         }
       },
-      children: fallbackChildren
+      'children': fallbackChildren
     });
   }
   
@@ -1871,32 +1949,43 @@ export function Link(props) {
   } catch (error) {
     console.error('[0x1] Framework Link error:', error);
     
-    // BULLETPROOF FALLBACK: Always return a working link
+    // BULLETPROOF FALLBACK: Always return a working link using minification-safe approach
     let fallbackChildren = [];
     try {
-      const rawChildren = props.children;
+      const rawChildren = props['children'] || props.children;
       if (rawChildren === null || rawChildren === undefined) {
         fallbackChildren = [];
-      } else if (Array.isArray(rawChildren)) {
-        fallbackChildren = rawChildren.filter(child => child !== null && child !== undefined);
+      } else if (Array.isArray && Array.isArray(rawChildren)) {
+        fallbackChildren = rawChildren.filter(function(child) {
+          return child !== null && child !== undefined;
+        });
       } else {
         fallbackChildren = [rawChildren];
       }
-    } catch {
+    } catch (e) {
       fallbackChildren = [];
     }
     
     return jsx('a', {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        e.preventDefault();
-        if (props.href && props.href.startsWith('/')) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
+      'href': props['href'] || props.href,
+      'className': props['className'] || props.className,
+      'onClick': function(e) {
+        try {
+          e['preventDefault']();
+          const href = props['href'] || props.href;
+          if (href && typeof href === 'string' && href.charAt(0) === '/') {
+            if (typeof window !== 'undefined' && window['history'] && window['history']['pushState']) {
+              window['history']['pushState'](null, '', href);
+              if (window['dispatchEvent'] && typeof window['PopStateEvent'] === 'function') {
+                window['dispatchEvent'](new window['PopStateEvent']('popstate'));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[0x1] Framework Link ultimate fallback error:', error);
         }
       },
-      children: fallbackChildren
+      'children': fallbackChildren
     });
   }
 }
@@ -1904,9 +1993,10 @@ export function Link(props) {
 export const version = '0.1.0';
 
 export default {
-  useState, useEffect, useCallback, useMemo, useRef,
-  useClickOutside, useFetch, useForm, useLocalStorage,
-  jsx, jsxs, jsxDEV, createElement, Fragment, Link, Router, version
+  useState: useState, useEffect: useEffect, useCallback: useCallback, useMemo: useMemo, useRef: useRef,
+  useClickOutside: useClickOutside, useFetch: useFetch, useForm: useForm, useLocalStorage: useLocalStorage,
+  jsx: jsx, jsxs: jsxs, jsxDEV: jsxDEV, createElement: createElement, Fragment: Fragment, 
+  Link: Link, Router: Router, version: version
 };
 `;
 
