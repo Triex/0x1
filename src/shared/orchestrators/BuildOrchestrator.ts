@@ -817,89 +817,9 @@ export default function ErrorComponent(props) {
       framework0x1Dir
     );
 
-    // CRITICAL: Copy router with comprehensive import transformations
-    const routerSourcePath = join(
+    // CRITICAL FIX: Use ACTUAL router from shared core (SINGLE SOURCE OF TRUTH)
+    await this.copyActualRouterFromSharedCore(
       frameworkPath,
-      "0x1-router",
-      "dist",
-      "index.js"
-    );
-
-    // CRITICAL: Try multiple router locations since npm packages structure differently
-    const possibleRouterPaths = [
-      routerSourcePath, // Original path
-      join(frameworkPath, "dist", "router.js"), // Direct in dist
-      join(frameworkPath, "dist", "index.js"), // Main package file might include router
-      join(frameworkPath, "router.js"), // Root level
-      join(frameworkPath, "src", "router.ts"), // Source
-      join(frameworkPath, "src", "router.js"), // Source JS
-    ];
-
-    // Find first existing router file
-    const actualRouterPath = possibleRouterPaths.find((path) =>
-      existsSync(path)
-    );
-
-    if (!actualRouterPath) {
-      if (!this.options.silent) {
-        logger.warn(
-          "⚠️ No dedicated router file found, checking embedded router..."
-        );
-
-        // Check if the main dist files contain router functionality
-        const mainDistFiles = [
-          join(frameworkPath, "dist", "index.js"),
-          join(frameworkPath, "dist", "main.js"),
-          join(frameworkPath, "dist", "bundle.js"),
-        ];
-
-        for (const file of mainDistFiles) {
-          if (existsSync(file)) {
-            const content = readFileSync(file, "utf-8");
-            if (
-              content.includes("class") &&
-              (content.includes("Router") ||
-                content.includes("navigate") ||
-                content.includes("addRoute"))
-            ) {
-              if (!this.options.silent) {
-                logger.success(`✅ Found router embedded in: ${file}`);
-              }
-
-              // Process this file as router
-              await this.processRouterContent(
-                content,
-                framework0x1Dir,
-                nodeModulesDir
-              );
-              return;
-            }
-          }
-        }
-
-        logger.error(
-          "❌ CRITICAL: No router found anywhere in framework package"
-        );
-      }
-
-      // Continue without router - generate a minimal fallback
-      await this.processRouterContentLegacy(
-        "",
-        framework0x1Dir,
-        nodeModulesDir
-      );
-      return;
-    }
-
-    if (!this.options.silent) {
-      logger.success(
-        `✅ Found router at: ${actualRouterPath.replace(frameworkPath, "")}`
-      );
-    }
-
-    const routerContent = readFileSync(actualRouterPath, "utf-8");
-    await this.processRouterContent(
-      routerContent,
       framework0x1Dir,
       nodeModulesDir
     );
@@ -911,417 +831,167 @@ export default function ErrorComponent(props) {
     );
   }
 
-  private async processRouterContent(
-    routerContent: string,
+  // CRITICAL FIX: Use actual router from shared core (SINGLE SOURCE OF TRUTH)
+  private async copyActualRouterFromSharedCore(
+    frameworkPath: string,
     framework0x1Dir: string,
     nodeModulesDir: string
   ): Promise<void> {
     if (!this.options.silent) {
-      logger.info(
-        `📄 Processing router content: ${routerContent.length} bytes`
-      );
+      logger.info("🎯 Using ACTUAL router from shared core (SINGLE SOURCE OF TRUTH)...");
     }
 
-    // CRITICAL: Apply ImportTransformer to router content for comprehensive fixes
-    if (!this.options.silent) {
-      logger.info(
-        "🔧 Applying ImportTransformer to router for comprehensive fixes..."
-      );
-    }
+    // Look for the actual router implementation
+    const routerSearchPaths = [
+      join(frameworkPath, "0x1-router", "dist", "index.js"), // Built router
+      join(frameworkPath, "0x1-router", "src", "index.ts"),  // Source router
+      join(frameworkPath, "dist", "router.js"),              // Framework dist
+      join(frameworkPath, "src", "router.ts"),               // Framework source
+    ];
 
-    try {
-      const transformedContent = ImportTransformer.transformImports(
-        routerContent,
-        {
-          sourceFilePath: "router.js",
-          projectPath: this.options.projectPath,
-          mode: "production",
-          debug: !this.options.silent,
+    let actualRouterPath = null;
+    let actualRouterContent = "";
+
+    // Find the actual router
+    for (const path of routerSearchPaths) {
+      if (existsSync(path)) {
+        actualRouterPath = path;
+        if (!this.options.silent) {
+          logger.success(`✅ Found actual router at: ${path.replace(frameworkPath, "")}`);
         }
-      );
+        break;
+      }
+    }
 
-      routerContent = transformedContent;
+    if (!actualRouterPath) {
+      logger.error("❌ CRITICAL: No actual router found in shared core!");
+      throw new Error("Router not found in shared core - violates SINGLE SOURCE OF TRUTH");
+    }
+
+    // Read and process the actual router
+    if (actualRouterPath.endsWith(".ts")) {
+      // Transpile TypeScript router
       if (!this.options.silent) {
-        logger.info("✅ ImportTransformer applied successfully to router");
+        logger.info("🔧 Transpiling actual router from TypeScript...");
       }
-    } catch (error) {
-      if (!this.options.silent) {
-        logger.error(`❌ ImportTransformer failed for router: ${error}`);
-      }
-    }
-
-    // CRITICAL FIX: Better router detection - look for export patterns
-    if (!this.options.silent) {
-      logger.info("🎯 Looking for actual Router exports in router content...");
-    }
-
-    // Look for explicit Router exports
-    const exportMatches = routerContent.match(/export\s*\{\s*([^}]+)\s*\}/g);
-    const exportNames = new Set<string>();
-
-    if (exportMatches) {
-      for (const match of exportMatches) {
-        const namesMatch = match.match(/export\s*\{\s*([^}]+)\s*\}/);
-        if (namesMatch) {
-          const names = namesMatch[1].split(",").map((n) => {
-            const trimmed = n.trim();
-            // Handle "SomeClass as Router" patterns
-            const asMatch = trimmed.match(/(.+)\s+as\s+(.+)/);
-            return asMatch ? asMatch[2].trim() : trimmed;
-          });
-          names.forEach((name) => exportNames.add(name));
-        }
-      }
-    }
-
-    // Also look for direct export statements
-    const directExportMatches = routerContent.match(
-      /export\s+(class|function)\s+([A-Za-z_][A-Za-z0-9_]*)/g
-    );
-    if (directExportMatches) {
-      for (const match of directExportMatches) {
-        const nameMatch = match.match(
-          /export\s+(?:class|function)\s+([A-Za-z_][A-Za-z0-9_]*)/
-        );
-        if (nameMatch) {
-          exportNames.add(nameMatch[1]);
-        }
-      }
-    }
-
-    if (!this.options.silent) {
-      logger.info(`🔍 Found exports: ${Array.from(exportNames).join(", ")}`);
-    }
-
-    // Look for Router and Link in exports
-    let routerClassName: string | null = null;
-    let linkFunctionName: string | null = null;
-
-    // Prioritize actual "Router" and "Link" exports
-    if (exportNames.has("Router")) {
-      routerClassName = "Router";
-      if (!this.options.silent) {
-        logger.success(`✅ Found Router export: ${routerClassName}`);
-      }
-    }
-
-    if (exportNames.has("Link")) {
-      linkFunctionName = "Link";
-      if (!this.options.silent) {
-        logger.success(`✅ Found Link export: ${linkFunctionName}`);
-      }
-    }
-
-    // If no direct Router/Link exports, look for classes and functions
-    if (!routerClassName || !linkFunctionName) {
-      const classMatches = routerContent.match(
-        /class\s+([A-Za-z_][A-Za-z0-9_]*)/g
-      );
-      const functionMatches = routerContent.match(
-        /(?:function\s+|const\s+|var\s+)([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(?:\([^)]*\)\s*=>|function)|\s*\([^)]*\))/g
-      );
-
-      const allClasses = classMatches
-        ? classMatches
-            .map((m) => m.match(/class\s+([A-Za-z_][A-Za-z0-9_]*)/)?.[1])
-            .filter(Boolean)
-        : [];
-      const allFunctions = functionMatches
-        ? functionMatches
-            .map(
-              (m) =>
-                m.match(
-                  /(?:function\s+|const\s+|var\s+)([A-Za-z_][A-Za-z0-9_]*)/
-                )?.[1]
-            )
-            .filter(Boolean)
-        : [];
-
-      if (!this.options.silent) {
-        logger.info(`🔍 Found classes: ${allClasses.join(", ")}`);
-        logger.info(`🔍 Found functions: ${allFunctions.join(", ")}`);
-      }
-
-      // CRITICAL FIX: Handle minified/mangled router code (Vercel issue)
-      // In production builds, Router might become 'h' and Link might become 'g'
-      const isMinified = allClasses.some(name => name && name.length === 1) || 
-                        allFunctions.some(name => name && name.length === 1);
       
-      if (isMinified && !this.options.silent) {
-        logger.warn(`⚠️ DETECTED MINIFIED ROUTER CODE - applying production compatibility fixes`);
-      }
+      const sourceCode = readFileSync(actualRouterPath, "utf-8");
+      const transpiled = await Bun.build({
+        entrypoints: [actualRouterPath],
+        target: "browser",
+        format: "esm",
+        minify: false,
+        sourcemap: "none",
+        define: {
+          "process.env.NODE_ENV": JSON.stringify("production"),
+        },
+      });
 
-      // Try to find Router-like class
-      if (!routerClassName) {
-        if (isMinified) {
-          // For minified code, look for any class that has router-like methods
-          const routerClassPattern = /class\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:navigate|addRoute|routes|init)[^}]*}/;
-          const routerMatch = routerContent.match(routerClassPattern);
-          if (routerMatch) {
-            routerClassName = routerMatch[1];
-            if (!this.options.silent) {
-              logger.warn(`⚠️ MINIFIED ROUTER: Using router-like class: ${routerClassName}`);
-            }
-          } else {
-            // Fallback: use the first class found if it has constructor patterns
-            routerClassName = allClasses.find(name => 
-              name && name.length >= 1 && 
-              routerContent.includes(`new ${name}(`) || 
-              routerContent.includes(`class ${name}`)
-            ) || allClasses[0] || null;
-            
-            if (routerClassName && !this.options.silent) {
-              logger.warn(`⚠️ MINIFIED ROUTER FALLBACK: Using first class as Router: ${routerClassName}`);
-            }
-          }
-        } else {
-          // Non-minified code - use original logic
-          routerClassName =
-            allClasses.find(
-              (name) =>
-                name &&
-                name.length > 1 &&
-                !["h", "f", "v", "g"].includes(name) &&
-                (name.toLowerCase().includes("router") || exportNames.has(name))
-            ) ??
-            allClasses.find(
-              (name) =>
-                name && name.length > 1 && !["h", "f", "v", "g"].includes(name)
-            ) ??
-            null;
-
-          if (routerClassName && !this.options.silent) {
-            logger.warn(`⚠️ Using detected class as Router: ${routerClassName}`);
-          }
+      if (transpiled.success && transpiled.outputs.length > 0) {
+        for (const output of transpiled.outputs) {
+          actualRouterContent += await output.text();
         }
+      } else {
+        throw new Error(`Failed to transpile actual router: ${transpiled.logs?.map(l => l.message).join(", ")}`);
       }
-
-      // Try to find Link-like function
-      if (!linkFunctionName) {
-        if (isMinified) {
-          // For minified code, look for any function that creates DOM elements
-          const linkFunctionPattern = /(?:function|const|var)\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:createElement|jsx|type.*props)[^}]*}/;
-          const linkMatch = routerContent.match(linkFunctionPattern);
-          if (linkMatch && linkMatch[1] !== routerClassName) {
-            linkFunctionName = linkMatch[1];
-            if (!this.options.silent) {
-              logger.warn(`⚠️ MINIFIED ROUTER: Using link-like function: ${linkFunctionName}`);
-            }
-          } else {
-            // Fallback: use any function that's not the router class
-            linkFunctionName = allFunctions.find(name => 
-              name && name.length >= 1 && name !== routerClassName
-            ) || null;
-            
-            if (linkFunctionName && !this.options.silent) {
-              logger.warn(`⚠️ MINIFIED ROUTER FALLBACK: Using function as Link: ${linkFunctionName}`);
-            }
-          }
-        } else {
-          // Non-minified code - use original logic
-          linkFunctionName =
-            allFunctions.find(
-              (name) =>
-                name &&
-                name.length > 1 &&
-                name !== routerClassName &&
-                !["h", "f", "v", "g"].includes(name) &&
-                (name.toLowerCase().includes("link") || exportNames.has(name))
-            ) ??
-            allFunctions.find(
-              (name) =>
-                name &&
-                name.length > 1 &&
-                name !== routerClassName &&
-                !["h", "f", "v", "g"].includes(name)
-            ) ??
-            null;
-
-          if (linkFunctionName && !this.options.silent) {
-            logger.warn(
-              `⚠️ Using detected function as Link: ${linkFunctionName}`
-            );
-          }
-        }
-      }
+    } else {
+      // Use JavaScript router directly
+      actualRouterContent = readFileSync(actualRouterPath, "utf-8");
     }
 
-    // VERCEL FALLBACK: Try to find any class/function that could work
-    if (!routerClassName && !linkFunctionName) {
+    if (!actualRouterContent || actualRouterContent.length < 1000) {
+      throw new Error("Actual router content is invalid or too small");
+    }
+
+    // CRITICAL: Apply production optimizations to ACTUAL router
+    actualRouterContent = this.optimizeActualRouterForProduction(actualRouterContent);
+
+    // Write the ACTUAL router (no fallbacks!)
+    await Bun.write(join(framework0x1Dir, "router.js"), actualRouterContent);
+    await Bun.write(join(nodeModulesDir, "router.js"), actualRouterContent);
+
+    if (!this.options.silent) {
+      logger.success(`✅ ACTUAL router deployed: ${(actualRouterContent.length / 1024).toFixed(1)}KB (SINGLE SOURCE OF TRUTH)`);
+    }
+  }
+
+  // CRITICAL: Optimize ACTUAL router for production (no fallbacks)
+  private optimizeActualRouterForProduction(routerContent: string): string {
+    let optimized = routerContent;
+
+    // Fix imports for browser
+    optimized = ImportTransformer.transformImports(optimized, {
+      sourceFilePath: "router.js",
+      projectPath: this.options.projectPath,
+      mode: "production",
+      debug: !this.options.silent,
+    });
+
+    // CRITICAL FIX: Only add JSX runtime if TRULY missing (prevent duplicate declarations)
+    const hasJsxImport = optimized.includes("jsx-runtime") || 
+                        optimized.includes("import { jsx") ||
+                        optimized.includes("import {jsx") ||
+                        optimized.includes("from \"jsx") ||
+                        optimized.includes("from '/0x1/jsx-runtime") ||
+                        optimized.includes("const jsx") ||
+                        optimized.includes("let jsx") ||
+                        optimized.includes("var jsx");
+                        
+    if (!hasJsxImport) {
+      optimized = 'import { jsx, jsxs, jsxDEV, Fragment } from "/0x1/jsx-runtime.js";\n' + optimized;
       if (!this.options.silent) {
-        logger.warn(
-          "🚨 VERCEL FALLBACK: No Router/Link detected, trying alternative detection..."
-        );
+        logger.info("✅ Added JSX runtime import to router");
       }
-
-      // Look for any class that has router-like methods
-      const classPattern =
-        /class\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:navigate|addRoute|routes)[^}]*}/;
-      const classMatch = routerContent.match(classPattern);
-      if (classMatch) {
-        routerClassName = classMatch[1];
-        if (!this.options.silent) {
-          logger.success(
-            `✅ VERCEL FALLBACK: Found router-like class: ${routerClassName}`
-          );
-        }
-      }
-
-      // Look for any function that creates links
-      const linkPattern =
-        /(?:function|const|var)\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*{[^}]*(?:href|onClick)[^}]*}/;
-      const linkMatch = routerContent.match(linkPattern);
-      if (linkMatch && linkMatch[1] !== routerClassName) {
-        linkFunctionName = linkMatch[1];
-        if (!this.options.silent) {
-          logger.success(
-            `✅ VERCEL FALLBACK: Found link-like function: ${linkFunctionName}`
-          );
-        }
+    } else {
+      if (!this.options.silent) {
+        logger.info("✅ JSX runtime already available in router, skipping import");
       }
     }
-        
-    // Start with the transformed content
-    let finalRouterContent = routerContent;
 
-    // CRITICAL FIX: Only add JSX imports if they don't conflict with existing declarations
-    if (
-      !finalRouterContent.includes("jsx-runtime") &&
-      !finalRouterContent.includes("import { jsx") &&
-      !finalRouterContent.includes("const jsx") &&
-      !finalRouterContent.includes("var jsx") &&
-      !finalRouterContent.includes("let jsx")
-    ) {
-      const jsxImport =
-        'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
-      finalRouterContent = jsxImport + finalRouterContent;
+    // Ensure proper exports exist
+    if (!optimized.includes("export") || !optimized.includes("Router")) {
+      // Add exports if missing (but Router should already be exported)
+      if (optimized.includes("class Router") && !optimized.includes("export { Router }")) {
+        optimized += "\n// Ensure Router is exported\nexport { Router };\n";
+      }
+      if (optimized.includes("function Link") && !optimized.includes("export { Link }")) {
+        optimized += "\n// Ensure Link is exported\nexport { Link };\n";
+      }
     }
 
-    // Ensure Router and Link are exported (check for existing exports first)
-    const hasRouterExport =
-      finalRouterContent.includes(`export { ${routerClassName} as Router }`) ||
-      finalRouterContent.includes(`export { Router }`) ||
-      /export\s*{\s*[^}]*\bRouter\b[^}]*}/.test(finalRouterContent);
+    // CRITICAL: Global exposure for production (using ACTUAL router)
+    optimized += `
 
-    const hasLinkExport =
-      finalRouterContent.includes(`export { ${linkFunctionName} as Link }`) ||
-      finalRouterContent.includes(`export { Link }`) ||
-      /export\s*{\s*[^}]*\bLink\b[^}]*}/.test(finalRouterContent);
-
-    if (routerClassName && !hasRouterExport) {
-      finalRouterContent += `\nexport { ${routerClassName} as Router };\n`;
-    }
-
-    if (linkFunctionName && !hasLinkExport) {
-      finalRouterContent += `\nexport { ${linkFunctionName} as Link };\n`;
-    }
-
-    // CRITICAL: Expose the ACTUAL router globally (use dynamic lookup to avoid reference errors)
-    finalRouterContent += `
-
-// CRITICAL: Expose ACTUAL router components globally
+// CRITICAL: Expose ACTUAL router globally (SINGLE SOURCE OF TRUTH)
 if (typeof window !== 'undefined') {
-  // Use dynamic lookup to avoid "Router is not defined" errors
-  const moduleExports = {};
   try {
-    // Try to find the Router class in current module scope
-${
-  routerClassName
-    ? `    if (typeof ${routerClassName} !== 'undefined') {
-      window.__0x1_Router = ${routerClassName};
-      window.__0x1_ROUTER__ = ${routerClassName};
-      window.router = ${routerClassName};
-      console.log('[0x1] Router class exposed:', '${routerClassName}');
-    } else {
-      console.error('[0x1] Router class ${routerClassName} not found in scope');
-    }`
-    : `    console.error('[0x1] No Router class found!');`
-}
+    // Use the ACTUAL Router class that was just defined above
+    if (typeof Router !== 'undefined') {
+      window.__0x1_Router = Router;
+      window.__0x1_ROUTER__ = Router;
+      window.router = Router;
+      console.log('[0x1] ACTUAL Router class exposed globally');
+    }
     
-${
-  linkFunctionName
-    ? `    if (typeof ${linkFunctionName} !== 'undefined') {
-      window.__0x1_RouterLink = ${linkFunctionName};
-      console.log('[0x1] Link function exposed:', '${linkFunctionName}');
-    } else {
-      console.error('[0x1] Link function ${linkFunctionName} not found in scope');
-    }`
-    : `    // Create basic Link function...`
-}
+    // Use the ACTUAL Link function that was just defined above
+    if (typeof Link !== 'undefined') {
+      window.__0x1_RouterLink = Link;
+      console.log('[0x1] ACTUAL Link function exposed globally');
+    }
+    
+    // Also expose any other router utilities
+    if (typeof useRouter !== 'undefined') {
+      window.__0x1_useRouter = useRouter;
+    }
+    
   } catch (error) {
-    console.error('[0x1] Error exposing router components:', error);
+    console.error('[0x1] Error exposing ACTUAL router:', error);
+    throw error; // Don't hide router errors - fix them at the source
   }
 }
 `;
 
-    // Write the final router content
-    await Bun.write(join(framework0x1Dir, "router.js"), finalRouterContent);
-    await Bun.write(join(nodeModulesDir, "router.js"), finalRouterContent);
-
-    if (!this.options.silent) {
-      logger.success(`✅ Router processed and exposed globally`);
-      if (routerClassName) {
-        logger.success(`   Router class: ${routerClassName}`);
-      }
-      if (linkFunctionName) {
-        logger.success(`   Link function: ${linkFunctionName}`);
-      }
-    }
-  }
-
-  // LEGACY: Only used if module import fails completely
-  private async processRouterContentLegacy(
-    routerContent: string,
-    framework0x1Dir: string,
-    nodeModulesDir: string
-  ): Promise<void> {
-    if (!this.options.silent) {
-      logger.warn("⚠️ Using legacy router processing (module import failed)");
-    }
-
-    // MINIMAL legacy processing - just ensure the content has basic global exposure
-    const legacyRouterContent =
-      routerContent +
-      `
-
-// LEGACY: Basic router exposure (import method failed)
-if (typeof window !== 'undefined') {
-  // Try to find and expose any router-like class
-  const routerClasses = Object.keys(this).filter(key => 
-    typeof this[key] === 'function' && 
-    this[key].prototype && 
-    (key.includes('Router') || key.includes('router'))
-  );
-  
-  if (routerClasses.length > 0) {
-    window.__0x1_Router = this[routerClasses[0]];
-  }
-  
-  // Create basic Link function
-  window.__0x1_RouterLink = (props) => ({
-    type: 'a',
-    props: {
-      href: props.href,
-      className: props.className,
-      onClick: (e) => {
-        e.preventDefault();
-        if (props.href && props.href.startsWith('/')) {
-          window.history.pushState(null, '', props.href);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
-      },
-      children: props.children
-    }
-  });
-}
-`;
-
-    await Bun.write(join(framework0x1Dir, "router.js"), legacyRouterContent);
-    await Bun.write(join(nodeModulesDir, "router.js"), legacyRouterContent);
-
-    if (!this.options.silent) {
-      logger.success(`✅ Legacy router processing completed`);
-    }
+    return optimized;
   }
 
   // CRITICAL: Generate JSX runtime using DevOrchestrator's exact logic
@@ -2745,7 +2415,6 @@ if (document.readyState === 'loading') {
 .flex-col { flex-direction: column; }
 .items-center { align-items: center; }
 .justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
 .gap-4 { gap: 1rem; }
 
 /* Basic Spacing */
@@ -4199,5 +3868,71 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <!-- CRAWLER OPTIMIZATION: R
     // DevOrchestrator works perfectly without complex validation
     // Just return the content as-is like DevOrchestrator does
     return content;
+  }
+
+  // CRITICAL FIX: Generate fallback router content if main router fails
+  private generateFallbackRouterContent(): string {
+    return `// Fallback router content - minimal working implementation
+export class Router {
+  constructor(options = {}) {
+    this.routes = new Map();
+    this.currentPath = '/';
+    console.log('[0x1] Using fallback Router implementation');
+  }
+  
+  addRoute(path, component, metadata = {}) {
+    this.routes.set(path, { component, metadata });
+  }
+  
+  navigate(path) {
+    this.currentPath = path;
+    window.history.pushState(null, '', path);
+  }
+  
+  init() {
+    console.log('[0x1] Fallback router initialized');
+  }
+}
+
+export function Link(props) {
+  return {
+    type: 'a',
+    props: {
+      href: props.href,
+      className: props.className,
+      onClick: (e) => {
+        e.preventDefault();
+        if (props.href && props.href.startsWith('/')) {
+          window.history.pushState(null, '', props.href);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      },
+      children: props.children
+    }
+  };
+}
+
+console.log('[0x1] Fallback router module loaded');
+`;
+  }
+
+  // CRITICAL FIX: Clean up router syntax to prevent parsing errors
+  private cleanupRouterSyntax(routerContent: string): string {
+    // Remove any problematic patterns that could cause syntax errors
+    let cleaned = routerContent;
+    
+    // Fix any malformed export statements
+    cleaned = cleaned.replace(/export\s*{\s*type\s*}/g, '// Removed malformed type export');
+    
+    // Remove any standalone 'type' exports that could cause issues
+    cleaned = cleaned.replace(/export\s+type\s+/g, '// export type ');
+    
+    // Clean up any duplicate exports
+    cleaned = cleaned.replace(/export\s*{\s*([^}]+)\s*}\s*;\s*export\s*{\s*\1\s*}/g, 'export { $1 }');
+    
+    // Normalize line endings and remove excessive whitespace
+    cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\n+/g, '\n').trim();
+    
+    return cleaned;
   }
 }
