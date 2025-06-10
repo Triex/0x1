@@ -206,89 +206,100 @@ async function buildFramework() {
         if (success && outputs.length > 0) {
           // Add cache busting to core modules
           const outputPath = outputs[0].path;
-          let content = await Bun.file(outputPath).text();
+          const content = await Bun.file(outputPath).text();
           
           // CRITICAL FIX: Apply browser compatibility for hooks.js (same as BuildOrchestrator)
           if (file === 'hooks.ts') {
             console.log('🔧 Applying browser compatibility to hooks.js...');
             
-            // CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly  
-            if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
-              // Initialize React-compatible global context
-              window.React = window.React || {};
-              
-              // IMMEDIATE: Access hooks from the module scope - no delays
-              try {
-                // Make hooks available immediately from the module scope
-                const hookFunctions = {
-                  useState: typeof useState !== 'undefined' ? useState : null,
-                  useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
-                  useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
-                  useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
-                  useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
-                  useRef: typeof useRef !== 'undefined' ? useRef : null,
-                  useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
-                  useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
-                  useForm: typeof useForm !== 'undefined' ? useForm : null,
-                  useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null
-                };
-                
-                // IMMEDIATE: Assign hooks to window - available instantly
-                Object.keys(hookFunctions).forEach(function(hookName) {
-                  if (hookFunctions[hookName] && typeof hookFunctions[hookName] === 'function') {
-                    window[hookName] = hookFunctions[hookName];
-                    if (window.React) {
-                      window.React[hookName] = hookFunctions[hookName];
-                    }
-                  }
-                });
-                
-                // IMMEDIATE: Set the context functions that JSX runtime looks for
-                const contextFunctions = {
-                  enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
-                  exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
-                  triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
-                };
-                
-                window.__0x1_enterComponentContext = contextFunctions.enterComponentContext;
-                window.__0x1_exitComponentContext = contextFunctions.exitComponentContext;
-                window.__0x1_triggerUpdate = contextFunctions.triggerComponentUpdate;
-                
-                globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
-                globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
-                
-                // IMMEDIATE: Global hooks registry - available instantly
-                window.__0x1_hooks = Object.assign({
-                  isInitialized: true,
-                  contextReady: true,
-                  enterComponentContext: window.__0x1_enterComponentContext,
-                  exitComponentContext: window.__0x1_exitComponentContext,
-                  triggerUpdate: window.__0x1_triggerUpdate
-                }, hookFunctions, contextFunctions);
-                
-                console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
-                console.log('[0x1 Hooks] Component context functions available for JSX runtime');
-                console.log('[0x1 Hooks] Browser-compatible hooks active (no context checking)');
-                
-                // IMMEDIATE: Component context ready flag
-                window.__0x1_component_context_ready = true;
-                window.__0x1_hooks_init_done = true;
-                
-              } catch (error) {
-                console.error('[0x1 Hooks] IMMEDIATE initialization failed:', error);
-                
-                // Emergency fallback: create minimal working hooks immediately
-                window.useState = function(initialValue) {
-                  console.warn('[0x1 Hooks] Using emergency fallback useState');
-                  return [initialValue, function() {}];
-                };
-                window.useEffect = function() {
-                  console.warn('[0x1 Hooks] Using emergency fallback useEffect');
-                };
-                window.__0x1_hooks_init_done = true;
-                window.__0x1_component_context_ready = true;
-              }
-            }
+            // CRITICAL FIX: Don't add broken browser compatibility - the original hooks work fine!
+            // Just add the basic browser compatibility without fallback hooks
+            const browserCompatCode = `
+
+// CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly  
+if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
+  // Initialize React-compatible global context
+  window.React = window.React || {};
+  
+  // IMMEDIATE: Access hooks from the module scope - no delays
+  try {
+    // Make hooks available immediately from the module scope
+    const hookFunctions = {
+      useState: typeof useState !== 'undefined' ? useState : null,
+      useEffect: typeof useEffect !== 'undefined' ? useEffect : null,
+      useLayoutEffect: typeof useLayoutEffect !== 'undefined' ? useLayoutEffect : null,
+      useMemo: typeof useMemo !== 'undefined' ? useMemo : null,
+      useCallback: typeof useCallback !== 'undefined' ? useCallback : null,
+      useRef: typeof useRef !== 'undefined' ? useRef : null,
+      useClickOutside: typeof useClickOutside !== 'undefined' ? useClickOutside : null,
+      useFetch: typeof useFetch !== 'undefined' ? useFetch : null,
+      useForm: typeof useForm !== 'undefined' ? useForm : null,
+      useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null
+    };
+    
+    // IMMEDIATE: Assign hooks to window - available instantly
+    Object.keys(hookFunctions).forEach(function(hookName) {
+      if (hookFunctions[hookName] && typeof hookFunctions[hookName] === 'function') {
+        window[hookName] = hookFunctions[hookName];
+        if (window.React) {
+          window.React[hookName] = hookFunctions[hookName];
+        }
+      }
+    });
+    
+    // IMMEDIATE: Set up context functions
+    const contextFunctions = {
+      enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
+      exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
+      triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
+    };
+    
+    window.__0x1_enterComponentContext = contextFunctions.enterComponentContext;
+    window.__0x1_exitComponentContext = contextFunctions.exitComponentContext;
+    window.__0x1_triggerUpdate = contextFunctions.triggerComponentUpdate;
+    
+    if (typeof globalThis !== 'undefined') {
+      globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
+      globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
+    }
+    
+    // IMMEDIATE: Global hooks registry - available instantly
+    window.__0x1_hooks = Object.assign({
+      isInitialized: true,
+      contextReady: true,
+      enterComponentContext: window.__0x1_enterComponentContext,
+      exitComponentContext: window.__0x1_exitComponentContext,
+      triggerUpdate: window.__0x1_triggerUpdate
+    }, hookFunctions, contextFunctions);
+    
+    console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
+    console.log('[0x1 Hooks] Component context functions available for JSX runtime');
+    console.log('[0x1 Hooks] Browser-compatible hooks active (no context checking)');
+    
+    // IMMEDIATE: Component context ready flag
+    window.__0x1_component_context_ready = true;
+    window.__0x1_hooks_init_done = true;
+    
+  } catch (error) {
+    console.error('[0x1 Hooks] IMMEDIATE initialization failed:', error);
+    
+    // Emergency fallback: create minimal working hooks immediately
+    window.useState = function(initialValue) {
+      console.warn('[0x1 Hooks] Using emergency fallback useState');
+      return [initialValue, function() {}];
+    };
+    window.useEffect = function() {
+      console.warn('[0x1 Hooks] Using emergency fallback useEffect');
+    };
+    window.__0x1_hooks_init_done = true;
+    window.__0x1_component_context_ready = true;
+  }
+}
+`;
+            
+            // Add the browser compatibility code to the hooks file
+            const enhancedContent = content + browserCompatCode;
+            await Bun.write(outputPath, enhancedContent);
           }
           
           const hash = generateHash(content);

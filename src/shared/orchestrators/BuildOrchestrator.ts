@@ -1562,7 +1562,15 @@ export { __0x1_FallbackLink as Link };
           // CRITICAL FIX: Ensure JSX functions return objects, not HTML strings
           content += `
 if (typeof window !== 'undefined') {
-  // CRITICAL: Override any existing jsx functions to ensure they return JSX objects
+  // CRITICAL FIX: IMMEDIATE global availability - exactly like DevOrchestrator
+  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
+  window.React = Object.assign(window.React || {}, {
+    createElement, Fragment, jsx, jsxs, version: '19.0.0-0x1-compat'
+  });
+  
+  console.log('[0x1 JSX] Production-ready runtime loaded');
+
+  // Override JSX functions with enhanced object validation (preserving global availability)
   const ensureJsxObject = (type, props, key) => {
     if (typeof type === 'string') {
       return {
@@ -1605,24 +1613,19 @@ if (typeof window !== 'undefined') {
     };
   };
 
-  // Override global JSX functions to always return objects
-  window.jsx = ensureJsxObject;
-  window.jsxs = ensureJsxObject;
-  window.jsxDEV = ensureJsxObject;
+  // Enhance global JSX functions with validation while keeping them available
+  const originalJsx = window.jsx;
+  const originalJsxs = window.jsxs;
+  const originalJsxDEV = window.jsxDEV;
+  const originalCreateElement = window.createElement;
+
+  window.jsx = (type, props, key) => ensureJsxObject(type, props, key);
+  window.jsxs = (type, props, key) => ensureJsxObject(type, props, key);
+  window.jsxDEV = (type, props, key) => ensureJsxObject(type, props, key);
   window.createElement = (type, props, ...children) => {
     const childArray = children.flat().filter(child => child != null);
     return ensureJsxObject(type, { ...props, children: childArray.length === 1 ? childArray[0] : childArray });
   };
-  
-  // Ensure React compatibility
-  Object.assign(window, { jsx, jsxs, jsxDEV, createElement, Fragment, renderToDOM });
-  window.React = Object.assign(window.React || {}, {
-    createElement: window.createElement, 
-    Fragment, 
-    jsx: window.jsx, 
-    jsxs: window.jsxs, 
-    version: '19.0.0-0x1-compat'
-  });
 }
 `;          // CRITICAL: Rewrite import paths to browser-resolvable URLs (same as DevOrchestrator)
           content = content
