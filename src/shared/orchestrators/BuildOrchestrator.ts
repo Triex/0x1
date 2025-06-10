@@ -4183,7 +4183,7 @@ export default function ErrorComponent(props) {
 
     if (!this.options.silent) {
       logger.success(
-        `✅ Generated HTML files: 1 SPA file + ${this.state.routes.length} crawler-optimized files for proper metadata`
+        `✅ Generated HTML files: 1 SPA file + ${this.state.routes.length - 1} crawler-optimized files for proper metadata`
       );
       logger.success(
         `✅ Service worker configured with ${accuratePrecacheResources.length} validated resources`

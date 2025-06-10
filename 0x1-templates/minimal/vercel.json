@@ -3,6 +3,8 @@
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
   "installCommand": "bun install",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "routes": [
     {
       "src": "/0x1/(.*)",
@@ -33,4 +35,4 @@
       "dest": "/index.html"
     }
   ]
-} 
+}
