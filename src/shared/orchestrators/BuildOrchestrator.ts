@@ -1757,72 +1757,51 @@ if (typeof window !== 'undefined') {
 
       // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: Minification-safe hooks initialization for production
-(function() {
-  'use strict';
-  
-  if (typeof window === 'undefined') return;
-  
-  // MINIFICATION-SAFE: Use string literals that can't be mangled
-  const HOOK_NAMES = ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef', 'useClickOutside', 'useFetch', 'useForm', 'useLocalStorage'];
-  const CONTEXT_NAMES = ['__0x1_enterComponentContext', '__0x1_exitComponentContext', '__0x1_triggerUpdate'];
-  
-  // Prevent multiple initialization
-  if (window['__0x1_hooks_init_done']) {
-    console.log('[0x1 Hooks] Already initialized, skipping');
-    return;
-  }
-  
+// CRITICAL FIX: Just use the original hooks system - it was working fine!
+if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
   // Initialize React compatibility
   window['React'] = window['React'] || {};
   
-  // MINIFICATION-SAFE: Copy actual hook functions using string access
-  for (let i = 0; i < HOOK_NAMES.length; i++) {
-    const hookName = HOOK_NAMES[i];
-    if (typeof window[hookName] === 'undefined' && typeof eval(hookName) === 'function') {
-      try {
-        window[hookName] = eval(hookName);
-        window['React'][hookName] = eval(hookName);
-      } catch (e) {
-        // Silent fail for missing hooks
-      }
-    }
+  // CRITICAL FIX: Use the ACTUAL exported hook functions directly
+  // These are the real hooks that were working perfectly before
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
+  
+  // Also make available in React namespace for compatibility  
+  Object.assign(window['React'], {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
+  
+  // Set up context functions
+  window['__0x1_enterComponentContext'] = enterComponentContext || function() {};
+  window['__0x1_exitComponentContext'] = exitComponentContext || function() {};
+  window['__0x1_triggerUpdate'] = triggerComponentUpdate || function() {};
+  
+  if (typeof globalThis !== 'undefined') {
+    globalThis['__0x1_enterComponentContext'] = window['__0x1_enterComponentContext'];
+    globalThis['__0x1_exitComponentContext'] = window['__0x1_exitComponentContext'];
   }
   
-  // MINIFICATION-SAFE: Context functions with string access
-  for (let i = 0; i < CONTEXT_NAMES.length; i++) {
-    const contextName = CONTEXT_NAMES[i];
-    if (!window[contextName]) {
-      window[contextName] = function() {
-        // Minimal context function that works even when minified
-      };
-      if (typeof globalThis !== 'undefined') {
-        globalThis[contextName] = window[contextName];
-      }
-    }
-  }
-  
-  // MINIFICATION-SAFE: Global registry using string access
+  // Global hooks registry with the REAL working hooks
   window['__0x1_hooks'] = {
-    'isInitialized': true,
-    'contextReady': true
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage,
+    isInitialized: true,
+    contextReady: true,
+    enterComponentContext: window['__0x1_enterComponentContext'],
+    exitComponentContext: window['__0x1_exitComponentContext'],
+    triggerUpdate: window['__0x1_triggerUpdate']
   };
-  
-  // Copy hooks to registry using string access
-  for (let i = 0; i < HOOK_NAMES.length; i++) {
-    const hookName = HOOK_NAMES[i];
-    if (window[hookName]) {
-      window['__0x1_hooks'][hookName] = window[hookName];
-    }
-  }
   
   // Mark as done
   window['__0x1_hooks_init_done'] = true;
   window['__0x1_component_context_ready'] = true;
   
-  console.log('[0x1 Hooks] MINIFICATION-SAFE initialization complete');
-  
-})();
+  console.log('[0x1 Hooks] Hooks system initialized (no fallback)');
+}
 `;
 
       // CLEAN APPROACH: Just append minification-safe browser compatibility

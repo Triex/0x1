@@ -212,143 +212,44 @@ async function buildFramework() {
           if (file === 'hooks.ts') {
             console.log('🔧 Applying browser compatibility to hooks.js...');
             
-            // Add browser-compatible hooks implementation
+            // CRITICAL FIX: Don't add broken browser compatibility - the original hooks work fine!
+            // Just add the basic browser compatibility without fallback hooks
             const browserCompatCode = `
 
 if (typeof window !== 'undefined') {
   // Initialize React-compatible global context
   window.React = window.React || {};
   
-  // CREATE BROWSER-COMPATIBLE HOOK IMPLEMENTATIONS (no context checking!)
-  
-  // Simple state management for production builds
-  const stateStorage = new Map();
-  let componentCounter = 0;
-  
-  function browserUseState(initialValue) {
-    // No context checking - just work!
-    const computedInitialValue = typeof initialValue === 'function' ? initialValue() : initialValue;
-    
-    // Simple fallback state management
-    const stateId = 'state_' + (++componentCounter);
-    
-    if (!stateStorage.has(stateId)) {
-      stateStorage.set(stateId, computedInitialValue);
-    }
-    
-    const currentValue = stateStorage.get(stateId);
-    
-    const setValue = (newValue) => {
-      const nextValue = typeof newValue === 'function' ? newValue(currentValue) : newValue;
-      stateStorage.set(stateId, nextValue);
-      
-      // Trigger re-render if possible
-      if (window.__0x1_triggerUpdate) {
-        window.__0x1_triggerUpdate();
-      }
-    };
-    
-    return [currentValue, setValue];
-  }
-  
-  function browserUseEffect(effect, deps) {
-    // Simple effect execution - no context checking
-    setTimeout(() => {
-      try {
-        const cleanup = effect();
-        if (typeof cleanup === 'function') {
-          // Store cleanup for later if needed
-          window.__0x1_cleanupFunctions = window.__0x1_cleanupFunctions || [];
-          window.__0x1_cleanupFunctions.push(cleanup);
-        }
-      } catch (error) {
-        console.warn('[0x1 Hooks] useEffect error:', error);
-      }
-    }, 0);
-  }
-  
-  function browserUseLayoutEffect(effect, deps) {
-    // Same as useEffect for simplicity
-    return browserUseEffect(effect, deps);
-  }
-  
-  function browserUseMemo(factory, deps) {
-    // Simple memoization
-    try {
-      return factory();
-    } catch (error) {
-      console.warn('[0x1 Hooks] useMemo error:', error);
-      return undefined;
-    }
-  }
-  
-  function browserUseCallback(callback, deps) {
-    // Just return the callback
-    return callback;
-  }
-  
-  function browserUseRef(initialValue) {
-    // Simple ref implementation
-    return { current: initialValue };
-  }
-  
-  // Simple fallback implementations for custom hooks
-  function browserUseClickOutside() {
-    return { current: null };
-  }
-  
-  function browserUseFetch() {
-    return { data: null, loading: false, error: null };
-  }
-  
-  function browserUseForm() {
-    return {};
-  }
-  
-  function browserUseLocalStorage(initialValue) {
-    // Use browserUseState as fallback
-    return browserUseState(initialValue);
-  }
-  
-  // BROWSER-COMPATIBLE HOOK FUNCTIONS (no context checking!)
-  const hookFunctions = {
-    useState: browserUseState,
-    useEffect: browserUseEffect,
-    useLayoutEffect: browserUseLayoutEffect,
-    useMemo: browserUseMemo,
-    useCallback: browserUseCallback,
-    useRef: browserUseRef,
-    useClickOutside: browserUseClickOutside,
-    useFetch: browserUseFetch,
-    useForm: browserUseForm,
-    useLocalStorage: browserUseLocalStorage
-  };
-  
-  // Make browser-compatible hooks available globally
-  Object.assign(window, hookFunctions);
+  // CRITICAL FIX: Use the ACTUAL exported hook functions directly
+  // These are the real hooks that were working perfectly before
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
   
   // Also make available in React namespace for compatibility
-  Object.assign(window.React, hookFunctions);
+  Object.assign(window.React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage
+  });
   
   // Set the context functions that JSX runtime looks for
-  window.__0x1_enterComponentContext = function(componentId, updateCallback) {
-    // Simple context entry for JSX runtime compatibility
-  };
-  
-  window.__0x1_exitComponentContext = function() {
-    // Simple context exit for JSX runtime compatibility
-  };
+  window.__0x1_enterComponentContext = enterComponentContext || function() {};
+  window.__0x1_exitComponentContext = exitComponentContext || function() {};
+  window.__0x1_triggerUpdate = triggerComponentUpdate || function() {};
   
   globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
   globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
   
-  // Global hooks registry
+  // Global hooks registry with the REAL working hooks
   window.__0x1_hooks = {
-    ...hookFunctions,
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage,
     isInitialized: true,
     contextReady: true,
     enterComponentContext: window.__0x1_enterComponentContext,
-    exitComponentContext: window.__0x1_exitComponentContext
+    exitComponentContext: window.__0x1_exitComponentContext,
+    triggerUpdate: window.__0x1_triggerUpdate
   };
   
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
