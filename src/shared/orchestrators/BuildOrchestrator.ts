@@ -2345,16 +2345,33 @@ async function initApp() {
       hooksScript.onload = () => {
         if (DEBUG) console.log('[0x1 App] Hooks system loaded');
         
-        // IMMEDIATE: Check if hooks are available right now - no delays
-        if (typeof window.useState === 'function' || 
-            window.__0x1_hooks_init_done === true ||
-            (window.__0x1_hooks && window.__0x1_hooks.isInitialized === true)) {
-          if (DEBUG) console.log('[0x1 App] Hook context verified (immediate)');
-          resolve();
-        } else {
-          // If not immediately available, this is an error - hooks should be instant
-          reject(new Error('Hook system not properly initialized - hooks should be available immediately after module load'));
-        }
+        // CRITICAL FIX: Wait for hooks to actually initialize (they use setTimeout internally)
+        const checkHooksReady = () => {
+          // Check for the flags that are actually set by the hooks system
+          if (window.__0x1_hooks_init_done === true ||
+              (window.__0x1_hooks && window.__0x1_hooks.isInitialized === true) ||
+              (window.__0x1_hooksSystem && window.__0x1_hooksSystem.isInitialized === true) ||
+              typeof window.useState === 'function') {
+            if (DEBUG) console.log('[0x1 App] Hook context verified (immediate)');
+            resolve();
+          } else {
+            // Wait a bit more for hooks to initialize (they use setTimeout(0))
+            setTimeout(checkHooksReady, 10);
+          }
+        };
+        
+        // Start checking immediately
+        checkHooksReady();
+        
+        // Set a timeout as fallback to prevent infinite waiting
+        setTimeout(() => {
+          if (window.__0x1_hooks_init_done !== true && 
+              (!window.__0x1_hooks || window.__0x1_hooks.isInitialized !== true) &&
+              (!window.__0x1_hooksSystem || window.__0x1_hooksSystem.isInitialized !== true) &&
+              typeof window.useState !== 'function') {
+            reject(new Error('Hook system not properly initialized - hooks should be available immediately after module load'));
+          }
+        }, 200); // Give up to 200ms for hooks to initialize
       };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
@@ -2386,14 +2403,35 @@ async function initApp() {
       jsxScript.onload = () => {
         if (DEBUG) console.log('[0x1 App] JSX runtime loaded');
         
-        // IMMEDIATE: Check if JSX functions are available right now - no delays
-        if (typeof window.jsx === 'function' || typeof window.jsxDEV === 'function') {
-          if (DEBUG) console.log('[0x1 App] JSX runtime verified (immediate)');
-          resolve();
-        } else {
-          // If not immediately available, this is an error - JSX should be instant
-          reject(new Error('JSX runtime not properly initialized - JSX should be available immediately after module load'));
-        }
+        // CRITICAL FIX: Check for JSX runtime availability more robustly
+        const checkJsxReady = () => {
+          // JSX runtime functions might be available in different forms
+          if (typeof window.jsx === 'function' || 
+              typeof window.jsxDEV === 'function' ||
+              typeof window.jsxs === 'function' ||
+              typeof window.createElement === 'function' ||
+              (window.__0x1_jsx && window.__0x1_jsx.isInitialized === true)) {
+            if (DEBUG) console.log('[0x1 App] JSX runtime verified (immediate)');
+            resolve();
+          } else {
+            // Wait a bit more for JSX runtime to initialize
+            setTimeout(checkJsxReady, 10);
+          }
+        };
+        
+        // Start checking immediately
+        checkJsxReady();
+        
+        // Set a timeout as fallback
+        setTimeout(() => {
+          if (typeof window.jsx !== 'function' && 
+              typeof window.jsxDEV !== 'function' &&
+              typeof window.jsxs !== 'function' &&
+              typeof window.createElement !== 'function' &&
+              (!window.__0x1_jsx || window.__0x1_jsx.isInitialized !== true)) {
+            reject(new Error('JSX runtime not properly initialized - JSX should be available immediately after module load'));
+          }
+        }, 200); // Give up to 200ms for JSX runtime to initialize
       };
       jsxScript.onerror = reject;
       document.head.appendChild(jsxScript);
