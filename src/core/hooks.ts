@@ -11,6 +11,7 @@ interface EffectData {
   effect: () => void | (() => void);
   cleanup?: (() => void) | void;
   deps?: any[] | undefined;
+  id: string;
 }
 
 interface MemoData {
@@ -35,6 +36,8 @@ interface ComponentData {
   refs: RefData[];
   hookIndex: number;
   isMounted: boolean;
+  needsUpdate: boolean;
+  updateScheduled: boolean;
 }
 
 // Custom RefObject type (instead of React.RefObject)
@@ -51,7 +54,6 @@ const componentRegistry = new Map<string, ComponentData>();
 
 // Update queue for batching state changes (optimized for performance)
 const updateQueue = new Set<() => void>();
-let isProcessingUpdates = false;
 
 // Optimized debouncing mechanism - reduced frequency for better performance
 const pendingUpdates = new Map<string, number>();
@@ -117,7 +119,9 @@ export function setComponentContext(componentId: string, updateCallback?: () => 
       callbacks: [],
       refs: [],
       hookIndex: 0,
-      isMounted: false
+      isMounted: false,
+      needsUpdate: false,
+      updateScheduled: false
     });
   }
   
@@ -166,70 +170,44 @@ function getCurrentComponentData(): ComponentData {
 }
 
 /**
- * Queue a component update - FIXED FOR COMPONENT-ONLY UPDATES
+ * Queue a component update - OPTIMIZED FOR BATCHING
  */
-function queueUpdate(componentId: string): void {
-  // Validate componentId
-  if (!componentId || componentId === 'undefined' || componentId === 'null') {
-    console.warn('[0x1 Hooks] Invalid componentId for queueUpdate:', componentId);
-    return;
-  }
+function queueUpdate(componentId: string, priority: UpdatePriority = UpdatePriority.NORMAL): void {
+  const componentData = componentRegistry.get(componentId);
+  if (!componentData) return;
+
+  // ✅ Prevent duplicate scheduling
+  if (componentData.updateScheduled) return;
   
-  console.log(`[0x1 Hooks] Queuing update for component: ${componentId}`);
-  
-  const updateCallback = componentUpdateCallbacks.get(componentId);
-  if (!updateCallback) {
-    console.warn(`[0x1 Hooks] No update callback found for component: ${componentId}`);
-    // REMOVED: Router refresh fallback that causes full page reloads
-    // Instead, just log the issue - the component may not need re-rendering
-    return;
-  }
-  
-  // Call the update callback directly - this should trigger JSX runtime's executeReRender
-  console.log(`[0x1 Hooks] Calling update callback for ${componentId}`);
-  try {
-    updateCallback();
-    console.log(`[0x1 Hooks] Update callback completed for ${componentId}`);
-  } catch (error) {
-    console.error(`[0x1 Hooks] Update error for ${componentId}:`, error);
-  }
-  
-  // ADDITIONAL: Queue for microtask processing for batching
-  updateQueue.add(updateCallback);
-  
-  if (!isProcessingUpdates) {
-    isProcessingUpdates = true;
-    queueMicrotask(() => {
-      const updates = Array.from(updateQueue);
-      updateQueue.clear();
-      isProcessingUpdates = false;
-      
-      console.log(`[0x1 Hooks] Processing ${updates.length} queued updates`);
-      updates.forEach((update, index) => {
-        try {
-          console.log(`[0x1 Hooks] Executing queued update ${index + 1}`);
-          update();
-        } catch (error) {
-          handleError(error, 'component update');
-        }
-      });
-    });
-  }
+  componentData.updateScheduled = true;
+  updateScheduler.scheduleUpdate(componentId, priority);
 }
 
 /**
- * Compare two dependency arrays for changes
+ * Compare two dependency arrays for changes - OPTIMIZED WITH CACHING
  */
 function depsChanged(oldDeps: any[] | undefined, newDeps: any[] | undefined): boolean {
-  if (oldDeps === undefined || newDeps === undefined) {
-    return oldDeps !== newDeps;
+  if (!oldDeps || !newDeps) return true;
+  if (oldDeps.length !== newDeps.length) return true;
+  
+  // ✅ Quick reference check first
+  if (oldDeps === newDeps) return false;
+  
+  // ✅ Use cached result if available
+  if (depsCache.has(newDeps)) {
+    return depsCache.get(newDeps)!;
   }
   
-  if (oldDeps.length !== newDeps.length) {
-    return true;
+  // ✅ Optimized comparison - bail early on first difference
+  for (let i = 0; i < oldDeps.length; i++) {
+    if (oldDeps[i] !== newDeps[i]) {
+      depsCache.set(newDeps, true);
+      return true;
+    }
   }
   
-  return oldDeps.some((dep, index) => !Object.is(dep, newDeps[index]));
+  depsCache.set(newDeps, false);
+  return false;
 }
 
 // ============================================================================
@@ -440,7 +418,8 @@ export function useEffect(effect: () => void | (() => void), deps?: any[]): void
     componentData.effects[hookIndex] = {
       effect,
       cleanup: undefined,
-      deps: undefined
+      deps: undefined,
+      id: `${currentComponentId}:${hookIndex}`
     };
   }
   
@@ -486,7 +465,8 @@ export function useLayoutEffect(effect: () => void | (() => void), deps?: any[])
     componentData.effects[hookIndex] = {
       effect,
       cleanup: undefined,
-      deps: undefined
+      deps: undefined,
+      id: `${currentComponentId}:${hookIndex}`
     };
   }
   
@@ -994,4 +974,386 @@ if (typeof window !== 'undefined') {
   });
   
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+}
+
+// ✅ ADD: React-style update batching system
+class UpdateScheduler {
+  private updateQueues = new Map<UpdatePriority, Set<string>>();
+  private effectQueues = new Map<UpdatePriority, Set<string>>();
+  private isScheduling = false;
+  private frameId: number | null = null;
+  private immediateTimeoutId: any = null; // ✅ Fix: Use any to handle Node/Browser differences
+
+  constructor() {
+    // Initialize priority queues
+    Object.values(UpdatePriority).forEach(priority => {
+      if (typeof priority === 'number') {
+        this.updateQueues.set(priority, new Set());
+        this.effectQueues.set(priority, new Set());
+      }
+    });
+  }
+
+  scheduleUpdate(componentId: string, priority: UpdatePriority = UpdatePriority.NORMAL): void {
+    this.updateQueues.get(priority)!.add(componentId);
+    this.markComponentNeedsUpdate(componentId);
+    this.scheduleWork(priority);
+  }
+
+  scheduleEffect(effectId: string, priority: UpdatePriority = UpdatePriority.NORMAL): void {
+    this.effectQueues.get(priority)!.add(effectId);
+    this.scheduleWork(priority);
+  }
+
+  private scheduleWork(priority: UpdatePriority): void {
+    if (this.isScheduling) return;
+    
+    this.isScheduling = true;
+    
+    // ✅ IMMEDIATE priority uses synchronous execution
+    if (priority === UpdatePriority.IMMEDIATE) {
+      if (this.immediateTimeoutId) {
+        clearTimeout(this.immediateTimeoutId);
+      }
+      this.immediateTimeoutId = setTimeout(() => this.flushWork(), 0);
+      return;
+    }
+    
+    // ✅ Other priorities use RAF for smooth performance
+    if (this.frameId) {
+      cancelAnimationFrame(this.frameId);
+    }
+    
+    this.frameId = requestAnimationFrame(() => {
+      this.flushWork();
+    });
+  }
+
+  private flushWork(): void {
+    try {
+      // ✅ Process updates in priority order (IMMEDIATE -> IDLE)
+      for (const priority of [UpdatePriority.IMMEDIATE, UpdatePriority.HIGH, UpdatePriority.NORMAL, UpdatePriority.LOW, UpdatePriority.IDLE]) {
+        const updateQueue = this.updateQueues.get(priority)!;
+        if (updateQueue.size > 0) {
+          const updates = Array.from(updateQueue);
+          updateQueue.clear();
+          
+          for (const componentId of updates) {
+            this.flushComponentUpdate(componentId);
+          }
+        }
+
+        const effectQueue = this.effectQueues.get(priority)!;
+        if (effectQueue.size > 0) {
+          const effects = Array.from(effectQueue);
+          effectQueue.clear();
+          
+          this.flushEffects(effects);
+        }
+      }
+    } finally {
+      this.isScheduling = false;
+      this.frameId = null;
+      this.immediateTimeoutId = null;
+    }
+  }
+
+  private markComponentNeedsUpdate(componentId: string): void {
+    const componentData = componentRegistry.get(componentId);
+    if (componentData) {
+      componentData.needsUpdate = true;
+    }
+  }
+
+  private flushComponentUpdate(componentId: string): void {
+    const componentData = componentRegistry.get(componentId);
+    if (!componentData || !componentData.needsUpdate) return;
+
+    componentData.needsUpdate = false;
+    componentData.updateScheduled = false;
+
+    const callback = componentUpdateCallbacks.get(componentId);
+    if (callback) {
+      try {
+        callback();
+      } catch (error) {
+        handleError(error, `Component update: ${componentId}`);
+      }
+    }
+  }
+
+  private flushEffects(effectIds: string[]): void {
+    const effectsByComponent = new Map<string, string[]>();
+    
+    for (const effectId of effectIds) {
+      const [componentId] = effectId.split(':');
+      if (!effectsByComponent.has(componentId)) {
+        effectsByComponent.set(componentId, []);
+      }
+      effectsByComponent.get(componentId)!.push(effectId);
+    }
+
+    for (const [componentId, componentEffectIds] of effectsByComponent) {
+      const componentData = componentRegistry.get(componentId);
+      if (!componentData) continue;
+
+      for (const effectId of componentEffectIds) {
+        const effectIndex = parseInt(effectId.split(':')[1]);
+        const effectData = componentData.effects[effectIndex];
+        
+        if (effectData) {
+          this.executeEffect(effectData);
+        }
+      }
+    }
+  }
+
+  private executeEffect(effectData: EffectData): void {
+    try {
+      if (effectData.cleanup && typeof effectData.cleanup === 'function') {
+        effectData.cleanup();
+        effectData.cleanup = undefined;
+      }
+
+      const cleanup = effectData.effect();
+      if (typeof cleanup === 'function') {
+        effectData.cleanup = cleanup;
+      }
+    } catch (error) {
+      handleError(error, `Effect execution: ${effectData.id}`);
+    }
+  }
+}
+
+// ✅ Global scheduler instance
+const updateScheduler = new UpdateScheduler();
+
+// ✅ OPTIMIZED: Fast dependency comparison with memoization
+const depsCache = new WeakMap<any[], boolean>();
+
+// ✅ ADD: Memory cleanup for better performance
+export function cleanupComponentData(componentId: string): void {
+  const componentData = componentRegistry.get(componentId);
+  if (!componentData) return;
+
+  // ✅ Clean up all effects
+  for (const effectData of componentData.effects) {
+    if (effectData.cleanup && typeof effectData.cleanup === 'function') {
+      try {
+        effectData.cleanup();
+      } catch (error) {
+        handleError(error, `Effect cleanup: ${effectData.id}`);
+      }
+    }
+  }
+
+  // ✅ Clear dependency cache entries
+  componentData.effects.forEach(effect => {
+    if (effect.deps) {
+      depsCache.delete(effect.deps);
+    }
+  });
+
+  // ✅ Remove from store
+  componentRegistry.delete(componentId);
+  componentUpdateCallbacks.delete(componentId);
+}
+
+// ✅ ADD: Performance monitoring
+export function getPerformanceMetrics() {
+  return {
+    totalComponents: componentRegistry.size,
+    totalCallbacks: componentUpdateCallbacks.size,
+    averageEffectsPerComponent: Array.from(componentRegistry.values())
+      .reduce((sum, data) => sum + data.effects.length, 0) / componentRegistry.size,
+    componentsNeedingUpdate: Array.from(componentRegistry.values())
+      .filter(data => data.needsUpdate).length
+  };
+}
+
+// ✅ ADD: Priority levels for concurrent features
+enum UpdatePriority {
+  IMMEDIATE = 0,    // User interactions (clicks, typing)
+  HIGH = 1,         // Animation frames
+  NORMAL = 2,       // Regular state updates
+  LOW = 3,          // Background updates, transitions
+  IDLE = 4          // Cleanup, analytics
+}
+
+// ✅ ADD: Transition context for useTransition
+interface TransitionContext {
+  isPending: boolean;
+  startTransition: (callback: () => void) => void;
+}
+
+// ✅ ADD: Context system for useContext
+interface ContextValue<T> {
+  value: T;
+  subscribers: Set<string>; // Component IDs that consume this context
+}
+
+const contextRegistry = new Map<any, ContextValue<any>>();
+const componentContextSubscriptions = new Map<string, Set<any>>(); // componentId -> Set of contexts
+
+// ✅ ADD: Reducer action type
+interface ReducerAction {
+  type: string;
+  payload?: any;
+}
+
+// ============================================================================
+// Advanced Hook Implementations
+// ============================================================================
+
+/**
+ * useReducer - For complex state management like Redux
+ */
+export function useReducer<State, Action>(
+  reducer: (state: State, action: Action) => State,
+  initialState: State
+): [State, (action: Action) => void] {
+  const componentData = getCurrentComponentData();
+  const hookIndex = componentData.hookIndex++;
+
+  if (hookIndex >= componentData.states.length) {
+    componentData.states.push(initialState);
+  }
+
+  const currentState = componentData.states[hookIndex] as State;
+
+  const dispatch = (action: Action) => {
+    const componentData = getCurrentComponentData();
+    const oldState = componentData.states[hookIndex];
+    
+    try {
+      const newState = reducer(oldState, action);
+      
+      // ✅ Only update if state actually changed
+      if (!Object.is(oldState, newState)) {
+        componentData.states[hookIndex] = newState;
+        queueUpdate(currentComponentId!, UpdatePriority.NORMAL);
+      }
+    } catch (error) {
+      handleError(error, `useReducer dispatch`);
+    }
+  };
+
+  return [currentState, dispatch];
+}
+
+/**
+ * useTransition - For marking updates as non-urgent (React 18 concurrent feature)
+ */
+export function useTransition(): [boolean, (callback: () => void) => void] {
+  const [isPending, setIsPending] = useState(false);
+
+  const startTransition = (callback: () => void) => {
+    setIsPending(true);
+    
+    // ✅ Execute callback with LOW priority
+    setTimeout(() => {
+      try {
+        callback();
+      } finally {
+        setIsPending(false);
+      }
+    }, 0);
+  };
+
+  return [isPending, startTransition];
+}
+
+/**
+ * createContext - Create a context for prop drilling solutions
+ */
+export function createContext<T>(defaultValue: T) {
+  const contextKey = Symbol('0x1Context');
+  
+  // Initialize context registry
+  contextRegistry.set(contextKey, {
+    value: defaultValue,
+    subscribers: new Set()
+  });
+
+  return {
+    Provider: ({ value, children }: { value: T; children: any }) => {
+      // Update context value and notify subscribers
+      const contextData = contextRegistry.get(contextKey)!;
+      const oldValue = contextData.value;
+      
+      if (!Object.is(oldValue, value)) {
+        contextData.value = value;
+        
+        // ✅ Notify all subscriber components
+        for (const componentId of contextData.subscribers) {
+          queueUpdate(componentId, UpdatePriority.NORMAL);
+        }
+      }
+
+      return children;
+    },
+    Consumer: ({ children }: { children: (value: T) => any }) => {
+      const contextData = contextRegistry.get(contextKey)!;
+      return children(contextData.value);
+    },
+    contextKey
+  };
+}
+
+/**
+ * useContext - Consume context values
+ */
+export function useContext<T>(context: { contextKey: symbol }): T {
+  if (!currentComponentId) {
+    throw new Error('[0x1 Hooks] useContext called outside component context');
+  }
+
+  const contextData = contextRegistry.get(context.contextKey);
+  if (!contextData) {
+    throw new Error('[0x1 Hooks] useContext called with invalid context');
+  }
+
+  // ✅ Subscribe component to context updates
+  contextData.subscribers.add(currentComponentId);
+  
+  // ✅ Track context subscription for cleanup
+  if (!componentContextSubscriptions.has(currentComponentId)) {
+    componentContextSubscriptions.set(currentComponentId, new Set());
+  }
+  componentContextSubscriptions.get(currentComponentId)!.add(context.contextKey);
+
+  return contextData.value as T;
+}
+
+/**
+ * useDeferredValue - Defer updates for better performance
+ */
+export function useDeferredValue<T>(value: T): T {
+  const [deferredValue, setDeferredValue] = useState(value);
+
+  useEffect(() => {
+    // ✅ Defer the update with LOW priority
+    const timeoutId = setTimeout(() => {
+      setDeferredValue(value);
+    }, 5); // Small delay for deferring
+
+    return () => clearTimeout(timeoutId);
+  }, [value]);
+
+  return deferredValue;
+}
+
+/**
+ * useId - Generate stable unique IDs (useful for accessibility)
+ */
+export function useId(): string {
+  const componentData = getCurrentComponentData();
+  const hookIndex = componentData.hookIndex++;
+
+  if (hookIndex >= componentData.states.length) {
+    const id = `0x1-${currentComponentId}-${hookIndex}`;
+    componentData.states.push(id);
+  }
+
+  return componentData.states[hookIndex] as string;
 }

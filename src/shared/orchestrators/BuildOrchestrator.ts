@@ -4257,10 +4257,40 @@ export default function ErrorComponent(props) {
     const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
       resources;
 
-    // Use project config for the main SPA file (users will get dynamic metadata updates)
-    const pageTitle = projectConfig.name || "My 0x1 App";
-    const pageDescription =
-      projectConfig.description || "0x1 Framework application";
+    // CRITICAL FIX: Extract metadata from homepage component instead of just using project config
+    let pageTitle = projectConfig.name || "My 0x1 App";
+    let pageDescription = projectConfig.description || "0x1 Framework application";
+    let additionalMetaTags = "";
+
+    // Find the root route and extract its metadata
+    const homeRoute = this.state.routes.find((route) => route.path === "/");
+    if (homeRoute) {
+      try {
+        const routeMetadata = await this.extractMetadataFromRoute(homeRoute);
+        if (routeMetadata) {
+          const { resolveTitle, generateMetaTags } = await import("../../core/metadata");
+          pageTitle = resolveTitle(routeMetadata);
+          pageDescription = routeMetadata.description || projectConfig.description || "0x1 Framework application";
+          
+          // Generate comprehensive meta tags for homepage
+          try {
+            additionalMetaTags = generateMetaTags(routeMetadata);
+          } catch (error) {
+            if (!this.options.silent) {
+              logger.warn(`Failed to generate meta tags for homepage: ${error}`);
+            }
+          }
+
+          if (!this.options.silent) {
+            logger.info(`✅ Extracted metadata for homepage: "${pageTitle}"`);
+          }
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to extract homepage metadata, using project config: ${error}`);
+        }
+      }
+    }
 
     let spaHtml = `<!DOCTYPE html>
 <html lang="en" class="dark">
@@ -4269,7 +4299,7 @@ export default function ErrorComponent(props) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="description" content="${pageDescription}">
-${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
+${additionalMetaTags}${faviconLink ? faviconLink + "\n" : ""}  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">
 ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
   {
     "imports": {
@@ -4316,7 +4346,7 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
 
     if (!this.options.silent) {
       logger.info(
-        "✅ Generated main SPA file: index.html (for users with client-side routing)"
+        "✅ Generated main SPA file: index.html (with homepage metadata)"
       );
     }
   }
@@ -4334,16 +4364,17 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
       resources;
 
     for (const route of this.state.routes) {
-      // CRITICAL FIX: Skip root route to avoid overriding main SPA file
+      // CRITICAL FIX: Skip root route since main SPA file already has proper metadata extracted
+      // This prevents overwriting the main index.html file
       if (route.path === "/") {
         if (!this.options.silent) {
           logger.info(
-            `⏭️ Skipping root route - main SPA file handles this with dynamic metadata`
+            `⏭️ Skipping root route HTML generation - main SPA file already has extracted metadata`
           );
         }
         continue;
       }
-
+      
       try {
         // Extract metadata for this specific route
         const routeMetadata = await this.extractMetadataFromRoute(route);
@@ -4374,7 +4405,8 @@ ${externalCssLinks ? externalCssLinks + "\n" : ""}  <script type="importmap">
           }
         } else {
           // Fallback to project config with route-specific title
-          pageTitle = `${route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1)} | ${projectConfig.name || "My 0x1 App"}`;
+          const routeName = route.path === "/" ? "Home" : route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1);
+          pageTitle = `${routeName} | ${projectConfig.name || "My 0x1 App"}`;
           pageDescription =
             projectConfig.description || "0x1 Framework application";
         }

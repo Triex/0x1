@@ -44,7 +44,9 @@
 - **Sub-second builds**: Bun-powered compilation and bundling
 
 ### 🔄 React/Next.js Drop-in Replacement
-- **Full React Hooks API**: `useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`
+- **Complete React Hooks API**: `useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`, `useReducer`, `useContext`, `createContext`
+- **Advanced Performance Hooks**: `useTransition`, `useDeferredValue`, `useId` with priority-based scheduling
+- **Enhanced 0x1 Hooks**: `useFetch`, `useForm`, `useLocalStorage`, `useClickOutside`
 - **Next.js-compatible Link**: Drop-in replacement for `next/link`
 - **App Directory Structure**: Next15-style file-based routing
 - **JSX Runtime**: Custom JSX implementation without React dependencies
@@ -675,7 +677,7 @@ import { useRouter } from '0x1/router';
 Use this one-liner to migrate most imports automatically:
 
 ```bash
-# Replace React imports
+# Replace React imports (including all hooks)
 find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]react['\''"];/from "0x1";/g'
 
 # Replace Next.js Link imports
@@ -683,19 +685,30 @@ find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]next\/lin
 
 # Replace Next.js router imports
 find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]next\/router['\''"];/from "0x1\/router";/g'
+find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]next\/navigation['\''"];/from "0x1\/router";/g'
+
+# Update hook imports specifically
+find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/useState, useEffect, useCallback, useMemo, useRef/useState, useEffect, useCallback, useMemo, useRef, useReducer, useContext, createContext/g'
 ```
 
 ### Supported React Features
 
-✅ **Fully Supported:**
+✅ **Core React Hooks:**
 - `useState` - State management
 - `useEffect` - Side effects and lifecycle
 - `useCallback` - Function memoization
 - `useMemo` - Value memoization
 - `useRef` - DOM references and mutable values
+- `useReducer` - Complex state management
+- `useContext` / `createContext` - Context API for prop drilling solution
 - JSX syntax and components
 - Component props and children
 - Event handlers (`onClick`, `onChange`, etc.)
+
+✅ **Advanced Performance Hooks:**
+- `useTransition` - Non-blocking updates with pending states
+- `useDeferredValue` - Performance optimization for expensive computations
+- `useId` - Stable ID generation for accessibility
 
 ✅ **0x1 Enhanced Features:**
 - `useFetch` - Built-in data fetching with loading states
@@ -713,13 +726,15 @@ find ./src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/from ['\''"]next\/rou
 
 **Before (React/Next.js):**
 ```tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useReducer, useContext } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
 export default function MyComponent() {
   const [count, setCount] = useState(0);
+  const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
+  const theme = useContext(ThemeContext);
 
   useEffect(() => {
     console.log('Component mounted');
@@ -741,13 +756,15 @@ export default function MyComponent() {
 
 **After (0x1):**
 ```tsx
-import { useState, useEffect } from '0x1';
+import { useState, useEffect, useReducer, useContext } from '0x1';
 import Link from '0x1/link';
 import { useRouter } from '0x1/router';
 
 export default function MyComponent() {
   const [count, setCount] = useState(0);
+  const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
+  const theme = useContext(ThemeContext);
 
   useEffect(() => {
     console.log('Component mounted');
@@ -808,7 +825,9 @@ function App() {
 
 ### Hooks API
 
-0x1 provides a complete React-compatible hooks API:
+0x1 provides a complete React-compatible hooks API with advanced features:
+
+#### Core React Hooks
 
 ```tsx
 import { 
@@ -817,14 +836,17 @@ import {
   useCallback, 
   useMemo, 
   useRef,
-  useFetch,
-  useForm,
-  useLocalStorage 
+  useReducer,
+  useContext,
+  createContext
 } from '0x1';
 
 function MyComponent() {
   // State management
   const [count, setCount] = useState(0);
+  
+  // Complex state with reducer
+  const [state, dispatch] = useReducer(reducer, initialState);
   
   // Side effects
   useEffect(() => {
@@ -844,19 +866,137 @@ function MyComponent() {
   // Refs
   const inputRef = useRef<HTMLInputElement>(null);
   
-  // Data fetching (0x1 enhanced)
-  const { data, loading, error } = useFetch('/api/data');
-  
-  // Persistent state (0x1 enhanced)
-  const [theme, setTheme] = useLocalStorage('theme', 'dark');
-  
   return (
     <div>
       <input ref={inputRef} />
       <button onClick={handleClick}>
         Count: {count} (Expensive: {expensiveValue})
       </button>
+    </div>
+  );
+}
+```
+
+#### Advanced Performance Hooks
+
+```tsx
+import { 
+  useTransition,
+  useDeferredValue,
+  useId
+} from '0x1';
+
+function AdvancedComponent() {
+  const [isPending, startTransition] = useTransition();
+  const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
+  const id = useId();
+  
+  const handleSearch = (newQuery: string) => {
+    setQuery(newQuery);
+    
+    // Mark expensive updates as non-urgent
+    startTransition(() => {
+      // This will be batched and deprioritized
+      performExpensiveSearch(deferredQuery);
+    });
+  };
+  
+  return (
+    <div>
+      <input 
+        id={id}
+        onChange={(e) => handleSearch(e.target.value)}
+        placeholder="Search..."
+      />
+      {isPending && <span>Searching...</span>}
+    </div>
+  );
+}
+```
+
+#### Context API
+
+```tsx
+import { createContext, useContext } from '0x1';
+
+// Create context
+const ThemeContext = createContext<{
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+} | null>(null);
+
+// Provider component
+function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
+  
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+// Consumer component
+function ThemedButton() {
+  const context = useContext(ThemeContext);
+  if (!context) throw new Error('useContext must be used within ThemeProvider');
+  
+  const { theme, toggleTheme } = context;
+  
+  return (
+    <button 
+      onClick={toggleTheme}
+      className={theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-black'}
+    >
+      Toggle Theme
+    </button>
+  );
+}
+```
+
+#### 0x1 Enhanced Hooks
+
+```tsx
+import { 
+  useFetch,
+  useForm,
+  useLocalStorage,
+  useClickOutside 
+} from '0x1';
+
+function EnhancedComponent() {
+  // Data fetching with loading states
+  const { data, loading, error } = useFetch('/api/data');
+  
+  // Form state management with validation
+  const { values, errors, handleChange, handleSubmit } = useForm({
+    initialValues: { email: '', password: '' },
+    validate: (values) => {
+      const errors: any = {};
+      if (!values.email) errors.email = 'Email is required';
+      if (!values.password) errors.password = 'Password is required';
+      return errors;
+    }
+  });
+  
+  // Persistent state with localStorage
+  const [theme, setTheme] = useLocalStorage('theme', 'dark');
+  
+  // Click outside detection
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => {
+    console.log('Clicked outside!');
+  });
+  
+  return (
+    <div ref={ref}>
       {loading && <p>Loading...</p>}
+      {error && <p>Error: {error.message}</p>}
       {data && <pre>{JSON.stringify(data, null, 2)}</pre>}
     </div>
   );
@@ -1248,18 +1388,22 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.360)
-- ✅ Full React Hooks API compatibility
+### Current State (v0.0.361)
+- ✅ Complete React Hooks API (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`, `useReducer`, `useContext`, `createContext`)
+- ✅ Advanced Performance Hooks (`useTransition`, `useDeferredValue`, `useId`) with priority-based scheduling
+- ✅ Enhanced 0x1 Hooks (`useFetch`, `useForm`, `useLocalStorage`, `useClickOutside`)
 - ✅ `"use server"` & `"use client"` directives
 - ✅ Next.js-compatible Link component
 - ✅ App directory structure support
 - ✅ Tailwind CSS v4 integration
-- ✅ PWA support with auto-generated assets
+- ✅ PWA support with auto-generated assets (PNG/SVG icons)
 - ✅ TypeScript-first development
 - ✅ Bun-optimized build system
 - ✅ SSE + WebSocket live reload
 - ✅ Zero-dependency architecture
-- ✅ Simplified, reliable hooks implementation
+- ✅ Priority-based update scheduling (IMMEDIATE → IDLE)
+- ✅ Batched updates with RequestAnimationFrame
+- ✅ Memory cleanup and context subscription management
 - ✅ Auto-context inference with directive validation
 
 ### Upcoming Features
