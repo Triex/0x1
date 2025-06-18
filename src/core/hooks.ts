@@ -976,6 +976,15 @@ if (typeof window !== 'undefined') {
   console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
 }
 
+// ✅ ADD: Priority levels for concurrent features (MOVED BEFORE CLASS)
+enum UpdatePriority {
+  IMMEDIATE = 0,    // User interactions (clicks, typing)
+  HIGH = 1,         // Animation frames
+  NORMAL = 2,       // Regular state updates
+  LOW = 3,          // Background updates, transitions
+  IDLE = 4          // Cleanup, analytics
+}
+
 // ✅ ADD: React-style update batching system
 class UpdateScheduler {
   private updateQueues = new Map<UpdatePriority, Set<string>>();
@@ -985,12 +994,18 @@ class UpdateScheduler {
   private immediateTimeoutId: any = null; // ✅ Fix: Use any to handle Node/Browser differences
 
   constructor() {
-    // Initialize priority queues
-    Object.values(UpdatePriority).forEach(priority => {
-      if (typeof priority === 'number') {
-        this.updateQueues.set(priority, new Set());
-        this.effectQueues.set(priority, new Set());
-      }
+    // Initialize priority queues - FIXED: Use explicit priority values
+    const priorities = [
+      UpdatePriority.IMMEDIATE,
+      UpdatePriority.HIGH,
+      UpdatePriority.NORMAL,
+      UpdatePriority.LOW,
+      UpdatePriority.IDLE
+    ];
+    
+    priorities.forEach(priority => {
+      this.updateQueues.set(priority, new Set());
+      this.effectQueues.set(priority, new Set());
     });
   }
 
@@ -1171,14 +1186,7 @@ export function getPerformanceMetrics() {
   };
 }
 
-// ✅ ADD: Priority levels for concurrent features
-enum UpdatePriority {
-  IMMEDIATE = 0,    // User interactions (clicks, typing)
-  HIGH = 1,         // Animation frames
-  NORMAL = 2,       // Regular state updates
-  LOW = 3,          // Background updates, transitions
-  IDLE = 4          // Cleanup, analytics
-}
+
 
 // ✅ ADD: Transition context for useTransition
 interface TransitionContext {
