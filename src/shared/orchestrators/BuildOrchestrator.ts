@@ -3477,7 +3477,9 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       "    body.app-loaded .loading-skeleton { display: none !important; }\n" +
       "    body.app-loaded #loading-skeleton { display: none !important; }\n" +
       "  </style>\n" +
-      `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}" media="print" onload="this.media='all'">\n` +
+      `  <!-- PERFORMANCE: Critical CSS inlined, full CSS loaded asynchronously -->\n` +
+      `  <link rel="preload" href="/styles.css?v=${cacheBust}" as="style" onload="this.onload=null;this.rel='stylesheet'">\n` +
+      `  <noscript><link rel="stylesheet" href="/styles.css?v=${cacheBust}"></noscript>\n` +
       (externalCssLinks ? externalCssLinks + "\n" : "") +
       (pwaMetaTags ? pwaMetaTags + "\n" : "") +
       "  <script type=\"importmap\">\n" +
@@ -3501,7 +3503,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       "  </script>\n" +
       "</head>\n" +
       '<body class="bg-slate-900 text-white">\n' +
-      this.generateLoadingSkeleton(pageTitle) + "\n" +
+      "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
       '  <div id="app"></div>\n\n' +
       "  <script>\n" +
       "    window.process={env:{NODE_ENV:'production'}};\n\n" +
@@ -3594,45 +3596,46 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
    * Inlines essential styles to prevent render blocking
    */
   private async extractCriticalCSS(outputPath: string): Promise<string> {
+    // PERFORMANCE: Ultra-minimal critical CSS for instant rendering
     const criticalCSS = `
-      /* Critical base styles */
+      /* CRITICAL: Essential base styles for instant render */
       *,::before,::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}
       ::before,::after{--tw-content:''}
-      html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal}
+      html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
       body{margin:0;line-height:inherit}
 
-      /* Dark mode essentials */
-      .dark{--tw-bg-opacity:1;background-color:rgb(15 23 42 / var(--tw-bg-opacity));--tw-text-opacity:1;color:rgb(248 250 252 / var(--tw-text-opacity))}
-
-      /* Layout utilities */
-      .fixed{position:fixed}
-      .inset-0{top:0px;right:0px;bottom:0px;left:0px}
-      .z-50{z-index:50}
+      /* CRITICAL: Immediate layout to prevent CLS */
       .flex{display:flex}
       .min-h-screen{min-height:100vh}
       .items-center{align-items:center}
       .justify-center{justify-content:center}
       .flex-col{flex-direction:column}
-
-      /* Spacing */
+      .text-center{text-align:center}
       .p-4{padding:1rem}
       .mb-4{margin-bottom:1rem}
       .mb-8{margin-bottom:2rem}
-      .mt-12{margin-top:3rem}
 
-      /* Typography */
+      /* CRITICAL: Core colors for instant visibility */
+      .bg-slate-900{background-color:#0f172a}
+      .bg-white{background-color:#fff}
+      .text-white{color:#fff}
+      .text-gray-900{color:#111827}
+      .text-violet-600{color:#7c3aed}
+
+      /* CRITICAL: Typography for readability */
       .text-2xl{font-size:1.5rem;line-height:2rem}
+      .text-lg{font-size:1.125rem;line-height:1.75rem}
       .font-bold{font-weight:700}
-      .text-gray-400{--tw-text-opacity:1;color:rgb(156 163 175 / var(--tw-text-opacity))}
 
-      /* Colors */
-      .bg-slate-900{--tw-bg-opacity:1;background-color:rgb(15 23 42 / var(--tw-bg-opacity))}
-      .bg-purple-600{--tw-bg-opacity:1;background-color:rgb(147 51 234 / var(--tw-bg-opacity))}
-      .text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity))}
+      /* CRITICAL: Theme support */
+      .dark{background-color:#0f172a;color:#f8fafc}
+      .dark .dark\\:text-white{color:#fff}
 
-      /* Loading animation */
-      .animate-spin{animation:spin 1s linear infinite}
-      @keyframes spin{to{transform:rotate(360deg)}}
+      /* CRITICAL: Essential components */
+      .rounded-lg{border-radius:0.5rem}
+      .shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
+      .transition-all{transition:all 0.15s ease}
+      .hover\\:bg-violet-700:hover{background-color:#6d28d9}
     `;
 
     return criticalCSS.replace(/\n\s+/g, "").trim();
@@ -3641,21 +3644,24 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
 
 
   /**
-   * Generate resource hints for faster loading
-   * Preloads critical resources to improve loading speed
+   * Generate resource hints for LIGHTNING-FAST loading
+   * Aggressive preloading for sub-1 second rendering
    */
   private generateResourceHints(cacheBust: number): string {
     return `
-  <!-- Resource hints for performance -->
-  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">
+  <!-- PERFORMANCE: Aggressive preloading for instant rendering -->
+  <link rel="preload" href="/0x1/hooks.js?v=${cacheBust}" as="script">
   <link rel="preload" href="/0x1/jsx-runtime.js?v=${cacheBust}" as="script">
-  <link rel="modulepreload" href="/0x1/router.js?v=${cacheBust}">
+  <link rel="preload" href="/0x1/router.js?v=${cacheBust}" as="script">
+  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">
   <link rel="modulepreload" href="/0x1/hooks.js?v=${cacheBust}">
+  <link rel="modulepreload" href="/0x1/jsx-runtime.js?v=${cacheBust}">
+  <link rel="modulepreload" href="/0x1/router.js?v=${cacheBust}">
+  <link rel="modulepreload" href="/app.js?v=${cacheBust}">
+  <link rel="modulepreload" href="/node_modules/0x1/index.js?v=${cacheBust}">
   <link rel="dns-prefetch" href="//fonts.googleapis.com">
   <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- Performance hints -->
-  <link rel="prefetch" href="/node_modules/0x1/index.js?v=${cacheBust}">`;
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`;
   }
 
   /**
@@ -4858,7 +4864,7 @@ export default function ErrorComponent(props) {
       "  </script>\n" +
       "</head>\n" +
       '<body class="bg-slate-900 text-white">\n' +
-      "  <!-- Main app container (no loading skeleton - load instantly) -->\n" +
+      "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
       '  <div id="app"></div>\n\n' +
       "  <!-- Performance optimizations -->\n" +
       "  <script>\n" +
@@ -4888,13 +4894,31 @@ export default function ErrorComponent(props) {
       "      });\n" +
       "    }\n" +
       "  </script>\n\n" +
-      "  <!-- Load framework modules to ensure they're available -->\n" +
+      "  <!-- PERFORMANCE: Optimized loading sequence for instant rendering -->\n" +
       `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
+      `  <script src="/app.js?v=${cacheBust}" type="module"></script>\n` +
       "\n" +
-      "  <!-- Main app bundle with modern loading -->\n" +
-      `  <script src="/app.js?v=${cacheBust}" type="module"></script>` +
+      "  <!-- PERFORMANCE: Immediate initialization -->\n" +
+      "  <script>\n" +
+      "    // PERFORMANCE: Start app immediately when modules load\n" +
+      "    window.addEventListener('DOMContentLoaded', () => {\n" +
+      "      // Start timing\n" +
+      "      const startTime = performance.now();\n" +
+      "      \n" +
+      "      // Log when app becomes visible\n" +
+      "      const observer = new MutationObserver(() => {\n" +
+      "        const app = document.getElementById('app');\n" +
+      "        if (app && app.children.length > 0) {\n" +
+      "          const renderTime = performance.now() - startTime;\n" +
+      "          console.log(`[0x1 Performance] App rendered in ${renderTime.toFixed(2)}ms`);\n" +
+      "          observer.disconnect();\n" +
+      "        }\n" +
+      "      });\n" +
+      "      observer.observe(document.getElementById('app'), { childList: true, subtree: true });\n" +
+      "    });\n" +
+      "  </script>" +
       (pwaResources.scripts?.length ? pwaResources.scripts.join('') : '') +
       "\n</body>\n</html>";
 
@@ -5016,7 +5040,9 @@ export default function ErrorComponent(props) {
           `  <meta name="description" content="${pageDescription}">\n` +
           (additionalMetaTags ? additionalMetaTags + "\n" : "") +
           (faviconLink ? faviconLink + "\n" : "") +
-          `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">\n` +
+          `  <!-- PERFORMANCE: Critical CSS inlined, full CSS loaded asynchronously -->\n` +
+          `  <link rel="preload" href="/styles.css?v=${cacheBust}" as="style" onload="this.onload=null;this.rel='stylesheet'">\n` +
+          `  <noscript><link rel="stylesheet" href="/styles.css?v=${cacheBust}"></noscript>\n` +
           (externalCssLinks ? externalCssLinks + "\n" : "") +
           `  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->\n` +
           "  <script type=\"importmap\">\n" +
