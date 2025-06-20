@@ -545,7 +545,9 @@ export class BuildOrchestrator {
       // CRITICAL FIX: Enable proper ImportTransformer like DevOrchestrator uses
       if (!this.options.silent) {
         logger.info(`🔍 DEBUGGING: Transforming imports for ${sourcePath}`);
-        logger.info(`🔍 DEBUGGING: Original content first 200 chars: ${content.substring(0, 200)}`);
+        logger.info(
+          `🔍 DEBUGGING: Original content first 200 chars: ${content.substring(0, 200)}`
+        );
       }
 
       content = ImportTransformer.transformImports(content, {
@@ -556,7 +558,9 @@ export class BuildOrchestrator {
       });
 
       if (!this.options.silent) {
-        logger.info(`🔍 DEBUGGING: Transformed content first 200 chars: ${content.substring(0, 200)}`);
+        logger.info(
+          `🔍 DEBUGGING: Transformed content first 200 chars: ${content.substring(0, 200)}`
+        );
       }
 
       // CRITICAL FIX: Force JSX object returns, prevent HTML generation
@@ -678,13 +682,25 @@ export class BuildOrchestrator {
               "useLocalStorage",
             ].includes(cleanName)
           ) {
-            return "// MINIFICATION-SAFE: Robust hook access with fallback\n" +
-                   "const " + cleanName + " = (typeof window !== 'undefined' && window['" + cleanName + "']) ||\n" +
-                   "                      (typeof window !== 'undefined' && window['React'] && window['React']['" + cleanName + "']) ||\n" +
-                   "                      (function() {\n" +
-                   "                        console.error('[0x1] " + cleanName + " not available - hooks may not be loaded yet');\n" +
-                   "                        throw new Error('[0x1] " + cleanName + " not available - ensure hooks.js loads before components');\n" +
-                   "                      });";
+            return (
+              "// MINIFICATION-SAFE: Robust hook access with fallback\n" +
+              "const " +
+              cleanName +
+              " = (typeof window !== 'undefined' && window['" +
+              cleanName +
+              "']) ||\n" +
+              "                      (typeof window !== 'undefined' && window['React'] && window['React']['" +
+              cleanName +
+              "']) ||\n" +
+              "                      (function() {\n" +
+              "                        console.error('[0x1] " +
+              cleanName +
+              " not available - hooks may not be loaded yet');\n" +
+              "                        throw new Error('[0x1] " +
+              cleanName +
+              " not available - ensure hooks.js loads before components');\n" +
+              "                      });"
+            );
           } else {
             // Keep non-hook imports as regular imports
             return `// Non-hook import preserved: ${cleanName}`;
@@ -712,10 +728,20 @@ export class BuildOrchestrator {
               "useRef",
             ].includes(cleanName)
           ) {
-            return "// MINIFICATION-SAFE: Global React hook access\n" +
-                   "const " + cleanName + " = (typeof window !== 'undefined' && window['React'] && window['React']['" + cleanName + "']) ||\n" +
-                   "                      (typeof window !== 'undefined' && window['" + cleanName + "']) ||\n" +
-                   "                      (function() { throw new Error('[0x1] " + cleanName + " not available - React hooks may not be loaded'); });";
+            return (
+              "// MINIFICATION-SAFE: Global React hook access\n" +
+              "const " +
+              cleanName +
+              " = (typeof window !== 'undefined' && window['React'] && window['React']['" +
+              cleanName +
+              "']) ||\n" +
+              "                      (typeof window !== 'undefined' && window['" +
+              cleanName +
+              "']) ||\n" +
+              "                      (function() { throw new Error('[0x1] " +
+              cleanName +
+              " not available - React hooks may not be loaded'); });"
+            );
           } else {
             return `// Non-hook React import: ${cleanName} (preserved)`;
           }
@@ -753,15 +779,24 @@ const ${defaultImport} = (typeof window !== 'undefined' && window['__0x1_hooks']
     // DISABLED: Complex transpilation breaks dev server - use simple Bun transpiler
     try {
       const transpiler = new Bun.Transpiler({
-        loader: sourcePath.endsWith(".tsx") ? "tsx" : sourcePath.endsWith(".jsx") ? "jsx" : sourcePath.endsWith(".ts") ? "ts" : "js",
+        loader: sourcePath.endsWith(".tsx")
+          ? "tsx"
+          : sourcePath.endsWith(".jsx")
+            ? "jsx"
+            : sourcePath.endsWith(".ts")
+              ? "ts"
+              : "js",
           target: "browser",
       });
 
       return transpiler.transformSync(sourceCode);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       if (!this.options.silent) {
-        logger.error(`❌ Transpilation failed for ${sourcePath}: ${errorMessage}`);
+        logger.error(
+          `❌ Transpilation failed for ${sourcePath}: ${errorMessage}`
+        );
       }
       return this.generateProperErrorComponent(sourcePath, errorMessage);
     }
@@ -811,7 +846,8 @@ const ${defaultImport} = (typeof window !== 'undefined' && window['__0x1_hooks']
     const safePath = sourcePath.replace(/'/g, "\\'");
     const safeError = errorMessage.replace(/'/g, "\\'");
 
-    return `
+    return (
+      `
 // CRITICAL FIX: Error component that returns JSX objects only (no HTML)
 import { jsx } from "/0x1/jsx-runtime.js";
 
@@ -827,18 +863,23 @@ export default function ErrorComponent(props) {
       }),
       jsx('p', {
         className: 'mb-2',
-        children: 'File: ` + safePath + `',
+        children: 'File: ` +
+      safePath +
+      `',
         key: 'file'
       }),
       jsx('p', {
         className: 'text-sm',
-        children: 'Error: ` + safeError + `',
+        children: 'Error: ` +
+      safeError +
+      `',
         key: 'error'
       })
     ]
   });
 }
-`;
+`
+    );
   }
 
   // EXACT same logic as DevOrchestrator.generatePossiblePaths
@@ -1841,7 +1882,7 @@ if (typeof window !== 'undefined') {
         throw new Error(`Invalid hooks content: ${hooksContent.length} bytes`);
       }
 
-            // CRITICAL FIX: BULLETPROOF hook initialization that works with minified and unminified code
+      // CRITICAL FIX: BULLETPROOF hook initialization that works with minified and unminified code
       const minificationSafeBrowserCode = `
 // CRITICAL FIX: BULLETPROOF global hook availability using the EXPORTED functions
 if (typeof window !== 'undefined') {
@@ -2757,7 +2798,9 @@ if (document.readyState === 'loading') {
     await Bun.write(join(outputPath, "app.js"), appScript);
 
     if (!this.options.silent) {
-      logger.success("✅ Generated working app bundle (DevOrchestrator pattern)");
+      logger.success(
+        "✅ Generated working app bundle (DevOrchestrator pattern)"
+      );
     }
   }
 
@@ -2768,15 +2811,17 @@ if (document.readyState === 'loading') {
   private optimizeBundleForProduction(appContent: string): string {
     let optimized = appContent
       // Remove development logs (keep performance monitoring)
-      .replace(/console\.log\((?!.*Performance|.*Load Time).*?\);?\n?/g, '')
+      .replace(/console\.log\((?!.*Performance|.*Load Time).*?\);?\n?/g, "")
       // Compact JSX calls for smaller bundle
       .replace(/_jsx\("(\w+)",\s*{\s*([^}]*)\s*}\)/g, (match, tag, props) => {
-        const compactProps = props.replace(/\s*:\s*/g, ':').replace(/,\s*/g, ',');
+        const compactProps = props
+          .replace(/\s*:\s*/g, ":")
+          .replace(/,\s*/g, ",");
         return `_jsx("${tag}",{${compactProps}})`;
       })
       // Remove extra whitespace
-      .replace(/^\s*\n/gm, '')
-      .replace(/\n\s*\n/g, '\n');
+      .replace(/^\s*\n/gm, "")
+      .replace(/\n\s*\n/g, "\n");
 
     // Add service worker registration for aggressive caching
     optimized += `
@@ -2867,7 +2912,7 @@ self.addEventListener('fetch', event => {
 });
 `;
 
-    await Bun.write(join(outputPath, 'sw.js'), swContent);
+    await Bun.write(join(outputPath, "sw.js"), swContent);
   }
 
   private async processCssUsingWorkingPattern(
@@ -4300,7 +4345,7 @@ export default function ErrorComponent(props) {
 
     // DISABLED: PWA generation breaks dev server
     // const pwaResources = await pwaHandler.generatePWAResources(pwaConfig);
-    const pwaResources = { manifest: {}, serviceWorker: '', icons: [] };
+    const pwaResources = { manifest: {}, serviceWorker: "", icons: [] };
 
     // CRITICAL FIX: Generate actual PWA files (manifest.json and service-worker.js)
     if (pwaConfig) {
@@ -4372,7 +4417,9 @@ export default function ErrorComponent(props) {
     // pwaHandler.logPWAStatus(pwaConfig, hasIcons);
 
     if (!this.options.silent && pwaConfig) {
-      logger.info(`📱 PWA enabled with ${hasIcons ? 'icons found' : 'no icons'}`);
+      logger.info(
+        `📱 PWA enabled with ${hasIcons ? "icons found" : "no icons"}`
+      );
     }
 
     // Generate shared HTML resources
@@ -4382,7 +4429,11 @@ export default function ErrorComponent(props) {
     );
 
     // CRITICAL FIX: Generate main SPA file with IMMEDIATE CONTENT (no blank page)
-    await this.generateMainSpaFileWithImmediateContent(outputPath, projectConfig, resources);
+    await this.generateMainSpaFileWithImmediateContent(
+      outputPath,
+      projectConfig,
+      resources
+    );
 
     if (!this.options.silent) {
       logger.success(
@@ -4391,6 +4442,162 @@ export default function ErrorComponent(props) {
       logger.success(
         `✅ Service worker configured with ${accuratePrecacheResources.length} validated resources`
       );
+    }
+
+    // CRITICAL FIX: Generate individual HTML files for each route for direct navigation
+    await this.generateIndividualRouteHtmlFiles(outputPath, projectConfig, resources);
+
+    if (!this.options.silent) {
+      logger.success(
+        `✅ Generated ${this.state.routes.length} route-specific HTML files for direct navigation`
+      );
+    }
+  }
+
+  /**
+   * CRITICAL FIX: Generate individual HTML files for each route for direct navigation
+   * Creates /route/index.html structure for proper static hosting
+   */
+  private async generateIndividualRouteHtmlFiles(
+    outputPath: string,
+    projectConfig: any,
+    resources: any
+  ): Promise<void> {
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
+
+    for (const route of this.state.routes) {
+      // Skip root route (already handled in main SPA file)
+      if (route.path === "/") continue;
+
+      // CRITICAL FIX: Create proper directory structure for static hosting
+      const routeDirectoryPath = join(outputPath, route.path.substring(1)); // Remove leading /
+      mkdirSync(routeDirectoryPath, { recursive: true });
+
+      // Extract route-specific metadata
+      let pageTitle = projectConfig.name || "My 0x1 App";
+      let pageDescription = projectConfig.description || "0x1 Framework application";
+      let additionalMetaTags = "";
+
+      try {
+        const routeMetadata = await this.extractMetadataFromRoute(route);
+        if (routeMetadata) {
+          const { resolveTitle, generateMetaTags } = await import("../../core/metadata");
+          pageTitle = resolveTitle(routeMetadata);
+          pageDescription = routeMetadata.description || pageDescription;
+
+          try {
+            additionalMetaTags = generateMetaTags(routeMetadata);
+          } catch (error) {
+            if (!this.options.silent) {
+              logger.warn(`Failed to generate meta tags for ${route.path}: ${error}`);
+            }
+          }
+        }
+      } catch (error) {
+        if (!this.options.silent) {
+          logger.warn(`Failed to extract metadata for ${route.path}: ${error}`);
+        }
+      }
+
+      // CRITICAL FIX: Generate simple loading skeleton instead of trying to render components
+      // This avoids the scoped import issues while providing immediate content
+      const immediateContent = `
+    <!-- Route-specific loading skeleton -->
+    <div class="min-h-screen bg-slate-900 text-white">
+      <div class="container mx-auto px-4 py-8">
+        <div class="animate-pulse">
+          <div class="h-8 bg-slate-700 rounded mb-4 w-1/3"></div>
+          <div class="h-4 bg-slate-700 rounded mb-2 w-2/3"></div>
+          <div class="h-4 bg-slate-700 rounded mb-8 w-1/2"></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="h-32 bg-slate-700 rounded"></div>
+            <div class="h-32 bg-slate-700 rounded"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+      // Use minimal reset CSS
+      const minimalCriticalCSS = this.getMinimalResetOnly();
+
+      // Generate the HTML file with route-specific content
+      const routeHtml =
+        "<!DOCTYPE html>\n" +
+        '<html lang="en" class="dark">\n' +
+        "<head>\n" +
+        '  <meta charset="UTF-8">\n' +
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+        "  <!-- PERFORMANCE: Resource hints for sub-1s loading -->\n" +
+        '  <link rel="dns-prefetch" href="//fonts.googleapis.com">\n' +
+        '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
+        '  <link rel="prefetch" href="/favicon.svg">\n' +
+        `  <title>${pageTitle}</title>\n` +
+        `  <meta name="description" content="${pageDescription}">\n` +
+        `  <meta name="robots" content="index, follow">\n` +
+        `  <link rel="canonical" href="${route.path}">\n` +
+        (additionalMetaTags ? additionalMetaTags + "\n" : "") +
+        (faviconLink ? faviconLink + "\n" : "") +
+        "  <!-- PERFORMANCE: Minimal critical CSS for instant rendering -->\n" +
+        "  <style>\n" +
+        minimalCriticalCSS +
+        "  </style>\n" +
+        `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">\n` +
+        `  <link rel="preload" href="/0x1/hooks.js?v=${cacheBust}" as="script">\n` +
+        `  <link rel="preload" href="/0x1/jsx-runtime.js?v=${cacheBust}" as="script">\n` +
+        `  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">\n` +
+        (externalCssLinks ? externalCssLinks + "\n" : "") +
+        '  <script type="importmap">\n' +
+        "  {\n" +
+        '    "imports": {\n' +
+        `      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
+        `      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
+        `      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
+        `      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
+        `      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
+        `      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
+        `      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
+        `      "0x1/router": "/0x1/router.js?v=${cacheBust}",\n` +
+        `      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",\n` +
+        `      "0x1/link": "/0x1/router.js?v=${cacheBust}",\n` +
+        `      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",\n` +
+        `      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",\n` +
+        `      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"\n` +
+        "    }\n" +
+        "  }\n" +
+        "  </script>\n" +
+        "</head>\n" +
+        '<body class="bg-slate-900 text-white">\n' +
+        '  <div id="app">\n' +
+        immediateContent +
+        "  </div>\n\n" +
+        "  <script>\n" +
+        "    window.process={env:{NODE_ENV:'production'}};\n" +
+        "    (function(){\n" +
+        "      try{\n" +
+        "        const t=localStorage.getItem('0x1-dark-mode');\n" +
+        "        if(t==='light') {\n" +
+        "          document.documentElement.classList.remove('dark');\n" +
+        "          document.body.className='bg-white text-gray-900';\n" +
+        "        } else {\n" +
+        "          document.documentElement.classList.add('dark');\n" +
+        "          document.body.className='bg-slate-900 text-white';\n" +
+        "        }\n" +
+        "      } catch {}\n" +
+        "    })();\n" +
+        "  </script>\n" +
+        `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
+        `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
+        `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
+        `  <script src="/app.js?v=${cacheBust}" type="module"></script>\n` +
+        "</body>\n</html>";
+
+      // CRITICAL FIX: Write as /route/index.html for proper static hosting
+      const routeHtmlPath = join(routeDirectoryPath, "index.html");
+      await Bun.write(routeHtmlPath, routeHtml);
+
+      if (!this.options.silent) {
+        logger.debug(`✅ Generated ${route.path}/index.html`);
+      }
     }
   }
 
@@ -4403,11 +4610,13 @@ export default function ErrorComponent(props) {
     projectConfig: any,
     resources: any
   ) {
-    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
+      resources;
 
     // CRITICAL FIX: Extract metadata from homepage component instead of just using project config
     let pageTitle = projectConfig.name || "My 0x1 App";
-    let pageDescription = projectConfig.description || "0x1 Framework application";
+    let pageDescription =
+      projectConfig.description || "0x1 Framework application";
     let additionalMetaTags = "";
 
     // Find the root route and extract its metadata
@@ -4416,16 +4625,23 @@ export default function ErrorComponent(props) {
       try {
         const routeMetadata = await this.extractMetadataFromRoute(homeRoute);
         if (routeMetadata) {
-          const { resolveTitle, generateMetaTags } = await import("../../core/metadata");
+          const { resolveTitle, generateMetaTags } = await import(
+            "../../core/metadata"
+          );
           pageTitle = resolveTitle(routeMetadata);
-          pageDescription = routeMetadata.description || projectConfig.description || "0x1 Framework application";
+          pageDescription =
+            routeMetadata.description ||
+            projectConfig.description ||
+            "0x1 Framework application";
 
           // Generate comprehensive meta tags for homepage
           try {
             additionalMetaTags = generateMetaTags(routeMetadata);
           } catch (error) {
             if (!this.options.silent) {
-              logger.warn(`Failed to generate meta tags for homepage: ${error}`);
+              logger.warn(
+                `Failed to generate meta tags for homepage: ${error}`
+              );
             }
           }
 
@@ -4435,7 +4651,9 @@ export default function ErrorComponent(props) {
         }
       } catch (error) {
         if (!this.options.silent) {
-          logger.warn(`Failed to extract homepage metadata, using project config: ${error}`);
+          logger.warn(
+            `Failed to extract homepage metadata, using project config: ${error}`
+          );
         }
       }
     }
@@ -4443,10 +4661,14 @@ export default function ErrorComponent(props) {
     // CRITICAL FIX: Use minimal reset only - full CSS via external file
     const minimalCriticalCSS = this.getMinimalResetOnly();
 
-          // CRITICAL FIX: Generate immediate visible content for the app container
-      const immediateContent = await this.generateImmediateVisibleContent(pageTitle, pageDescription);
+    // CRITICAL FIX: Generate immediate visible content for the app container
+    const immediateContent = await this.generateImmediateVisibleContent(
+      pageTitle,
+      pageDescription
+    );
 
-    let spaHtml = "<!DOCTYPE html>\n" +
+    let spaHtml =
+      "<!DOCTYPE html>\n" +
       '<html lang="en" class="dark">\n' +
       "<head>\n" +
       '  <meta charset="UTF-8">\n' +
@@ -4470,7 +4692,7 @@ export default function ErrorComponent(props) {
       `  <link rel="preload" href="/0x1/jsx-runtime.js?v=${cacheBust}" as="script">\n` +
       `  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">\n` +
       (externalCssLinks ? externalCssLinks + "\n" : "") +
-      "  <script type=\"importmap\">\n" +
+      '  <script type="importmap">\n' +
       "  {\n" +
       '    "imports": {\n' +
       `      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
@@ -4578,22 +4800,26 @@ export default function ErrorComponent(props) {
       "      setTimeout(completeProgress, 3000);\n" +
       "    });\n" +
       "  </script>" +
-      (pwaResources && Array.isArray(pwaResources.scripts) ? pwaResources.scripts.join('') : '') +
+      (pwaResources && Array.isArray(pwaResources.scripts)
+        ? pwaResources.scripts.join("")
+        : "") +
       "\n</body>\n</html>";
 
     // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
     // CRITICAL FIX: Add defensive checks for PWA resources
     let validPwaResources = pwaResources;
-    if (!pwaResources || typeof pwaResources !== 'object') {
+    if (!pwaResources || typeof pwaResources !== "object") {
       if (!this.options.silent) {
-        logger.warn('PWA resources are invalid, skipping PWA injection for main SPA file');
+        logger.warn(
+          "PWA resources are invalid, skipping PWA injection for main SPA file"
+        );
       }
       // Create minimal valid PWA resources to prevent undefined errors
       validPwaResources = {
-        manifestLink: '',
+        manifestLink: "",
         metaTags: [],
         scripts: [],
-        serviceWorkerRegistration: ''
+        serviceWorkerRegistration: "",
       };
     }
 
@@ -4619,7 +4845,9 @@ export default function ErrorComponent(props) {
     await Bun.write(join(outputPath, "index.html"), spaHtml);
 
     if (!this.options.silent) {
-      logger.info("✅ Generated main SPA file with IMMEDIATE CONTENT: index.html");
+      logger.info(
+        "✅ Generated main SPA file with IMMEDIATE CONTENT: index.html"
+      );
     }
   }
 
@@ -4640,17 +4868,21 @@ export default function ErrorComponent(props) {
       }
 
       // Generate critical CSS from actual Tailwind CSS file
-      const criticalCss = await this.generateCriticalCssFromActualClasses(extractedClasses);
+      const criticalCss =
+        await this.generateCriticalCssFromActualClasses(extractedClasses);
 
       if (!this.options.silent) {
-        logger.info(`✅ Generated dynamic critical CSS from ${extractedClasses.length} real classes`);
+        logger.info(
+          `✅ Generated dynamic critical CSS from ${extractedClasses.length} real classes`
+        );
       }
 
       return criticalCss;
-
           } catch (error) {
             if (!this.options.silent) {
-        logger.warn(`Critical CSS generation failed: ${error}, using minimal reset`);
+              logger.warn(
+          `Critical CSS generation failed: ${error}, using minimal reset`
+        );
       }
       return this.getMinimalResetOnly();
     }
@@ -4669,7 +4901,7 @@ export default function ErrorComponent(props) {
       if (sourceFile && existsSync(sourceFile)) {
         const sourceCode = readFileSync(sourceFile, "utf-8");
         const classes = this.extractClassesFromCode(sourceCode);
-        classes.forEach(cls => allClasses.add(cls));
+        classes.forEach((cls) => allClasses.add(cls));
       }
     }
 
@@ -4688,7 +4920,7 @@ export default function ErrorComponent(props) {
       if (sourceFile && existsSync(sourceFile)) {
         const sourceCode = readFileSync(sourceFile, "utf-8");
         const classes = this.extractClassesFromCode(sourceCode);
-        classes.forEach(cls => allClasses.add(cls));
+        classes.forEach((cls) => allClasses.add(cls));
       }
     }
 
@@ -4702,15 +4934,16 @@ export default function ErrorComponent(props) {
     const classes: string[] = [];
 
     // Match className="..." and class="..."
-    const classMatches = sourceCode.match(/(?:className|class)=["']([^"']+)["']/g) || [];
+    const classMatches =
+      sourceCode.match(/(?:className|class)=["']([^"']+)["']/g) || [];
 
     for (const match of classMatches) {
       const classStr = match.match(/(?:className|class)=["']([^"']+)["']/)?.[1];
       if (classStr) {
         // Split by spaces and filter valid Tailwind classes
-        const individualClasses = classStr.split(/\s+/).filter(cls =>
-          cls && this.isValidTailwindClass(cls)
-        );
+        const individualClasses = classStr
+          .split(/\s+/)
+          .filter((cls) => cls && this.isValidTailwindClass(cls));
         classes.push(...individualClasses);
       }
     }
@@ -4733,14 +4966,20 @@ export default function ErrorComponent(props) {
       /^(z-|opacity-|transform|transition|duration|ease)/,
     ];
 
-    return tailwindPatterns.some(pattern => pattern.test(className));
+    return tailwindPatterns.some((pattern) => pattern.test(className));
   }
 
   /**
    * Generate critical CSS from actual Tailwind CSS file
    */
-  private async generateCriticalCssFromActualClasses(classes: string[]): Promise<string> {
-    const outputPath = join(this.options.projectPath, this.options.outDir!, "styles.css");
+  private async generateCriticalCssFromActualClasses(
+    classes: string[]
+  ): Promise<string> {
+    const outputPath = join(
+      this.options.projectPath,
+      this.options.outDir!,
+      "styles.css"
+    );
 
     if (!existsSync(outputPath)) {
         if (!this.options.silent) {
@@ -4763,18 +5002,23 @@ export default function ErrorComponent(props) {
       }
     }
 
-    return criticalRules.join('\n');
+    return criticalRules.join("\n");
   }
 
   /**
    * Extract CSS rule for a specific class from full CSS
    */
-  private extractCssRuleForClass(fullCss: string, className: string): string | null {
+  private extractCssRuleForClass(
+    fullCss: string,
+    className: string
+  ): string | null {
     // Escape special characters for regex
-    const escapedClass = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedClass = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     // Match the CSS rule for this class
-    const ruleMatch = fullCss.match(new RegExp(`\\.${escapedClass}\\s*{[^}]*}`, 'g'));
+    const ruleMatch = fullCss.match(
+      new RegExp(`\\.${escapedClass}\\s*{[^}]*}`, "g")
+    );
 
     return ruleMatch ? ruleMatch[0] : null;
   }
@@ -4784,7 +5028,7 @@ export default function ErrorComponent(props) {
    */
   private findLayoutSourceFile(layoutPath: string): string | null {
     // Remove leading slash and .js extension
-    const cleanPath = layoutPath.replace(/^\//, '').replace(/\.js$/, '');
+    const cleanPath = layoutPath.replace(/^\//, "").replace(/\.js$/, "");
     const basePath = join(this.options.projectPath, cleanPath);
 
     const extensions = [".tsx", ".jsx", ".ts", ".js"];
@@ -4815,8 +5059,16 @@ export default function ErrorComponent(props) {
    * CRITICAL FIX: Generate immediate route-specific app content
    * Shows actual route page layout to crawlers immediately (not a loading screen)
    */
-    private generateImmediateRouteContent(route: Route, pageTitle: string, pageDescription: string): string {
-    const routeName = route.path === "/" ? "Home" : route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1);
+  private generateImmediateRouteContent(
+    route: Route,
+    pageTitle: string,
+    pageDescription: string
+  ): string {
+    const routeName =
+      route.path === "/"
+        ? "Home"
+        : route.path.replace("/", "").charAt(0).toUpperCase() +
+          route.path.replace("/", "").slice(1);
 
     return `
     <!-- PURE INLINE STYLES: Zero CSS conflicts -->
@@ -4968,8 +5220,6 @@ export default function ErrorComponent(props) {
 
     return join(outputPath, fileName);
   }
-
-
 
   private async generateAccuratePrecacheResources(
     outputPath: string
@@ -5191,7 +5441,10 @@ console.log('[0x1] Fallback router module loaded');
    * NEXT.JS 15/REACT 19 STYLE: Generate Progressive Enhancement Skeleton
    * NO FLASH: The skeleton matches the final layout exactly - seamless hydration
    */
-  private async generateImmediateVisibleContent(pageTitle: string, pageDescription: string): Promise<string> {
+  private async generateImmediateVisibleContent(
+    pageTitle: string,
+    pageDescription: string
+  ): Promise<string> {
     try {
       // NEXT.JS APPROACH: Extract actual layout structure from real components
       const realLayout = await this.extractActualLayoutStructure();
@@ -5201,10 +5454,11 @@ console.log('[0x1] Fallback router module loaded');
 
       // FALLBACK: Industry-standard skeleton that matches common patterns
       return this.generateIndustryStandardSkeleton(pageTitle, pageDescription);
-
     } catch (error) {
       if (!this.options.silent) {
-        logger.warn(`Layout extraction failed: ${error}, using standard skeleton`);
+        logger.warn(
+          `Layout extraction failed: ${error}, using standard skeleton`
+        );
       }
       return this.generateIndustryStandardSkeleton(pageTitle, pageDescription);
     }
@@ -5227,7 +5481,9 @@ console.log('[0x1] Fallback router module loaded');
       const jsxStructure = this.extractJSXStructureAsHTML(sourceCode);
       if (jsxStructure) {
         if (!this.options.silent) {
-          logger.info('✅ Using real component structure for seamless hydration');
+          logger.info(
+            "✅ Using real component structure for seamless hydration"
+          );
         }
         return jsxStructure;
       }
@@ -5247,7 +5503,9 @@ console.log('[0x1] Fallback router module loaded');
   private extractJSXStructureAsHTML(sourceCode: string): string | null {
     try {
       // Find the main JSX return statement
-      const returnMatch = sourceCode.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*}/m);
+      const returnMatch = sourceCode.match(
+        /return\s*\(\s*([\s\S]*?)\s*\);?\s*}/m
+      );
       if (!returnMatch) return null;
 
       let jsx = returnMatch[1].trim();
@@ -5255,17 +5513,17 @@ console.log('[0x1] Fallback router module loaded');
       // Simple JSX to HTML conversion (industry standard approach)
       jsx = jsx
         // Convert JSX attributes to HTML
-        .replace(/className=/g, 'class=')
-        .replace(/htmlFor=/g, 'for=')
+        .replace(/className=/g, "class=")
+        .replace(/htmlFor=/g, "for=")
         // Handle common JSX patterns
-        .replace(/\{[^}]*\}/g, '') // Remove JSX expressions
-        .replace(/\/>/g, '>') // Convert self-closing tags
+        .replace(/\{[^}]*\}/g, "") // Remove JSX expressions
+        .replace(/\/>/g, ">") // Convert self-closing tags
         // Clean up whitespace
-        .replace(/\s+/g, ' ')
+        .replace(/\s+/g, " ")
         .trim();
 
       // Wrap in a simple container if needed
-      if (!jsx.startsWith('<')) {
+      if (!jsx.startsWith("<")) {
         jsx = `<div>${jsx}</div>`;
       }
 
@@ -5279,8 +5537,12 @@ console.log('[0x1] Fallback router module loaded');
    * Industry-standard skeleton that matches common layout patterns
    * Based on Next.js, React 19, and modern framework conventions
    */
-  private generateIndustryStandardSkeleton(pageTitle: string, pageDescription: string): string {
-    const cleanTitle = pageTitle.split(' - ')[0] || pageTitle.split(' | ')[0] || pageTitle;
+  private generateIndustryStandardSkeleton(
+    pageTitle: string,
+    pageDescription: string
+  ): string {
+    const cleanTitle =
+      pageTitle.split(" - ")[0] || pageTitle.split(" | ")[0] || pageTitle;
 
     return `
       <!-- NEXT.JS/REACT 19 STYLE: Progressive Enhancement Skeleton -->
@@ -5365,7 +5627,10 @@ console.log('[0x1] Fallback router module loaded');
   /**
    * Extract the real HTML structure from the actual component source code
    */
-  private async extractRealComponentContent(sourceCode: string, sourceFile: string): Promise<string | null> {
+  private async extractRealComponentContent(
+    sourceCode: string,
+    sourceFile: string
+  ): Promise<string | null> {
     try {
       // Look for the JSX return statement in the component
       const jsxMatch = sourceCode.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*}/);
@@ -5380,7 +5645,6 @@ console.log('[0x1] Fallback router module loaded');
       }
 
       return this.convertJsxToStaticHtml(jsxMatch[1], sourceFile);
-
     } catch (error) {
       if (!this.options.silent) {
         logger.warn(`Failed to extract JSX from ${sourceFile}: ${error}`);
@@ -5393,25 +5657,27 @@ console.log('[0x1] Fallback router module loaded');
    * CRITICAL FIX: Decode HTML entities and fix text encoding
    */
   private fixTextEncoding(text: string): string {
-    return text
-      // Fix common HTML entities
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#39;/g, "'")
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      // Fix Unicode apostrophes and quotes
-      .replace(/'/g, "'")  // Right single quotation mark
-      .replace(/'/g, "'")  // Left single quotation mark
-      .replace(/"/g, '"')  // Left double quotation mark
-      .replace(/"/g, '"')  // Right double quotation mark
-      // Fix other common Unicode characters
-      .replace(/–/g, '-')  // En dash
-      .replace(/—/g, '-')  // Em dash
-      .replace(/…/g, '...')  // Ellipsis
-      .trim();
+    return (
+      text
+        // Fix common HTML entities
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&#x27;/g, "'")
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        // Fix Unicode apostrophes and quotes
+        .replace(/'/g, "'") // Right single quotation mark
+        .replace(/'/g, "'") // Left single quotation mark
+        .replace(/"/g, '"') // Left double quotation mark
+        .replace(/"/g, '"') // Right double quotation mark
+        // Fix other common Unicode characters
+        .replace(/–/g, "-") // En dash
+        .replace(/—/g, "-") // Em dash
+        .replace(/…/g, "...") // Ellipsis
+        .trim()
+    );
   }
 
   /**
@@ -5422,12 +5688,14 @@ console.log('[0x1] Fallback router module loaded');
       // Extract Tailwind classes from the JSX
       const classMatches = jsx.match(/className=["']([^"']+)["']/g) || [];
       const extractedClasses = classMatches
-        .map(match => match.match(/className=["']([^"']+)["']/)?.[1])
+        .map((match) => match.match(/className=["']([^"']+)["']/)?.[1])
         .filter(Boolean)
-        .join(' ');
+        .join(" ");
 
       if (!this.options.silent) {
-        logger.info(`📝 Extracted Tailwind classes: ${extractedClasses.substring(0, 100)}...`);
+        logger.info(
+          `📝 Extracted Tailwind classes: ${extractedClasses.substring(0, 100)}...`
+        );
       }
 
       // CRITICAL FIX: Apply text encoding fixes to source JSX first
@@ -5436,15 +5704,15 @@ console.log('[0x1] Fallback router module loaded');
       // AGGRESSIVE: Clean JSX artifacts BEFORE any processing
       const preCleanedJsx = jsx
         // Remove comments first
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, "")
         // CRITICAL: Remove JSX self-closing tag artifacts early
-        .replace(/\s*\/\s*>/g, '>')              // Convert / > to >
-        .replace(/\/\s*>/g, '>')                 // Convert /> to >
+        .replace(/\s*\/\s*>/g, ">") // Convert / > to >
+        .replace(/\/\s*>/g, ">") // Convert /> to >
         // Remove stray JSX syntax characters
-        .replace(/[{}()]/g, ' ')                 // Replace with spaces to preserve word boundaries
+        .replace(/[{}()]/g, " ") // Replace with spaces to preserve word boundaries
         // Normalize whitespace
-        .replace(/\s+/g, ' ')
+        .replace(/\s+/g, " ")
         .trim();
 
       // Clean the JSX to remove remaining problematic patterns
@@ -5453,52 +5721,52 @@ console.log('[0x1] Fallback router module loaded');
       // CRITICAL FIX: Clean JSX syntax artifacts FIRST before conversion
       let html = cleanJsx
         // STEP 1: Remove JSX artifacts that cause visual glitches
-        .replace(/\{\s*\}/g, '')                    // Remove empty {}
-        .replace(/\}\s*>/g, '>')                    // Remove }> artifacts
-        .replace(/\)\s*>/g, '>')                    // Remove )> artifacts
-        .replace(/\}\s*\)/g, ')')                   // Remove }) artifacts
-        .replace(/\{\s*[^}]*\s*\}/g, '')           // Remove all JSX expressions
-        .replace(/\(\s*\)/g, '')                    // Remove empty ()
+        .replace(/\{\s*\}/g, "") // Remove empty {}
+        .replace(/\}\s*>/g, ">") // Remove }> artifacts
+        .replace(/\)\s*>/g, ">") // Remove )> artifacts
+        .replace(/\}\s*\)/g, ")") // Remove }) artifacts
+        .replace(/\{\s*[^}]*\s*\}/g, "") // Remove all JSX expressions
+        .replace(/\(\s*\)/g, "") // Remove empty ()
 
         // STEP 2: Clean JSX fragments completely
-        .replace(/<React\.Fragment>/g, '')
-        .replace(/<\/React\.Fragment>/g, '')
-        .replace(/<>\s*/g, '')
-        .replace(/\s*<\/>/g, '')
+        .replace(/<React\.Fragment>/g, "")
+        .replace(/<\/React\.Fragment>/g, "")
+        .replace(/<>\s*/g, "")
+        .replace(/\s*<\/>/g, "")
 
         // STEP 3: Convert JSX to HTML attributes
-        .replace(/className=/g, 'class=')
+        .replace(/className=/g, "class=")
 
         // STEP 4: Fix self-closing tags
-        .replace(/<(\w+)([^>]*?)\s*\/>/g, '<$1$2></$1>')
+        .replace(/<(\w+)([^>]*?)\s*\/>/g, "<$1$2></$1>")
 
         // STEP 5: Handle specific known values
-        .replace(/\{pageTitle\}/g, '0x1 Framework')
-        .replace(/\{pageDescription\}/g, 'Lightning-fast TypeScript framework')
-        .replace(/\{children\}/g, '<!-- children placeholder -->')
+        .replace(/\{pageTitle\}/g, "0x1 Framework")
+        .replace(/\{pageDescription\}/g, "Lightning-fast TypeScript framework")
+        .replace(/\{children\}/g, "<!-- children placeholder -->")
 
         // STEP 6: Clean up whitespace and empty attributes
-        .replace(/\s+/g, ' ')
-        .replace(/\s*=\s*""\s*/g, '')
-        .replace(/\s*=\s*''\s*/g, '')
-        .replace(/\s*=\s*\{\s*\}/g, '')
+        .replace(/\s+/g, " ")
+        .replace(/\s*=\s*""\s*/g, "")
+        .replace(/\s*=\s*''\s*/g, "")
+        .replace(/\s*=\s*\{\s*\}/g, "")
 
         // STEP 7: Fix text encoding (preserve proper quotes)
         .replace(/[""]/g, '"')
         .replace(/[']/g, "'")
 
         // STEP 8: Final cleanup of any remaining artifacts
-        .replace(/[{}()]+/g, '')                    // Remove any remaining braces/parens
-        .replace(/\/>/g, '')                        // Remove stray /> from self-closing tags
-        .replace(/\/\s*>/g, '')                     // Remove / > with spaces
-        .replace(/>\s*\/\s*/g, '>')                 // Remove > / patterns
-        .replace(/\s*\/\s*</g, '<')                 // Remove / before tags
-        .replace(/>\s*</g, '><')                    // Remove whitespace between tags
-        .replace(/\s{2,}/g, ' ')                    // Collapse multiple spaces
+        .replace(/[{}()]+/g, "") // Remove any remaining braces/parens
+        .replace(/\/>/g, "") // Remove stray /> from self-closing tags
+        .replace(/\/\s*>/g, "") // Remove / > with spaces
+        .replace(/>\s*\/\s*/g, ">") // Remove > / patterns
+        .replace(/\s*\/\s*</g, "<") // Remove / before tags
+        .replace(/>\s*</g, "><") // Remove whitespace between tags
+        .replace(/\s{2,}/g, " ") // Collapse multiple spaces
         .trim();
 
       // Wrap in container if not already wrapped
-      if (!html.trim().startsWith('<div') && !html.trim().startsWith('<main')) {
+      if (!html.trim().startsWith("<div") && !html.trim().startsWith("<main")) {
         html = `<div style="min-height:100vh;">${html}</div>`;
       }
 
@@ -5506,7 +5774,6 @@ console.log('[0x1] Fallback router module loaded');
       html = this.fixTextEncoding(html);
 
       return html;
-
     } catch (error) {
       if (!this.options.silent) {
         logger.warn(`Failed to convert JSX to HTML: ${error}`);
@@ -5532,18 +5799,20 @@ console.log('[0x1] Fallback router module loaded');
       // Get all source files from the project
       const sourceFiles = await this.findAllSourceFiles();
 
-      for (const filePath of sourceFiles.slice(0, 10)) { // Limit to first 10 files for performance
+      for (const filePath of sourceFiles.slice(0, 10)) {
+        // Limit to first 10 files for performance
         try {
-          const content = readFileSync(filePath, 'utf-8');
+          const content = readFileSync(filePath, "utf-8");
 
           // Extract className patterns - simple and bulletproof
-          const classMatches = content.match(/className=["']([^"']+)["']/g) || [];
+          const classMatches =
+            content.match(/className=["']([^"']+)["']/g) || [];
 
           for (const match of classMatches) {
             const classString = match.match(/className=["']([^"']+)["']/)?.[1];
             if (classString) {
               // Split and add individual classes
-              classString.split(/\s+/).forEach(cls => {
+              classString.split(/\s+/).forEach((cls) => {
                 if (cls && cls.length > 1) {
                   allClasses.add(cls);
                 }
@@ -5584,54 +5853,59 @@ console.log('[0x1] Fallback router module loaded');
       hasFooter: false,
       containerClasses: [] as string[],
       headerClasses: [] as string[],
-      mainClasses: [] as string[]
+      mainClasses: [] as string[],
     };
 
     try {
       const sourceFiles = await this.findAllSourceFiles();
 
-      for (const filePath of sourceFiles.slice(0, 5)) { // Check first 5 files
+      for (const filePath of sourceFiles.slice(0, 5)) {
+        // Check first 5 files
         try {
-          const content = readFileSync(filePath, 'utf-8');
+          const content = readFileSync(filePath, "utf-8");
 
           // Simple pattern detection - no complex parsing
-          if (content.includes('<header') || content.includes('header')) {
+          if (content.includes("<header") || content.includes("header")) {
             structure.hasHeader = true;
 
             // Extract header classes
-            const headerMatch = content.match(/<header[^>]*className=["']([^"']+)["']/);
+            const headerMatch = content.match(
+              /<header[^>]*className=["']([^"']+)["']/
+            );
             if (headerMatch) {
               structure.headerClasses.push(...headerMatch[1].split(/\s+/));
             }
           }
 
-          if (content.includes('<nav') || content.includes('nav')) {
+          if (content.includes("<nav") || content.includes("nav")) {
             structure.hasNav = true;
           }
 
-          if (content.includes('<main') || content.includes('main')) {
+          if (content.includes("<main") || content.includes("main")) {
             structure.hasMain = true;
 
             // Extract main classes
-            const mainMatch = content.match(/<main[^>]*className=["']([^"']+)["']/);
+            const mainMatch = content.match(
+              /<main[^>]*className=["']([^"']+)["']/
+            );
             if (mainMatch) {
               structure.mainClasses.push(...mainMatch[1].split(/\s+/));
             }
           }
 
-          if (content.includes('<footer') || content.includes('footer')) {
+          if (content.includes("<footer") || content.includes("footer")) {
             structure.hasFooter = true;
           }
 
           // Extract container patterns
-          const containerMatches = content.match(/className=["']([^"']*container[^"']*)["']/g) || [];
+          const containerMatches =
+            content.match(/className=["']([^"']*container[^"']*)["']/g) || [];
           for (const match of containerMatches) {
             const classes = match.match(/className=["']([^"']+)["']/)?.[1];
             if (classes) {
               structure.containerClasses.push(...classes.split(/\s+/));
             }
           }
-
         } catch (error) {
           // Silent fail for individual files
         }
@@ -5654,45 +5928,66 @@ console.log('[0x1] Fallback router module loaded');
     structure: any
   ): string {
     // Extract clean title
-    const cleanTitle = pageTitle.split(' - ')[0] || pageTitle.split(' | ')[0] || pageTitle;
+    const cleanTitle =
+      pageTitle.split(" - ")[0] || pageTitle.split(" | ")[0] || pageTitle;
 
     // Use extracted classes or sensible defaults
-    const containerClass = structure.containerClasses.find((c: string) => c.includes('container')) || 'container mx-auto px-4';
-    const headerClass = structure.headerClasses.length > 0
-      ? structure.headerClasses.filter((c: string) => c.includes('border') || c.includes('bg')).join(' ')
-      : 'border-b border-gray-700 bg-slate-900';
-    const mainClass = structure.mainClasses.length > 0
-      ? structure.mainClasses.slice(0, 3).join(' ')
-      : 'py-24';
+    const containerClass =
+      structure.containerClasses.find((c: string) => c.includes("container")) ||
+      "container mx-auto px-4";
+    const headerClass =
+      structure.headerClasses.length > 0
+        ? structure.headerClasses
+            .filter((c: string) => c.includes("border") || c.includes("bg"))
+            .join(" ")
+        : "border-b border-gray-700 bg-slate-900";
+    const mainClass =
+      structure.mainClasses.length > 0
+        ? structure.mainClasses.slice(0, 3).join(" ")
+        : "py-24";
 
     // Filter relevant classes for different sections
-    const bgClasses = realClasses.filter(c => c.startsWith('bg-')).slice(0, 3);
-    const textClasses = realClasses.filter(c => c.startsWith('text-')).slice(0, 3);
-    const layoutClasses = realClasses.filter(c => ['flex', 'grid', 'items-center', 'justify-center'].includes(c));
+    const bgClasses = realClasses
+      .filter((c) => c.startsWith("bg-"))
+      .slice(0, 3);
+    const textClasses = realClasses
+      .filter((c) => c.startsWith("text-"))
+      .slice(0, 3);
+    const layoutClasses = realClasses.filter((c) =>
+      ["flex", "grid", "items-center", "justify-center"].includes(c)
+    );
 
     return `
       <!-- MINIMAL: Just structural skeleton using real classes - no fake content -->
-      <div class="min-h-screen ${bgClasses.includes('bg-slate-900') ? 'bg-slate-900' : 'bg-slate-900'} ${textClasses.includes('text-white') ? 'text-white' : 'text-white'}">
-        ${structure.hasHeader ? `
+      <div class="min-h-screen ${bgClasses.includes("bg-slate-900") ? "bg-slate-900" : "bg-slate-900"} ${textClasses.includes("text-white") ? "text-white" : "text-white"}">
+        ${
+          structure.hasHeader
+            ? `
         <header class="${headerClass}">
           <div class="${containerClass}">
             <div class="flex items-center justify-between h-16">
               <!-- Minimal header skeleton - no fake content -->
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 ${bgClasses.find(c => c.includes('violet')) || 'bg-violet-600'} rounded-md"></div>
+                <div class="w-8 h-8 ${bgClasses.find((c) => c.includes("violet")) || "bg-violet-600"} rounded-md"></div>
                 <div class="h-5 w-24 bg-gray-700 rounded animate-pulse"></div>
               </div>
-              ${structure.hasNav ? `
+              ${
+                structure.hasNav
+                  ? `
               <nav class="hidden md:flex items-center gap-6">
                 <div class="h-4 w-12 bg-gray-700 rounded animate-pulse"></div>
                 <div class="h-4 w-12 bg-gray-700 rounded animate-pulse"></div>
                 <div class="h-4 w-14 bg-gray-700 rounded animate-pulse"></div>
               </nav>
-              ` : ''}
+              `
+                  : ""
+              }
             </div>
           </div>
         </header>
-        ` : ''}
+        `
+            : ""
+        }
 
         <main class="${containerClass} ${mainClass}">
           <!-- FRAMEWORK-STYLE: Minimal space - real content loads immediately -->
@@ -5702,7 +5997,9 @@ console.log('[0x1] Fallback router module loaded');
         </main>
 
         <!-- Next.js-style: Subtle lightning bolt in corner (only if extraction found real classes) -->
-        ${realClasses.length > 0 ? `
+        ${
+          realClasses.length > 0
+            ? `
         <div class="fixed top-4 right-4 z-50">
           <div class="w-6 h-6 text-violet-400 opacity-60 animate-pulse">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -5710,7 +6007,9 @@ console.log('[0x1] Fallback router module loaded');
             </svg>
           </div>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
       </div>
     `;
   }
@@ -5719,9 +6018,13 @@ console.log('[0x1] Fallback router module loaded');
    * Generate clean immediate content with zero JSX artifacts
    * Uses pure HTML with Tailwind classes - no complex parsing
    */
-  private generateCleanImmediateContent(pageTitle: string, pageDescription: string): string {
+  private generateCleanImmediateContent(
+    pageTitle: string,
+    pageDescription: string
+  ): string {
     // Extract clean title without metadata suffixes
-    const cleanTitle = pageTitle.split(' - ')[0] || pageTitle.split(' | ')[0] || pageTitle;
+    const cleanTitle =
+      pageTitle.split(" - ")[0] || pageTitle.split(" | ")[0] || pageTitle;
 
     return `
       <!-- BULLETPROOF: Clean immediate content with zero artifacts -->
@@ -5802,8 +6105,8 @@ console.log('[0x1] Fallback router module loaded');
       }
 
       // Try to find the root layout first
-      const rootLayoutPath = Array.from(layoutPaths).find(path =>
-        path.includes('/app/layout') || path.includes('/layout')
+      const rootLayoutPath = Array.from(layoutPaths).find(
+        (path) => path.includes("/app/layout") || path.includes("/layout")
       );
 
       if (rootLayoutPath) {
@@ -5813,7 +6116,10 @@ console.log('[0x1] Fallback router module loaded');
           const fixedCode = this.fixTextEncoding(sourceCode);
 
           // Extract the layout JSX structure
-          const layoutJsx = await this.extractLayoutJsxStructure(fixedCode, sourceFile);
+          const layoutJsx = await this.extractLayoutJsxStructure(
+            fixedCode,
+            sourceFile
+          );
           if (layoutJsx) {
             return this.convertJsxToStaticHtml(layoutJsx, sourceFile);
           }
@@ -5855,14 +6161,21 @@ console.log('[0x1] Fallback router module loaded');
   /**
    * Extract layout JSX structure specifically
    */
-  private async extractLayoutJsxStructure(sourceCode: string, sourceFile: string): Promise<string | null> {
+  private async extractLayoutJsxStructure(
+    sourceCode: string,
+    sourceFile: string
+  ): Promise<string | null> {
     try {
       // Look for layout JSX return that includes {children}
-      const layoutMatch = sourceCode.match(/return\s*\(\s*([\s\S]*?\{children\}[\s\S]*?)\s*\);?\s*}/);
+      const layoutMatch = sourceCode.match(
+        /return\s*\(\s*([\s\S]*?\{children\}[\s\S]*?)\s*\);?\s*}/
+      );
 
       if (!layoutMatch) {
         // Try alternative pattern
-        const altMatch = sourceCode.match(/return\s+([\s\S]*?\{children\}[\s\S]*?);?\s*}/);
+        const altMatch = sourceCode.match(
+          /return\s+([\s\S]*?\{children\}[\s\S]*?);?\s*}/
+        );
         if (!altMatch) return null;
         return altMatch[1];
       }
@@ -5890,10 +6203,17 @@ console.log('[0x1] Fallback router module loaded');
       combined = this.fixTextEncoding(combined);
 
       // Convert to static HTML with exact class preservation
-      const html = this.convertJsxToStaticHtml(combined, 'combined-layout-page');
+      const html = this.convertJsxToStaticHtml(
+        combined,
+        "combined-layout-page"
+      );
 
       // Wrap in container if needed
-      if (!html.trim().startsWith('<div') && !html.trim().startsWith('<main') && !html.trim().startsWith('<html')) {
+      if (
+        !html.trim().startsWith("<div") &&
+        !html.trim().startsWith("<main") &&
+        !html.trim().startsWith("<html")
+      ) {
         return `<div style="min-height:100vh;">${html}</div>`;
       }
 
@@ -5910,7 +6230,10 @@ console.log('[0x1] Fallback router module loaded');
   /**
    * Optimized fallback content that matches common layout patterns
    */
-  private generateOptimizedFallbackContent(pageTitle: string, pageDescription: string): string {
+  private generateOptimizedFallbackContent(
+    pageTitle: string,
+    pageDescription: string
+  ): string {
     return `
     <!-- Optimized fallback: Common layout pattern to minimize pop-in -->
     <div class="min-h-screen bg-slate-900 text-white">
@@ -5919,7 +6242,7 @@ console.log('[0x1] Fallback router module loaded');
           <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 bg-violet-600 rounded"></div>
-              <span class="text-xl font-semibold">${pageTitle.split(' - ')[0] || pageTitle}</span>
+              <span class="text-xl font-semibold">${pageTitle.split(" - ")[0] || pageTitle}</span>
             </div>
             <nav class="hidden md:flex items-center gap-6">
               <a href="/" class="text-gray-300 hover:text-white">Home</a>
@@ -5931,7 +6254,7 @@ console.log('[0x1] Fallback router module loaded');
       </header>
       <main class="container mx-auto px-4 py-24">
         <div class="text-center mb-24">
-          <h1 class="text-6xl md:text-7xl font-bold mb-8 gradient-text leading-tight">${pageTitle.split(' - ')[0] || pageTitle}</h1>
+          <h1 class="text-6xl md:text-7xl font-bold mb-8 gradient-text leading-tight">${pageTitle.split(" - ")[0] || pageTitle}</h1>
           <p class="text-xl text-gray-400 max-w-3xl mx-auto mb-12">${pageDescription}</p>
           <div class="flex flex-col sm:flex-row gap-4 justify-center">
             <a href="/docs" class="inline-block bg-violet-600 text-white px-8 py-3 rounded-lg hover:bg-violet-700 transition-all duration-200 font-medium">
@@ -5950,7 +6273,10 @@ console.log('[0x1] Fallback router module loaded');
   /**
    * Fallback content that still looks professional (not like a fake loading screen)
    */
-  private generateFallbackContent(pageTitle: string, pageDescription: string): string {
+  private generateFallbackContent(
+    pageTitle: string,
+    pageDescription: string
+  ): string {
     return `
     <!-- Fallback: Professional minimal design -->
     <div style="min-height:100vh;background:#0f172a;color:#fff;font-family:system-ui,sans-serif;">
@@ -5969,7 +6295,9 @@ console.log('[0x1] Fallback router module loaded');
    * PERFORMANCE: Compress all assets for sub-1s Speed Index
    * Compresses CSS, JS, and HTML files to reduce transfer size
    */
-  private async compressAssetsForPerformance(outputPath: string): Promise<void> {
+  private async compressAssetsForPerformance(
+    outputPath: string
+  ): Promise<void> {
     if (!this.options.silent) {
       logger.info("🗜️ Compressing assets for sub-1s performance...");
     }
@@ -6000,36 +6328,39 @@ console.log('[0x1] Fallback router module loaded');
             // Remove comments (but preserve copyright)
             if (filePath.endsWith(".js")) {
               compressedContent = compressedContent
-                .replace(/\/\*(?!\*)[\s\S]*?\*\//g, '') // Remove /* */ comments except /*! */
-                .replace(/^\s*\/\/.*$/gm, '') // Remove // comments
-                .replace(/\n\s*\n/g, '\n') // Remove empty lines
-                .replace(/^\s+/gm, '') // Remove leading whitespace
+                .replace(/\/\*(?!\*)[\s\S]*?\*\//g, "") // Remove /* */ comments except /*! */
+                .replace(/^\s*\/\/.*$/gm, "") // Remove // comments
+                .replace(/\n\s*\n/g, "\n") // Remove empty lines
+                .replace(/^\s+/gm, "") // Remove leading whitespace
                 .trim();
             }
 
             // Remove HTML comments and extra whitespace
             if (filePath.endsWith(".html")) {
               compressedContent = compressedContent
-                .replace(/<!--(?!\s*\/?\s*\[if\s)[\s\S]*?-->/g, '') // Remove HTML comments except IE conditionals
-                .replace(/\n\s*\n/g, '\n') // Remove empty lines
-                .replace(/>\s+</g, '><') // Remove whitespace between tags
+                .replace(/<!--(?!\s*\/?\s*\[if\s)[\s\S]*?-->/g, "") // Remove HTML comments except IE conditionals
+                .replace(/\n\s*\n/g, "\n") // Remove empty lines
+                .replace(/>\s+</g, "><") // Remove whitespace between tags
                 .trim();
             }
 
             // CSS compression
             if (filePath.endsWith(".css")) {
               compressedContent = compressedContent
-                .replace(/\/\*[\s\S]*?\*\//g, '') // Remove CSS comments
-                .replace(/\n\s*\n/g, '\n') // Remove empty lines
-                .replace(/;\s*}/g, '}') // Remove last semicolon before }
-                .replace(/\s*{\s*/g, '{') // Remove spaces around {
-                .replace(/;\s*/g, ';') // Remove spaces after ;
-                .replace(/:\s*/g, ':') // Remove spaces after :
+                .replace(/\/\*[\s\S]*?\*\//g, "") // Remove CSS comments
+                .replace(/\n\s*\n/g, "\n") // Remove empty lines
+                .replace(/;\s*}/g, "}") // Remove last semicolon before }
+                .replace(/\s*{\s*/g, "{") // Remove spaces around {
+                .replace(/;\s*/g, ";") // Remove spaces after ;
+                .replace(/:\s*/g, ":") // Remove spaces after :
                 .trim();
             }
 
             const compressedSize = compressedContent.length;
-            const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+            const savings = (
+              ((originalSize - compressedSize) / originalSize) *
+              100
+            ).toFixed(1);
 
             if (compressedSize < originalSize) {
               // Only write if compression actually helped
@@ -6039,13 +6370,14 @@ console.log('[0x1] Fallback router module loaded');
               totalCompressedSize += compressedSize;
 
               if (!this.options.silent) {
-                logger.debug(`✅ Compressed ${filePath.split('/').pop()}: ${(originalSize/1024).toFixed(1)}KB → ${(compressedSize/1024).toFixed(1)}KB (${savings}% smaller)`);
+                logger.debug(
+                  `✅ Compressed ${filePath.split("/").pop()}: ${(originalSize / 1024).toFixed(1)}KB → ${(compressedSize / 1024).toFixed(1)}KB (${savings}% smaller)`
+                );
               }
             } else {
               totalOriginalSize += originalSize;
               totalCompressedSize += originalSize;
             }
-
           } catch (error) {
             if (!this.options.silent) {
               logger.warn(`Failed to compress ${filePath}: ${error}`);
@@ -6054,15 +6386,22 @@ console.log('[0x1] Fallback router module loaded');
         }
       }
 
-      const totalSavings = totalOriginalSize > 0
-        ? ((totalOriginalSize - totalCompressedSize) / totalOriginalSize * 100).toFixed(1)
-        : '0';
+      const totalSavings =
+        totalOriginalSize > 0
+          ? (
+              ((totalOriginalSize - totalCompressedSize) / totalOriginalSize) *
+              100
+            ).toFixed(1)
+          : "0";
 
       if (!this.options.silent) {
-        logger.success(`✅ Asset compression complete: ${(totalOriginalSize/1024).toFixed(1)}KB → ${(totalCompressedSize/1024).toFixed(1)}KB (${totalSavings}% reduction)`);
-        logger.info(`🚀 Optimized for sub-1s Speed Index with ${totalSavings}% smaller assets`);
+        logger.success(
+          `✅ Asset compression complete: ${(totalOriginalSize / 1024).toFixed(1)}KB → ${(totalCompressedSize / 1024).toFixed(1)}KB (${totalSavings}% reduction)`
+        );
+        logger.info(
+          `🚀 Optimized for sub-1s Speed Index with ${totalSavings}% smaller assets`
+        );
       }
-
     } catch (error) {
       if (!this.options.silent) {
         logger.warn(`Asset compression failed: ${error}`);
@@ -6070,4 +6409,3 @@ console.log('[0x1] Fallback router module loaded');
     }
   }
 }
-
