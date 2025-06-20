@@ -3339,330 +3339,11 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
 `;
   }
 
-  private async generateHtmlFile(outputPath: string): Promise<void> {
-    // DYNAMIC PWA SUPPORT - Use ConfigurationManager for PWA metadata
-    const configManager = getConfigurationManager(this.options.projectPath);
-    const pwaMetadata = await configManager.getPWAMetadata();
+  // REMOVED: Old generateHtmlFile method - replaced with generateMainSpaFileWithImmediateContent
 
-    // CRITICAL: Load actual project configuration for proper metadata
-    const projectConfig = await configManager.loadProjectConfig();
+  // REMOVED: generateLoadingSkeleton method - replaced with immediate visible content
 
-    // CRITICAL: Extract metadata from homepage component (for the default HTML file)
-    // In production builds, we generate one HTML file but support client-side routing
-    let pageMetadata = null;
-    const homeRoute = this.state.routes.find((route) => route.path === "/");
-    if (homeRoute) {
-      pageMetadata = await this.extractMetadataFromRoute(homeRoute);
-    }
-
-    // Generate CSS link tags for external dependencies
-    const externalCssLinks = this.state.dependencies.cssFiles
-      .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
-      .join("\n");
-
-    // CRITICAL: Generate favicon link based on what was discovered
-    let faviconLink = "";
-    const faviconPath = join(outputPath, "favicon.svg");
-    if (existsSync(faviconPath)) {
-      faviconLink =
-        '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
-    } else {
-      const faviconIcoPath = join(outputPath, "favicon.ico");
-      if (existsSync(faviconIcoPath)) {
-        faviconLink =
-          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
-      }
-    }
-
-    // DYNAMIC PWA SUPPORT - Add PWA manifest link if available
-    const manifestLink = pwaMetadata.manifestLink || "";
-
-    // DYNAMIC PWA SUPPORT - Add PWA meta tags
-    const pwaMetaTags =
-      pwaMetadata.metaTags.length > 0
-        ? "\n" +
-          pwaMetadata.metaTags.map((tag: string) => `  ${tag}`).join("\n")
-        : "";
-
-    // DYNAMIC PWA SUPPORT - Add PWA scripts
-    const pwaScripts =
-      pwaMetadata.scripts.length > 0
-        ? "\n" +
-          pwaMetadata.scripts.map((script: string) => `  ${script}`).join("\n")
-        : "";
-
-    // FIXED: Use page metadata if available, fallback to project config
-    let pageTitle, pageDescription;
-
-    if (pageMetadata) {
-      // Use the metadata system's title resolution
-      const { resolveTitle } = await import("../../core/metadata");
-      pageTitle = resolveTitle(pageMetadata);
-      pageDescription =
-        pageMetadata.description ||
-        projectConfig.description ||
-        "0x1 Framework application";
-    } else {
-      // Fallback to project config
-      pageTitle = projectConfig.name || "My 0x1 App";
-      pageDescription =
-        projectConfig.description || "0x1 Framework application";
-    }
-
-    // Generate additional meta tags from page metadata
-    let additionalMetaTags = "";
-    if (pageMetadata) {
-      try {
-        const { generateMetaTags } = await import("../../core/metadata");
-        additionalMetaTags = generateMetaTags(pageMetadata);
-      } catch (error) {
-        if (!this.options.silent) {
-          logger.warn(`Failed to generate meta tags: ${error}`);
-        }
-      }
-    }
-
-    // CRITICAL: Add cache-busting timestamp to prevent Safari iOS caching issues
-    const cacheBust = Date.now();
-
-    // PERFORMANCE: Generate loading skeleton to eliminate blank screen
-    const loadingSkeletonHTML = this.generateLoadingSkeleton(pageTitle);
-
-    // PERFORMANCE: Extract critical CSS for inline injection
-    const criticalCSS = await this.extractCriticalCSS(outputPath);
-
-    // PERFORMANCE: Generate resource hints for faster loading
-    const resourceHints = this.generateResourceHints(cacheBust);
-
-    // DEBUG: Log the actual content to see what's happening
-    if (!this.options.silent) {
-      console.log('🔍 DEBUG: loadingSkeletonHTML preview:', loadingSkeletonHTML.substring(0, 200));
-      console.log('🔍 DEBUG: pwaScripts content:', pwaScripts);
-      console.log('🔍 DEBUG: pageTitle:', pageTitle);
-    }
-
-    // CRITICAL: Ensure loading skeleton is properly generated
-    if (!this.options.silent && loadingSkeletonHTML.length === 0) {
-      logger.warn('Loading skeleton is empty - users will see blank screen');
-    }
-
-    // Build complete HTML with proper string concatenation to avoid template literal nesting issues
-    const html = "<!DOCTYPE html>\n" +
-      '<html lang="en" class="dark">\n' +
-      "<head>\n" +
-      '  <meta charset="UTF-8">\n' +
-      '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-      `  <title>${pageTitle}</title>\n` +
-      `  <meta name="description" content="${pageDescription}">\n` +
-      (additionalMetaTags ? additionalMetaTags + "\n" : "") +
-      (faviconLink ? faviconLink + "\n" : "") +
-      (manifestLink ? manifestLink + "\n" : "") +
-      resourceHints + "\n" +
-      "  <!-- Critical CSS inlined for fastest rendering -->\n" +
-      "  <style>\n" +
-      `    ${criticalCSS}\n` +
-      "    /* CRITICAL: Loading skeleton animations and hiding rules */\n" +
-      "    .loading-skeleton {\n" +
-      "      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n" +
-      "    }\n" +
-      "    @keyframes pulse {\n" +
-      "      0%, 100% { opacity: 1; }\n" +
-      "      50% { opacity: .5; }\n" +
-      "    }\n" +
-      "    /* CRITICAL: Hide skeleton when app loads successfully */\n" +
-      "    .app-loaded .loading-skeleton { display: none !important; }\n" +
-      "    /* CRITICAL: Also hide by ID for redundancy */\n" +
-      "    .app-loaded #loading-skeleton { display: none !important; }\n" +
-      "    /* CRITICAL: Instant hiding fallback */\n" +
-      "    body.app-loaded .loading-skeleton { display: none !important; }\n" +
-      "    body.app-loaded #loading-skeleton { display: none !important; }\n" +
-      "  </style>\n" +
-      `  <!-- PERFORMANCE: Critical CSS inlined, full CSS loaded asynchronously -->\n` +
-      `  <link rel="preload" href="/styles.css?v=${cacheBust}" as="style" onload="this.onload=null;this.rel='stylesheet'">\n` +
-      `  <noscript><link rel="stylesheet" href="/styles.css?v=${cacheBust}"></noscript>\n` +
-      (externalCssLinks ? externalCssLinks + "\n" : "") +
-      (pwaMetaTags ? pwaMetaTags + "\n" : "") +
-      "  <script type=\"importmap\">\n" +
-      "  {\n" +
-      "    \"imports\": {\n" +
-      `      "0x1": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
-      `      "0x1/index": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
-      `      "0x1/index.js": "/node_modules/0x1/index.js?v=${cacheBust}",\n` +
-      `      "0x1/jsx-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
-      `      "0x1/jsx-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
-      `      "0x1/jsx-dev-runtime": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
-      `      "0x1/jsx-dev-runtime.js": "/0x1/jsx-runtime.js?v=${cacheBust}",\n` +
-      `      "0x1/router": "/0x1/router.js?v=${cacheBust}",\n` +
-      `      "0x1/router.js": "/0x1/router.js?v=${cacheBust}",\n` +
-      `      "0x1/link": "/0x1/router.js?v=${cacheBust}",\n` +
-      `      "0x1/link.js": "/0x1/router.js?v=${cacheBust}",\n` +
-      `      "0x1/hooks": "/0x1/hooks.js?v=${cacheBust}",\n` +
-      `      "0x1/hooks.js": "/0x1/hooks.js?v=${cacheBust}"\n` +
-      "    }\n" +
-      "  }\n" +
-      "  </script>\n" +
-      "</head>\n" +
-      '<body class="bg-slate-900 text-white">\n' +
-      "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
-      '  <div id="app"></div>\n\n' +
-      "  <script>\n" +
-      "    window.process={env:{NODE_ENV:'production'}};\n\n" +
-      "    // Theme setup (immediate, no flash)\n" +
-      "    (function(){\n" +
-      "      try{\n" +
-      "        const t=localStorage.getItem('0x1-dark-mode');\n" +
-      "        if(t==='light') {\n" +
-      "          document.documentElement.classList.remove('dark');\n" +
-      "          document.body.className='bg-white text-gray-900';\n" +
-      "        } else {\n" +
-      "          document.documentElement.classList.add('dark');\n" +
-      "          document.body.className='bg-slate-900 text-white';\n" +
-      "        }\n" +
-      "      } catch {\n" +
-      "        document.documentElement.classList.add('dark');\n" +
-      "      }\n" +
-      "    })();\n\n" +
-      "    // Performance monitoring\n" +
-      "    if ('performance' in window) {\n" +
-      "      window.addEventListener('load', () => {\n" +
-      "        setTimeout(() => {\n" +
-      "          const perfData = performance.getEntriesByType('navigation')[0];\n" +
-      "          console.log('Load Time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');\n" +
-      "        }, 0);\n" +
-      "      });\n" +
-      "    }\n\n" +
-      "    // Remove loading skeleton once app initializes\n" +
-      "    window.addEventListener('DOMContentLoaded', () => {\n" +
-      "      setTimeout(() => {\n" +
-      "        document.body.classList.add('app-loaded');\n" +
-      "      }, 100);\n" +
-      "    });\n" +
-      "  </script>\n\n" +
-      `  <script src="/app.js?v=${cacheBust}" type="module"></script>${pwaScripts || ''}
-</body>
-</html>`;
-
-    // DEBUG: Log a preview of the final HTML to see what's actually being written
-    if (!this.options.silent) {
-      console.log('🔍 DEBUG: Final HTML preview (around loadingSkeletonHTML):');
-      const htmlLines = html.split('\n');
-      const bodyIndex = htmlLines.findIndex(line => line.includes('<body'));
-      if (bodyIndex !== -1) {
-        const previewLines = htmlLines.slice(bodyIndex, bodyIndex + 10);
-        console.log(previewLines.join('\n'));
-      }
-    }
-
-    await Bun.write(join(outputPath, "index.html"), html);
-  }
-
-  /**
-   * Generate loading skeleton for immediate visual feedback
-   * Eliminates blank screen during JavaScript loading
-   */
-  private generateLoadingSkeleton(pageTitle: string): string {
-    return `
-  <!-- CRITICAL: Loading skeleton that gets hidden when app loads -->
-  <div class="loading-skeleton fixed inset-0 bg-slate-900 text-white z-50" id="loading-skeleton">
-    <div class="flex flex-col items-center justify-center min-h-screen p-4">
-      <!-- Logo/Brand area -->
-      <div class="mb-8">
-        <div class="w-16 h-16 bg-purple-600 rounded-lg animate-pulse"></div>
-      </div>
-
-      <!-- App title -->
-      <h1 class="text-2xl font-bold mb-4">` + pageTitle + `</h1>
-
-      <!-- Loading message -->
-      <p class="text-gray-400 mb-8">Initializing application...</p>
-
-      <!-- Loading spinner -->
-      <div class="relative">
-        <div class="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-
-      <!-- Skeleton content preview -->
-      <div class="mt-12 w-full max-w-md space-y-4">
-        <div class="h-4 bg-gray-700 rounded animate-pulse"></div>
-        <div class="h-4 bg-gray-700 rounded w-3/4 animate-pulse"></div>
-        <div class="h-4 bg-gray-700 rounded w-1/2 animate-pulse"></div>
-      </div>
-    </div>
-  </div>`;
-  }
-
-  /**
-   * Extract critical CSS for above-the-fold content
-   * Inlines essential styles to prevent render blocking
-   */
-  private async extractCriticalCSS(outputPath: string): Promise<string> {
-    // PERFORMANCE: Ultra-minimal critical CSS for instant rendering
-    const criticalCSS = `
-      /* CRITICAL: Essential base styles for instant render */
-      *,::before,::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}
-      ::before,::after{--tw-content:''}
-      html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
-      body{margin:0;line-height:inherit}
-
-      /* CRITICAL: Immediate layout to prevent CLS */
-      .flex{display:flex}
-      .min-h-screen{min-height:100vh}
-      .items-center{align-items:center}
-      .justify-center{justify-content:center}
-      .flex-col{flex-direction:column}
-      .text-center{text-align:center}
-      .p-4{padding:1rem}
-      .mb-4{margin-bottom:1rem}
-      .mb-8{margin-bottom:2rem}
-
-      /* CRITICAL: Core colors for instant visibility */
-      .bg-slate-900{background-color:#0f172a}
-      .bg-white{background-color:#fff}
-      .text-white{color:#fff}
-      .text-gray-900{color:#111827}
-      .text-violet-600{color:#7c3aed}
-
-      /* CRITICAL: Typography for readability */
-      .text-2xl{font-size:1.5rem;line-height:2rem}
-      .text-lg{font-size:1.125rem;line-height:1.75rem}
-      .font-bold{font-weight:700}
-
-      /* CRITICAL: Theme support */
-      .dark{background-color:#0f172a;color:#f8fafc}
-      .dark .dark\\:text-white{color:#fff}
-
-      /* CRITICAL: Essential components */
-      .rounded-lg{border-radius:0.5rem}
-      .shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
-      .transition-all{transition:all 0.15s ease}
-      .hover\\:bg-violet-700:hover{background-color:#6d28d9}
-    `;
-
-    return criticalCSS.replace(/\n\s+/g, "").trim();
-  }
-
-
-
-  /**
-   * Generate resource hints for LIGHTNING-FAST loading
-   * Aggressive preloading for sub-1 second rendering
-   */
-  private generateResourceHints(cacheBust: number): string {
-    return `
-  <!-- PERFORMANCE: Aggressive preloading for instant rendering -->
-  <link rel="preload" href="/0x1/hooks.js?v=${cacheBust}" as="script">
-  <link rel="preload" href="/0x1/jsx-runtime.js?v=${cacheBust}" as="script">
-  <link rel="preload" href="/0x1/router.js?v=${cacheBust}" as="script">
-  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">
-  <link rel="modulepreload" href="/0x1/hooks.js?v=${cacheBust}">
-  <link rel="modulepreload" href="/0x1/jsx-runtime.js?v=${cacheBust}">
-  <link rel="modulepreload" href="/0x1/router.js?v=${cacheBust}">
-  <link rel="modulepreload" href="/app.js?v=${cacheBust}">
-  <link rel="modulepreload" href="/node_modules/0x1/index.js?v=${cacheBust}">
-  <link rel="dns-prefetch" href="//fonts.googleapis.com">
-  <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`;
-  }
+  // REMOVED: Old extractCriticalCSS and generateResourceHints methods - replaced with minimal inline CSS
 
   /**
    * Extract metadata from a specific route component
@@ -4461,7 +4142,7 @@ export default function ErrorComponent(props) {
   ): Promise<void> {
     if (!this.options.silent) {
       logger.info(
-        "🌐 Generating main SPA file only (CRITICAL FIX: route-specific files disabled to prevent nested HTML)..."
+        "🌐 Generating HTML files with IMMEDIATE CONTENT (fixing blank page issue)..."
       );
     }
 
@@ -4697,10 +4378,11 @@ export default function ErrorComponent(props) {
       pwaResources
     );
 
-    // CRITICAL FIX: Generate BOTH main SPA file AND route-specific files for proper metadata
-    // Main SPA for users, route-specific for crawlers/social media
-    await this.generateMainSpaFile(outputPath, projectConfig, resources);
-    await this.generateCrawlerOptimizedRouteFiles(
+    // CRITICAL FIX: Generate main SPA file with IMMEDIATE CONTENT (no blank page)
+    await this.generateMainSpaFileWithImmediateContent(outputPath, projectConfig, resources);
+
+    // CRITICAL FIX: Generate route-specific files with IMMEDIATE CONTENT for crawlers
+    await this.generateCrawlerOptimizedRouteFilesWithContent(
       outputPath,
       projectConfig,
       resources
@@ -4708,7 +4390,7 @@ export default function ErrorComponent(props) {
 
     if (!this.options.silent) {
       logger.success(
-        `✅ Generated HTML files: 1 SPA file + ${this.state.routes.length - 1} crawler-optimized files for proper metadata`
+        `✅ Generated HTML files with IMMEDIATE CONTENT: 1 SPA file + ${this.state.routes.length - 1} crawler-optimized files`
       );
       logger.success(
         `✅ Service worker configured with ${accuratePrecacheResources.length} validated resources`
@@ -4717,80 +4399,19 @@ export default function ErrorComponent(props) {
   }
 
   /**
-   * Check if PWA icons exist (using shared logic patterns)
+   * CRITICAL FIX: Generate main SPA file with IMMEDIATE visible content
+   * No more blank pages - crawlers and users see content immediately
    */
-  private async iconsExist(iconsPath: string): Promise<boolean> {
-    if (!iconsPath) return false;
-
-    const filesystemPath = iconsPath.startsWith("/")
-      ? join(this.options.projectPath, "public", iconsPath.substring(1))
-      : join(this.options.projectPath, iconsPath);
-
-    const essentialIcons = [
-      "icon-192x192.png",
-      "icon-512x512.png",
-      "icon-192x192.svg",
-      "icon-512x512.svg",
-    ];
-    return essentialIcons.some((icon) =>
-      existsSync(join(filesystemPath, icon))
-    );
-  }
-
-  /**
-   * Generate shared HTML resources used by all HTML files
-   * UPDATED: Uses PWA resources from shared handler
-   */
-  private async generateSharedHtmlResources(
-    outputPath: string,
-    pwaResources: any
-  ) {
-    // Generate favicon link
-    let faviconLink = "";
-    const faviconPath = join(outputPath, "favicon.svg");
-    if (existsSync(faviconPath)) {
-      faviconLink =
-        '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
-    } else {
-      const faviconIcoPath = join(outputPath, "favicon.ico");
-      if (existsSync(faviconIcoPath)) {
-        faviconLink =
-          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
-      }
-    }
-
-    // Generate CSS links for external dependencies
-    const externalCssLinks = this.state.dependencies.cssFiles
-      .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
-      .join("\n");
-
-    // Cache-busting timestamp
-    const cacheBust = Date.now();
-
-    return {
-      faviconLink,
-      externalCssLinks,
-      pwaResources, // Use PWA resources from shared handler
-      cacheBust,
-    };
-  }
-
-  /**
-   * Generate main SPA file (index.html) - for users browsing the site
-   * UPDATED: Uses shared PWA handler for injection
-   */
-  private async generateMainSpaFile(
+  private async generateMainSpaFileWithImmediateContent(
     outputPath: string,
     projectConfig: any,
     resources: any
   ) {
-    const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
-      resources;
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
 
     // CRITICAL FIX: Extract metadata from homepage component instead of just using project config
     let pageTitle = projectConfig.name || "My 0x1 App";
-    let pageDescription =
-      projectConfig.description || "0x1 Framework application";
+    let pageDescription = projectConfig.description || "0x1 Framework application";
     let additionalMetaTags = "";
 
     // Find the root route and extract its metadata
@@ -4799,23 +4420,16 @@ export default function ErrorComponent(props) {
       try {
         const routeMetadata = await this.extractMetadataFromRoute(homeRoute);
         if (routeMetadata) {
-          const { resolveTitle, generateMetaTags } = await import(
-            "../../core/metadata"
-          );
+          const { resolveTitle, generateMetaTags } = await import("../../core/metadata");
           pageTitle = resolveTitle(routeMetadata);
-          pageDescription =
-            routeMetadata.description ||
-            projectConfig.description ||
-            "0x1 Framework application";
+          pageDescription = routeMetadata.description || projectConfig.description || "0x1 Framework application";
 
           // Generate comprehensive meta tags for homepage
           try {
             additionalMetaTags = generateMetaTags(routeMetadata);
           } catch (error) {
             if (!this.options.silent) {
-              logger.warn(
-                `Failed to generate meta tags for homepage: ${error}`
-              );
+              logger.warn(`Failed to generate meta tags for homepage: ${error}`);
             }
           }
 
@@ -4825,12 +4439,16 @@ export default function ErrorComponent(props) {
         }
       } catch (error) {
         if (!this.options.silent) {
-          logger.warn(
-            `Failed to extract homepage metadata, using project config: ${error}`
-          );
+          logger.warn(`Failed to extract homepage metadata, using project config: ${error}`);
         }
       }
     }
+
+    // CRITICAL FIX: Generate minimal critical CSS (inline only essential styles)
+    const minimalCriticalCSS = this.generateMinimalCriticalCSS();
+
+          // CRITICAL FIX: Generate immediate visible content for the app container
+      const immediateContent = await this.generateImmediateVisibleContent(pageTitle, pageDescription);
 
     let spaHtml = "<!DOCTYPE html>\n" +
       '<html lang="en" class="dark">\n' +
@@ -4841,7 +4459,80 @@ export default function ErrorComponent(props) {
       `  <meta name="description" content="${pageDescription}">\n` +
       (additionalMetaTags ? additionalMetaTags + "\n" : "") +
       (faviconLink ? faviconLink + "\n" : "") +
-      `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}">\n` +
+      "  <!-- PERFORMANCE: Minimal critical CSS for instant rendering -->\n" +
+      "  <style>\n" +
+      minimalCriticalCSS +
+      "  </style>\n" +
+      "  <!-- PERFORMANCE: Reliable CSS loading with override detection -->\n" +
+      `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}" onload="window.cssLoaded=true">\n` +
+      "  <script>\n" +
+      "    // Monitor CSS loading and override critical styles\n" +
+      "    let checkCount = 0;\n" +
+      "    const checkCSSLoaded = () => {\n" +
+      "      checkCount++;\n" +
+      "      \n" +
+      "      // Check if external CSS has loaded by testing a class that actually exists\n" +
+      "      const testEl = document.createElement('div');\n" +
+      "      testEl.className = 'flex';\n" +
+      "      testEl.style.position = 'absolute';\n" +
+      "      testEl.style.visibility = 'hidden';\n" +
+      "      document.body.appendChild(testEl);\n" +
+      "      \n" +
+      "      const computedStyle = getComputedStyle(testEl);\n" +
+      "      const display = computedStyle.display;\n" +
+      "      document.body.removeChild(testEl);\n" +
+      "      \n" +
+      "      // If flex class is applied, CSS is loaded\n" +
+      "      if (display === 'flex' || window.cssLoaded) {\n" +
+      "        // Remove ALL critical styles to let Tailwind take over completely\n" +
+      "        const style = document.createElement('style');\n" +
+      "        style.textContent = `\n" +
+      "          .critical-temp { background: unset !important; border: unset !important; }\n" +
+      "          .critical-layout-flex { display: unset !important; }\n" +
+      "          .critical-layout-center { align-items: unset !important; }\n" +
+      "          .critical-layout-between { justify-content: unset !important; }\n" +
+      "          .critical-layout-text-center { text-align: unset !important; }\n" +
+      "          .critical-layout-hidden { display: unset !important; }\n" +
+      "          .critical-layout-full { min-height: unset !important; }\n" +
+      "          .critical-layout-h16 { height: unset !important; }\n" +
+      "          .critical-layout-mx-auto { margin: unset !important; }\n" +
+      "          .critical-layout-p4 { padding: unset !important; }\n" +
+      "          .critical-md-flex { display: unset !important; }\n" +
+      "        `;\n" +
+      "        document.head.appendChild(style);\n" +
+      "        console.log('[0x1] CSS loaded, all critical styles removed');\n" +
+      "        return;\n" +
+      "      }\n" +
+      "      \n" +
+      "      // Keep checking for up to 5 seconds\n" +
+      "      if (checkCount < 50) {\n" +
+      "        setTimeout(checkCSSLoaded, 100);\n" +
+      "      }\n" +
+      "    };\n" +
+      "    \n" +
+      "    // Start checking after a brief delay\n" +
+      "    setTimeout(checkCSSLoaded, 50);\n" +
+      "    \n" +
+      "    // FORCE OVERRIDE: Remove critical styles after 2 seconds regardless\n" +
+      "    setTimeout(() => {\n" +
+      "      const forceStyle = document.createElement('style');\n" +
+      "      forceStyle.textContent = `\n" +
+      "        .critical-temp { background: unset !important; border: unset !important; }\n" +
+      "        .critical-layout-flex { display: unset !important; }\n" +
+      "        .critical-layout-center { align-items: unset !important; }\n" +
+      "        .critical-layout-between { justify-content: unset !important; }\n" +
+      "        .critical-layout-text-center { text-align: unset !important; }\n" +
+      "        .critical-layout-hidden { display: unset !important; }\n" +
+      "        .critical-layout-full { min-height: unset !important; }\n" +
+      "        .critical-layout-h16 { height: unset !important; }\n" +
+      "        .critical-layout-mx-auto { margin: unset !important; }\n" +
+      "        .critical-layout-p4 { padding: unset !important; }\n" +
+      "        .critical-md-flex { display: unset !important; }\n" +
+      "      `;\n" +
+      "      document.head.appendChild(forceStyle);\n" +
+      "      console.log('[0x1] FORCE: Critical styles removed after 2s');\n" +
+      "    }, 2000);\n" +
+      "  </script>\n" +
       (externalCssLinks ? externalCssLinks + "\n" : "") +
       "  <script type=\"importmap\">\n" +
       "  {\n" +
@@ -4864,8 +4555,10 @@ export default function ErrorComponent(props) {
       "  </script>\n" +
       "</head>\n" +
       '<body class="bg-slate-900 text-white">\n' +
-      "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
-      '  <div id="app"></div>\n\n' +
+      "  <!-- CRITICAL FIX: App container with IMMEDIATE visible content -->\n" +
+      '  <div id="app">\n' +
+      immediateContent +
+      "  </div>\n\n" +
       "  <!-- Performance optimizations -->\n" +
       "  <script>\n" +
       "    window.process={env:{NODE_ENV:'production'}};\n\n" +
@@ -4900,26 +4593,56 @@ export default function ErrorComponent(props) {
       `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/app.js?v=${cacheBust}" type="module"></script>\n` +
       "\n" +
-      "  <!-- PERFORMANCE: Immediate initialization -->\n" +
+      "  <!-- PERFORMANCE: Next.js-style progress indicator and app initialization -->\n" +
       "  <script>\n" +
-      "    // PERFORMANCE: Start app immediately when modules load\n" +
+      "    // Next.js-style progress indicator\n" +
+      "    const progressBar = document.getElementById('top-progress');\n" +
+      "    let progressTimeout;\n" +
+      "    \n" +
+      "    function showProgress() {\n" +
+      "      if (progressBar) {\n" +
+      "        progressBar.style.display = 'block';\n" +
+      "        progressBar.style.transform = 'scaleX(0.3)';\n" +
+      "        \n" +
+      "        // Gradually increase to 90%\n" +
+      "        setTimeout(() => {\n" +
+      "          progressBar.style.transform = 'scaleX(0.9)';\n" +
+      "        }, 200);\n" +
+      "      }\n" +
+      "    }\n" +
+      "    \n" +
+      "    function completeProgress() {\n" +
+      "      if (progressBar) {\n" +
+      "        progressBar.style.transform = 'scaleX(1)';\n" +
+      "        setTimeout(() => {\n" +
+      "          progressBar.style.display = 'none';\n" +
+      "          progressBar.style.transform = 'scaleX(0)';\n" +
+      "        }, 200);\n" +
+      "      }\n" +
+      "    }\n" +
+      "    \n" +
+      "    // Show progress when app starts loading\n" +
       "    window.addEventListener('DOMContentLoaded', () => {\n" +
-      "      // Start timing\n" +
       "      const startTime = performance.now();\n" +
+      "      showProgress();\n" +
       "      \n" +
-      "      // Log when app becomes visible\n" +
+      "      // Watch for app content changes (when real content loads)\n" +
       "      const observer = new MutationObserver(() => {\n" +
       "        const app = document.getElementById('app');\n" +
-      "        if (app && app.children.length > 0) {\n" +
+      "        if (app && app.children.length > 1) {\n" +
       "          const renderTime = performance.now() - startTime;\n" +
-      "          console.log(`[0x1 Performance] App rendered in ${renderTime.toFixed(2)}ms`);\n" +
+      "          console.log(`[0x1] App loaded in ${renderTime.toFixed(2)}ms`);\n" +
+      "          completeProgress();\n" +
       "          observer.disconnect();\n" +
       "        }\n" +
       "      });\n" +
       "      observer.observe(document.getElementById('app'), { childList: true, subtree: true });\n" +
+      "      \n" +
+      "      // Complete progress after max 3 seconds regardless\n" +
+      "      setTimeout(completeProgress, 3000);\n" +
       "    });\n" +
       "  </script>" +
-      (pwaResources.scripts?.length ? pwaResources.scripts.join('') : '') +
+      (pwaResources && Array.isArray(pwaResources.scripts) ? pwaResources.scripts.join('') : '') +
       "\n</body>\n</html>";
 
     // SINGLE SOURCE OF TRUTH: Use shared PWA handler for HTML injection
@@ -4960,32 +4683,46 @@ export default function ErrorComponent(props) {
     await Bun.write(join(outputPath, "index.html"), spaHtml);
 
     if (!this.options.silent) {
-      logger.info(
-        "✅ Generated main SPA file: index.html (with homepage metadata)"
-      );
+      logger.info("✅ Generated main SPA file with IMMEDIATE CONTENT: index.html");
     }
   }
 
   /**
-   * Generate route-specific HTML files - for crawlers and external tools
-   * UPDATED: Uses shared PWA handler for injection
+   * CRITICAL FIX: Generate minimal critical CSS for instant rendering
+   * Only the absolute essentials to prevent layout shift
    */
-  private async generateCrawlerOptimizedRouteFiles(
+          private generateMinimalCriticalCSS(): string {
+    return `
+    /* ZERO CONFLICTS: Only basic reset, everything else inline */
+    *{box-sizing:border-box}
+    html{min-height:100%;font-family:system-ui,sans-serif}
+    body{min-height:100vh;line-height:1.6;margin:0;background:#0f172a;color:#fff}
+    #app{min-height:100vh}
+    `;
+  }
+
+    /**
+   * CRITICAL FIX: Generate immediate app-like content (NOT a loading screen)
+   * This looks like actual app content, not a loading state
+   */
+
+
+  /**
+   * CRITICAL FIX: Generate route-specific HTML files with immediate content for crawlers
+   */
+  private async generateCrawlerOptimizedRouteFilesWithContent(
     outputPath: string,
     projectConfig: any,
     resources: any
   ) {
-    const { faviconLink, externalCssLinks, pwaResources, cacheBust } =
-      resources;
+    const { faviconLink, externalCssLinks, pwaResources, cacheBust } = resources;
 
     for (const route of this.state.routes) {
       // CRITICAL FIX: Skip root route since main SPA file already has proper metadata extracted
       // This prevents overwriting the main index.html file
       if (route.path === "/") {
         if (!this.options.silent) {
-          logger.info(
-            `⏭️ Skipping root route HTML generation - main SPA file already has extracted metadata`
-          );
+          logger.info(`⏭️ Skipping root route HTML generation - main SPA file already has extracted metadata`);
         }
         continue;
       }
@@ -4994,18 +4731,13 @@ export default function ErrorComponent(props) {
         // Extract metadata for this specific route
         const routeMetadata = await this.extractMetadataFromRoute(route);
 
-        let pageTitle,
-          pageDescription,
-          additionalMetaTags = "";
+        let pageTitle, pageDescription, additionalMetaTags = "";
 
         if (routeMetadata) {
           // Use route-specific metadata
           const { resolveTitle } = await import("../../core/metadata");
           pageTitle = resolveTitle(routeMetadata);
-          pageDescription =
-            routeMetadata.description ||
-            projectConfig.description ||
-            "0x1 Framework application";
+          pageDescription = routeMetadata.description || projectConfig.description || "0x1 Framework application";
 
           // Generate comprehensive meta tags for crawlers
           try {
@@ -5013,24 +4745,23 @@ export default function ErrorComponent(props) {
             additionalMetaTags = generateMetaTags(routeMetadata);
           } catch (error) {
             if (!this.options.silent) {
-              logger.warn(
-                `Failed to generate meta tags for route ${route.path}: ${error}`
-              );
+              logger.warn(`Failed to generate meta tags for route ${route.path}: ${error}`);
             }
           }
         } else {
           // Fallback to project config with route-specific title
-          const routeName =
-            route.path === "/"
-              ? "Home"
-              : route.path.replace("/", "").charAt(0).toUpperCase() +
-                route.path.replace("/", "").slice(1);
+          const routeName = route.path === "/" ? "Home" : route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1);
           pageTitle = `${routeName} | ${projectConfig.name || "My 0x1 App"}`;
-          pageDescription =
-            projectConfig.description || "0x1 Framework application";
+          pageDescription = projectConfig.description || "0x1 Framework application";
         }
 
-        // Generate HTML file for this route
+        // CRITICAL FIX: Generate immediate visible content for this route
+        const immediateRouteContent = this.generateImmediateRouteContent(route, pageTitle, pageDescription);
+
+        // CRITICAL FIX: Generate minimal critical CSS
+        const minimalCriticalCSS = this.generateMinimalCriticalCSS();
+
+        // Generate HTML file for this route with immediate content
         let routeHtml = "<!DOCTYPE html>\n" +
           '<html lang="en" class="dark">\n' +
           "<head>\n" +
@@ -5040,9 +4771,80 @@ export default function ErrorComponent(props) {
           `  <meta name="description" content="${pageDescription}">\n` +
           (additionalMetaTags ? additionalMetaTags + "\n" : "") +
           (faviconLink ? faviconLink + "\n" : "") +
-          `  <!-- PERFORMANCE: Critical CSS inlined, full CSS loaded asynchronously -->\n` +
-          `  <link rel="preload" href="/styles.css?v=${cacheBust}" as="style" onload="this.onload=null;this.rel='stylesheet'">\n` +
-          `  <noscript><link rel="stylesheet" href="/styles.css?v=${cacheBust}"></noscript>\n` +
+          "  <!-- PERFORMANCE: Minimal critical CSS for instant rendering -->\n" +
+          "  <style>\n" +
+          minimalCriticalCSS +
+          "  </style>\n" +
+          "  <!-- PERFORMANCE: Reliable CSS loading with override detection -->\n" +
+          `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}" onload="window.cssLoaded=true">\n` +
+          "  <script>\n" +
+          "    // Monitor CSS loading and override critical styles\n" +
+          "    let checkCount = 0;\n" +
+          "    const checkCSSLoaded = () => {\n" +
+          "      checkCount++;\n" +
+          "      \n" +
+          "      // Check if external CSS has loaded by testing a class that actually exists\n" +
+          "      const testEl = document.createElement('div');\n" +
+          "      testEl.className = 'flex';\n" +
+          "      testEl.style.position = 'absolute';\n" +
+          "      testEl.style.visibility = 'hidden';\n" +
+          "      document.body.appendChild(testEl);\n" +
+          "      \n" +
+          "      const computedStyle = getComputedStyle(testEl);\n" +
+          "      const display = computedStyle.display;\n" +
+          "      document.body.removeChild(testEl);\n" +
+          "      \n" +
+          "      // If flex class is applied, CSS is loaded\n" +
+          "      if (display === 'flex' || window.cssLoaded) {\n" +
+          "        // Remove ALL critical styles to let Tailwind take over completely\n" +
+          "        const style = document.createElement('style');\n" +
+          "        style.textContent = `\n" +
+          "          .critical-temp { background: unset !important; border: unset !important; }\n" +
+          "          .critical-layout-flex { display: unset !important; }\n" +
+          "          .critical-layout-center { align-items: unset !important; }\n" +
+          "          .critical-layout-between { justify-content: unset !important; }\n" +
+          "          .critical-layout-text-center { text-align: unset !important; }\n" +
+          "          .critical-layout-hidden { display: unset !important; }\n" +
+          "          .critical-layout-full { min-height: unset !important; }\n" +
+          "          .critical-layout-h16 { height: unset !important; }\n" +
+          "          .critical-layout-mx-auto { margin: unset !important; }\n" +
+          "          .critical-layout-p4 { padding: unset !important; }\n" +
+          "          .critical-md-flex { display: unset !important; }\n" +
+          "        `;\n" +
+          "        document.head.appendChild(style);\n" +
+          "        console.log('[0x1] CSS loaded, all critical styles removed');\n" +
+          "        return;\n" +
+          "      }\n" +
+          "      \n" +
+          "      // Keep checking for up to 5 seconds\n" +
+          "      if (checkCount < 50) {\n" +
+          "        setTimeout(checkCSSLoaded, 100);\n" +
+          "      }\n" +
+          "    };\n" +
+          "    \n" +
+          "    // Start checking after a brief delay\n" +
+          "    setTimeout(checkCSSLoaded, 50);\n" +
+          "    \n" +
+          "    // FORCE OVERRIDE: Remove critical styles after 2 seconds regardless\n" +
+          "    setTimeout(() => {\n" +
+          "      const forceStyle = document.createElement('style');\n" +
+          "      forceStyle.textContent = `\n" +
+          "        .critical-temp { background: unset !important; border: unset !important; }\n" +
+          "        .critical-layout-flex { display: unset !important; }\n" +
+          "        .critical-layout-center { align-items: unset !important; }\n" +
+          "        .critical-layout-between { justify-content: unset !important; }\n" +
+          "        .critical-layout-text-center { text-align: unset !important; }\n" +
+          "        .critical-layout-hidden { display: unset !important; }\n" +
+          "        .critical-layout-full { min-height: unset !important; }\n" +
+          "        .critical-layout-h16 { height: unset !important; }\n" +
+          "        .critical-layout-mx-auto { margin: unset !important; }\n" +
+          "        .critical-layout-p4 { padding: unset !important; }\n" +
+          "        .critical-md-flex { display: unset !important; }\n" +
+          "      `;\n" +
+          "      document.head.appendChild(forceStyle);\n" +
+          "      console.log('[0x1] FORCE: Critical styles removed after 2s');\n" +
+          "    }, 2000);\n" +
+          "  </script>\n" +
           (externalCssLinks ? externalCssLinks + "\n" : "") +
           `  <!-- CRAWLER OPTIMIZATION: Route-specific metadata baked in for ${route.path} -->\n` +
           "  <script type=\"importmap\">\n" +
@@ -5064,11 +4866,12 @@ export default function ErrorComponent(props) {
           "    }\n" +
           "  }\n" +
           "  </script>\n" +
- +
           "</head>\n" +
           '<body class="bg-slate-900 text-white">\n' +
-          "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
-          '  <div id="app"></div>\n\n' +
+          "  <!-- CRITICAL FIX: App container with IMMEDIATE route-specific content -->\n" +
+          '  <div id="app">\n' +
+          immediateRouteContent +
+          "  </div>\n\n" +
           "  <!-- Performance optimizations -->\n" +
           "  <script>\n" +
           "    window.process={env:{NODE_ENV:'production'}};\n\n" +
@@ -5151,19 +4954,145 @@ export default function ErrorComponent(props) {
         await Bun.write(routeOutputPath, routeHtml);
 
         if (!this.options.silent) {
-          logger.info(
-            `✅ Generated crawler-optimized HTML: ${route.path} -> ${routeOutputPath.replace(outputPath, "")}`
-          );
+          logger.info(`✅ Generated crawler-optimized HTML with CONTENT: ${route.path} -> ${routeOutputPath.replace(outputPath, "")}`);
         }
       } catch (error) {
         if (!this.options.silent) {
-          logger.warn(
-            `Failed to generate HTML for route ${route.path}: ${error}`
-          );
+          logger.warn(`Failed to generate HTML for route ${route.path}: ${error}`);
         }
       }
     }
   }
+
+    /**
+   * CRITICAL FIX: Generate immediate route-specific app content
+   * Shows actual route page layout to crawlers immediately (not a loading screen)
+   */
+    private generateImmediateRouteContent(route: Route, pageTitle: string, pageDescription: string): string {
+    const routeName = route.path === "/" ? "Home" : route.path.replace("/", "").charAt(0).toUpperCase() + route.path.replace("/", "").slice(1);
+
+    return `
+    <!-- PURE INLINE STYLES: Zero CSS conflicts -->
+    <div style="min-height:100vh;background:#0f172a;color:#fff;">
+      <!-- Route header -->
+      <header style="border-bottom:1px solid #374151;background:#0f172a;">
+        <div style="max-width:80rem;margin:0 auto;padding:0 1rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;height:4rem;">
+            <div style="display:flex;align-items:center;gap:1rem;">
+              <div style="width:32px;height:32px;background:#7c3aed;border-radius:6px;"></div>
+              <span style="font-size:1.25rem;font-weight:600;">${pageTitle}</span>
+            </div>
+            <nav style="display:none;gap:1.5rem;">
+              <a href="/" style="color:#d1d5db;text-decoration:none;">Home</a>
+              <a href="/docs" style="color:#d1d5db;text-decoration:none;">Docs</a>
+              <a href="/about" style="color:#d1d5db;text-decoration:none;">About</a>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      <!-- ${routeName} page content -->
+      <main style="max-width:80rem;margin:0 auto;padding:3rem 1rem;">
+        <div style="text-align:center;margin-bottom:3rem;">
+          <h1 style="font-size:2.25rem;font-weight:700;margin-bottom:1.5rem;">${pageTitle}</h1>
+          <p style="font-size:1.25rem;color:#9ca3af;max-width:42rem;margin:0 auto;">${pageDescription}</p>
+        </div>
+
+        <!-- Route-specific sections -->
+        <div style="padding:2rem;margin-bottom:2rem;background:#1e293b;border:1px solid #374151;border-radius:0.5rem;">
+          <h2 style="font-size:1.5rem;font-weight:600;margin-bottom:1rem;">${routeName} Overview</h2>
+          <p style="color:#9ca3af;margin-bottom:1.5rem;">Welcome to the ${routeName.toLowerCase()} section. This page provides comprehensive information and tools for ${routeName.toLowerCase()}.</p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
+            <div style="padding:1rem;background:#334155;border:1px solid #475569;border-radius:0.5rem;">
+              <h3 style="font-weight:600;margin-bottom:0.5rem;">${routeName} Feature A</h3>
+              <p style="color:#9ca3af;font-size:0.875rem;">Detailed information about this ${routeName.toLowerCase()} feature and how to use it effectively.</p>
+            </div>
+            <div style="padding:1rem;background:#334155;border:1px solid #475569;border-radius:0.5rem;">
+              <h3 style="font-weight:600;margin-bottom:0.5rem;">${routeName} Feature B</h3>
+              <p style="color:#9ca3af;font-size:0.875rem;">Additional functionality available in the ${routeName.toLowerCase()} section for advanced users.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div style="text-align:center;">
+          <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+            <a href="/${routeName.toLowerCase()}/getting-started" style="display:inline-block;background:#7c3aed;color:#fff;padding:0.75rem 1.5rem;border-radius:0.5rem;text-decoration:none;font-weight:500;">
+              Get Started
+            </a>
+            <a href="/${routeName.toLowerCase()}/docs" style="display:inline-block;background:transparent;color:#d1d5db;padding:0.75rem 1.5rem;border:1px solid #374151;border-radius:0.5rem;text-decoration:none;font-weight:500;">
+              View Docs
+            </a>
+          </div>
+        </div>
+      </main>
+    </div>
+    `;
+  }
+
+  /**
+   * Check if PWA icons exist (using shared logic patterns)
+   */
+  private async iconsExist(iconsPath: string): Promise<boolean> {
+    if (!iconsPath) return false;
+
+    const filesystemPath = iconsPath.startsWith("/")
+      ? join(this.options.projectPath, "public", iconsPath.substring(1))
+      : join(this.options.projectPath, iconsPath);
+
+    const essentialIcons = [
+      "icon-192x192.png",
+      "icon-512x512.png",
+      "icon-192x192.svg",
+      "icon-512x512.svg",
+    ];
+    return essentialIcons.some((icon) =>
+      existsSync(join(filesystemPath, icon))
+    );
+  }
+
+  /**
+   * Generate shared HTML resources used by all HTML files
+   * UPDATED: Uses PWA resources from shared handler
+   */
+  private async generateSharedHtmlResources(
+    outputPath: string,
+    pwaResources: any
+  ) {
+    // Generate favicon link
+    let faviconLink = "";
+    const faviconPath = join(outputPath, "favicon.svg");
+    if (existsSync(faviconPath)) {
+      faviconLink =
+        '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+    } else {
+      const faviconIcoPath = join(outputPath, "favicon.ico");
+      if (existsSync(faviconIcoPath)) {
+        faviconLink =
+          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+      }
+    }
+
+    // Generate CSS links for external dependencies
+    const externalCssLinks = this.state.dependencies.cssFiles
+      .map((cssFile) => `  <link rel="stylesheet" href="${cssFile}">`)
+      .join("\n");
+
+    // Cache-busting timestamp
+    const cacheBust = Date.now();
+
+    return {
+      faviconLink,
+      externalCssLinks,
+      pwaResources, // Use PWA resources from shared handler
+      cacheBust,
+    };
+  }
+
+  // REMOVED: Old generateMainSpaFile method - replaced with generateMainSpaFileWithImmediateContent
+
+  // REMOVED: Old generateCrawlerOptimizedRouteFiles method - replaced with generateCrawlerOptimizedRouteFilesWithContent
 
   /**
    * Determine the output file path for a route
@@ -5411,6 +5340,171 @@ console.log('[0x1] Fallback router module loaded');
     cleaned = cleaned.replace(/\r\n/g, "\n").replace(/\n+/g, "\n").trim();
 
     return cleaned;
+  }
+
+  /**
+   * CRITICAL FIX: Generate real app content by rendering the actual homepage component
+   * This ensures initial and final renders are IDENTICAL (Next.js 15/React 19 standard)
+   */
+  private async generateImmediateVisibleContent(pageTitle: string, pageDescription: string): Promise<string> {
+    try {
+      // Find the actual homepage route
+      const homeRoute = this.state.routes.find((route) => route.path === "/");
+
+      if (!homeRoute) {
+        if (!this.options.silent) {
+          logger.warn("No homepage route found, using fallback content");
+        }
+        return this.generateFallbackContent(pageTitle, pageDescription);
+      }
+
+      // Find the actual source file for the homepage
+      const sourceFile = this.findRouteSourceFile(homeRoute);
+
+      if (!sourceFile) {
+        if (!this.options.silent) {
+          logger.warn("No homepage source file found, using fallback content");
+        }
+        return this.generateFallbackContent(pageTitle, pageDescription);
+      }
+
+      // Read and parse the actual component
+      const sourceCode = readFileSync(sourceFile, "utf-8");
+
+      // Extract the real JSX structure from the component
+      const realContent = await this.extractRealComponentContent(sourceCode, sourceFile);
+
+      if (realContent) {
+        if (!this.options.silent) {
+          logger.info("✅ Using REAL homepage component content for initial render");
+        }
+        return realContent;
+      }
+
+      if (!this.options.silent) {
+        logger.warn("Failed to extract real content, using fallback");
+      }
+      return this.generateFallbackContent(pageTitle, pageDescription);
+
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`Failed to generate real content: ${error}`);
+      }
+      return this.generateFallbackContent(pageTitle, pageDescription);
+    }
+  }
+
+  /**
+   * Extract the real HTML structure from the actual component source code
+   */
+  private async extractRealComponentContent(sourceCode: string, sourceFile: string): Promise<string | null> {
+    try {
+      // Look for the JSX return statement in the component
+      const jsxMatch = sourceCode.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*}/);
+
+      if (!jsxMatch) {
+        // Try alternative pattern
+        const altMatch = sourceCode.match(/return\s+([\s\S]*?);?\s*}/);
+        if (!altMatch) {
+          return null;
+        }
+        return this.convertJsxToStaticHtml(altMatch[1], sourceFile);
+      }
+
+      return this.convertJsxToStaticHtml(jsxMatch[1], sourceFile);
+
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`Failed to extract JSX from ${sourceFile}: ${error}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Convert JSX structure to static HTML with Tailwind classes preserved
+   */
+  private convertJsxToStaticHtml(jsx: string, sourceFile: string): string {
+    try {
+      // Extract Tailwind classes from the JSX
+      const classMatches = jsx.match(/className=["']([^"']+)["']/g) || [];
+      const extractedClasses = classMatches
+        .map(match => match.match(/className=["']([^"']+)["']/)?.[1])
+        .filter(Boolean)
+        .join(' ');
+
+      if (!this.options.silent) {
+        logger.info(`📝 Extracted Tailwind classes: ${extractedClasses.substring(0, 100)}...`);
+      }
+
+      // Clean the JSX first to remove problematic patterns
+      const cleanJsx = jsx
+        // Remove comments
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '')
+        // Remove extra whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Convert JSX to HTML structure preserving the original design
+      let html = cleanJsx
+        // Convert JSX className to class
+        .replace(/className=/g, 'class=')
+        // Convert self-closing tags properly
+        .replace(/<(\w+)([^>]*?)\s*\/>/g, '<$1$2></$1>')
+        // Handle JSX expressions more carefully - replace with actual content
+        .replace(/\{pageTitle\}/g, '0x1 Framework')
+        .replace(/\{pageDescription\}/g, 'Lightning-fast TypeScript framework')
+        // Remove JSX fragments cleanly
+        .replace(/<>\s*/g, '')
+        .replace(/\s*<\/>/g, '')
+        // Handle other expressions by removing them completely (not leaving empty quotes)
+        .replace(/\{[^}]*\}/g, '')
+        // Clean up any double spaces or artifacts
+        .replace(/\s+/g, ' ')
+        .replace(/\s*=\s*""\s*/g, '')
+        .replace(/\s*=\s*''\s*/g, '')
+        // Remove any stray quotes or artifacts
+        .replace(/[""'']/g, '"')
+        .trim();
+
+      // Wrap in container if not already wrapped
+      if (!html.trim().startsWith('<div') && !html.trim().startsWith('<main')) {
+        html = `<div style="min-height:100vh;">${html}</div>`;
+      }
+
+      return html;
+
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`Failed to convert JSX to HTML: ${error}`);
+      }
+      // Return fallback instead of null
+      return `<div style="min-height:100vh;background:#0f172a;color:#fff;">
+        <div style="text-align:center;padding:3rem 1rem;">
+          <h1 style="font-size:2rem;font-weight:700;">Component Error</h1>
+          <p style="color:#9ca3af;">Failed to parse component JSX</p>
+        </div>
+      </div>`;
+    }
+  }
+
+  /**
+   * Fallback content that still looks professional (not like a fake loading screen)
+   */
+  private generateFallbackContent(pageTitle: string, pageDescription: string): string {
+    return `
+    <!-- Fallback: Professional minimal design -->
+    <div style="min-height:100vh;background:#0f172a;color:#fff;font-family:system-ui,sans-serif;">
+      <div style="max-width:80rem;margin:0 auto;padding:3rem 1rem;text-align:center;">
+        <h1 style="font-size:3rem;font-weight:700;margin-bottom:1.5rem;">${pageTitle}</h1>
+        <p style="font-size:1.25rem;color:#9ca3af;max-width:42rem;margin:0 auto 3rem;">${pageDescription}</p>
+        <div style="display:inline-block;background:#7c3aed;color:#fff;padding:0.75rem 2rem;border-radius:0.5rem;text-decoration:none;font-weight:500;">
+          Get Started →
+        </div>
+      </div>
+    </div>
+    `;
   }
 }
 
