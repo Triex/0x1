@@ -5272,8 +5272,11 @@ console.log('[0x1] Fallback router module loaded');
         return this.generateFallbackContent(pageTitle, pageDescription);
       }
 
-      // Read and parse the actual component
-      const sourceCode = readFileSync(sourceFile, "utf-8");
+      // Read and parse the actual component with proper encoding
+      let sourceCode = readFileSync(sourceFile, "utf-8");
+
+      // CRITICAL FIX: Apply text encoding fixes to source code
+      sourceCode = this.fixTextEncoding(sourceCode);
 
       // Extract the real JSX structure from the component
       const realContent = await this.extractRealComponentContent(sourceCode, sourceFile);
@@ -5326,6 +5329,31 @@ console.log('[0x1] Fallback router module loaded');
   }
 
   /**
+   * CRITICAL FIX: Decode HTML entities and fix text encoding
+   */
+  private fixTextEncoding(text: string): string {
+    return text
+      // Fix common HTML entities
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#x27;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      // Fix Unicode apostrophes and quotes
+      .replace(/'/g, "'")  // Right single quotation mark
+      .replace(/'/g, "'")  // Left single quotation mark
+      .replace(/"/g, '"')  // Left double quotation mark
+      .replace(/"/g, '"')  // Right double quotation mark
+      // Fix other common Unicode characters
+      .replace(/–/g, '-')  // En dash
+      .replace(/—/g, '-')  // Em dash
+      .replace(/…/g, '...')  // Ellipsis
+      .trim();
+  }
+
+  /**
    * Convert JSX structure to static HTML with Tailwind classes preserved
    */
   private convertJsxToStaticHtml(jsx: string, sourceFile: string): string {
@@ -5340,6 +5368,9 @@ console.log('[0x1] Fallback router module loaded');
       if (!this.options.silent) {
         logger.info(`📝 Extracted Tailwind classes: ${extractedClasses.substring(0, 100)}...`);
       }
+
+      // CRITICAL FIX: Apply text encoding fixes to source JSX first
+      jsx = this.fixTextEncoding(jsx);
 
       // Clean the JSX first to remove problematic patterns
       const cleanJsx = jsx
@@ -5368,14 +5399,18 @@ console.log('[0x1] Fallback router module loaded');
         .replace(/\s+/g, ' ')
         .replace(/\s*=\s*""\s*/g, '')
         .replace(/\s*=\s*''\s*/g, '')
-        // Remove any stray quotes or artifacts
-        .replace(/[""'']/g, '"')
+        // CRITICAL FIX: Preserve proper apostrophes and quotes
+        .replace(/[""]/g, '"')  // Only convert smart quotes to regular quotes
+        .replace(/[']/g, "'")   // Convert smart apostrophes to regular apostrophes
         .trim();
 
       // Wrap in container if not already wrapped
       if (!html.trim().startsWith('<div') && !html.trim().startsWith('<main')) {
         html = `<div style="min-height:100vh;">${html}</div>`;
       }
+
+      // CRITICAL FIX: Apply text encoding fixes to the final HTML
+      html = this.fixTextEncoding(html);
 
       return html;
 

@@ -1388,7 +1388,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.369)
+### Current State (v0.0.370)
 - ✅ Complete React Hooks API (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`, `useReducer`, `useContext`, `createContext`)
 - ✅ Advanced Performance Hooks (`useTransition`, `useDeferredValue`, `useId`) with priority-based scheduling
 - ✅ Enhanced 0x1 Hooks (`useFetch`, `useForm`, `useLocalStorage`, `useClickOutside`)
