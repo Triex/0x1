@@ -3438,7 +3438,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       "  <!-- Critical CSS inlined for fastest rendering -->\n" +
       "  <style>\n" +
       `    ${criticalCSS}\n` +
-      "    /* Loading animation for better UX */\n" +
+      "    /* CRITICAL: Loading skeleton animations and hiding rules */\n" +
       "    .loading-skeleton {\n" +
       "      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n" +
       "    }\n" +
@@ -3446,8 +3446,13 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       "      0%, 100% { opacity: 1; }\n" +
       "      50% { opacity: .5; }\n" +
       "    }\n" +
-      "    /* Hide skeleton once app loads */\n" +
-      "    .app-loaded .loading-skeleton { display: none; }\n" +
+      "    /* CRITICAL: Hide skeleton when app loads successfully */\n" +
+      "    .app-loaded .loading-skeleton { display: none !important; }\n" +
+      "    /* CRITICAL: Also hide by ID for redundancy */\n" +
+      "    .app-loaded #loading-skeleton { display: none !important; }\n" +
+      "    /* CRITICAL: Instant hiding fallback */\n" +
+      "    body.app-loaded .loading-skeleton { display: none !important; }\n" +
+      "    body.app-loaded #loading-skeleton { display: none !important; }\n" +
       "  </style>\n" +
       `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}" media="print" onload="this.media='all'">\n` +
       (externalCssLinks ? externalCssLinks + "\n" : "") +
@@ -3532,11 +3537,12 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
    */
   private generateLoadingSkeleton(pageTitle: string): string {
     return `
+  <!-- CRITICAL: Loading skeleton that gets hidden when app loads -->
   <div class="loading-skeleton fixed inset-0 bg-slate-900 text-white z-50" id="loading-skeleton">
     <div class="flex flex-col items-center justify-center min-h-screen p-4">
       <!-- Logo/Brand area -->
       <div class="mb-8">
-        <div class="w-16 h-16 bg-purple-600 rounded-lg loading-skeleton"></div>
+        <div class="w-16 h-16 bg-purple-600 rounded-lg animate-pulse"></div>
       </div>
 
       <!-- App title -->
@@ -3552,9 +3558,9 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
 
       <!-- Skeleton content preview -->
       <div class="mt-12 w-full max-w-md space-y-4">
-        <div class="h-4 bg-gray-700 rounded loading-skeleton"></div>
-        <div class="h-4 bg-gray-700 rounded w-3/4 loading-skeleton"></div>
-        <div class="h-4 bg-gray-700 rounded w-1/2 loading-skeleton"></div>
+        <div class="h-4 bg-gray-700 rounded animate-pulse"></div>
+        <div class="h-4 bg-gray-700 rounded w-3/4 animate-pulse"></div>
+        <div class="h-4 bg-gray-700 rounded w-1/2 animate-pulse"></div>
       </div>
     </div>
   </div>`;
@@ -4829,9 +4835,7 @@ export default function ErrorComponent(props) {
       "  </script>\n" +
       "</head>\n" +
       '<body class="bg-slate-900 text-white">\n' +
-      "  <!-- Loading skeleton for instant visual feedback -->\n" +
-      this.generateLoadingSkeleton(pageTitle) + "\n\n" +
-      "  <!-- Main app container -->\n" +
+      "  <!-- Main app container (no loading skeleton - load instantly) -->\n" +
       '  <div id="app"></div>\n\n' +
       "  <!-- Performance optimizations -->\n" +
       "  <script>\n" +
@@ -4859,15 +4863,9 @@ export default function ErrorComponent(props) {
       "          console.log('Load Time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');\n" +
       "        }, 0);\n" +
       "      });\n" +
-      "    }\n\n" +
-      "    // Remove loading skeleton once app initializes\n" +
-      "    window.addEventListener('DOMContentLoaded', () => {\n" +
-      "      setTimeout(() => {\n" +
-      "        document.body.classList.add('app-loaded');\n" +
-      "      }, 100);\n" +
-      "    });\n" +
+      "    }\n" +
       "  </script>\n\n" +
-      "  <!-- CRITICAL FIX: Load hooks.js BEFORE app.js to ensure hooks are available -->\n" +
+      "  <!-- Load framework modules to ensure they're available -->\n" +
       `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
@@ -5017,11 +5015,10 @@ export default function ErrorComponent(props) {
           "    }\n" +
           "  }\n" +
           "  </script>\n" +
+ +
           "</head>\n" +
           '<body class="bg-slate-900 text-white">\n' +
-          "  <!-- Loading skeleton for instant visual feedback -->\n" +
-          this.generateLoadingSkeleton(pageTitle) + "\n\n" +
-          "  <!-- Main app container -->\n" +
+          "  <!-- Main app container (no loading skeleton - load instantly like Next.js) -->\n" +
           '  <div id="app"></div>\n\n' +
           "  <!-- Performance optimizations -->\n" +
           "  <script>\n" +
@@ -5049,15 +5046,9 @@ export default function ErrorComponent(props) {
           "          console.log('Load Time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');\n" +
           "        }, 0);\n" +
           "      });\n" +
-          "    }\n\n" +
-          "    // Remove loading skeleton once app initializes\n" +
-          "    window.addEventListener('DOMContentLoaded', () => {\n" +
-          "      setTimeout(() => {\n" +
-          "        document.body.classList.add('app-loaded');\n" +
-          "      }, 100);\n" +
-          "    });\n" +
+          "    }\n" +
           "  </script>\n\n" +
-          "  <!-- CRITICAL FIX: Load framework files BEFORE app.js to ensure hooks are available -->\n" +
+          "  <!-- Load framework modules to ensure they're available -->\n" +
           `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
           `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
           `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
