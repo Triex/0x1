@@ -17,7 +17,7 @@ const consoleLogRemovalPlugin = {
   setup(build: any) {
     build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args: any) => {
       const contents = await Bun.file(args.path).text();
-      
+
       // CRITICAL FIX: Only remove console.log statements, don't modify JSX or function calls
       // Be extremely careful with regex to avoid breaking JSX syntax
       const processedContents = contents
@@ -28,11 +28,11 @@ const consoleLogRemovalPlugin = {
         // Handle debug statements similarly
         .replace(/^\s*console\.debug\([^)]*\);?\s*$/gm, '/* console.debug removed */')
         .replace(/(?<!jsx|jsxs|jsxDEV|createElement)\s*console\.debug\([^)]*\);?(?=\s*[\r\n])/g, '/* console.debug removed */');
-      
+
       return {
         contents: processedContents,
-        loader: args.path.endsWith('.tsx') ? 'tsx' : 
-               args.path.endsWith('.ts') ? 'ts' : 
+        loader: args.path.endsWith('.tsx') ? 'tsx' :
+               args.path.endsWith('.ts') ? 'ts' :
                args.path.endsWith('.jsx') ? 'jsx' : 'js'
       };
     });
@@ -60,11 +60,11 @@ async function buildFramework() {
       // Also create React compatibility types in dist
       await Bun.spawn(['mkdir', '-p', 'dist/react']).exited;
       await Bun.write(
-        "dist/react/jsx-runtime.d.ts", 
+        "dist/react/jsx-runtime.d.ts",
         'export * from "../types/jsx-runtime.js";'
       );
       await Bun.write(
-        "dist/react/jsx-dev-runtime.d.ts", 
+        "dist/react/jsx-dev-runtime.d.ts",
         'export * from "../types/jsx-runtime.js";'
       );
     }
@@ -95,9 +95,13 @@ async function buildFramework() {
 
     // Create optimized package.json with cache busting
     const buildTime = Date.now();
+
+    // CRITICAL FIX: Read actual version from root package.json instead of hardcoding
+    const rootPackageJson = await Bun.file("package.json").json();
+
     const packageJson = {
       name: "0x1",
-      version: "0.1.0",
+      version: rootPackageJson.version, // Use real version from root package.json
       type: "module",
       main: "index.js",
       types: "types/index.d.ts",
@@ -170,7 +174,7 @@ async function buildFramework() {
       const hash = generateHash(content);
       const hashedPath = join(distDir, `index-${hash}.js`);
       await Bun.write(hashedPath, content);
-      
+
       // Create a loader that points to the hashed version
       await Bun.write(mainBundlePath, `export * from './index-${hash}.js';`);
       console.log(`✅ Main bundle with cache busting: index-${hash}.js`);
@@ -207,20 +211,20 @@ async function buildFramework() {
           // Add cache busting to core modules
           const outputPath = outputs[0].path;
           const content = await Bun.file(outputPath).text();
-          
+
           // CRITICAL FIX: Apply browser compatibility for hooks.js (same as BuildOrchestrator)
           if (file === 'hooks.ts') {
             console.log('🔧 Applying browser compatibility to hooks.js...');
-            
+
             // CRITICAL FIX: Don't add broken browser compatibility - the original hooks work fine!
             // Just add the basic browser compatibility without fallback hooks
             const browserCompatCode = `
 
-// CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly  
+// CRITICAL FIX: IMMEDIATE browser compatibility - hooks available instantly
 if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
   // Initialize React-compatible global context
   window.React = window.React || {};
-  
+
   // IMMEDIATE: Access hooks from the module scope - no delays
   try {
     // Make hooks available immediately from the module scope
@@ -236,7 +240,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
       useForm: typeof useForm !== 'undefined' ? useForm : null,
       useLocalStorage: typeof useLocalStorage !== 'undefined' ? useLocalStorage : null
     };
-    
+
     // IMMEDIATE: Assign hooks to window - available instantly
     Object.keys(hookFunctions).forEach(function(hookName) {
       if (hookFunctions[hookName] && typeof hookFunctions[hookName] === 'function') {
@@ -246,23 +250,23 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
         }
       }
     });
-    
+
     // IMMEDIATE: Set up context functions
     const contextFunctions = {
       enterComponentContext: typeof enterComponentContext !== 'undefined' ? enterComponentContext : function() {},
       exitComponentContext: typeof exitComponentContext !== 'undefined' ? exitComponentContext : function() {},
       triggerComponentUpdate: typeof triggerComponentUpdate !== 'undefined' ? triggerComponentUpdate : function() {}
     };
-    
+
     window.__0x1_enterComponentContext = contextFunctions.enterComponentContext;
     window.__0x1_exitComponentContext = contextFunctions.exitComponentContext;
     window.__0x1_triggerUpdate = contextFunctions.triggerComponentUpdate;
-    
+
     if (typeof globalThis !== 'undefined') {
       globalThis.__0x1_enterComponentContext = window.__0x1_enterComponentContext;
       globalThis.__0x1_exitComponentContext = window.__0x1_exitComponentContext;
     }
-    
+
     // IMMEDIATE: Global hooks registry - available instantly
     window.__0x1_hooks = Object.assign({
       isInitialized: true,
@@ -271,18 +275,18 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
       exitComponentContext: window.__0x1_exitComponentContext,
       triggerUpdate: window.__0x1_triggerUpdate
     }, hookFunctions, contextFunctions);
-    
+
     console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (production build)');
     console.log('[0x1 Hooks] Component context functions available for JSX runtime');
     console.log('[0x1 Hooks] Browser-compatible hooks active (no context checking)');
-    
+
     // IMMEDIATE: Component context ready flag
     window.__0x1_component_context_ready = true;
     window.__0x1_hooks_init_done = true;
-    
+
   } catch (error) {
     console.error('[0x1 Hooks] IMMEDIATE initialization failed:', error);
-    
+
     // Emergency fallback: create minimal working hooks immediately
     window.useState = function(initialValue) {
       console.warn('[0x1 Hooks] Using emergency fallback useState');
@@ -296,20 +300,20 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
   }
 }
 `;
-            
+
             // Add the browser compatibility code to the hooks file
             const enhancedContent = content + browserCompatCode;
             await Bun.write(outputPath, enhancedContent);
           }
-          
+
           const hash = generateHash(content);
           const fileName = file.replace('.ts', '');
           const hashedPath = join(distDir, `${fileName}-${hash}.js`);
-          
+
           await Bun.write(hashedPath, content);
           // Create loader pointing to hashed version
           await Bun.write(outputPath, `export * from './${fileName}-${hash}.js';`);
-          
+
           console.log(`✅ Built ${fileName}-${hash}.js`);
           return true;
         } else {
@@ -339,11 +343,11 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
         const content = await Bun.file(outputPath).text();
         const hash = generateHash(content);
         const hashedPath = join(distDir, `link-${hash}.js`);
-        
+
         await Bun.write(hashedPath, content);
         // CRITICAL FIX: Re-export both named and default exports for Link
         await Bun.write(outputPath, `export * from './link-${hash}.js';\nexport { default } from './link-${hash}.js';`);
-        
+
         console.log(`✅ Built link-${hash}.js`);
       } else {
         console.warn("⚠️ Failed to build link.js");
@@ -365,7 +369,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
       if (!success) {
         throw new Error("JSX runtime build failed");
       }
-      
+
       // Add cache busting to JSX runtime
       if (outputs.length > 0) {
         const outputPath = outputs[0].path;
@@ -373,10 +377,10 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
         const hash = generateHash(content);
         const hashedPath = join(distDir, `jsx-runtime-${hash}.js`);
         const targetPath = join(distDir, "jsx-runtime.js");
-        
+
         await Bun.write(hashedPath, content);
         await Bun.write(targetPath, `export * from './jsx-runtime-${hash}.js';`);
-        
+
         console.log(`✅ JSX runtime built with cache busting: jsx-runtime-${hash}.js`);
       }
     }
@@ -391,7 +395,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
     // Build live-reload script from TypeScript source with production optimizations
     const liveReloadTsPath = join(srcDir, "browser", "live-reload.ts");
     const liveReloadJsPath = join(srcDir, "browser", "live-reload.js");
-    
+
     if (existsSync(liveReloadTsPath)) {
       const { success, outputs } = await Bun.build({
         entrypoints: [liveReloadTsPath],
@@ -403,10 +407,10 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
         const content = await Bun.file(outputs[0].path).text();
         const hash = generateHash(content);
         const hashedPath = join(distDir, `live-reload-${hash}.js`);
-        
+
         await Bun.write(hashedPath, content);
         await Bun.write(join(distDir, "live-reload.js"), `export * from './live-reload-${hash}.js';`);
-        
+
         console.log(`✅ Built live-reload-${hash}.js from TypeScript source`);
       }
     } else if (existsSync(liveReloadJsPath)) {
@@ -415,13 +419,13 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
       const optimizedContent = content
         .replace(/console\.log\([^;]*\);?/g, '/* console.log removed */;')
         .replace(/console\.log\([^)]*\)/g, '/* console.log removed */');
-      
+
       const hash = generateHash(optimizedContent);
       const hashedPath = join(distDir, `live-reload-${hash}.js`);
-      
+
       await Bun.write(hashedPath, optimizedContent);
       await Bun.write(join(distDir, "live-reload.js"), `export * from './live-reload-${hash}.js';`);
-      
+
       console.log(`✅ Built live-reload-${hash}.js from existing source`);
     }
 
@@ -433,7 +437,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
     // Copy only essential type definitions
     const essentialTypes = [
       "index.d.ts",
-      "jsx.d.ts", 
+      "jsx.d.ts",
       "jsx-runtime.d.ts",
       "link.d.ts"
     ];
@@ -443,7 +447,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
       for (const typeFile of essentialTypes) {
         const srcPath = join(typesDir, typeFile);
         const destPath = join(distDir, "types", typeFile);
-        
+
         if (existsSync(srcPath)) {
           const content = await Bun.file(srcPath).text();
           await Bun.write(destPath, content);
@@ -458,13 +462,13 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
     console.log("Building @0x1js/tailwind-handler...");
     const tailwindHandlerSrc = resolve("0x1-experimental/tailwind-handler");
     const tailwindHandlerDist = join(tailwindHandlerSrc, "dist");
-    
+
     // Clean and create dist directory for TailwindHandler
     if (existsSync(tailwindHandlerDist)) {
       await Bun.spawn(['rm', '-rf', tailwindHandlerDist]).exited;
     }
     await Bun.spawn(['mkdir', '-p', tailwindHandlerDist]).exited;
-    
+
     const tailwindHandlerBuildResult = await Bun.build({
       entrypoints: [join(tailwindHandlerSrc, "TailwindHandler.ts")],
       outdir: tailwindHandlerDist,
@@ -477,7 +481,7 @@ if (typeof window !== 'undefined' && !window['__0x1_hooks_init_done']) {
         'process.env.NODE_ENV': '"production"'
       }
     });
-    
+
     if (!tailwindHandlerBuildResult.success) {
       console.warn("⚠️ @0x1js/tailwind-handler build failed, but framework build continues");
       console.error("TailwindHandler build errors:", tailwindHandlerBuildResult.logs);
@@ -517,7 +521,7 @@ export declare class TailwindHandler {
 }
 
 export declare function createTailwindHandler(
-  projectPath: string, 
+  projectPath: string,
   config?: Partial<TailwindConfig>
 ): Promise<TailwindHandler>;
 
@@ -532,7 +536,7 @@ export declare function processTailwindFast(
 
       await Bun.write(join(tailwindHandlerDist, "TailwindHandler.d.ts"), declarationContent);
       console.log("✅ Built @0x1js/tailwind-handler with TypeScript declarations");
-      
+
       // Copy to main dist for framework usage
       const handlerSource = join(tailwindHandlerDist, "TailwindHandler.js");
       const handlerDest = join(distDir, "core/tailwind-handler.js");
@@ -551,12 +555,12 @@ export declare function processTailwindFast(
       format: "esm",
       minify: true,
     });
-    
+
     if (!storeBuildResult.success) {
       throw new Error("0x1-store build failed");
     }
     console.log("✅ Built 0x1-store");
-    
+
     // Copy store to main dist for dev server access
     const storeSource = resolve("0x1-store/dist/index.js");
     const storeDest = resolve(distDir, "core/store.js");
@@ -574,27 +578,27 @@ export declare function processTailwindFast(
       format: "esm",
       minify: true,
     });
-    
+
     if (!routerBuildResult.success) {
       throw new Error("0x1-router build failed");
     }
     console.log("✅ Built 0x1-router");
-    
+
     // Copy router to main dist for dev server access
     const routerSource = resolve("0x1-router/dist/index.js");
     const routerDest = resolve(distDir, "core/router.js");
     if (existsSync(routerSource)) {
       // CRITICAL FIX: Apply JSX normalization to 0x1-router package too
       let routerContent = await Bun.file(routerSource).text();
-      
+
       console.log('🔧 Applying comprehensive JSX normalization to 0x1-router package...');
-      
+
       // 1. Add JSX runtime imports at the beginning (if not already present)
       if (!routerContent.includes('jsx-runtime.js')) {
         const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
         routerContent = jsxImport + routerContent;
       }
-      
+
       // 2. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
       // Replace mangled JSX function names with proper ones
       routerContent = routerContent
@@ -609,7 +613,7 @@ export declare function processTailwindFast(
         .replace(/jsx_[0-9a-z]+/gi, 'jsx')
         .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
         .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
-      
+
       // 4. Ultra aggressive catch-all patterns
       routerContent = routerContent
         .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
@@ -619,25 +623,25 @@ export declare function processTailwindFast(
 
       // 5. CRITICAL: Transform imports to browser-resolvable URLs
       routerContent = routerContent
-        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g,
           'import { $1 } from "/components/$2.js"')
         .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
         .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
-        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g,
           'import { $1 } from "/0x1/jsx-runtime.js"')
-        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g,
           'import { $1 } from "/0x1/jsx-runtime.js"')
-        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g,
           'import { $1 } from "/0x1/router.js"')
-        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g,
           'import { $1 } from "/node_modules/0x1/index.js"');
-      
+
       // Write the normalized router content
       await Bun.write(routerDest, routerContent);
-      
+
       // CRITICAL FIX: Apply the exact Link export fix from BuildOrchestrator
       let finalContent = await Bun.file(routerDest).text();
-      
+
       // EXACT same Link export logic as BuildOrchestrator (which works in DevOrchestrator)
       finalContent = finalContent.replace(
         /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
@@ -655,9 +659,9 @@ export declare function processTailwindFast(
           return match;
         }
       );
-      
+
       await Bun.write(routerDest, finalContent);
-      
+
       console.log("✅ Built router.js with JSX normalization and corrected Link export");
     }
 
@@ -678,13 +682,13 @@ export declare function processTailwindFast(
         // CRITICAL FIX: Apply JSX normalization to router.js (same as BuildOrchestrator)
         const outputPath = outputs[0].path;
         let content = await Bun.file(outputPath).text();
-        
+
         console.log('🔧 Applying comprehensive JSX normalization to router.js...');
-        
+
         // 1. Add JSX runtime imports at the beginning
         const jsxImport = 'import { jsx, jsxs, jsxDEV, Fragment, createElement } from "/0x1/jsx-runtime.js";\n';
         content = jsxImport + content;
-        
+
         // 2. COMPREHENSIVE JSX function normalization (exact same as DevOrchestrator)
         // Replace mangled JSX function names with proper ones
         content = content
@@ -692,42 +696,42 @@ export declare function processTailwindFast(
           .replace(/jsx_[a-zA-Z0-9]+/g, 'jsx')
           .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
           .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
-        
+
         // 3. Handle mixed alphanumeric patterns
         content = content
           .replace(/jsxDEV_[0-9a-z]+/gi, 'jsxDEV')
           .replace(/jsx_[0-9a-z]+/gi, 'jsx')
           .replace(/jsxs_[0-9a-z]+/gi, 'jsxs')
           .replace(/Fragment_[0-9a-z]+/gi, 'Fragment');
-        
+
         // 4. Ultra aggressive catch-all patterns
         content = content
           .replace(/\bjsxDEV_\w+/g, 'jsxDEV')
           .replace(/\bjsx_\w+/g, 'jsx')
           .replace(/\bjsxs_\w+/g, 'jsxs')
           .replace(/\bFragment_\w+/g, 'Fragment');
-        
+
         // 5. Transform imports to browser-resolvable URLs
         content = content
-          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g,
             'import { $1 } from "/components/$2.js"')
           .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
           .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
-          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g,
             'import { $1 } from "/0x1/jsx-runtime.js"')
-          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g,
             'import { $1 } from "/0x1/jsx-runtime.js"')
-          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g,
             'import { $1 } from "/0x1/router.js"')
-          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+          .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g,
             'import { $1 } from "/node_modules/0x1/index.js"');
-        
+
         // Write the normalized router content
         await Bun.write(outputPath, content);
-        
+
         // CRITICAL FIX: Apply the exact Link export fix from BuildOrchestrator
         let finalContent = await Bun.file(outputPath).text();
-        
+
         // EXACT same Link export logic as BuildOrchestrator (which works in DevOrchestrator)
         finalContent = finalContent.replace(
           /export\s*\{([^}]*)\s+as\s+Link\s*([^}]*)\}/g,
@@ -745,9 +749,9 @@ export declare function processTailwindFast(
             return match;
           }
         );
-        
+
         await Bun.write(outputPath, finalContent);
-        
+
         console.log("✅ Built router.js with JSX normalization and corrected Link export");
       } else {
         console.warn("⚠️ Failed to build router.js");
@@ -763,28 +767,28 @@ export declare function processTailwindFast(
       format: "esm",
       minify: true,
     });
-    
+
     if (!templatesBuildResult.success) {
       throw new Error("0x1-templates build failed");
     }
     console.log("✅ Built 0x1-templates");
-    
+
     // Save the ESM version before building CJS (to prevent overwrite)
     const esmOutputPath = "./0x1-templates/dist/index.js";
     let esmContent = "";
     if (existsSync(esmOutputPath)) {
       esmContent = await Bun.file(esmOutputPath).text();
     }
-    
+
     // Also build CJS version for broader compatibility
     const templatesCjsBuildResult = await Bun.build({
       entrypoints: ["./0x1-templates/src/index.ts"],
       outdir: "./0x1-templates/dist",
-      target: "node", 
+      target: "node",
       format: "cjs",
       minify: true,
     });
-    
+
     if (templatesCjsBuildResult.success) {
       // Rename the CJS output to index.cjs
       const cjsOutputPath = "./0x1-templates/dist/index.js";
@@ -792,12 +796,12 @@ export declare function processTailwindFast(
       if (existsSync(cjsOutputPath)) {
         const cjsContent = await Bun.file(cjsOutputPath).text();
         await Bun.write(cjsTargetPath, cjsContent);
-        
+
         // Restore the ESM version as index.js
         if (esmContent) {
           await Bun.write(cjsOutputPath, esmContent);
         }
-        
+
         console.log("✅ Built 0x1-templates (CJS)");
         console.log("✅ Restored 0x1-templates (ESM)");
       }
@@ -810,11 +814,11 @@ export declare function processTailwindFast(
     // Validate essential files exist
     const requiredFiles = [
       join(distDir, "index.js"),
-      join(distDir, "package.json"), 
+      join(distDir, "package.json"),
       join(distDir, "jsx-runtime.js"),
       join(distDir, "hooks.js"), // CRITICAL FIX: Core modules are now in distDir, not distDir/core
     ];
-    
+
     let buildValid = true;
     for (const file of requiredFiles) {
       if (!existsSync(file)) {
@@ -822,7 +826,7 @@ export declare function processTailwindFast(
         buildValid = false;
       }
     }
-    
+
     if (!buildValid) {
       throw new Error("Build validation failed");
     }
@@ -831,14 +835,14 @@ export declare function processTailwindFast(
     let indexSize = 0;
     let jsxRuntimeSize = 0;
     let totalCoreSize = 0;
-    
+
     // Check for main bundle (could be hashed)
     const indexPath = join(distDir, "index.js");
     if (existsSync(indexPath)) {
       try {
         const content = await Bun.file(indexPath).text();
         indexSize = Buffer.byteLength(content, 'utf8');
-        
+
         // If it's a redirect file, find the actual hashed file
         if (content.includes('index-') && content.length < 200) {
           const hashMatch = content.match(/index-([a-f0-9]+)\.js/);
@@ -854,14 +858,14 @@ export declare function processTailwindFast(
         indexSize = 0;
       }
     }
-    
+
     // Check for JSX runtime (could be hashed)
     const jsxRuntimeFilePath = join(distDir, "jsx-runtime.js");
     if (existsSync(jsxRuntimeFilePath)) {
       try {
         const content = await Bun.file(jsxRuntimeFilePath).text();
         jsxRuntimeSize = Buffer.byteLength(content, 'utf8');
-        
+
         // If it's a redirect file, find the actual hashed file
         if (content.includes('jsx-runtime-') && content.length < 200) {
           const hashMatch = content.match(/jsx-runtime-([a-f0-9]+)\.js/);
@@ -877,7 +881,7 @@ export declare function processTailwindFast(
         jsxRuntimeSize = 0;
       }
     }
-    
+
     // Calculate total core size (essential files only)
     const coreFiles = ['hooks.js', 'jsx-runtime.js', 'router.js', 'index.js'];
     for (const file of coreFiles) {
@@ -891,7 +895,7 @@ export declare function processTailwindFast(
         }
       }
     }
-    
+
     const totalSize = await calculateTotalSize(distDir);
 
     console.log("\n📦 Build Summary:");
@@ -911,16 +915,16 @@ export declare function processTailwindFast(
 
 async function calculateTotalSize(dir: string): Promise<number> {
   let totalSize = 0;
-  
+
   try {
     // Read all files in the directory recursively
     const scanDir = (dirPath: string) => {
       try {
         const items = readdirSync(dirPath, { withFileTypes: true });
-        
+
         for (const item of items) {
           const itemPath = join(dirPath, item.name);
-          
+
           if (item.isDirectory()) {
             scanDir(itemPath);
           } else if (item.isFile()) {
@@ -936,13 +940,13 @@ async function calculateTotalSize(dir: string): Promise<number> {
         // Skip directories that can't be read
       }
     };
-    
+
     scanDir(dir);
   } catch {
     // Fallback estimate if scanning fails
     totalSize = 250000; // 250KB estimate
   }
-  
+
   return totalSize;
 }
 
