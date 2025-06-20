@@ -28,9 +28,17 @@ export * as store from '0x1-store';
 
 // Export metadata and head management system
 export {
-  DEFAULT_METADATA, generateAnalyticsScripts, generateHeadContent, generateLinkTags, generateMetaTags,
-  // Metadata types and utilities
-  type Metadata, type OpenGraph, type OpenGraphImage, type Robots, type TwitterCard, type Viewport
+  generateHeadContent,
+  generateMetaTags,
+  generateLinkTags,
+  extractMetadataFromFile,
+  mergeMetadata,
+  resolveTitle,
+  DEFAULT_METADATA,
+  type Metadata,
+  type OpenGraph,
+  type TwitterCard,
+  type Viewport
 } from './core/metadata.js';
 
 // Export head management
@@ -40,7 +48,14 @@ export { getGlobalMetadata, Head, initializeHeadManagement, setGlobalMetadata, u
 export { clientComponent, createServerAction, executeServerFunction, handleServerAction, initializeDirectives, markAsClient, markAsServer, processDirectives, serverAction, type ServerFunction } from './core/directives.js';
 
 // Export PWA utilities
-export { generateManifest, generateServiceWorker, pwaConfigToMetadata, registerPWA, type PWAConfig } from './core/pwa.js';
+export {
+  generateManifest,
+  generateServiceWorker,
+  pwaConfigToMetadata,
+  validatePWAConfigForMetadata,
+  registerPWA,
+  type PWAConfig
+} from './core/pwa.js';
 
 // CLI utilities (for build tools)
 export * from './cli/utils/transpilation.js';
