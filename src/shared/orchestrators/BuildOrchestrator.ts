@@ -1838,43 +1838,66 @@ if (typeof window !== 'undefined') {
         throw new Error(`Invalid hooks content: ${hooksContent.length} bytes`);
       }
 
-      // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
+            // CRITICAL FIX: BULLETPROOF hook initialization that works with minified and unminified code
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: IMMEDIATE global hook availability for production
+// CRITICAL FIX: BULLETPROOF global hook availability using the EXPORTED functions
 if (typeof window !== 'undefined') {
-  // Call the existing initialization function first
-  if (typeof u === 'function') {
-    u();
+  // STEP 1: Initialize the existing system first
+  if (typeof d === 'function') {
+    d(); // This calls the existing initialization
   }
 
-  // CRITICAL FIX: Set hooks directly on window from the actual hook functions
-  // This must happen IMMEDIATELY when hooks.js loads
-  if (typeof useState === 'function') window.useState = useState;
-  if (typeof useEffect === 'function') window.useEffect = useEffect;
-  if (typeof useLayoutEffect === 'function') window.useLayoutEffect = useLayoutEffect;
-  if (typeof useMemo === 'function') window.useMemo = useMemo;
-  if (typeof useCallback === 'function') window.useCallback = useCallback;
-  if (typeof useRef === 'function') window.useRef = useRef;
-  if (typeof useClickOutside === 'function') window.useClickOutside = useClickOutside;
-  if (typeof useFetch === 'function') window.useFetch = useFetch;
-  if (typeof useForm === 'function') window.useForm = useForm;
-  if (typeof useLocalStorage === 'function') window.useLocalStorage = useLocalStorage;
+  // STEP 2: BULLETPROOF hook assignment using the functions that are ACTUALLY available
+  // Since this code runs at the end of the module, we have access to all the functions
 
-  // CRITICAL FIX: Also create React compatibility object with the actual hooks
+  // Get the hooks from where they're actually available (window.React from existing init)
+  const reactHooks = window.React || {};
+
+  // CRITICAL: Set hooks directly on window using the React hooks that were already initialized
+  if (reactHooks.useState) window.useState = reactHooks.useState;
+  if (reactHooks.useEffect) window.useEffect = reactHooks.useEffect;
+  if (reactHooks.useLayoutEffect) window.useLayoutEffect = reactHooks.useLayoutEffect;
+  if (reactHooks.useMemo) window.useMemo = reactHooks.useMemo;
+  if (reactHooks.useCallback) window.useCallback = reactHooks.useCallback;
+  if (reactHooks.useRef) window.useRef = reactHooks.useRef;
+
+  // CRITICAL: Also try to get custom hooks from the default export
+  try {
+    const defaultExports = typeof $j === 'object' ? $j : {};
+    if (defaultExports.useClickOutside) window.useClickOutside = defaultExports.useClickOutside;
+    if (defaultExports.useFetch) window.useFetch = defaultExports.useFetch;
+    if (defaultExports.useForm) window.useForm = defaultExports.useForm;
+    if (defaultExports.useLocalStorage) window.useLocalStorage = defaultExports.useLocalStorage;
+  } catch (e) {
+    // If default export access fails, try direct access to exported functions
+    if (typeof t === 'function') window.useClickOutside = t;
+    if (typeof e === 'function') window.useFetch = e;
+    if (typeof jj === 'function') window.useForm = jj;
+    if (typeof Jj === 'function') window.useLocalStorage = Jj;
+  }
+
+  // FALLBACK: If React hooks weren't set, try direct access to minified functions
+  if (!window.useState && typeof K === 'function') window.useState = K;
+  if (!window.useEffect && typeof H === 'function') window.useEffect = H;
+  if (!window.useLayoutEffect && typeof C === 'function') window.useLayoutEffect = C;
+  if (!window.useMemo && typeof v === 'function') window.useMemo = v;
+  if (!window.useCallback && typeof A === 'function') window.useCallback = A;
+  if (!window.useRef && typeof x === 'function') window.useRef = x;
+
+  // Ensure React object is complete
   window.React = window.React || {};
-  if (typeof useState === 'function') window.React.useState = useState;
-  if (typeof useEffect === 'function') window.React.useEffect = useEffect;
-  if (typeof useLayoutEffect === 'function') window.React.useLayoutEffect = useLayoutEffect;
-  if (typeof useMemo === 'function') window.React.useMemo = useMemo;
-  if (typeof useCallback === 'function') window.React.useCallback = useCallback;
-  if (typeof useRef === 'function') window.React.useRef = useRef;
+  ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef'].forEach(hookName => {
+    if (window[hookName] && !window.React[hookName]) {
+      window.React[hookName] = window[hookName];
+    }
+  });
   window.React.version = '19.0.0-0x1-compat';
 
-  // Ensure initialization flags are set
+  // Set initialization flags
   window.__0x1_hooks_init_done = true;
   window.__0x1_component_context_ready = true;
 
-  // Log success immediately
+  // Log success with actual working hooks
   console.log('[0x1 Hooks] IMMEDIATE hook availability initialized');
   console.log('[0x1 Hooks] Available hooks:', Object.keys(window).filter(k => k.startsWith('use')));
 }
