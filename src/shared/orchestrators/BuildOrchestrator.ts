@@ -539,19 +539,22 @@ export class BuildOrchestrator {
         .replace(/jsxs_[a-zA-Z0-9]+/g, "jsxs")
         .replace(/Fragment_[a-zA-Z0-9]+/g, "Fragment");
 
-      // DISABLED: ImportTransformer breaks dev server - use simple transformations
-      // content = ImportTransformer.transformImports(content, {
-      //   sourceFilePath: sourcePath,
-      //   projectPath: this.options.projectPath,
-      //   mode: "production",
-      //   debug: false,
-      // });
+      // CRITICAL FIX: Enable proper ImportTransformer like DevOrchestrator uses
+      if (!this.options.silent) {
+        logger.info(`🔍 DEBUGGING: Transforming imports for ${sourcePath}`);
+        logger.info(`🔍 DEBUGGING: Original content first 200 chars: ${content.substring(0, 200)}`);
+      }
 
-      // Simple import transformations only
-      content = content
-        .replace(/from\s+["']0x1\/jsx-dev-runtime["']/g, 'from "/0x1/jsx-runtime.js"')
-        .replace(/from\s+["']0x1\/jsx-runtime["']/g, 'from "/0x1/jsx-runtime.js"')
-        .replace(/from\s+["']0x1["']/g, 'from "/node_modules/0x1/index.js"');
+      content = ImportTransformer.transformImports(content, {
+        sourceFilePath: sourcePath,
+        projectPath: this.options.projectPath,
+        mode: "production",
+        debug: true,
+      });
+
+      if (!this.options.silent) {
+        logger.info(`🔍 DEBUGGING: Transformed content first 200 chars: ${content.substring(0, 200)}`);
+      }
 
       // CRITICAL FIX: Force JSX object returns, prevent HTML generation
       content = content.replace(
@@ -672,10 +675,13 @@ export class BuildOrchestrator {
               "useLocalStorage",
             ].includes(cleanName)
           ) {
-            return `// MINIFICATION-SAFE: Global hook access
-const ${cleanName} = (typeof window !== 'undefined' && window['${cleanName}']) ||
-                      (typeof window !== 'undefined' && window['React'] && window['React']['${cleanName}']) ||
-                      (function() { throw new Error('[0x1] ${cleanName} not available - hooks may not be loaded'); });`;
+            return "// MINIFICATION-SAFE: Robust hook access with fallback\n" +
+                   "const " + cleanName + " = (typeof window !== 'undefined' && window['" + cleanName + "']) ||\n" +
+                   "                      (typeof window !== 'undefined' && window['React'] && window['React']['" + cleanName + "']) ||\n" +
+                   "                      (function() {\n" +
+                   "                        console.error('[0x1] " + cleanName + " not available - hooks may not be loaded yet');\n" +
+                   "                        throw new Error('[0x1] " + cleanName + " not available - ensure hooks.js loads before components');\n" +
+                   "                      });";
           } else {
             // Keep non-hook imports as regular imports
             return `// Non-hook import preserved: ${cleanName}`;
@@ -703,10 +709,10 @@ const ${cleanName} = (typeof window !== 'undefined' && window['${cleanName}']) |
               "useRef",
             ].includes(cleanName)
           ) {
-            return `// MINIFICATION-SAFE: Global React hook access
-const ${cleanName} = (typeof window !== 'undefined' && window['React'] && window['React']['${cleanName}']) ||
-                      (typeof window !== 'undefined' && window['${cleanName}']) ||
-                      (function() { throw new Error('[0x1] ${cleanName} not available - React hooks may not be loaded'); });`;
+            return "// MINIFICATION-SAFE: Global React hook access\n" +
+                   "const " + cleanName + " = (typeof window !== 'undefined' && window['React'] && window['React']['" + cleanName + "']) ||\n" +
+                   "                      (typeof window !== 'undefined' && window['" + cleanName + "']) ||\n" +
+                   "                      (function() { throw new Error('[0x1] " + cleanName + " not available - React hooks may not be loaded'); });";
           } else {
             return `// Non-hook React import: ${cleanName} (preserved)`;
           }
@@ -818,12 +824,12 @@ export default function ErrorComponent(props) {
       }),
       jsx('p', {
         className: 'mb-2',
-        children: 'File: ${safePath}',
+        children: 'File: ` + safePath + `',
         key: 'file'
       }),
       jsx('p', {
         className: 'text-sm',
-        children: 'Error: ${safeError}',
+        children: 'Error: ` + safeError + `',
         key: 'error'
       })
     ]
@@ -1834,32 +1840,43 @@ if (typeof window !== 'undefined') {
 
       // CRITICAL FIX: MINIFICATION-SAFE browser compatibility - use simple approach that can't be broken
       const minificationSafeBrowserCode = `
-// CRITICAL FIX: Enhance the existing browser compatibility to also set hooks directly on window
+// CRITICAL FIX: IMMEDIATE global hook availability for production
 if (typeof window !== 'undefined') {
-  // Call the existing initialization function
+  // Call the existing initialization function first
   if (typeof u === 'function') {
     u();
   }
 
-  // CRITICAL FIX: Also set hooks directly on window for immediate availability
-  if (window.React) {
-    // Copy all React hooks directly to window
-    if (window.React.useState) window.useState = window.React.useState;
-    if (window.React.useEffect) window.useEffect = window.React.useEffect;
-    if (window.React.useLayoutEffect) window.useLayoutEffect = window.React.useLayoutEffect;
-    if (window.React.useMemo) window.useMemo = window.React.useMemo;
-    if (window.React.useCallback) window.useCallback = window.React.useCallback;
-    if (window.React.useRef) window.useRef = window.React.useRef;
-  }
+  // CRITICAL FIX: Set hooks directly on window from the actual hook functions
+  // This must happen IMMEDIATELY when hooks.js loads
+  if (typeof useState === 'function') window.useState = useState;
+  if (typeof useEffect === 'function') window.useEffect = useEffect;
+  if (typeof useLayoutEffect === 'function') window.useLayoutEffect = useLayoutEffect;
+  if (typeof useMemo === 'function') window.useMemo = useMemo;
+  if (typeof useCallback === 'function') window.useCallback = useCallback;
+  if (typeof useRef === 'function') window.useRef = useRef;
+  if (typeof useClickOutside === 'function') window.useClickOutside = useClickOutside;
+  if (typeof useFetch === 'function') window.useFetch = useFetch;
+  if (typeof useForm === 'function') window.useForm = useForm;
+  if (typeof useLocalStorage === 'function') window.useLocalStorage = useLocalStorage;
+
+  // CRITICAL FIX: Also create React compatibility object with the actual hooks
+  window.React = window.React || {};
+  if (typeof useState === 'function') window.React.useState = useState;
+  if (typeof useEffect === 'function') window.React.useEffect = useEffect;
+  if (typeof useLayoutEffect === 'function') window.React.useLayoutEffect = useLayoutEffect;
+  if (typeof useMemo === 'function') window.React.useMemo = useMemo;
+  if (typeof useCallback === 'function') window.React.useCallback = useCallback;
+  if (typeof useRef === 'function') window.React.useRef = useRef;
+  window.React.version = '19.0.0-0x1-compat';
 
   // Ensure initialization flags are set
   window.__0x1_hooks_init_done = true;
   window.__0x1_component_context_ready = true;
 
-  // Only log in development
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
-    console.log('[0x1 Hooks] Hooks system initialized');
-  }
+  // Log success immediately
+  console.log('[0x1 Hooks] IMMEDIATE hook availability initialized');
+  console.log('[0x1 Hooks] Available hooks:', Object.keys(window).filter(k => k.startsWith('use')));
 }
 `;
 
@@ -4850,6 +4867,11 @@ export default function ErrorComponent(props) {
       "      }, 100);\n" +
       "    });\n" +
       "  </script>\n\n" +
+      "  <!-- CRITICAL FIX: Load hooks.js BEFORE app.js to ensure hooks are available -->\n" +
+      `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
+      `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
+      `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
+      "\n" +
       "  <!-- Main app bundle with modern loading -->\n" +
       `  <script src="/app.js?v=${cacheBust}" type="module"></script>` +
       (pwaResources.scripts?.length ? pwaResources.scripts.join('') : '') +
@@ -5035,6 +5057,11 @@ export default function ErrorComponent(props) {
           "      }, 100);\n" +
           "    });\n" +
           "  </script>\n\n" +
+          "  <!-- CRITICAL FIX: Load framework files BEFORE app.js to ensure hooks are available -->\n" +
+          `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
+          `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
+          `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
+          "\n" +
           "  <!-- Main app bundle with modern loading -->\n" +
           `  <script src="/app.js?v=${cacheBust}" type="module"></script>\n` +
           "</body>\n</html>";

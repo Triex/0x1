@@ -52,7 +52,7 @@ export {
   generateManifest,
   generateServiceWorker,
   pwaConfigToMetadata,
-  validatePWAConfigForMetadata,
+  // validatePWAConfigForMetadata,
   registerPWA,
   type PWAConfig
 } from './core/pwa.js';

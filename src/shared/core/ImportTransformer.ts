@@ -29,22 +29,22 @@ export class ImportTransformer {
     const lines = content.split('\n');
     const transformedLines: string[] = [];
     const warnings: string[] = [];
-    
+
     // CRITICAL: Track if we're inside template literals or string contexts
     let insideTemplateLiteral = false;
     let insideStringLiteral = false;
     let stringDelimiter = '';
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      
+
       // CRITICAL: Track template literal and string contexts to avoid nested transformation
       const contextInfo = ImportTransformer.analyzeStringContext(line, insideTemplateLiteral, insideStringLiteral, stringDelimiter);
       insideTemplateLiteral = contextInfo.insideTemplateLiteral;
       insideStringLiteral = contextInfo.insideStringLiteral;
       stringDelimiter = contextInfo.stringDelimiter;
-      
+
       // CRITICAL: Skip transformation if we're inside a template literal or string literal
       if (insideTemplateLiteral || insideStringLiteral) {
         transformedLines.push(line);
@@ -53,14 +53,14 @@ export class ImportTransformer {
         }
         continue;
       }
-      
+
       // CRITICAL: Handle CSS imports FIRST (before general import filtering)
       // CSS imports don't have 'from' and may not have spaces: import"./style.css"
       if (/import\s*['"][^'"]*\.(css|scss|sass|less)['"];?/.test(trimmed)) {
         transformedLines.push('// CSS import removed for browser compatibility');
         continue;
       }
-      
+
       // CRITICAL: Handle scoped package CSS imports specifically
       // Pattern: import"@scope/package/styles" or import "@scope/package/styles"
       if (/import\s*['"]@[^'"]*\/styles?['"];?/.test(trimmed) || /import\s*['"]@[^'"]*\/style['"];?/.test(trimmed)) {
@@ -73,13 +73,13 @@ export class ImportTransformer {
         }
         continue;
       }
-      
+
       // Skip non-import lines or comments
       if (!trimmed.startsWith('import ') || ImportTransformer.isImportInComment(line, lines, i)) {
         transformedLines.push(line);
         continue;
       }
-      
+
       // Extract import statement components
       const importMatch = line.match(/^(\s*import\s+.*?\s+from\s+)(['"])(.*?)\2(.*)$/);
       if (!importMatch) {
@@ -87,7 +87,7 @@ export class ImportTransformer {
         const sideEffectMatch = line.match(/^(\s*import\s*)(['"])(.*?)\2(.*)$/);
         if (sideEffectMatch) {
           const [, importPrefix, quote, modulePath, suffix] = sideEffectMatch;
-          
+
           // CRITICAL: Handle CSS imports from scoped packages in side-effect imports
           if (modulePath.startsWith('@') && (modulePath.includes('/styles') || modulePath.includes('/style'))) {
             transformedLines.push('// CSS import from scoped package removed for browser compatibility');
@@ -96,9 +96,9 @@ export class ImportTransformer {
             }
             continue;
           }
-          
+
           const result = ImportTransformer.transformModulePath(modulePath, options);
-          
+
           // If the transformation resulted in a comment (CSS removal), use it directly
           if (result.transformed.startsWith('//')) {
             transformedLines.push(result.transformed);
@@ -111,43 +111,43 @@ export class ImportTransformer {
         }
         continue;
       }
-      
+
       const [, importPrefix, quote, modulePath, suffix] = importMatch;
-      
+
       // Transform the module path
       const result = ImportTransformer.transformModulePath(modulePath, options);
       transformedLines.push(`${importPrefix}${quote}${result.transformed}${quote}${suffix}`);
       warnings.push(...result.warnings);
-      
+
       if (options.debug && result.transformed !== modulePath) {
         console.log(`[ImportTransformer] ${modulePath} → ${result.transformed}`);
       }
     }
-    
+
     // CRITICAL: Apply Link component fixes for router files to prevent class constructor errors
     let finalContent = transformedLines.join('\n');
-    
+
     // Apply additional comprehensive transformations (includes working DevOrchestrator patterns)
     finalContent = ImportTransformer.applyAdditionalTransformations(finalContent, options);
-    
+
     // More robust router file detection - check filename and content
-    const isRouterFile = options.sourceFilePath.includes('router') || 
+    const isRouterFile = options.sourceFilePath.includes('router') ||
                         options.sourceFilePath.includes('Router') ||
                         finalContent.includes('function F(') ||
                         finalContent.includes('export{') && finalContent.includes('Link');
-    
+
     if (isRouterFile && (finalContent.includes('function F') || finalContent.includes('type:"a"'))) {
       if (options.debug) {
         console.log(`[ImportTransformer] Applying Link fixes to: ${options.sourceFilePath}`);
       }
       finalContent = ImportTransformer.fixLinkComponentForBrowser(finalContent, options);
     }
-    
+
     // Log warnings in debug mode
     if (options.debug && warnings.length > 0) {
       console.warn(`[ImportTransformer] Warnings for ${options.sourceFilePath}:`, warnings);
     }
-    
+
     return finalContent;
   }
 
@@ -157,11 +157,11 @@ export class ImportTransformer {
    */
   private static transformModulePath(modulePath: string, options: ImportTransformOptions): ImportTransformResult {
     const warnings: string[] = [];
-    
+
     // 1. FRAMEWORK IMPORTS: 0x1/module → /0x1/module.js
     if (modulePath.startsWith('0x1/')) {
       const submodule = modulePath.substring(4); // Remove '0x1/'
-      
+
       // CRITICAL: Special case for 0x1/index.js - should go to main package entry
       if (submodule === 'index.js' || submodule === 'index') {
         return {
@@ -171,7 +171,7 @@ export class ImportTransformer {
           resolvedPath: '/node_modules/0x1/index.js'
         };
       }
-      
+
       const moduleMap: Record<string, string> = {
         'link': '/0x1/router.js', // CRITICAL: Will be handled as named import by additional transformations
         'router': '/0x1/router.js',
@@ -179,7 +179,7 @@ export class ImportTransformer {
         'jsx-dev-runtime': '/0x1/jsx-runtime.js',
         'hooks': '/0x1/hooks.js'
       };
-      
+
       return {
         transformed: moduleMap[submodule] || `/0x1/${submodule}.js`,
         warnings,
@@ -187,7 +187,7 @@ export class ImportTransformer {
         resolvedPath: moduleMap[submodule] || `/0x1/${submodule}.js`
       };
     }
-    
+
     // 2. FRAMEWORK ROOT: 0x1 → /node_modules/0x1/index.js
     if (modulePath === '0x1') {
       return {
@@ -197,7 +197,7 @@ export class ImportTransformer {
         resolvedPath: '/node_modules/0x1/index.js'
       };
     }
-    
+
     // 3. RELATIVE IMPORTS: ./path or ../path
     if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
       const resolved = ImportTransformer.resolveRelativeImport(modulePath, options);
@@ -208,7 +208,7 @@ export class ImportTransformer {
         resolvedPath: resolved.path
       };
     }
-    
+
     // 4. ABSOLUTE IMPORTS: /path
     if (modulePath.startsWith('/')) {
       // Check if it's already a valid browser path
@@ -220,7 +220,7 @@ export class ImportTransformer {
           resolvedPath: modulePath
         };
       }
-      
+
       // Transform project absolute paths
       const normalized = ImportTransformer.normalizeComponentPath(modulePath.substring(1), '/', options);
       return {
@@ -230,12 +230,12 @@ export class ImportTransformer {
         resolvedPath: normalized
       };
     }
-    
+
     // 5. SCOPED PACKAGES: @scope/package or @scope/package/submodule
     if (modulePath.startsWith('@')) {
       return ImportTransformer.transformScopedPackage(modulePath, options);
     }
-    
+
     // 6. BARE MODULE SPECIFIERS: package-name or package-name/submodule
     return ImportTransformer.transformBareModule(modulePath, options);
   }
@@ -246,7 +246,7 @@ export class ImportTransformer {
    */
   private static transformScopedPackage(modulePath: string, options: ImportTransformOptions): ImportTransformResult {
     const warnings: string[] = [];
-    
+
     // CRITICAL: Handle CSS imports from scoped packages - REMOVE completely
     // Browser cannot import CSS as ES modules, so these should be stripped
     if (modulePath.includes('/styles') && !modulePath.endsWith('.js')) {
@@ -258,14 +258,14 @@ export class ImportTransformer {
         resolvedPath: undefined
       };
     }
-    
+
     // FULLY DYNAMIC PATTERN MATCHING - Works for ANY scoped package
     // Handle all scoped packages using standard npm resolution patterns
     const parts = modulePath.split('/');
     const scope = parts[0]; // @scope
     const packageName = parts[1]; // package
     const submodule = parts.slice(2).join('/'); // submodule/path
-    
+
     if (!packageName) {
       warnings.push(`Invalid scoped package: ${modulePath}`);
       return {
@@ -274,7 +274,7 @@ export class ImportTransformer {
         isExternal: true
       };
     }
-    
+
     // Handle submodules
     if (submodule) {
       // CRITICAL: Remove CSS imports completely
@@ -287,7 +287,7 @@ export class ImportTransformer {
           resolvedPath: undefined
         };
       }
-      
+
       // General submodule handling - standard npm resolution
       const extension = ImportTransformer.inferExtension(submodule);
       return {
@@ -296,18 +296,18 @@ export class ImportTransformer {
         isExternal: true
       };
     }
-    
+
     // FULLY DYNAMIC: Main package entry resolution using standard npm patterns
     // Try multiple common patterns that packages use for browser builds
     const commonPatterns = [
       `/node_modules/${scope}/${packageName}/dist/index.js`,  // Most common: dist/index.js
-      `/node_modules/${scope}/${packageName}/lib/index.js`,   // Alternative: lib/index.js  
+      `/node_modules/${scope}/${packageName}/lib/index.js`,   // Alternative: lib/index.js
       `/node_modules/${scope}/${packageName}/build/index.js`, // Build variant
       `/node_modules/${scope}/${packageName}/index.js`,       // Root index.js
       `/node_modules/${scope}/${packageName}/browser.js`,     // Browser-specific
       `/node_modules/${scope}/${packageName}/esm/index.js`    // ESM variant
     ];
-    
+
     // Use the first pattern (dist/index.js) as it's the most common
     // DevOrchestrator's polyfill system will handle fallbacks if the file doesn't exist
     return {
@@ -323,7 +323,7 @@ export class ImportTransformer {
    */
   private static transformBareModule(modulePath: string, options: ImportTransformOptions): ImportTransformResult {
     const warnings: string[] = [];
-    
+
     // Skip special packages that should remain as-is (matches working logic)
     const skipPackages = ['react', 'react-dom', '0x1'];
     if (skipPackages.includes(modulePath.split('/')[0])) {
@@ -333,12 +333,12 @@ export class ImportTransformer {
         isExternal: true
       };
     }
-    
+
     // Handle submodule imports
     const parts = modulePath.split('/');
     const packageName = parts[0];
     const submodule = parts.slice(1).join('/');
-    
+
     if (submodule) {
       const extension = ImportTransformer.inferExtension(submodule);
       return {
@@ -347,7 +347,7 @@ export class ImportTransformer {
         isExternal: true
       };
     }
-    
+
     // Main package entry - FIXED: Use working pattern with absolute path
     // Transform package-name → /node_modules/package-name (absolute path for browser)
     return {
@@ -364,12 +364,12 @@ export class ImportTransformer {
   private static resolveRelativeImport(modulePath: string, options: ImportTransformOptions): { path: string; warnings: string[] } {
     const warnings: string[] = [];
     const sourceDir = dirname(options.sourceFilePath);
-    
+
     try {
       // Resolve the path relative to the source file
       const absolutePath = resolve(sourceDir, modulePath);
       const relativeToProjct = relative(options.projectPath, absolutePath);
-      
+
       // Determine the correct base path based on location
       let basePath = '/components/';
       if (relativeToProjct.includes('lib/')) {
@@ -379,14 +379,14 @@ export class ImportTransformer {
       } else if (relativeToProjct.includes('src/')) {
         basePath = '/src/';
       }
-      
+
       // Normalize the path
       const normalized = ImportTransformer.normalizeComponentPath(relativeToProjct, basePath, options);
-      
+
       return { path: normalized, warnings };
     } catch (error) {
       warnings.push(`Failed to resolve relative import: ${modulePath}`);
-      
+
       // Fallback: simple transformation
       const fallback = ImportTransformer.normalizeComponentPath(modulePath, '/components/', options);
       return { path: fallback, warnings };
@@ -399,7 +399,7 @@ export class ImportTransformer {
    */
   private static normalizeComponentPath(path: string, basePath: string, options: ImportTransformOptions): string {
     let normalized = path;
-    
+
     // Handle different directory structures intelligently
     if (path.includes('components/')) {
       normalized = path.replace(/^.*?components\//, 'components/');
@@ -417,12 +417,12 @@ export class ImportTransformer {
       // Default: assume it's a component if no specific directory
       normalized = basePath.replace(/\/$/, '') + '/' + path;
     }
-    
+
     // Ensure it starts with /
     if (!normalized.startsWith('/')) {
       normalized = '/' + normalized;
     }
-    
+
     // Add appropriate extension
     const extension = ImportTransformer.inferExtension(normalized);
     if (extension && !normalized.includes('.')) {
@@ -430,7 +430,7 @@ export class ImportTransformer {
     } else if (normalized.match(/\.(ts|tsx|jsx)$/)) {
       normalized = normalized.replace(/\.(ts|tsx|jsx)$/, '.js');
     }
-    
+
     return normalized;
   }
 
@@ -443,16 +443,16 @@ export class ImportTransformer {
     if (/\.(js|ts|tsx|jsx|json|css|svg|png|jpg|gif|wasm)$/.test(path)) {
       return '';
     }
-    
+
     // Special cases
     if (path.includes('styles') || path.includes('css')) {
       return '.css';
     }
-    
+
     if (path.includes('types') || path.includes('@types')) {
       return '.d.ts';
     }
-    
+
     // Default to .js for components and modules
     return '.js';
   }
@@ -463,17 +463,17 @@ export class ImportTransformer {
    */
   private static isImportInComment(line: string, allLines: string[], lineIndex: number): boolean {
     const trimmed = line.trim();
-    
+
     // Skip obvious comment patterns
     if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
       return true;
     }
-    
+
     // CRITICAL: Must check if 'import' exists first
     if (!line.includes('import ')) {
       return false;
     }
-    
+
     // CRITICAL: Direct detection of problematic JSX content patterns
     // These are the exact patterns causing the nested quote syntax errors
     const problematicPatterns = [
@@ -485,42 +485,42 @@ export class ImportTransformer {
       'value: "',             // value: "...import..."
       'title: "',             // title: "...import..."
       ': "',                  // any prop: "...import..."
-      
+
       // Diff-style examples
-      '"+ import',            // "+ import..." 
+      '"+ import',            // "+ import..."
       '"- import',            // "- import..."
       "'+ import",            // '+ import...'
       "'- import",            // '- import...'
-      
+
       // Code examples in arrays/objects
       '["',                   // Array elements
       ', "',                  // Object values, array elements
       '; "',                  // Statement separators
     ];
-    
+
     // Check for any problematic pattern
     for (const pattern of problematicPatterns) {
       if (line.includes(pattern) && line.includes('import ')) {
         return true;
       }
     }
-    
+
     // CRITICAL: If import is not at the start of the line, it's probably inside content
     if (!trimmed.startsWith('import ')) {
       return true;
     }
-    
+
     // CRITICAL: Code example patterns
     const codeExamplePatterns = [
       /[-+]\s*import/,       // Diff-style examples
       /<[^>]*import/,        // JSX content
       /```.*import/,         // Markdown code blocks
     ];
-    
+
     if (codeExamplePatterns.some(pattern => pattern.test(line))) {
       return true;
     }
-    
+
     // Must be a real import statement
     return false;
   }
@@ -542,16 +542,16 @@ export class ImportTransformer {
     let externalImports = 0;
     let frameworkImports = 0;
     let relativeImports = 0;
-    
+
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.startsWith('import ') && !ImportTransformer.isImportInComment(line, lines, 0)) {
         totalImports++;
-        
+
         const match = line.match(/from\s+['"]([^'"]+)['"]/);
         if (match) {
           const modulePath = match[1];
-          
+
           if (modulePath.startsWith('0x1')) {
             frameworkImports++;
           } else if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
@@ -559,7 +559,7 @@ export class ImportTransformer {
           } else if (modulePath.startsWith('@') || !modulePath.startsWith('/')) {
             externalImports++;
           }
-          
+
           const result = ImportTransformer.transformModulePath(modulePath, options);
           if (result.transformed !== modulePath) {
             transformedImports++;
@@ -567,7 +567,7 @@ export class ImportTransformer {
         }
       }
     }
-    
+
     return {
       totalImports,
       transformedImports,
@@ -585,14 +585,14 @@ export class ImportTransformer {
     if (options.debug) {
       console.log('[ImportTransformer] Applying Link component fixes for browser compatibility');
     }
-    
+
     let modifiedContent = content;
-    
+
     // CRITICAL: Ensure JSX runtime is available FIRST
     if (!modifiedContent.includes('const jsx=') && !modifiedContent.includes('window.jsx')) {
       const jsxRuntimeSetup = `
 // 0x1 Framework - JSX Runtime Setup for Link Components
-const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) || 
+const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) ||
            (() => {
              console.warn('[0x1 Router] JSX runtime not available, using fallback');
              return (type, props) => ({ type, props });
@@ -600,22 +600,22 @@ const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) ||
 `;
       modifiedContent = jsxRuntimeSetup + modifiedContent;
     }
-    
+
     // CRITICAL: Fix function D (NavLink) - the more problematic one
     if (modifiedContent.includes('function D(') && modifiedContent.includes('return{type:"a"')) {
-      
+
       // Find function D and fix its return statement
       const funcDIndex = modifiedContent.indexOf('function D(');
       if (funcDIndex !== -1) {
-        
+
         // Find the return{type:"a" part within function D
         const returnIndex = modifiedContent.indexOf('return{type:"a"', funcDIndex);
         if (returnIndex !== -1) {
-          
+
           // Find the matching closing brace for the return object
           let braceCount = 0;
           let endIndex = returnIndex + 'return{'.length;
-          
+
           for (let i = endIndex; i < modifiedContent.length; i++) {
             if (modifiedContent[i] === '{') braceCount++;
             if (modifiedContent[i] === '}') {
@@ -626,32 +626,32 @@ const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) ||
               braceCount--;
             }
           }
-          
+
           // Replace the entire return statement for function D - use jsx() call
           const oldReturn = modifiedContent.substring(returnIndex, endIndex);
           const newReturn = 'return jsx("a",{href:z,className:V,onClick:(Z)=>{if(Z.preventDefault(),Z.stopPropagation(),z.startsWith("/")){let _=$();if(_)_.navigate(z);else if(typeof window!=="undefined")window.history.pushState(null,"",z),window.dispatchEvent(new PopStateEvent("popstate"))}else window.location.href=z},children:G})';
-          
+
           modifiedContent = modifiedContent.replace(oldReturn, newReturn);
-          
+
           if (options.debug) {
             console.log(`[ImportTransformer] Fixed function D (NavLink): ${oldReturn.substring(0, 50)}... → jsx("a",...)`);
           }
         }
       }
     }
-    
-    // CRITICAL: Fix function F (Link) if it still uses plain objects  
+
+    // CRITICAL: Fix function F (Link) if it still uses plain objects
     if (modifiedContent.includes('function F(') && modifiedContent.includes('return{type:"a"')) {
-      
+
       const funcFIndex = modifiedContent.indexOf('function F(');
       if (funcFIndex !== -1) {
-        
+
         const returnIndex = modifiedContent.indexOf('return{type:"a"', funcFIndex);
         if (returnIndex !== -1) {
-          
+
           let braceCount = 0;
           let endIndex = returnIndex + 'return{'.length;
-          
+
           for (let i = endIndex; i < modifiedContent.length; i++) {
             if (modifiedContent[i] === '{') braceCount++;
             if (modifiedContent[i] === '}') {
@@ -662,24 +662,24 @@ const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) ||
               braceCount--;
             }
           }
-          
+
           const oldReturn = modifiedContent.substring(returnIndex, endIndex);
           const newReturn = 'return jsx("a",{href:q,className:z,onClick:(V)=>{if(V.preventDefault(),V.stopPropagation(),q.startsWith("/")){let Z=$();if(Z)Z.navigate(q,!0,Y);else if(typeof window!=="undefined")window.history.pushState(null,"",q),window.dispatchEvent(new PopStateEvent("popstate"))}else window.location.href=q},children:Q})';
-          
+
           modifiedContent = modifiedContent.replace(oldReturn, newReturn);
-          
+
           if (options.debug) {
             console.log(`[ImportTransformer] Fixed function F (Link): ${oldReturn.substring(0, 50)}... → jsx("a",...)`);
           }
         }
       }
     }
-    
+
     // CRITICAL: Also fix any other functions that return plain objects for links
     // Sometimes there might be other patterns like `export function Link()` returning objects
     const plainObjectPattern = /return\s*\{\s*type\s*:\s*["']a["']\s*,\s*props\s*:\s*\{[^}]*href\s*:[^}]*\}\s*\}/g;
     const matches = modifiedContent.match(plainObjectPattern);
-    
+
     if (matches) {
       for (const match of matches) {
         // Replace each plain object return with jsx call
@@ -688,13 +688,13 @@ const jsx = (typeof window !== 'undefined' && (window.jsx || window.jsxDEV)) ||
           'return jsx("a", $1)'
         );
         modifiedContent = modifiedContent.replace(match, jsxReplacement);
-        
+
         if (options.debug) {
           console.log(`[ImportTransformer] Fixed additional plain object pattern: ${match.substring(0, 30)}...`);
         }
       }
     }
-    
+
     // Ensure Link functions are exposed for wrapper usage
     if (!modifiedContent.includes('window.__0x1_RouterLink = F')) {
       modifiedContent += `
@@ -705,7 +705,7 @@ if (typeof window !== 'undefined') {
 }
 `;
     }
-    
+
     if (options.debug) {
       console.log('[ImportTransformer] Link component fixes applied successfully');
       if (modifiedContent === content) {
@@ -714,7 +714,7 @@ if (typeof window !== 'undefined') {
         console.log('[ImportTransformer] ✅ Content was successfully modified');
       }
     }
-    
+
     return modifiedContent;
   }
 
@@ -726,93 +726,138 @@ if (typeof window !== 'undefined') {
     // CRITICAL: Split content into lines and analyze each line in context
     const lines = content.split('\n');
     const transformedLines: string[] = [];
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      
+
       // CRITICAL: Skip transformation for lines that are inside JSX string content
       // Check for patterns that indicate this is transpiled JSX content with string literals
-      const isJSXStringContent = 
+      const isJSXStringContent =
         // Check if line contains JSX string literals with imports
-        line.includes('"import ') || line.includes("'import ") ||
+        line.includes('"import ') ||
+        line.includes("'import ") ||
         // Check if line is part of JSX children array with string content
-        (line.includes('children: [') || line.includes('children:["') || line.includes("children:['")) ||
+        line.includes("children: [") ||
+        line.includes('children:["') ||
+        line.includes("children:['") ||
         // Check if line is inside a string literal that contains code examples
-        (line.includes('props: {') && (line.includes('"import ') || line.includes("'import "))) ||
+        (line.includes("props: {") &&
+          (line.includes('"import ') || line.includes("'import "))) ||
         // Check if this is obviously transpiled JSX content
-        (line.includes('jsxDEV(') && (line.includes('"import ') || line.includes("'import "))) ||
+        (line.includes("jsxDEV(") &&
+          (line.includes('"import ') || line.includes("'import "))) ||
         // Check for SyntaxHighlighter patterns
-        line.includes('SyntaxHighlighter') ||
+        line.includes("SyntaxHighlighter") ||
         // Check for code block patterns in JSX
-        (line.includes('className: "') && line.includes('language-')) ||
+        (line.includes('className: "') && line.includes("language-")) ||
         // Check if we're inside a template literal or multi-line string
-        line.includes('`import ') ||
+        line.includes("`import ") ||
         // Check for documentation/example code patterns
-        (line.includes('// ') && line.includes('import ')) ||
+        (line.includes("// ") && line.includes("import ")) ||
         // Look for previous context that suggests this is content, not actual code
-        (i > 0 && (lines[i-1].includes('children:') || lines[i-1].includes('SyntaxHighlighter')));
-      
+        (i > 0 &&
+          (lines[i - 1].includes("children:") ||
+            lines[i - 1].includes("SyntaxHighlighter")));
+
       if (isJSXStringContent) {
         // Don't transform imports in JSX string content
         transformedLines.push(line);
-        if (options.debug && trimmed.includes('import ')) {
-          console.log(`[ImportTransformer] Skipping import in JSX string content: ${trimmed.substring(0, 50)}...`);
+        if (options.debug && trimmed.includes("import ")) {
+          console.log(
+            `[ImportTransformer] Skipping import in JSX string content: ${trimmed.substring(0, 50)}...`
+          );
         }
         continue;
       }
-      
+
       // CRITICAL: Only transform if this is an actual import statement at the beginning of a line
       // AND not inside any kind of string literal context
-      if (!trimmed.startsWith('import ')) {
+      if (!trimmed.startsWith("import ")) {
         transformedLines.push(line);
         continue;
       }
-      
+
       // Apply transformations only to actual import statements
       let transformedLine = line;
-      
+
+      // Let the main transformModulePath handle ALL imports robustly - no hardcoded patterns!
+
       // Components and relative imports - ONLY for actual import statements
+      // transformedLine = transformedLine
+      //   .replace(
+      //     /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\.\/components\/([^"']+)(["'])/,
+      //     "$1/components/$2.js$3"
+      //   )
+      //   .replace(
+      //     /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\/([^"']+)(["'])/,
+      //     "$1/$2.js$3"
+      //   );
+
+
+      // CSS imports (remove completely) - ONLY for actual import statements
       transformedLine = transformedLine
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\.\/components\/([^"']+)(["'])/, 
-          '$1/components/$2.js$3')
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])\.\/([^"']+)(["'])/, 
-          '$1/$2.js$3')
-        
-        // CSS imports (remove completely) - ONLY for actual import statements
-        .replace(/^(\s*)import\s*["']\.\/globals\.css[""];?/, '$1// CSS import externalized')
-        .replace(/^(\s*)import\s*["']\.\.\/globals\.css[""];?/, '$1// CSS import externalized')
-        .replace(/^(\s*)import\s*["'][^"']*\.css[""];?/, '$1// CSS import removed for browser compatibility')
+        .replace(
+          /^(\s*)import\s*["']\.\/globals\.css[""];?/,
+          "$1// CSS import externalized"
+        )
+        .replace(
+          /^(\s*)import\s*["']\.\.\/globals\.css[""];?/,
+          "$1// CSS import externalized"
+        )
+        .replace(
+          /^(\s*)import\s*["'][^"']*\.css[""];?/,
+          "$1// CSS import removed for browser compatibility"
+        )
         // DYNAMIC: Handle ALL scoped package CSS imports - ONLY for actual import statements
-        .replace(/^(\s*)import\s*["']@[^/]+\/[^/]+\/styles?[""];?/, '$1// CSS import from scoped package removed for browser compatibility')
-        
+        .replace(
+          /^(\s*)import\s*["']@[^/]+\/[^/]+\/styles?[""];?/,
+          "$1// CSS import from scoped package removed for browser compatibility"
+        )
+
         // Framework runtime imports - ONLY for actual import statements
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-dev-runtime(["'])/, 
-          '$1/0x1/jsx-runtime.js$2')
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-runtime(["'])/, 
-          '$1/0x1/jsx-runtime.js$2')
-        
+        .replace(
+          /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-dev-runtime(["'])/,
+          "$1/0x1/jsx-runtime.js$2"
+        )
+        .replace(
+          /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/jsx-runtime(["'])/,
+          "$1/0x1/jsx-runtime.js$2"
+        )
+
         // CRITICAL: Link imports - CONTEXT-AWARE patterns that avoid string content
         // Only transform if it's an actual import statement at the start of a line
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/link(["'])/, 
-          '$1/0x1/router.js$2')
-        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1\/link["']/, 
-          '$1{ Link as $2 } from "/0x1/router.js"')
+        .replace(
+          /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1\/link(["'])/,
+          "$1/0x1/router.js$2"
+        )
+        .replace(
+          /^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1\/link["']/,
+          '$1{ Link as $2 } from "/0x1/router.js"'
+        )
         // Only transform already-transformed paths if they're actual imports
-        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']\/0x1\/router\.js["']/, 
-          '$1{ Link as $2 } from "/0x1/router.js"')
-        
+        .replace(
+          /^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']\/0x1\/router\.js["']/,
+          '$1{ Link as $2 } from "/0x1/router.js"'
+        )
+
         // Framework main imports - ONLY for actual import statements
-        .replace(/^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1(["'])/, 
-          '$1/node_modules/0x1/index.js$2')
-        .replace(/^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1["']/, 
-          '$1$2 from "/node_modules/0x1/index.js"');
-      
+        .replace(
+          /^(\s*import\s*{\s*[^}]+\s*}\s*from\s*["'])0x1(["'])/,
+          "$1/node_modules/0x1/index.js$2"
+        )
+        .replace(
+          /^(\s*import\s+)([^{\s][^}]*?)\s*from\s*["']0x1["']/,
+          '$1$2 from "/node_modules/0x1/index.js"'
+        );
+
       transformedLines.push(transformedLine);
-      
+
       // Debug log if transformation occurred
       if (options.debug && transformedLine !== line) {
-        console.log(`[ImportTransformer] Applied transformation: ${line.trim()} → ${transformedLine.trim()}`);
+        console.log(
+          `[ImportTransformer] Applied transformation: ${line.trim()} → ${transformedLine.trim()}`
+        );
       }
     }
 
@@ -831,19 +876,19 @@ if (typeof window !== 'undefined') {
     let currentInsideTemplate = insideTemplateLiteral;
     let currentInsideString = insideStringLiteral;
     let currentDelimiter = stringDelimiter;
-    
+
     // CRITICAL: Handle multi-line template literals (like in ai-guide page)
     // Check for template literal start/end patterns
     const templateStarts = (line.match(/`/g) || []).length;
     const templateInJSX = line.includes('>{`') || line.includes('`<'); // JSX template patterns
-    
+
     // If we find backticks, toggle template literal state
     if (templateStarts > 0) {
       // Special case: JSX template patterns like <pre>{`...`}</pre>
       if (templateInJSX) {
         const jsxTemplateStart = line.includes('>{`');
         const jsxTemplateEnd = line.includes('`}<');
-        
+
         if (jsxTemplateStart && jsxTemplateEnd) {
           // Single-line JSX template - don't change state
           currentInsideTemplate = false;
@@ -861,13 +906,13 @@ if (typeof window !== 'undefined') {
         }
       }
     }
-    
+
     // CRITICAL: Detect if this line contains template literal content
     // Look for patterns that indicate we're inside a JSX template literal
     const isTemplateContent = line.includes('${') || // Template expressions
                              (currentInsideTemplate && line.trim().length > 0) || // Inside multi-line template
                              line.match(/^\s*[^`]*\$\{[^}]*\}/); // Template expressions
-    
+
     // CRITICAL: Don't transform imports that are inside template literal content
     // This prevents the "nested template literal" syntax errors
     if (isTemplateContent || currentInsideTemplate) {
@@ -877,11 +922,11 @@ if (typeof window !== 'undefined') {
         stringDelimiter: ''
       };
     }
-    
+
     // Handle regular string literals
     const singleQuoteMatches = (line.match(/'/g) || []).length;
     const doubleQuoteMatches = (line.match(/"/g) || []).length;
-    
+
     if (!currentInsideString) {
       if (singleQuoteMatches % 2 === 1) {
         currentInsideString = true;
@@ -898,7 +943,7 @@ if (typeof window !== 'undefined') {
         currentDelimiter = '';
       }
     }
-    
+
     return {
       insideTemplateLiteral: currentInsideTemplate,
       insideStringLiteral: currentInsideString,
@@ -919,4 +964,4 @@ export function transformImports(content: string, sourceFilePath: string, projec
   });
 }
 
-export default ImportTransformer; 
+export default ImportTransformer;
