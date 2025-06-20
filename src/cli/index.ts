@@ -8,7 +8,7 @@ import { logger } from './utils/logger';
 import { parseArgs } from './utils/parse-args';
 
 // Version info
-const CLI_VERSION = process.env.npm_package_version || '0.0.362';
+const CLI_VERSION = process.env.npm_package_version || '0.0.365';
 
 // Command definitions with lazy loading
 const COMMANDS = {
@@ -62,6 +62,11 @@ const COMMANDS = {
     loader: () => import('./commands/pwa'),
     method: 'addPWA'
   },
+  version: {
+    description: 'Show version information',
+    loader: () => Promise.resolve({ showVersion: () => showVersion() }),
+    method: 'showVersion'
+  },
   help: {
     description: 'Show help information',
     loader: () => import('./commands/help'),
@@ -86,11 +91,46 @@ const showBanner = () => {
 };
 
 /**
+ * Beautiful version display
+ */
+const showVersion = () => {
+  // Nice ASCII art for version display
+  console.log('\x1b[35m'); // Magenta color
+  console.log(' ██████╗  ██╗  ██╗ ███╗');
+  console.log('██╔═══██╗ ╚██╗██╔╝ ╚██║');
+  console.log('██║   ██║  ╚███╔╝   ██║');
+  console.log('██║   ██║  ██╔██╗   ██║');
+  console.log('╚██████╔╝ ██╔╝ ██╗  ██║');
+  console.log(' ╚════╝   ╚═╝  ╚═╝  ╚═╝framework');
+  console.log('\x1b[0m'); // Reset color
+
+  console.log('');
+  console.log(`\x1b[1m\x1b[36m0x1 Framework\x1b[0m`);
+  console.log(`\x1b[32mVersion: ${CLI_VERSION}\x1b[0m`);
+  console.log(`\x1b[90mThe ultra-minimal TypeScript framework\x1b[0m`);
+  console.log('');
+  console.log(`\x1b[33mHomepage:\x1b[0m https://0x1.onl`);
+  console.log(`\x1b[33mRepository:\x1b[0m https://github.com/Triex/0x1`);
+  console.log(`\x1b[33mAuthor:\x1b[0m TriexDev`);
+  console.log(`\x1b[33mLicense:\x1b[0m TDLv1`);
+  console.log('');
+
+  // Show runtime info
+  console.log(`\x1b[90mRuntime Info:\x1b[0m`);
+  console.log(`  \x1b[90mBun: ${process.versions.bun || 'Not detected'}\x1b[0m`);
+  console.log(`  \x1b[90mNode: ${process.versions.node}\x1b[0m`);
+  console.log(`  \x1b[90mPlatform: ${process.platform} ${process.arch}\x1b[0m`);
+  console.log('');
+
+  console.log(`\x1b[2m💡 Try '\x1b[0m\x1b[36m0x1 help\x1b[0m\x1b[2m' to see available commands\x1b[0m`);
+};
+
+/**
  * Execute a command with lazy loading
  */
 async function executeCommand(commandName: CommandName, args: any): Promise<void> {
   const commandDef = COMMANDS[commandName];
-  
+
   if (!commandDef) {
     throw new Error(`Unknown command: ${commandName}`);
   }
@@ -99,7 +139,7 @@ async function executeCommand(commandName: CommandName, args: any): Promise<void
     // Dynamically load the command module
     const module = await commandDef.loader();
     const method = (module as any)[commandDef.method];
-    
+
     if (typeof method !== 'function') {
       throw new Error(`Command ${commandName} does not export method ${commandDef.method}`);
     }
@@ -110,17 +150,17 @@ async function executeCommand(commandName: CommandName, args: any): Promise<void
       case 'create':
         await method(args._[1], args);
         break;
-      
+
       case 'generate':
       case 'gen':
       case 'g':
         await method(args._[1] || 'component', args._[2] || 'NewComponent', args);
         break;
-      
+
       case 'deploy':
         await method(args);
         break;
-      
+
       case 'pwa':
         await method({
           name: args.name,
@@ -133,11 +173,15 @@ async function executeCommand(commandName: CommandName, args: any): Promise<void
           skipPrompts: args.y || args.yes
         });
         break;
-      
+
+      case 'version':
+        method();
+        break;
+
       case 'help':
         method(args._[1]);
         break;
-      
+
       default:
         // For dev, build, preview - pass args directly
         await method(args);
@@ -156,10 +200,17 @@ async function executeCommand(commandName: CommandName, args: any): Promise<void
  */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // Handle version flags first (--version, -v)
+  if (args.version || args.v) {
+    showVersion();
+    return;
+  }
+
   const command = (args._[0] || 'help') as CommandName;
 
-  // Show banner for all commands except dev server (to avoid clutter during development)
-  if (!['dev', 'preview', 'build'].includes(command)) {
+  // Show banner for all commands except dev server and version (to avoid clutter during development)
+  if (!['dev', 'preview', 'build', 'version'].includes(command)) {
     showBanner();
   }
 
@@ -178,12 +229,12 @@ async function main(): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(errorMessage);
-    
+
     // Show debug info in development
     if (process.env.DEBUG) {
       console.error(error);
     }
-    
+
     process.exit(1);
   }
 }
