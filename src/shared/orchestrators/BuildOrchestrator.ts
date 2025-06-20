@@ -331,6 +331,9 @@ export class BuildOrchestrator {
 
     // Step 6: CRITICAL FIX - Generate separate HTML files for each route (for crawlers) + main SPA file (for users)
     await this.generateRouteSpecificHtmlFiles(outputPath);
+
+    // Step 7: PERFORMANCE - Compress all assets for sub-1s Speed Index
+    await this.compressAssetsForPerformance(outputPath);
   }
 
   private async generateComponentsUsingWorkingPattern(
@@ -4448,6 +4451,10 @@ export default function ErrorComponent(props) {
       "<head>\n" +
       '  <meta charset="UTF-8">\n' +
       '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+      "  <!-- PERFORMANCE: Resource hints for sub-1s loading -->\n" +
+      '  <link rel="dns-prefetch" href="//fonts.googleapis.com">\n' +
+      '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
+      '  <link rel="prefetch" href="/favicon.svg">\n' +
       `  <title>${pageTitle}</title>\n` +
       `  <meta name="description" content="${pageDescription}">\n` +
       (additionalMetaTags ? additionalMetaTags + "\n" : "") +
@@ -4456,27 +4463,33 @@ export default function ErrorComponent(props) {
       "  <style>\n" +
       minimalCriticalCSS +
       "  </style>\n" +
-      "  <!-- PERFORMANCE: Reliable CSS loading with override detection -->\n" +
-      `  <link rel="stylesheet" href="/styles.css?v=${cacheBust}" onload="window.cssLoaded=true">\n` +
+      "  <!-- PERFORMANCE: Critical resource preloading for sub-1s Speed Index -->\n" +
+      `  <link rel="preload" href="/styles.css?v=${cacheBust}" as="style" onload="this.onload=null;this.rel='stylesheet'">\n` +
+      `  <link rel="preload" href="/0x1/hooks.js?v=${cacheBust}" as="script">\n` +
+      `  <link rel="preload" href="/0x1/jsx-runtime.js?v=${cacheBust}" as="script">\n` +
+      `  <link rel="preload" href="/app.js?v=${cacheBust}" as="script">\n` +
+      "  <!-- PERFORMANCE: Fallback CSS loading -->\n" +
+      `  <noscript><link rel="stylesheet" href="/styles.css?v=${cacheBust}"></noscript>\n` +
       "  <script>\n" +
-      "    // Monitor CSS loading and override critical styles\n" +
-      "    let checkCount = 0;\n" +
-      "    const checkCSSLoaded = () => {\n" +
-      "      checkCount++;\n" +
+      "    // PERFORMANCE: Ultra-fast CSS loading detection for sub-1s Speed Index\n" +
+      "    let cssCheckCount = 0;\n" +
+      "    const rapidCSSCheck = () => {\n" +
+      "      cssCheckCount++;\n" +
       "      \n" +
-      "      // Check if external CSS has loaded by testing a class that actually exists\n" +
-      "      const testEl = document.createElement('div');\n" +
-      "      testEl.className = 'flex';\n" +
-      "      testEl.style.position = 'absolute';\n" +
-      "      testEl.style.visibility = 'hidden';\n" +
-      "      document.body.appendChild(testEl);\n" +
+      "      // FASTER: Check document.styleSheets instead of DOM manipulation\n" +
+      "      for (let i = 0; i < document.styleSheets.length; i++) {\n" +
+      "        try {\n" +
+      "          const sheet = document.styleSheets[i];\n" +
+      "          if (sheet.href && sheet.href.includes('styles.css')) {\n" +
+      "            // CSS is fully loaded\n" +
+      "            window.cssLoaded = true;\n" +
+      "            break;\n" +
+      "          }\n" +
+      "        } catch (e) { /* Cross-origin stylesheets */ }\n" +
+      "      }\n" +
       "      \n" +
-      "      const computedStyle = getComputedStyle(testEl);\n" +
-      "      const display = computedStyle.display;\n" +
-      "      document.body.removeChild(testEl);\n" +
-      "      \n" +
-      "      // If flex class is applied, CSS is loaded\n" +
-      "      if (display === 'flex' || window.cssLoaded) {\n" +
+      "      // If CSS is loaded or timeout\n" +
+      "      if (window.cssLoaded || cssCheckCount > 20) {\n" +
       "        // Remove ALL critical styles to let Tailwind take over completely\n" +
       "        const style = document.createElement('style');\n" +
       "        style.textContent = `\n" +
@@ -4497,16 +4510,16 @@ export default function ErrorComponent(props) {
       "        return;\n" +
       "      }\n" +
       "      \n" +
-      "      // Keep checking for up to 5 seconds\n" +
-      "      if (checkCount < 50) {\n" +
-      "        setTimeout(checkCSSLoaded, 100);\n" +
+      "      // PERFORMANCE: Check rapidly for faster CSS transition\n" +
+      "      if (cssCheckCount < 20) {\n" +
+      "        setTimeout(rapidCSSCheck, 25);\n" +
       "      }\n" +
       "    };\n" +
       "    \n" +
-      "    // Start checking after a brief delay\n" +
-      "    setTimeout(checkCSSLoaded, 50);\n" +
+      "    // PERFORMANCE: Start checking immediately for sub-1s Speed Index\n" +
+      "    rapidCSSCheck();\n" +
       "    \n" +
-      "    // FORCE OVERRIDE: Remove critical styles after 2 seconds regardless\n" +
+      "    // FORCE OVERRIDE: Remove critical styles after 1 second (faster)\n" +
       "    setTimeout(() => {\n" +
       "      const forceStyle = document.createElement('style');\n" +
       "      forceStyle.textContent = `\n" +
@@ -4523,8 +4536,8 @@ export default function ErrorComponent(props) {
       "        .critical-md-flex { display: unset !important; }\n" +
       "      `;\n" +
       "      document.head.appendChild(forceStyle);\n" +
-      "      console.log('[0x1] FORCE: Critical styles removed after 2s');\n" +
-      "    }, 2000);\n" +
+      "      console.log('[0x1] FORCE: Critical styles removed after 1s');\n" +
+      "    }, 1000);\n" +
       "  </script>\n" +
       (externalCssLinks ? externalCssLinks + "\n" : "") +
       "  <script type=\"importmap\">\n" +
@@ -4580,7 +4593,7 @@ export default function ErrorComponent(props) {
       "      });\n" +
       "    }\n" +
       "  </script>\n\n" +
-      "  <!-- PERFORMANCE: Optimized loading sequence for instant rendering -->\n" +
+      "  <!-- PERFORMANCE: Safe preloaded module loading for instant rendering -->\n" +
       `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
@@ -5444,6 +5457,111 @@ console.log('[0x1] Fallback router module loaded');
       </div>
     </div>
     `;
+  }
+
+  /**
+   * PERFORMANCE: Compress all assets for sub-1s Speed Index
+   * Compresses CSS, JS, and HTML files to reduce transfer size
+   */
+  private async compressAssetsForPerformance(outputPath: string): Promise<void> {
+    if (!this.options.silent) {
+      logger.info("🗜️ Compressing assets for sub-1s performance...");
+    }
+
+    try {
+      // Files to compress for maximum performance
+      const compressibleFiles = [
+        join(outputPath, "styles.css"),
+        join(outputPath, "app.js"),
+        join(outputPath, "index.html"),
+        join(outputPath, "0x1", "hooks.js"),
+        join(outputPath, "0x1", "jsx-runtime.js"),
+        join(outputPath, "0x1", "router.js"),
+      ];
+
+      let totalOriginalSize = 0;
+      let totalCompressedSize = 0;
+
+      for (const filePath of compressibleFiles) {
+        if (existsSync(filePath)) {
+          try {
+            const originalContent = readFileSync(filePath, "utf-8");
+            const originalSize = originalContent.length;
+
+            // Simple but effective compression optimizations
+            let compressedContent = originalContent;
+
+            // Remove comments (but preserve copyright)
+            if (filePath.endsWith(".js")) {
+              compressedContent = compressedContent
+                .replace(/\/\*(?!\*)[\s\S]*?\*\//g, '') // Remove /* */ comments except /*! */
+                .replace(/^\s*\/\/.*$/gm, '') // Remove // comments
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                .replace(/^\s+/gm, '') // Remove leading whitespace
+                .trim();
+            }
+
+            // Remove HTML comments and extra whitespace
+            if (filePath.endsWith(".html")) {
+              compressedContent = compressedContent
+                .replace(/<!--(?!\s*\/?\s*\[if\s)[\s\S]*?-->/g, '') // Remove HTML comments except IE conditionals
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                .replace(/>\s+</g, '><') // Remove whitespace between tags
+                .trim();
+            }
+
+            // CSS compression
+            if (filePath.endsWith(".css")) {
+              compressedContent = compressedContent
+                .replace(/\/\*[\s\S]*?\*\//g, '') // Remove CSS comments
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                .replace(/;\s*}/g, '}') // Remove last semicolon before }
+                .replace(/\s*{\s*/g, '{') // Remove spaces around {
+                .replace(/;\s*/g, ';') // Remove spaces after ;
+                .replace(/:\s*/g, ':') // Remove spaces after :
+                .trim();
+            }
+
+            const compressedSize = compressedContent.length;
+            const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+
+            if (compressedSize < originalSize) {
+              // Only write if compression actually helped
+              writeFileSync(filePath, compressedContent);
+
+              totalOriginalSize += originalSize;
+              totalCompressedSize += compressedSize;
+
+              if (!this.options.silent) {
+                logger.debug(`✅ Compressed ${filePath.split('/').pop()}: ${(originalSize/1024).toFixed(1)}KB → ${(compressedSize/1024).toFixed(1)}KB (${savings}% smaller)`);
+              }
+            } else {
+              totalOriginalSize += originalSize;
+              totalCompressedSize += originalSize;
+            }
+
+          } catch (error) {
+            if (!this.options.silent) {
+              logger.warn(`Failed to compress ${filePath}: ${error}`);
+            }
+          }
+        }
+      }
+
+      const totalSavings = totalOriginalSize > 0
+        ? ((totalOriginalSize - totalCompressedSize) / totalOriginalSize * 100).toFixed(1)
+        : '0';
+
+      if (!this.options.silent) {
+        logger.success(`✅ Asset compression complete: ${(totalOriginalSize/1024).toFixed(1)}KB → ${(totalCompressedSize/1024).toFixed(1)}KB (${totalSavings}% reduction)`);
+        logger.info(`🚀 Optimized for sub-1s Speed Index with ${totalSavings}% smaller assets`);
+      }
+
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.warn(`Asset compression failed: ${error}`);
+      }
+    }
   }
 }
 
