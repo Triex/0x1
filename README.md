@@ -62,6 +62,7 @@
 - **Compile-time validation**: Catch errors early with strict typing
 - **Smart Context Inference**: Automatically detects client/server context and validates usage
 - **Runtime Error Boundaries**: Beautiful error display for development with helpful suggestions
+- **Component Library**: Easily add pre-built components with `0x1 add <component>` command (TBD)
 
 ### 📁 App Directory Structure
 - **Next15-compatible**: Modern app directory structure with file-based routing
@@ -1310,6 +1311,49 @@ Add PWA functionality to any project:
 
 ---
 
+## 📚 Component Library
+
+0x1 includes a carefully crafted component library `@0x1js/components` that provides ready-to-use UI components for your projects. These components are:
+
+- **Zero-dependency** - Pure TypeScript/JSX with no external libraries
+- **Customizable** - Easily extend or modify via props
+- **Accessible** - Built following WCAG guidelines
+- **Minimal** - Optimized for bundle size and performance
+
+### Using the Component Library
+
+The 0x1 CLI makes it easy to add components to your project:
+
+```bash
+# Add a specific component
+0x1 add Button
+
+# Add multiple components at once
+0x1 add Button Card Container
+
+# Add with options (show demo, include docs, specify target directory)
+0x1 add Button --withDemo --withDocs --target=src/ui
+```
+
+When you run the `add` command, the CLI will:
+
+1. Check if the `@0x1js/components` package is installed in your project
+2. Install it if needed (with your permission)
+3. Copy the requested component(s) into your project with proper import paths
+
+### Available Components
+
+- **UI**: Button, Card, and more
+- **Layout**: Container and layout components
+- **Data**: Table and data display components
+- **Feedback**: Toast, Alert, and other feedback components
+
+### Component Documentation
+
+Each component comes with markdown documentation describing its props, usage examples, and customization options. Use the `--withDocs` flag to include this documentation in your project.
+
+---
+
 ## 🔧 CLI Commands
 
 | Command | Description |
@@ -1388,7 +1432,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.377)
+### Current State (v0.0.378)
 - ✅ Complete React Hooks API (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`, `useReducer`, `useContext`, `createContext`)
 - ✅ Advanced Performance Hooks (`useTransition`, `useDeferredValue`, `useId`) with priority-based scheduling
 - ✅ Enhanced 0x1 Hooks (`useFetch`, `useForm`, `useLocalStorage`, `useClickOutside`)

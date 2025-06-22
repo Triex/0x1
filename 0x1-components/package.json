@@ -1,0 +1,35 @@
+{
+  "name": "@0x1js/components",
+  "version": "0.0.2",
+  "description": "High-quality, dependency-free components for 0x1 applications",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "echo \"No build step required for now\""
+  },
+  "keywords": [
+    "0x1",
+    "components",
+    "ui",
+    "nextjs",
+    "react",
+    "preact"
+  ],
+  "author": "0x1js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0x1js/0x1"
+  },
+  "bugs": {
+    "url": "https://github.com/0x1js/0x1/issues"
+  },
+  "homepage": "https://github.com/0x1js/0x1",
+  "peerDependencies": {
+    "0x1": ">=0.0.377",
+    "react-dom": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
