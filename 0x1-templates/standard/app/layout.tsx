@@ -2,7 +2,7 @@
  * 0x1 Standard App - Root Layout
  * Using app directory structure with beautiful light & dark theme
  */
-import { Header } from "components/Header";
+import { Header } from "../components/Header";
 import "./globals.css";
 
 export const metadata = {

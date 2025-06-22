@@ -73,6 +73,35 @@ async function buildFramework() {
     Bun.spawn(["mkdir", "-p", distDir]);
     Bun.spawn(["mkdir", "-p", join(distDir, "core")]);
     Bun.spawn(["mkdir", "-p", join(distDir, "types")]);
+    
+    // Bundle templates (standard and minimal) for the CLI
+    console.log("📦 Bundling CLI templates...");
+    // Create templates directory in dist
+    await Bun.spawn(["mkdir", "-p", join(distDir, "templates-cli")]).exited;
+    
+    const templateSrcDir = resolve("0x1-templates");
+    // Check if templates exist in the source
+    if (existsSync(templateSrcDir)) {
+      // Copy standard template
+      if (existsSync(join(templateSrcDir, "standard"))) {
+        console.log("📄 Bundling standard template...");
+        await Bun.spawn(["mkdir", "-p", join(distDir, "templates-cli", "standard")]).exited;
+        await Bun.spawn(["cp", "-r", join(templateSrcDir, "standard"), join(distDir, "templates-cli")]).exited;
+      } else {
+        console.warn("⚠️  Standard template not found in 0x1-templates directory");
+      }
+      
+      // Copy minimal template
+      if (existsSync(join(templateSrcDir, "minimal"))) {
+        console.log("📄 Bundling minimal template...");
+        await Bun.spawn(["mkdir", "-p", join(distDir, "templates-cli", "minimal")]).exited;
+        await Bun.spawn(["cp", "-r", join(templateSrcDir, "minimal"), join(distDir, "templates-cli")]).exited;
+      } else {
+        console.warn("⚠️  Minimal template not found in 0x1-templates directory");
+      }
+    } else {
+      console.warn("⚠️  0x1-templates directory not found, skipping template bundling");
+    }
 
     console.log("📦 Building core framework bundle with production optimizations...");
 

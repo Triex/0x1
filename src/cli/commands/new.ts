@@ -800,50 +800,93 @@ async function downloadTemplate(templateType: string, tempDir: string): Promise<
     
     // Download and extract using Bun's built-in tar support
     const archiveBuffer = await response.arrayBuffer();
-    await Bun.write(join(tempDir, 'template.tar.gz'), archiveBuffer);
+    const archivePath = join(tempDir, 'template.tar.gz');
+    await Bun.write(archivePath, archiveBuffer);
     
-    // Extract the archive
-    const extractProcess = Bun.spawn(['tar', '-xzf', 'template.tar.gz', '--strip-components=1'], {
+    // Extract the archive - don't use strip-components as it can cause structure issues
+    // Instead, we'll handle path resolution after extraction
+    const extractProcess = Bun.spawn(['tar', '-xzf', archivePath], {
       cwd: extractDir,
-      stdout: 'inherit',
+      stdout: 'pipe',
       stderr: 'pipe'
     });
     
-    await extractProcess.exited;
+    const exitCode = await extractProcess.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(extractProcess.stderr).text();
+      throw new Error(`Extraction failed: ${stderr}`);
+    }
     
-    // CRITICAL FIX: The extracted archive will have the structure:
-    // extracted/0x1-templates/full/ (not extracted/0x1-templates/full/)
-    const templateDir = join(extractDir, templatePath);
+    // List extracted contents to understand the structure
+    let rootDir;
+    try {
+      const extractedItems = readdirSync(extractDir);
+      if (extractedItems.length === 1 && statSync(join(extractDir, extractedItems[0])).isDirectory()) {
+        // Single directory found (likely "0x1-main" or similar)
+        rootDir = join(extractDir, extractedItems[0]);
+        logger.debug(`Detected root directory: ${rootDir}`);
+      } else {
+        rootDir = extractDir;
+      }
+    } catch (e) {
+      rootDir = extractDir;
+      logger.debug(`Could not detect root directory: ${e}`);
+    }
+    
+    // Search for template with reasonable alternatives
+    // Primary expected location
+    let templateDir = join(rootDir, templatePath);
     
     // Check if template exists in expected location
     if (!existsSync(templateDir)) {
       // Try alternative path structures that might exist after extraction
       const alternativePaths = [
-        join(extractDir, `0x1-main/${templatePath}`),
-        join(extractDir, `0x1-master/${templatePath}`),
-        join(extractDir, templateType), // Direct template folder
-        join(extractDir, `templates/${templateType}`), // In case templates moved
+        // Common repository structures
+        join(rootDir, `0x1-templates/${templateType}`),
+        join(rootDir, `templates/${templateType}`),
+        join(rootDir, `${templateType}`), // Direct template folder
+        
+        // In case of nested repository structures
+        join(rootDir, `0x1-templates-main/${templateType}`),
+        join(rootDir, `0x1-templates-master/${templateType}`),
+        
+        // Try recursive search within extracted contents
+        ...findTemplateDirRecursively(rootDir, templateType)
       ];
       
+      logger.debug(`Searching for template in alternative paths...`);
       let foundPath = null;
       for (const altPath of alternativePaths) {
         if (existsSync(altPath)) {
           foundPath = altPath;
+          logger.debug(`✓ Template found at: ${altPath}`);
           break;
         }
       }
       
       if (!foundPath) {
         // List contents to debug what was actually extracted
-        logger.debug('Extracted contents:');
+        logger.debug('Extracted contents structure:');
         try {
-          const contents = readdirSync(extractDir, { recursive: true });
-          contents.slice(0, 20).forEach(item => logger.debug(`  ${item}`));
-          if (contents.length > 20) {
-            logger.debug(`  ... and ${contents.length - 20} more items`);
-          }
+          // Use recursive directory listing to better understand structure
+          const listDirRecursive = (dir: string, depth = 0, maxDepth = 3) => {
+            if (depth > maxDepth) return;
+            try {
+              const contents = readdirSync(dir, { withFileTypes: true });
+              contents.forEach(item => {
+                const indent = '  '.repeat(depth);
+                logger.debug(`${indent}${item.name}${item.isDirectory() ? '/' : ''}`);
+                if (item.isDirectory()) {
+                  listDirRecursive(join(dir, item.name), depth + 1, maxDepth);
+                }
+              });
+            } catch (e) {
+              // Skip inaccessible directories
+            }
+          };
+          listDirRecursive(rootDir);
         } catch (e) {
-          logger.debug('Could not list extracted contents');
+          logger.debug(`Could not list extracted contents: ${e}`);
         }
         
         throw new Error(`Template ${templateType} not found in downloaded archive. Expected at: ${templateDir}`);
@@ -857,6 +900,58 @@ async function downloadTemplate(templateType: string, tempDir: string): Promise<
     logger.error(`Failed to download template: ${error}`);
     throw error;
   }
+}
+
+/**
+ * Recursively search for template directory within extracted contents
+ * This handles cases where the template might be nested in unexpected locations
+ */
+function findTemplateDirRecursively(rootDir: string, templateType: string, maxDepth = 4): string[] {
+  const results: string[] = [];
+  
+  const search = (dir: string, depth = 0) => {
+    if (depth > maxDepth) return;
+    
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const entryPath = join(dir, entry.name);
+        
+        // Check if this is our template directory
+        if (entry.isDirectory() && entry.name === templateType) {
+          // Additional validation - should contain common template files
+          const templateFiles = readdirSync(entryPath);
+          if (templateFiles.some(file => ['package.json', 'index.html', 'app'].includes(file))) {
+            results.push(entryPath);
+          }
+        }
+        
+        // Check if this might be a templates container directory
+        if (entry.isDirectory() && 
+            ['templates', '0x1-templates', 'template', 'templates-cli'].includes(entry.name)) {
+          try {
+            const templatePath = join(entryPath, templateType);
+            if (existsSync(templatePath) && statSync(templatePath).isDirectory()) {
+              results.push(templatePath);
+            }
+          } catch (e) {
+            // Skip error
+          }
+        }
+        
+        // Continue recursion
+        if (entry.isDirectory()) {
+          search(entryPath, depth + 1);
+        }
+      }
+    } catch (e) {
+      // Skip inaccessible directories
+    }
+  };
+  
+  search(rootDir);
+  return results;
 }
 
 /**
@@ -1348,7 +1443,7 @@ async function createPackageJson(
       preview: '0x1 preview'
     },
     dependencies: {
-      "0x1": '^0.0.376' // Use current version with caret for compatibility
+      "0x1": '^0.0.377' // Use current version with caret for compatibility
     },
     devDependencies: {
       typescript: '^5.4.5'

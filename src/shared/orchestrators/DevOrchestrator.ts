@@ -1252,7 +1252,38 @@ if (typeof globalThis !== 'undefined') {
         .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
         .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
 
-
+      // // CRITICAL FIX: Transform ES module syntax (export default) to browser-compatible format
+      // // This addresses the SyntaxError: Unexpected token 'default' issue
+      // const hasExportDefault = content.includes('export default');
+      // if (hasExportDefault) {
+      //   if (this.options.debug) {
+      //     logger.debug(`[DevOrchestrator] Transforming ES module syntax in: ${sourcePath}`);
+      //   }
+        
+      //   // Pattern 1: export default function Component() {...}
+      //   content = content.replace(
+      //     /export\s+default\s+function\s+([A-Za-z0-9_$]+)\s*\(([^)]*)\)\s*\{/g, 
+      //     'function $1($2) {\n// Expose component as window.Component\nwindow.$1 = $1;\n'
+      //   );
+        
+      //   // Pattern 2: export default class Component {...}
+      //   content = content.replace(
+      //     /export\s+default\s+class\s+([A-Za-z0-9_$]+)\s*\{/g, 
+      //     'class $1 {\n// Expose class as window.Component\nwindow.$1 = $1;\n'
+      //   );
+        
+      //   // Pattern 3: export default SomeComponent
+      //   content = content.replace(
+      //     /export\s+default\s+([A-Za-z0-9_$]+);?/g,
+      //     'window.$1 = $1;'
+      //   );
+        
+      //   // Pattern 4: export default { ... } or export default () => {...}
+      //   content = content.replace(
+      //     /export\s+default\s+(?:\{|\()/g,
+      //     'window.__defaultExport = {'
+      //   );
+      // }
 
       // CRITICAL: Rewrite import paths to browser-resolvable URLs
       content = content
@@ -1268,6 +1299,20 @@ if (typeof globalThis !== 'undefined') {
         mode: 'development',
         debug: this.options.debug || false // Only enable when explicitly debugging
       });
+
+      // Add error boundary injection to ensure errors are captured and displayed
+      if (content.indexOf('__0x1_errorBoundary') === -1) {
+        content = `// Error boundary injection
+if (typeof window !== 'undefined' && !window.__0x1_errorBoundary) {
+  // Load error boundary script if not already loaded
+  const errorScript = document.createElement('script');
+  errorScript.src = '/error-boundary.js';
+  errorScript.async = false;
+  document.head.appendChild(errorScript);
+}
+
+${content}`;
+      }
 
       if (this.options.debug) {
         logger.debug(`[DevOrchestrator] Transpilation successful: ${sourcePath} (${content.length} bytes)`);
