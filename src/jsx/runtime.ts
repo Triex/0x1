@@ -9,6 +9,15 @@ export type JSXChildren = JSXNode | JSXNode[];
 export type JSXAttributes = Record<string, any>;
 export type ComponentFunction<P = any> = (props: P) => JSXNode;
 
+// Extend Window interface for 0x1 direct DOM manipulation flags
+declare global {
+  interface Window {
+    __0x1_directDOMActive?: boolean;
+    __0x1_lastDirectDOMTime?: number;
+    __0x1_pendingDirectUpdates?: number;
+  }
+}
+
 export interface JSXElement {
   type: string | ComponentFunction | symbol;
   props: JSXAttributes;
@@ -26,7 +35,7 @@ const HOOKS_CONTEXT_ENTER = '__0x1_enterComponentContext';
 const HOOKS_CONTEXT_EXIT = '__0x1_exitComponentContext';
 
 /**
- * Call component with proper hooks context - Enhanced for better component nesting
+ * Call component with proper hooks context - 0x1 PHILOSOPHY: COMPONENTS RUN ONCE
  */
 function callComponentWithContext(type: ComponentFunction, props: any): JSXNode {
   // Check if hooks context functions are available using standardized names
@@ -54,215 +63,49 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
   }
   
   const componentName = type.name || 'AnonymousComponent';
-  const componentId = `${componentName}_${Math.random().toString(36).slice(2, 5)}`;
   
-  // DEBUG: Log what components are being processed
-  if (componentName === 'DocsSidebar') {
-    console.log(`[0x1 JSX] INITIAL RENDER: Processing ${componentName} with ID ${componentId}`);
-    console.log(`[0x1 JSX] INITIAL RENDER: Props:`, props);
-  }
+  // CRITICAL FIX: Stable component ID system to prevent header elements disappearing
+  let componentId: string;
   
-  const updateCallback = () => {
-    // Triggered when component state changes and needs re-render
-    requestAnimationFrame(() => {
-      if (typeof window !== 'undefined') {
-        console.debug(`[0x1 Hooks] Component ${componentId} state changed, triggering re-render`);
-        
-        // UNIVERSAL APPROACH: Find component elements with comprehensive search
-        // Works with single elements, fragments, nested layouts - ANY structure
-      const elements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-      
-      if (elements.length === 0) {
-          // SMART RETRY: Component doesn't exist yet - queue for retry
-        console.debug(`[0x1 JSX] Component ${componentId} not in DOM yet - queueing retry`);
-        
-          // DEBUG: For DocsSidebar, let's see what's actually in the DOM
-          if (componentName === 'DocsSidebar') {
-            console.log(`[0x1 JSX] DOM DEBUG: All elements with data-component-id:`);
-            const allComponents = document.querySelectorAll('[data-component-id]');
-            allComponents.forEach((el, i) => {
-              console.log(`  ${i}: ${el.tagName} id="${el.getAttribute('data-component-id')}" name="${el.getAttribute('data-component-name')}"`);
-            });
-            
-            console.log(`[0x1 JSX] DOM DEBUG: All DocsSidebar related elements:`);
-            const sidebarElements = document.querySelectorAll('aside, button[id*="docs"], [class*="sidebar"], [data-component-name="DocsSidebar"]');
-            sidebarElements.forEach((el, i) => {
-              console.log(`  ${i}: ${el.tagName} id="${el.id}" class="${el.className}" component-id="${el.getAttribute('data-component-id')}"`);
-            });
-          }
-          
-          // Retry after a short delay to allow DOM to update
-          setTimeout(() => {
-            requestAnimationFrame(() => {
-              const retryElements = document.querySelectorAll(`[data-component-id="${componentId}"]`);
-              if (retryElements.length > 0) {
-          executeReRender(componentId, componentName, type, props, retryElements);
-              } else {
-                console.debug(`[0x1 JSX] Component ${componentId} still not in DOM after retry - final skip`);
-              }
-        });
-          }, 10);
-        return;
-      }
-      
-      executeReRender(componentId, componentName, type, props, elements);
-      }
-    });
-  };
+  // Generate stable key based on component name and route
+  const routePath = (typeof window !== 'undefined' ? window.location.pathname : '/').replace(/[^a-zA-Z0-9]/g, '_') || 'root';
+  const stableIdKey = `${componentName}_${routePath}`;
   
-  // EXTRACTED: Re-render execution logic
-  function executeReRender(componentId: string, componentName: string, type: ComponentFunction, props: any, elements: NodeListOf<Element>) {
-    console.debug(`[0x1 JSX] Found ${elements.length} elements for ${componentId}, proceeding with re-render`);
-    
-    // DYNAMIC: Check if debug mode is enabled (NO HARDCODING)
-    const isDebugMode = typeof window !== 'undefined' && 
-      (window as any).__0x1_debug === true || 
-      (typeof process !== 'undefined' && process.env.NODE_ENV === 'development');
-    
-    // Re-execute the component function to get fresh result
-    setContext(componentId, updateCallback);
-    try {
-      const newResult = type(props);
-      
-      // CRITICAL FIX: Reapply metadata to the fresh result since component execution creates new objects
-      const enhancedNewResult = ensureComponentMetadata(newResult, componentId, componentName);
-      
-      // DYNAMIC: Debug logging for ANY component when debug mode is enabled
-      if (isDebugMode) {
-        console.log(`[0x1 JSX] Re-render generated new result for ${componentId}:`, enhancedNewResult);
-      }
-      
-      // CRITICAL FIX: Handle fragment components (multiple elements) properly
-      // Check for React Fragment objects OR plain arrays
-      const isFragment = Array.isArray(enhancedNewResult) || 
-                        (enhancedNewResult && typeof enhancedNewResult === 'object' && 'type' in enhancedNewResult && 
-                         typeof enhancedNewResult.type === 'symbol' && 'children' in enhancedNewResult);
-      
-      if (isFragment) {
-        // Fragment component - multiple elements need coordinated replacement
-        let fragmentChildren: any[] = [];
-        
-        if (Array.isArray(enhancedNewResult)) {
-          fragmentChildren = enhancedNewResult;
-        } else if (enhancedNewResult && 'children' in enhancedNewResult && Array.isArray(enhancedNewResult.children)) {
-          fragmentChildren = enhancedNewResult.children;
-        }
-        
-        const newElements = fragmentChildren.map((item, index) => {
-          return renderToDOM(item);
-        }).filter(Boolean);
-        
-        if (isDebugMode) {
-          console.log(`[0x1 JSX] Fragment component ${componentId}: ${fragmentChildren.length} result items -> ${newElements.length} DOM elements`);
-        }
-        
-        if (newElements.length > 0 && elements.length > 0) {
-          // STRATEGY: Replace the first old element with first new element, 
-          // then insert remaining new elements, then remove remaining old elements
-          const firstOldElement = elements[0];
-          const parent = firstOldElement.parentNode;
-          
-          if (parent) {
-            // Insert all new elements before the first old element
-            newElements.forEach((newElement, index) => {
-              if (newElement) {
-                parent.insertBefore(newElement, firstOldElement);
-                if (isDebugMode) {
-                  console.log(`[0x1 JSX] Inserted new fragment element ${index} for ${componentId}`);
-                }
-              }
-            });
-            
-            // Remove all old elements
-            elements.forEach((oldElement, index) => {
-              if (oldElement.parentNode) {
-                oldElement.parentNode.removeChild(oldElement);
-                if (isDebugMode) {
-                  console.log(`[0x1 JSX] Removed old fragment element ${index} for ${componentId}`);
-                }
-              }
-            });
-            
-            if (isDebugMode) {
-              console.log(`[0x1 JSX] Successfully re-rendered fragment component ${componentId}: ${newElements.length} elements`);
-          }
-          }
-        }
-      } else {
-        // Single element component - standard replacement
-        const newElements = renderToDOM(enhancedNewResult);
-        
-        if (isDebugMode) {
-          console.log(`[0x1 JSX] Single element component ${componentId}:`, newElements);
-        }
-        
-        if (newElements) {
-          elements.forEach((oldElement, index) => {
-            if (oldElement.parentNode && index === 0) { // Only replace the first element for single components
-              oldElement.parentNode.replaceChild(newElements, oldElement);
-              
-              if (isDebugMode) {
-                console.log(`[0x1 JSX] Replaced single element for ${componentId}`);
-            }
-            } else if (index > 0) {
-              // Remove extra old elements if they exist
-              if (oldElement.parentNode) {
-                oldElement.parentNode.removeChild(oldElement);
-                if (isDebugMode) {
-                  console.log(`[0x1 JSX] Removed extra old element ${index} for ${componentId}`);
-            }
-          }
-        }
-      });
-      
-          if (isDebugMode) {
-            console.log(`[0x1 JSX] Successfully re-rendered single component ${componentId}`);
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[0x1 JSX] Re-render failed for ${componentId}:`, error);
-    } finally {
-      clearContext();
+  if (typeof window !== 'undefined') {
+    // Initialize stable ID registry if not exists
+    if (!(window as any).__0x1_stableComponentIds) {
+      (window as any).__0x1_stableComponentIds = new Map();
     }
+    
+    const stableIds = (window as any).__0x1_stableComponentIds;
+    
+    if (stableIds.has(stableIdKey)) {
+      // Use existing stable ID
+      componentId = stableIds.get(stableIdKey);
+      console.log(`[0x1 JSX] Using stable component ID: ${componentId}`);
+    } else {
+      // Generate new stable ID and store it
+      componentId = `${componentName}_${routePath}_${Math.random().toString(36).slice(2, 3)}`;
+      stableIds.set(stableIdKey, componentId);
+      console.log(`[0x1 JSX] Generated stable component ID: ${componentId}`);
+    }
+  } else {
+    // Fallback for non-browser environments
+    componentId = `${componentName}_${Math.random().toString(36).slice(2, 5)}`;
+    console.log(`[0x1 JSX] Generated fallback component ID: ${componentId}`);
   }
   
-  // CRITICAL FIX: Set context for this component and DO NOT clear it immediately
-  // This allows nested components to inherit the context
-  setContext(componentId, updateCallback);
+  // 🎯 0X1 PHILOSOPHY: COMPONENTS RUN ONCE - PURE DIRECT DOM MANIPULATION
+  console.log(`[0x1 JSX] Component ${componentId} will run ONCE - no re-renders`);
+  
+  // Set context for this component
+  setContext(componentId);
   
   try {
     const result = type(props);
     
-    // DEBUG: Log the result for DocsSidebar
-    if (componentName === 'DocsSidebar') {
-      console.log(`[0x1 JSX] INITIAL RENDER: ${componentName} returned:`, result);
-      console.log(`[0x1 JSX] INITIAL RENDER: Result type:`, Array.isArray(result) ? 'Array' : typeof result);
-    }
-    
     // CRITICAL: Ensure component metadata is applied to the result
     const enhancedResult = ensureComponentMetadata(result, componentId, componentName);
-    
-    // DEBUG: Log the enhanced result for DocsSidebar
-    if (componentName === 'DocsSidebar') {
-      console.log(`[0x1 JSX] INITIAL RENDER: Enhanced result for ${componentName}:`, enhancedResult);
-      if (Array.isArray(enhancedResult)) {
-        enhancedResult.forEach((item, i) => {
-          if (item && typeof item === 'object' && 'props' in item) {
-            console.log(`  Fragment item ${i}:`, item.type, item.props?.['data-component-id']);
-          }
-        });
-      } else if (enhancedResult && typeof enhancedResult === 'object' && 'children' in enhancedResult) {
-        console.log(`[0x1 JSX] INITIAL RENDER: Fragment type:`, enhancedResult.type, 'children count:', enhancedResult.children?.length);
-        if (Array.isArray(enhancedResult.children)) {
-          enhancedResult.children.forEach((child: any, i: number) => {
-            if (child && typeof child === 'object' && 'props' in child) {
-              console.log(`  Fragment child ${i}:`, child.type, child.props?.['data-component-id']);
-            }
-          });
-        }
-      }
-    }
     
     return enhancedResult;
   } catch (error: any) {
@@ -276,6 +119,8 @@ function callComponentWithContext(type: ComponentFunction, props: any): JSXNode 
       children: [`Error in ${componentName}: ${error.message}`],
       key: null
     };
+  } finally {
+    clearContext();
   }
 }
 
@@ -333,6 +178,28 @@ function ensureComponentMetadata(result: JSXNode, componentId: string, component
     jsxElement.props['data-component-id'] = componentId;
     jsxElement.props['data-component-name'] = componentName;
     
+    // CRITICAL: For layout components, ensure metadata is ALWAYS applied
+    if (componentName.includes('Layout') || componentName.includes('layout')) {
+      console.log(`[0x1 JSX] LAYOUT METADATA: Applied to ${componentName} with ID ${componentId}`);
+      
+      // CRITICAL FIX: Apply PRIMARY metadata to first child (where the actual DOM element is)
+      if (Array.isArray(jsxElement.children) && jsxElement.children.length > 0) {
+        const firstChild = jsxElement.children[0];
+        if (firstChild && typeof firstChild === 'object' && 'type' in firstChild && 'props' in firstChild) {
+          const childType = firstChild.type as string;
+          if (['div', 'main', 'section', 'article', 'aside', 'header', 'footer'].includes(childType)) {
+            if (!firstChild.props) {
+              firstChild.props = {};
+            }
+            // Apply PRIMARY metadata (not backup) - hooks system needs data-component-id
+            firstChild.props['data-component-id'] = componentId;
+            firstChild.props['data-component-name'] = componentName;
+            console.log(`[0x1 JSX] LAYOUT PRIMARY: Applied PRIMARY metadata to first child ${childType}`);
+          }
+        }
+      }
+    }
+    
     return jsxElement;
   }
   
@@ -343,12 +210,22 @@ function ensureComponentMetadata(result: JSXNode, componentId: string, component
         const enhancedChild = { ...child };
         if (!enhancedChild.props) {
           enhancedChild.props = {};
-  }
-  
+        }
+        
         // UNIVERSAL: Apply metadata to ALL elements in fragment
         enhancedChild.props['data-component-id'] = componentId;
         enhancedChild.props['data-component-name'] = componentName;
         enhancedChild.props['data-fragment-index'] = index;
+        
+        // CRITICAL: For layout components, ensure the FIRST element gets primary metadata
+        if ((componentName.includes('Layout') || componentName.includes('layout')) && index === 0) {
+          console.log(`[0x1 JSX] LAYOUT FRAGMENT: Applied primary metadata to first element of ${componentName}`);
+          
+          // CRITICAL FIX: First element of layout fragment gets the PRIMARY component ID
+          // This ensures hooks system can find layout components
+          enhancedChild.props['data-component-id'] = componentId;
+          enhancedChild.props['data-component-name'] = componentName;
+        }
         
         return enhancedChild;
       }
@@ -449,104 +326,239 @@ export function createElement(type: string | ComponentFunction | symbol, props: 
 }
 
 /**
- * Render JSX to DOM (browser-only)
+ * Enhanced renderToDOM with direct DOM manipulation support
+ * 0x1 PHILOSOPHY: Components render once, state changes use direct DOM manipulation
  */
-export function renderToDOM(node: JSXNode): Node | null {
-  if (typeof window === 'undefined') {
-    throw new Error('[0x1 JSX] renderToDOM can only be used in browser environment');
-  }
-  
-  if (!node) return null;
-  
-  if (typeof node === 'string' || typeof node === 'number') {
-    return document.createTextNode(String(node));
-  }
-  
-  if (Array.isArray(node)) {
-    const fragment = document.createDocumentFragment();
-    node.forEach(child => {
-      const childNode = renderToDOM(child);
-      if (childNode) fragment.appendChild(childNode);
-    });
-    return fragment;
-  }
-  
-  if (typeof node === 'object' && node && 'type' in node) {
-    // Handle Fragment using standardized symbol
-    if (node.type === Fragment) {
+export function renderToDOM(node: any, parentElement?: HTMLElement): HTMLElement | Text | DocumentFragment | null {
+  try {
+    if (node === null || node === undefined) return null;
+    
+    if (typeof node === 'string' || typeof node === 'number') {
+      return document.createTextNode(String(node));
+    }
+    
+    if (Array.isArray(node)) {
       const fragment = document.createDocumentFragment();
-      node.children.forEach(child => {
-        const childNode = renderToDOM(child);
-        if (childNode) fragment.appendChild(childNode);
+      node.forEach((child: any) => {
+        const childElement = renderToDOM(child, parentElement);
+        if (childElement) fragment.appendChild(childElement);
       });
       return fragment;
     }
     
-    // Handle function components
-    if (typeof node.type === 'function') {
-      const result = callComponentWithContext(node.type, node.props);
-      return renderToDOM(result);
-    }
-    
-    // Handle DOM elements - Fixed SVG handling
-    const tagName = node.type as string;
-    let element: Element;
-    
-    // SVG elements need special namespace handling
-    const svgElements = new Set([
-      'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
-      'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
-      'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
-      'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
-    ]);
-    
-    if (svgElements.has(tagName)) {
-      element = document.createElementNS('http://www.w3.org/2000/svg', tagName);
-    } else {
-      element = document.createElement(tagName);
-    }
-    
-    // Set attributes and properties
-    Object.entries(node.props || {}).forEach(([key, value]) => {
-      if (key === 'children') return;
-      
-      if (key === 'className') {
-        // SVG elements need class attribute, not className property
-        if (svgElements.has(tagName)) {
-          element.setAttribute('class', String(value));
-        } else {
-          (element as HTMLElement).className = String(value);
+    if (typeof node === 'object' && node.type) {
+      // Handle Fragment using standardized symbol
+      if (node.type === Fragment) {
+        const fragment = document.createDocumentFragment();
+        if (node.children) {
+          const children = Array.isArray(node.children) ? node.children : [node.children];
+          children.forEach((child: any) => {
+            const childElement = renderToDOM(child, parentElement);
+            if (childElement) fragment.appendChild(childElement);
+          });
         }
-      } else if (key.startsWith('on') && typeof value === 'function') {
-        const eventName = key.slice(2).toLowerCase();
-        
-        // For anchor tags, ensure onClick handlers work properly with client-side routing
-        if (tagName === 'a' && eventName === 'click') {
-          // Allow the onClick handler - it's needed for Link component navigation
-          element.addEventListener(eventName, value as EventListener);
-        } else {
-          element.addEventListener(eventName, value as EventListener);
-        }
-      } else if (key === 'style' && typeof value === 'object') {
-        Object.assign((element as HTMLElement).style, value as CSSStyleDeclaration);
-      } else if (typeof value === 'boolean') {
-        if (value) element.setAttribute(key, '');
-      } else if (value != null) {
-        // For SVG elements, use setAttribute for all attributes
-        element.setAttribute(key, String(value));
+        return fragment;
       }
-    });
+      
+      // Handle function components
+      if (typeof node.type === 'function') {
+        const result = callComponentWithContext(node.type, node.props);
+        
+        // CRITICAL FIX: Transfer component metadata from node.props to the result
+        // This ensures layout components get their data-component-id in the DOM
+        if (result && typeof result === 'object' && 'props' in result && node.props) {
+          const componentId = node.props['data-component-id'];
+          const componentName = node.props['data-component-name'];
+          
+          if (componentId && !result.props['data-component-id']) {
+            if (!result.props) result.props = {};
+            result.props['data-component-id'] = componentId;
+            console.log(`[0x1 JSX] TRANSFER: Applied component ID ${componentId} to function component result`);
+          }
+          
+          if (componentName && !result.props['data-component-name']) {
+            if (!result.props) result.props = {};
+            result.props['data-component-name'] = componentName;
+            console.log(`[0x1 JSX] TRANSFER: Applied component name ${componentName} to function component result`);
+          }
+        }
+        
+        return renderToDOM(result, parentElement);
+      }
+      
+      // Handle DOM elements - Fixed SVG handling
+      const tagName = node.type as string;
+      let element: HTMLElement | SVGElement;
+      
+      // SVG elements need special namespace handling
+      const svgElements = new Set([
+        'svg', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline',
+        'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern',
+        'linearGradient', 'radialGradient', 'stop', 'text', 'tspan', 'textPath',
+        'foreignObject', 'switch', 'animate', 'animateTransform', 'animateMotion'
+      ]);
+      
+      if (svgElements.has(tagName)) {
+        element = document.createElementNS('http://www.w3.org/2000/svg', tagName) as SVGElement;
+      } else {
+        element = document.createElement(tagName) as HTMLElement;
+      }
+
+      // Set attributes and properties
+      Object.entries(node.props || {}).forEach(([key, value]) => {
+        if (key === 'children') return;
+        
+        // 🚨 CRITICAL DEBUG: Log component ID attributes being set
+        if (key === 'data-component-id') {
+          console.log(`[0x1 JSX] 🎯 SETTING data-component-id="${value}" on ${tagName} element`);
+        }
+        
+        if (key === 'className') {
+          // SVG elements need class attribute, not className property
+          if (svgElements.has(tagName)) {
+            element.setAttribute('class', String(value));
+          } else {
+            (element as HTMLElement).className = String(value);
+          }
+        } else if (key.startsWith('on') && typeof value === 'function') {
+          const eventName = key.slice(2).toLowerCase();
+          
+          // 🎯 0X1 DIRECT DOM MANIPULATION: Store event handlers for state change access
+          (element as any)[`__0x1_${eventName}_handler`] = value;
+          
+          // Attach event listener normally
+            element.addEventListener(eventName, value as EventListener);
+          
+          // 🎯 0X1 PHILOSOPHY: Set up direct DOM state change listener
+          // This allows components to respond to state changes via direct DOM manipulation
+          if (eventName === 'click' || eventName === 'change') {
+            element.addEventListener('0x1-state-change', (event: Event) => {
+              const customEvent = event as CustomEvent;
+              const { componentId, hookIndex, newValue, oldValue } = customEvent.detail;
+              
+              console.log(`[0x1 Direct DOM] ${tagName} element responding to state change in ${componentId}:`, oldValue, '->', newValue);
+              
+              // 🚨 CRITICAL FIX: ACTUAL VISUAL UPDATES BASED ON STATE CHANGES
+              // Update the visual state of the element based on the new value
+              
+              if (tagName === 'button') {
+                // Handle button state changes (active/inactive, pressed, etc.)
+                if (typeof newValue === 'boolean') {
+                  if (newValue) {
+                    element.classList.add('active', 'pressed');
+                    element.setAttribute('aria-pressed', 'true');
+                  } else {
+                    element.classList.remove('active', 'pressed');
+                    element.setAttribute('aria-pressed', 'false');
+                  }
+                }
+              }
+              
+              // Handle dropdown visibility
+              if (element.classList.contains('dropdown-toggle') || element.getAttribute('data-dropdown')) {
+                const dropdownId = element.getAttribute('data-dropdown');
+                if (dropdownId && typeof newValue === 'boolean') {
+                  const dropdown = document.getElementById(dropdownId) || 
+                                 document.querySelector(`[data-dropdown-content="${dropdownId}"]`);
+                  if (dropdown) {
+                    if (newValue) {
+                      dropdown.classList.remove('hidden');
+                      dropdown.classList.add('block');
+                    } else {
+                      dropdown.classList.add('hidden');
+                      dropdown.classList.remove('block');
+                    }
+                  }
+                }
+              }
+              
+              // Handle toggle states (web search, etc.)
+              if (element.getAttribute('data-toggle') || element.classList.contains('toggle')) {
+                if (typeof newValue === 'boolean') {
+                  element.setAttribute('data-state', newValue ? 'on' : 'off');
+                  
+                  // Update text content if it contains state indicators
+                  const textContent = element.textContent || '';
+                  if (textContent.includes('ON') || textContent.includes('OFF')) {
+                    element.textContent = textContent.replace(/ON|OFF/g, newValue ? 'ON' : 'OFF');
+                  }
+                  
+                  // Update toggle classes
+                  if (newValue) {
+                    element.classList.add('toggle-on', 'active');
+                    element.classList.remove('toggle-off');
+                  } else {
+                    element.classList.add('toggle-off');
+                    element.classList.remove('toggle-on', 'active');
+                  }
+                }
+              }
+              
+              // Store state for access by other elements
+              (element as any).__0x1_state = (element as any).__0x1_state || {};
+              (element as any).__0x1_state[hookIndex] = newValue;
+            });
+          }
+        } else if (key === 'style' && typeof value === 'object') {
+          Object.assign((element as HTMLElement).style, value as CSSStyleDeclaration);
+        } else if (typeof value === 'boolean') {
+          if (value) element.setAttribute(key, '');
+        } else if (value != null) {
+          // For SVG elements, use setAttribute for all attributes
+          element.setAttribute(key, String(value));
+          
+          // 🚨 CRITICAL DEBUG: Verify component ID was actually set
+          if (key === 'data-component-id') {
+            const actualValue = element.getAttribute('data-component-id');
+            console.log(`[0x1 JSX] ✅ VERIFIED: data-component-id="${actualValue}" was set on ${tagName}`);
+            
+            // 🚨 CRITICAL FIX: Add component-wide state change listener for ALL elements
+            // This ensures ANY element in a component can respond to state changes
+            console.log(`[0x1 JSX] 🎯 ADDING state change listener to ${tagName} with ID ${actualValue}`);
+            
+            try {
+              // 🎯 0X1 PHILOSOPHY: PURE DIRECT DOM MANIPULATION ONLY
+              element.addEventListener('0x1-state-change', (event: Event) => {
+                try {
+                  const customEvent = event as CustomEvent;
+                  const { hookIndex, newValue, oldValue, componentId: eventComponentId } = customEvent.detail || {};
+                  
+                  // Only respond to state changes for this component
+                  if (eventComponentId === actualValue) {
+                    // Store the state value on the element for other code to access
+                    (element as any).__0x1_state = (element as any).__0x1_state || {};
+                    (element as any).__0x1_state[hookIndex] = newValue;
+                  }
+                } catch (err) {
+                  console.error(`[0x1 JSX] ❌ Error in state-change listener for ${tagName}:`, err);
+                }
+              });
+              
+              console.log(`[0x1 JSX] ✅ State listener attached to ${tagName} with ID ${actualValue}`);
+            } catch (err) {
+              console.error(`[0x1 JSX] ❌ Failed to attach event listener to ${tagName}:`, err);
+            }
+          }
+        }
+      });
+      
+      // Add children
+      if (node.children) {
+        const children = Array.isArray(node.children) ? node.children : [node.children];
+        children.forEach((child: any) => {
+          const childElement = renderToDOM(child, element as HTMLElement);
+          if (childElement) element.appendChild(childElement);
+        });
+      }
+      
+      return element as HTMLElement;
+    }
     
-    // Add children
-    node.children?.forEach(child => {
-      const childNode = renderToDOM(child);
-      if (childNode) element.appendChild(childNode);
-    });
-    
-    return element;
+    return null;
+  } catch (error) {
+    console.error('[0x1 JSX] renderToDOM error:', error);
+    return document.createTextNode(`[Render Error: ${(error as Error).message}]`);
   }
-  
-  return null;
 }
 
 /**
@@ -604,6 +616,80 @@ export function renderToString(node: JSXNode): string {
 }
 
 // ============================================================================
+// 0X1 DIRECT DOM MANIPULATION HELPERS
+// ============================================================================
+
+/**
+ * Helper function to create state-responsive elements
+ * 0x1 PHILOSOPHY: Elements update themselves based on state changes
+ */
+export function createStateResponsiveElement(
+  tagName: string, 
+  props: any = {}, 
+  stateHandler?: (element: HTMLElement, stateDetail: any) => void
+): HTMLElement {
+  const element = document.createElement(tagName);
+  
+  // Set initial properties
+  Object.entries(props).forEach(([key, value]) => {
+    if (key === 'className') {
+      element.className = String(value);
+    } else if (key.startsWith('on') && typeof value === 'function') {
+      const eventName = key.slice(2).toLowerCase();
+      element.addEventListener(eventName, value as EventListener);
+    } else if (key === 'style' && typeof value === 'object') {
+      Object.assign(element.style, value);
+    } else if (typeof value === 'boolean') {
+      if (value) element.setAttribute(key, '');
+    } else if (value != null) {
+      element.setAttribute(key, String(value));
+    }
+  });
+  
+  // Set up state change listener if handler provided
+  if (stateHandler) {
+    element.addEventListener('0x1-state-change', (event: Event) => {
+      const customEvent = event as CustomEvent;
+      stateHandler(element, customEvent.detail);
+    });
+  }
+  
+  return element;
+}
+
+/**
+ * Helper to create toggle buttons that respond to state changes
+ * EXAMPLE: For dropdown toggles, web search toggles, etc.
+ */
+export function createToggleButton(
+  text: string,
+  stateHookIndex: number,
+  onClick: () => void,
+  className?: string
+): HTMLElement {
+  return createStateResponsiveElement('button', {
+    className: className || 'toggle-button',
+    onClick
+  }, (element, stateDetail) => {
+    // Only respond to changes in our specific state hook
+    if (stateDetail.hookIndex === stateHookIndex) {
+      const isActive = stateDetail.newValue;
+      
+      // Update button appearance based on state
+      if (isActive) {
+        element.classList.add('active');
+        element.setAttribute('aria-pressed', 'true');
+      } else {
+        element.classList.remove('active');
+        element.setAttribute('aria-pressed', 'false');
+      }
+      
+      console.log(`[0x1 Toggle] Button "${text}" state changed to:`, isActive);
+    }
+  });
+}
+
+// ============================================================================
 // GLOBAL INITIALIZATION - ESTABLISH ONE SOURCE OF TRUTH
 // ============================================================================
 
@@ -620,6 +706,10 @@ function initializeGlobalJSXRuntime() {
     (window as any).Fragment = Fragment;
     (window as any).renderToDOM = renderToDOM;
     
+    // 🎯 0X1 DIRECT DOM MANIPULATION: Make helpers globally available
+    (window as any).createStateResponsiveElement = createStateResponsiveElement;
+    (window as any).createToggleButton = createToggleButton;
+    
     // CRITICAL: Make renderToDOM available under multiple names for compatibility
     (window as any).jsxToDom = renderToDOM; // For router compatibility
     (window as any).__0x1_renderToDOM = renderToDOM;
@@ -634,7 +724,7 @@ function initializeGlobalJSXRuntime() {
     (window as any).React.jsx = jsx;
     (window as any).React.jsxs = jsxs;
     
-    console.log('[0x1 JSX] Production-ready runtime loaded');
+    console.log('[0x1 JSX] ✅ Pure direct DOM manipulation runtime loaded - NO RE-RENDERS');
   }
 }
 

@@ -1170,10 +1170,53 @@
     // Call original console.log for non-SSE errors
     originalConsoleLog.apply(console, args);
     
-    // No need to process console.log for error boundary normally
+    // LAYOUT ERROR CAPTURE: Check for layout-specific errors in console.log
+    if (isLayoutRelatedError(message)) {
+      processConsoleMessage('layout-error', args);
+    }
   };
   
-  // Function to process console messages with deduplication
+  // LAYOUT ERROR DETECTION: Identify layout component issues (REFINED - less aggressive)
+  function isLayoutRelatedError(message) {
+    const layoutPatterns = [
+      'layout.*not found',
+      'layout.*failed',
+      'Layout.*error',
+      'ComposedComponent.*not found',
+      'layout.*undefined',
+      'Cannot read.*layout',
+      'Failed to load layout',
+      'Layout composition error',
+      'layout.*critical',
+      'layout.*crash'
+    ];
+    
+    // CRITICAL: Don't capture success messages or debug logs
+    if (message.includes('✅') || 
+        message.includes('successful') ||
+        message.includes('completed') ||
+        message.includes('[0x1 App]') ||
+        message.includes('[0x1 Hooks]') ||
+        message.includes('[0x1 Layout DOM]') ||
+        message.includes('Processing') ||
+        message.includes('Updated') ||
+        message.includes('Found') ||
+        message.includes('Using') ||
+        message.includes('Setting')) {
+      return false;
+    }
+    
+    return layoutPatterns.some(pattern => {
+      try {
+        const regex = new RegExp(pattern, 'i');
+        return regex.test(message);
+      } catch (e) {
+        return message.toLowerCase().includes(pattern.toLowerCase().replace('.*', ''));
+      }
+    });
+  }
+  
+  // Function to process console messages with deduplication (REFINED - much more selective)
   function processConsoleMessage(type, args) {
     // Parse and add to error boundary with enhanced stack trace capture
     let errorMessage = '';
@@ -1197,6 +1240,28 @@
         );
       }
       return; // Don't process further
+    }
+    
+    // CRITICAL FILTER: Only process actual errors, not debug logs
+    const isActualError = 
+      type === 'error' || // Only console.error calls
+      args.some(arg => arg instanceof Error) || // Has actual Error object
+      errorMessage.includes('Error:') ||
+      errorMessage.includes('TypeError:') ||
+      errorMessage.includes('ReferenceError:') ||
+      errorMessage.includes('SyntaxError:') ||
+      errorMessage.includes('Expected arc flag') || // SVG errors
+      errorMessage.includes('Invalid regular expression') ||
+      errorMessage.includes('Cannot read property') ||
+      errorMessage.includes('is not a function') ||
+      errorMessage.includes('Cannot access') ||
+      errorMessage.includes('Uncaught') ||
+      (type === 'warn' && (errorMessage.includes('Layout element not found') || 
+                           errorMessage.includes('Component data not found') ||
+                           errorMessage.includes('Hook called outside')));
+    
+    if (!isActualError) {
+      return; // Skip debug logs, success messages, and normal operations
     }
     
     // Find the actual Error object in the arguments
@@ -1402,12 +1467,15 @@
       actualError: actualError // Store the actual Error object for additional debugging
     });
     
-    console.log('🐛 [Error Boundary] Created error object with:', {
-      componentName: componentName,
-      file: file,
-      type: errorType,
-      message: fullMessage
-    });
+    // Debug log only for actual serious errors (not every message)
+    if (errorType !== 'layout-error' && type === 'error') {
+      console.log('🐛 [Error Boundary] Created error object with:', {
+        componentName: componentName,
+        file: file,
+        type: errorType,
+        message: fullMessage
+      });
+    }
   }
   
   // Catch unhandled promise rejections
@@ -1650,6 +1718,37 @@ if (typeof window.ERROR_TIPS_DATABASE === 'undefined') {
       ]
     },
 
+    // Server Actions Errors  
+    'server_action_error': {
+      patterns: [
+        'Server function',
+        'Server action failed',
+        '__0x1_server_action',
+        'Failed to execute server action',
+        'Server action handler error',
+        'not found and no file path provided',
+        'Cannot use server API.*in client context'
+      ],
+      category: 'Server Action',
+      tips: [
+        'Use createServerActionWrapper("functionName", "./path/to/actions") instead of direct import',
+        'Check that your server action file has "use server" directive at the top',
+        'Make sure the server action function is properly exported',
+        'Verify the server action is being called correctly from the client component',
+        'Check the server action implementation for errors'
+      ],
+      context: [
+        'There was an error calling a server action from your client component',
+        'Server actions with "use server" cannot be directly imported in client components'
+      ],
+      quickFixes: [
+        'Replace direct import with: import { createServerActionWrapper } from "0x1/server-actions"',
+        'Use: const myAction = createServerActionWrapper("functionName", "./actions")',
+        'Check the server action file exists and has proper exports',
+        'Make sure the server action has "use server" at the top'
+      ]
+    },
+
     // Generic JavaScript Errors
     'runtime_error': {
       patterns: [
@@ -1674,6 +1773,41 @@ if (typeof window.ERROR_TIPS_DATABASE === 'undefined') {
         'Add safety checks: `if (myVariable) { ... }`',
         'Use optional chaining: `myObject?.property`',
         'Make sure variables are defined before use'
+      ]
+    },
+
+    // Layout Component Errors
+    'layout_component_error': {
+      patterns: [
+        'layout.*not found',
+        'Layout.*error',
+        'ComposedComponent.*not found',
+        'layout.*undefined',
+        'Failed to load layout',
+        'Layout composition error',
+        'layout.*hook',
+        'Layout.*context',
+        'layout.*directive'
+      ],
+      category: 'Layout Component Critical',
+      tips: [
+        'LAYOUT ISSUE: This error breaks the entire app structure and must be fixed immediately',
+        'Check that your layout.tsx file exists and exports a default function',
+        'Verify your layout component is not using "use server" directive incorrectly',
+        'Make sure layout components don\'t call server actions directly',
+        'Layout components should be client-side only unless explicitly using server components',
+        'Check that useState/useEffect hooks are only in client layout components'
+      ],
+      context: [
+        'Your layout component has a critical error that prevents the app from working',
+        'Layout errors affect ALL pages and must be resolved immediately',
+        'This is likely related to incorrect directive usage or hook placement'
+      ],
+      quickFixes: [
+        'Add "use client" at the top of your layout.tsx file',
+        'Remove any server actions from layout components',
+        'Move server logic to page components or separate server action files',
+        'Check that all imports in layout.tsx are client-compatible'
       ]
     }
   };

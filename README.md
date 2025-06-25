@@ -323,7 +323,7 @@ The CSS processor automatically optimizes for different environments:
 
 If you're migrating from a pure TailwindCSS project:
 
-1. **Keep your existing `tailwind.config.js`** - 0x1 will automatically detect and use it
+1. **Keep your existing `tailwind.config.js** - 0x1 will automatically detect and use it
 2. **Update your configuration** to use 0x1's CSS system:
 
 ```typescript
@@ -1432,7 +1432,7 @@ The framework is specially optimized for:
 
 ## 🔮 Roadmap
 
-### Current State (v0.0.378)
+### Current State (v0.0.379)
 - ✅ Complete React Hooks API (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`, `useReducer`, `useContext`, `createContext`)
 - ✅ Advanced Performance Hooks (`useTransition`, `useDeferredValue`, `useId`) with priority-based scheduling
 - ✅ Enhanced 0x1 Hooks (`useFetch`, `useForm`, `useLocalStorage`, `useClickOutside`)
@@ -1602,3 +1602,99 @@ Ultimately; adding crypto features to give the framework a real use case, and ab
 <p align="center">
   <em>Join the revolution. Build faster. Ship lighter.</em>
 </p>
+
+## 🎯 **Direct DOM Manipulation (0x1 Philosophy)**
+
+0x1 Framework uses **pure direct DOM manipulation** instead of React-style re-renders. Components run **once** and state changes trigger direct DOM updates.
+
+### **How It Works**
+
+```tsx
+// ❌ WRONG: React approach (re-renders component)
+function MyComponent() {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div>
+      <button onClick={() => setIsOpen(!isOpen)}>
+        {isOpen ? 'Close' : 'Open'} {/* Re-renders entire component */}
+      </button>
+    </div>
+  );
+}
+
+// ✅ CORRECT: 0x1 approach (direct DOM manipulation)
+function MyComponent() {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className={isOpen ? 'open' : 'closed'}
+      >
+        Toggle
+      </button>
+    </div>
+  );
+}
+```
+
+### **State Changes = Direct DOM Updates**
+
+When `setIsOpen(true)` is called:
+
+1. **State updates** in hooks system
+2. **Custom event** `0x1-state-change` is dispatched
+3. **DOM elements** update themselves directly
+4. **NO component re-execution** or re-renders
+
+### **Layout Components & Interactivity**
+
+Perfect for complex layouts like `EntityChat`:
+
+```tsx
+// app/(chat)/layout.tsx - Works perfectly with 0x1
+export default function ChatLayout({ children }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [webSearch, setWebSearch] = useState(false);
+  
+  return (
+    <div className="min-h-screen">
+      <header>
+        {/* These buttons maintain functionality across state changes */}
+        <button onClick={() => setShowDropdown(!showDropdown)}>
+          Dropdown {showDropdown ? '↑' : '↓'}
+        </button>
+        
+        <button onClick={() => setWebSearch(!webSearch)}>
+          Web Search: {webSearch ? 'ON' : 'OFF'}
+        </button>
+      </header>
+      
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+### **Why This Fixes Your Issue**
+
+- **No re-renders** = Event handlers never get destroyed
+- **Direct DOM updates** = Lightning fast state changes  
+- **Layout persistence** = Headers, dropdowns work perfectly
+- **0x1 Philosophy** = Pure, universal, no special cases
+
+### **Debug Mode**
+
+Enable verbose logging:
+```tsx
+(window as any).__0x1_debug = true;
+```
+
+You'll see:
+```
+[0x1 Hooks] ✅ Direct DOM state update applied to 2 elements for ChatLayout_chat_z
+[0x1 Direct DOM] button element responding to state change: false -> true
+[0x1 Toggle] Button "Dropdown" state changed to: true
+```

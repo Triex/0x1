@@ -118,7 +118,14 @@ class Router {
   private initializeHookSystem(): void {
     if (typeof window === "undefined") return;
 
-    // Only set up minimal hooks if none exist
+    // 🚨 CRITICAL FIX: Check if real hooks system is already loaded
+    // If so, don't override with minimal versions
+    if ((window as any).__0x1_real_hooks_loaded) {
+      console.log('[0x1 Router] Real hooks system detected - using real hooks instead of minimal fallback');
+      return; // Use the real hooks system instead of our minimal one
+    }
+
+    // Only set up minimal hooks if REAL hooks don't exist and no hooks exist at all
     if (!(window as any).__0x1_hooks) {
       (window as any).__0x1_hooks = {
         currentComponent: null,
@@ -129,8 +136,10 @@ class Router {
       };
     }
 
-    // Set up context management functions if they don't exist
+    // Set up context management functions ONLY if real hooks aren't loaded
     if (typeof (window as any).__0x1_enterComponentContext !== "function") {
+      console.log('[0x1 Router] Setting up minimal hook fallbacks (real hooks not detected)');
+      
       (window as any).__0x1_enterComponentContext = (componentId: string) => {
         const hooks = (window as any).__0x1_hooks;
         if (hooks) {
@@ -491,6 +500,16 @@ class Router {
       regex: new RegExp(regexStr),
       keys,
     };
+  }
+
+  // CRITICAL FIX: Add reRender method for component updates
+  public reRender(): void {
+    if (this.isServer) return;
+    
+    // Re-render the current route without changing the URL
+    this.renderCurrentRoute().catch(error => {
+      console.error('[0x1 Router] reRender failed:', error);
+    });
   }
 
   // Render the current route to the DOM

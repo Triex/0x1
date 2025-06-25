@@ -158,6 +158,9 @@ export class ImportTransformer {
   private static transformModulePath(modulePath: string, options: ImportTransformOptions): ImportTransformResult {
     const warnings: string[] = [];
 
+    // 0. SERVER ACTIONS: Let regular imports work, but add RPC transformation at transpilation level
+    // Server actions will be detected during component transpilation and wrapped automatically
+
     // 1. FRAMEWORK IMPORTS: 0x1/module → /0x1/module.js
     if (modulePath.startsWith('0x1/')) {
       const submodule = modulePath.substring(4); // Remove '0x1/'
@@ -324,9 +327,31 @@ export class ImportTransformer {
   private static transformBareModule(modulePath: string, options: ImportTransformOptions): ImportTransformResult {
     const warnings: string[] = [];
 
-    // Skip special packages that should remain as-is (matches working logic)
+    // ENHANCED: Handle Node.js built-ins with browser polyfills
+    const nodeBuiltins = [
+      'stream', 'stream/web', 'stream/consumers', 'stream/promises',
+      'fs', 'fs/promises', 'path', 'crypto', 'http', 'https', 'url', 'util',
+      'events', 'buffer', 'os', 'child_process', 'cluster', 'dgram', 'dns',
+      'net', 'tls', 'readline', 'repl', 'string_decoder', 'tty', 'vm',
+      'worker_threads', 'zlib', 'assert', 'async_hooks', 'console',
+      'constants', 'domain', 'module', 'perf_hooks', 'process', 'punycode',
+      'querystring', 'sys', 'timers', 'trace_events', 'v8'
+    ];
+
+    // CRITICAL: Transform Node.js built-ins to polyfill URLs
+    if (nodeBuiltins.includes(modulePath.split('/')[0]) || nodeBuiltins.includes(modulePath)) {
+      return {
+        transformed: `/node_modules/${modulePath}`,
+        warnings,
+        isExternal: true,
+        resolvedPath: `/node_modules/${modulePath}`
+      };
+    }
+
+    // Skip other special packages that should remain as-is
     const skipPackages = ['react', 'react-dom', '0x1'];
-    if (skipPackages.includes(modulePath.split('/')[0])) {
+    
+    if (skipPackages.includes(modulePath.split('/')[0]) || skipPackages.includes(modulePath)) {
       return {
         transformed: modulePath,
         warnings,

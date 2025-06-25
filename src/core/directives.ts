@@ -393,6 +393,32 @@ function validateContextUsage(sourceCode: string, context: 'client' | 'server', 
 }
 
 /**
+ * Dynamic server function loader for development
+ * This loads server functions from the actual source files during development
+ */
+async function loadServerFunction(functionName: string, filePath: string): Promise<any> {
+  try {
+    // Import the server action file directly
+    const module = await import(filePath + '?t=' + Date.now());
+    
+    // Look for the function in the module
+    if (module[functionName] && typeof module[functionName] === 'function') {
+      return module[functionName];
+    }
+    
+    // Also check default export
+    if (module.default && typeof module.default === 'function' && module.default.name === functionName) {
+      return module.default;
+    }
+    
+    throw new Error(`Function ${functionName} not found in ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to load server function ${functionName} from ${filePath}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Server action handler for the dev server
  * This handles /__0x1_server_action requests
  */
@@ -402,11 +428,30 @@ export async function handleServerAction(request: Request): Promise<Response> {
   }
   
   try {
-    const { functionName, args } = await request.json();
+    const body = await request.json();
+    const { functionName, args, __filePath } = body;
     
-    if (!functionName || !serverFunctions.has(functionName)) {
+    if (!functionName) {
       return new Response(
-        JSON.stringify({ error: `Server function "${functionName}" not found` }),
+        JSON.stringify({ error: 'Function name is required' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    let serverFunction: any;
+
+    // First try to get from registered functions
+    if (serverFunctions.has(functionName)) {
+      serverFunction = serverFunctions.get(functionName)!;
+    } else if (__filePath) {
+      // For development, load function dynamically from source file
+      serverFunction = await loadServerFunction(functionName, __filePath);
+    } else {
+      return new Response(
+        JSON.stringify({ error: `Server function "${functionName}" not found and no file path provided` }),
         { 
           status: 404,
           headers: { 'Content-Type': 'application/json' }
@@ -414,7 +459,7 @@ export async function handleServerAction(request: Request): Promise<Response> {
       );
     }
     
-    const serverFunction = serverFunctions.get(functionName)!;
+    // Execute the server function
     const result = await serverFunction(...(args || []));
     
     return new Response(
@@ -429,7 +474,8 @@ export async function handleServerAction(request: Request): Promise<Response> {
     
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       }),
       {
         status: 500,

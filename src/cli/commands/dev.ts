@@ -55,7 +55,8 @@ export async function dev(options: DevOptions = {}): Promise<Server> {
       silent: options.silent ?? false,
       https: options.https ?? false,
       cert: options.cert,
-      key: options.key
+      key: options.key,
+      debug: true // Enable debug mode to help diagnose module export issues
     };
 
     const orchestrator = new DevOrchestrator(orchestratorOptions);

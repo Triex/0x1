@@ -4,24 +4,16 @@
  * Uses working patterns with shared core utilities
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { basename, join } from "path";
 import { logger } from "../../cli/utils/logger";
 
 // Import shared core utilities for SINGLE SOURCE OF TRUTH
 import { getConfigurationManager } from "../core/ConfigurationManager";
 import { ImportTransformer } from "../core/ImportTransformer";
 import {
-  injectPWAIntoHTML,
-  PWAHandler,
-  type PWAConfig,
+    injectPWAIntoHTML,
+    type PWAConfig
 } from "../core/PWAHandler";
 import { transpilationEngine } from "../core/TranspilationEngine";
 
@@ -162,33 +154,94 @@ export class BuildOrchestrator {
   }
 
   private async discoverRoutesUsingWorkingPattern(): Promise<Route[]> {
-    // EXACT same pattern as working version
+    // Enhanced pattern with route group support - EXACT SAME as DevOrchestrator
     const routes: Route[] = [];
 
+    const appDir = join(this.options.projectPath, "app");
     const scanDirectory = (
       dirPath: string,
       routePath: string = "",
-      parentLayouts: Array<{ path: string; componentPath: string }> = []
+      parentLayouts: Array<{ path: string; componentPath: string }> = [],
+      fileSystemPath: string = "" // Track the full file system path for component resolution
     ) => {
       try {
         if (!existsSync(dirPath)) return;
 
         const items = readdirSync(dirPath);
+        const currentDirName = basename(dirPath);
+
+        // Determine if this is a route group (directory name in parentheses)
+        const isRouteGroup = /^\([^)]+\)$/.test(currentDirName);
+        
+        // Special handling for the 'app' directory to avoid duplication
+        const isAppDir = dirPath === appDir;
+        
+        // URL path handling (don't include route groups in URL paths)
+        let urlPath = routePath;
+        if (!isAppDir && !isRouteGroup) {
+          urlPath = urlPath ? `${urlPath}/${currentDirName}` : `/${currentDirName}`;
+        }
+        
+        // File system path handling (include all directories except for special handling of app dir)
+        let fsPath = fileSystemPath;
+        if (!isAppDir) {
+          fsPath = fsPath ? `${fsPath}/${currentDirName}` : currentDirName;
+        }
+
+        if (!this.options.silent && isRouteGroup) {
+          logger.debug(`Found route group: ${currentDirName} (won't affect URL paths)`);
+        }
 
         // Check for layout file in current directory
         const layoutFiles = items.filter((item: string) =>
           item.match(/^layout\.(tsx|jsx|ts|js)$/)
         );
 
-        // Build current layout hierarchy
+        // Build current layout hierarchy - CRITICAL FIX: Route group layouts REPLACE parent layouts
         const currentLayouts = [...parentLayouts];
         if (layoutFiles.length > 0) {
           const actualLayoutFile = layoutFiles[0];
-          const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
-          currentLayouts.push({
-            path: routePath || "/",
-            componentPath: layoutComponentPath,
-          });
+          
+          // CRITICAL FIX: Use filesystem path (fsPath) for layout component path instead of relative() function
+          // This ensures consistent path generation and prevents duplicates
+          const layoutComponentPath = fsPath 
+            ? `/app/${fsPath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`
+            : `/app/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
+          
+          // CRITICAL FIX: Route group layouts should REPLACE parent layouts, not add to them
+          // This prevents duplicate layout nesting (root + chat layout) - EXACT SAME LOGIC AS DEVORCHESTRATOR
+          const isRouteGroupLayout = fsPath && fsPath.includes('(') && fsPath.includes(')');
+          
+          if (isRouteGroupLayout) {
+            // Route group layouts replace the root layout for their specific routes
+            currentLayouts.length = 0; // Clear parent layouts
+            currentLayouts.push({
+              path: urlPath || "/",
+              componentPath: layoutComponentPath,
+            });
+            
+            if (!this.options.silent) {
+              logger.debug(`Route group layout replaces root layout: ${urlPath || "/"} -> ${layoutComponentPath}`);
+            }
+          } else {
+            // Regular layouts check for duplicates and add to hierarchy
+            const isDuplicate = currentLayouts.some(layout => 
+              layout.componentPath === layoutComponentPath
+            );
+
+            if (!isDuplicate) {
+              currentLayouts.push({
+                path: urlPath || "/",
+                componentPath: layoutComponentPath,
+              });
+
+              if (!this.options.silent) {
+                logger.debug(`Found layout: ${urlPath || "/"} -> ${layoutComponentPath}`);
+              }
+            } else if (!this.options.silent) {
+              logger.debug(`Skipped duplicate layout: ${layoutComponentPath}`);
+            }
+          }
         }
 
         // Check for page files in current directory
@@ -198,13 +251,18 @@ export class BuildOrchestrator {
 
         if (pageFiles.length > 0) {
           const actualFile = pageFiles[0];
-          const componentPath = `/app${routePath}/${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
+          // Generate component path without duplicating app
+          const componentPath = `/app/${fsPath ? `${fsPath}/` : ''}${actualFile.replace(/\.(tsx|ts)$/, ".js")}`;
 
           routes.push({
-            path: routePath || "/",
-            componentPath: componentPath,
+            path: urlPath || "/", // URL path doesn't include route groups
+            componentPath: componentPath, // Component path includes full file system path
             layouts: currentLayouts,
           });
+
+          if (!this.options.silent) {
+            logger.debug(`Found route: ${urlPath || "/"} -> ${componentPath}`);
+          }
         }
 
         // Recursively scan subdirectories
@@ -224,8 +282,12 @@ export class BuildOrchestrator {
 
         for (const subdir of subdirs) {
           const subdirPath = join(dirPath, subdir);
-          const subroutePath = routePath + "/" + subdir;
-          scanDirectory(subdirPath, subroutePath, currentLayouts);
+          
+          // Handle route groups for subdirectories
+          const isSubdirRouteGroup = /^\([^)]+\)$/.test(subdir);
+          
+          // Continue recursion with updated paths - maintain correct URL and filesystem paths
+          scanDirectory(subdirPath, urlPath, currentLayouts, fsPath);
         }
       } catch (error) {
         // Silent fail for directories
@@ -233,8 +295,7 @@ export class BuildOrchestrator {
     };
 
     // Scan app directory
-    const appDir = join(this.options.projectPath, "app");
-    scanDirectory(appDir, "", []);
+    scanDirectory(appDir, "", [], "");
 
     // Sort routes by specificity
     routes.sort((a, b) => {
@@ -408,34 +469,53 @@ export class BuildOrchestrator {
     route: Route,
     outputPath: string
   ): Promise<void> {
-    try {
-      // Find the route source file
-      const sourcePath = this.findRouteSourceFile(route);
-      if (!sourcePath) {
-        logger.warn(`No source file found for route: ${route.componentPath}`);
-        return;
+    // Generate full HTML with layout composition
+    // This is the critical function that renders the full page
+    const routePath = route.path || "/";
+    const componentPath = route.componentPath;
+    const layouts = route.layouts || [];
+
+    // Create output directory
+    const routeOutputPath = join(outputPath, routePath === "/" ? "" : routePath.slice(1));
+    mkdirSync(routeOutputPath, { recursive: true });
+
+    // Process the layouts to ensure proper hierarchy with route groups
+    const processedLayouts = layouts.filter((layout, index) => {
+      // If this is a route group layout, make sure it takes precedence over parent layouts for the same path
+      const isRouteGroupLayout = layout.componentPath.includes('/(');
+      if (isRouteGroupLayout) {
+        // Check if there's a parent layout for the same path
+        const parentLayoutIndex = layouts.findIndex((l, i) => 
+          i < index && l.path === layout.path && !l.componentPath.includes('/('));
+        
+        // If there's a parent layout for the same path, prioritize the route group layout
+        if (parentLayoutIndex !== -1) {
+          return true; // Keep this one
+        }
       }
+      return true;
+    });
 
-      const sourceCode = readFileSync(sourcePath, "utf-8");
+    // Generate index.html with composed layouts
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/0x1/jsx-runtime.js"></script>
+  <script src="/0x1/hooks.js"></script>
+  <script src="/0x1/router.js"></script>
+  <script src="/app.js" defer></script>
+  <title>0x1 App</title>
+</head>
+<body>
+  <div id="app" data-route="${routePath}" data-component="${componentPath}" data-layouts="${processedLayouts.map(layout => layout.componentPath).join(',')}">${routePath}</div>
+</body>
+</html>`;
 
-      // CRITICAL FIX: Ensure components return proper JSX objects, not HTML strings
-      const transpiledContent = await this.transpileComponentForProduction(
-        sourceCode,
-        sourcePath
-      );
-
-      // Write to output
-      const outputComponentPath = join(
-        outputPath,
-        route.componentPath.replace(/^\//, "")
-      );
-      mkdirSync(join(outputComponentPath, ".."), { recursive: true });
-      writeFileSync(outputComponentPath, transpiledContent);
-    } catch (error) {
-      logger.warn(
-        `Failed to generate route component ${route.componentPath}: ${error}`
-      );
-    }
+    // Write the HTML file
+    writeFileSync(join(routeOutputPath, "index.html"), html, "utf-8");
   }
 
   // ROOT CAUSE FIX: Use DevOrchestrator's exact working transpilation (SINGLE SOURCE OF TRUTH)
@@ -449,36 +529,80 @@ export class BuildOrchestrator {
 
   // Helper method to find route source files (restored)
   private findRouteSourceFile(route: Route): string | null {
-    // First try the Next.js-style paths
-    const nextStylePaths = [
-      join(this.options.projectPath, "app", route.path, "page.tsx"),
-      join(this.options.projectPath, "app", route.path, "page.jsx"),
-      join(this.options.projectPath, "app", route.path, "page.ts"),
-      join(this.options.projectPath, "app", route.path, "page.js"),
-      join(this.options.projectPath, "app", route.path, "index.tsx"),
-      join(this.options.projectPath, "app", route.path, "index.jsx"),
-      join(this.options.projectPath, "app", route.path, "index.ts"),
-      join(this.options.projectPath, "app", route.path, "index.js"),
-    ];
-
-    for (const path of nextStylePaths) {
-      if (existsSync(path)) return path;
+    // Normalize the component path
+    const componentPath = route.componentPath;
+    const normalizedPath = componentPath.startsWith("/app/") ? componentPath.substring(4) : componentPath;
+    
+    // Check first in the app directory with potential route groups
+    const appPath = join(this.options.projectPath, "app", normalizedPath);
+    if (existsSync(appPath)) {
+      return appPath;
     }
-
-    // Then fall back to the original approach if nothing found
-    const basePath = join(
-      this.options.projectPath,
-      route.componentPath.replace(/^\//, "").replace(/\.js$/, "")
-    );
-    const extensions = [".tsx", ".jsx", ".ts", ".js"];
-
+    
+    // Check for tsx/jsx/ts/js extensions
+    const extensions = ["", ".tsx", ".jsx", ".ts", ".js"];
+    
     for (const ext of extensions) {
-      const sourcePath = basePath + ext;
-      if (existsSync(sourcePath)) {
-        return sourcePath;
+      const potentialPath = `${appPath}${ext}`;
+      if (existsSync(potentialPath)) {
+        return potentialPath;
       }
     }
-
+    
+    // Check if we need to convert .js extension back to .tsx for source lookup
+    if (normalizedPath.endsWith(".js")) {
+      const tsxPath = join(
+        this.options.projectPath,
+        "app",
+        normalizedPath.replace(/\.js$/, ".tsx")
+      );
+      
+      if (existsSync(tsxPath)) {
+        return tsxPath;
+      }
+      
+      const jsxPath = join(
+        this.options.projectPath,
+        "app",
+        normalizedPath.replace(/\.js$/, ".jsx")
+      );
+      
+      if (existsSync(jsxPath)) {
+        return jsxPath;
+      }
+    }
+    
+    // Special handling for route groups - try to resolve by reconstructing the path
+    // considering potential route groups in the path
+    const pathParts = normalizedPath.split('/');
+    
+    // Generate potential route group paths for each segment
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      // Skip empty parts
+      if (!pathParts[i]) continue;
+      
+      // Create a version where this segment is a route group
+      const routeGroupParts = [...pathParts];
+      routeGroupParts[i] = `(${pathParts[i]})`;
+      const routeGroupPath = join(this.options.projectPath, "app", routeGroupParts.join('/'));
+      
+      // Try all extensions with this route group path
+      for (const ext of extensions) {
+        const potentialPath = `${routeGroupPath}${ext}`;
+        if (existsSync(potentialPath)) {
+          return potentialPath;
+        }
+      }
+      
+      // Try .tsx instead of .js if applicable
+      if (routeGroupPath.endsWith(".js")) {
+        const tsxPath = routeGroupPath.replace(/\.js$/, ".tsx");
+        if (existsSync(tsxPath)) {
+          return tsxPath;
+        }
+      }
+    }
+    
     return null;
   }
 
@@ -548,6 +672,16 @@ export class BuildOrchestrator {
         logger.info(
           `🔍 DEBUGGING: Original content first 200 chars: ${content.substring(0, 200)}`
         );
+      }
+
+      // CRITICAL: Transform server actions first (before import transformation)
+      try {
+        const { transformServerActions } = await import('../../core/server-actions-transformer.js');
+        content = transformServerActions(content, sourcePath, this.options.projectPath, 'production');
+      } catch (serverActionError) {
+        if (!this.options.silent) {
+          logger.warn(`Server actions transform failed for ${sourcePath}: ${serverActionError}`);
+        }
       }
 
       content = ImportTransformer.transformImports(content, {
@@ -976,6 +1110,78 @@ export default function ErrorComponent(props) {
       nodeModulesDir,
       framework0x1Dir
     );
+
+    // CRITICAL: Copy error boundary for production builds
+    await this.copyErrorBoundaryForProduction(frameworkPath, framework0x1Dir);
+  }
+
+  // CRITICAL: Copy error boundary for production builds (optimized)
+  private async copyErrorBoundaryForProduction(
+    frameworkPath: string,
+    framework0x1Dir: string
+  ): Promise<void> {
+    if (!this.options.silent) {
+      logger.info("🛡️ Adding error boundary for production...");
+    }
+
+    try {
+      const errorBoundaryPath = join(frameworkPath, 'src', 'browser', 'error', 'error-boundary.js');
+      
+      if (existsSync(errorBoundaryPath)) {
+        let content = readFileSync(errorBoundaryPath, 'utf-8');
+        
+        // Production optimizations for error boundary
+        content += `\n\n// Production mode optimizations
+console.log('[0x1 Error Boundary] Loaded in production mode');
+
+// Production-ready error capture
+if (typeof window !== 'undefined' && window.__0x1_errorBoundary) {
+  // Reduce error spam in production
+  const originalAddError = window.__0x1_errorBoundary.addError;
+  window.__0x1_errorBoundary.addError = function(error, componentName) {
+    // Filter out non-critical development-only errors in production
+    const message = error?.message || '';
+    
+    // Skip development server connection errors in production
+    if (message.includes('ERR_NETWORK') || 
+        message.includes('Failed to fetch') ||
+        message.includes('live_reload') ||
+        message.includes('ERR_INCOMPLETE_CHUNKED_ENCODING')) {
+      return; // Skip these in production
+    }
+    
+    return originalAddError.call(this, error, componentName);
+  };
+}
+`;
+        
+        // Minify for production
+        if (this.options.minify) {
+          // Simple minification - remove comments and extra whitespace
+          content = content
+            .replace(/\/\*[\s\S]*?\*\//g, '') // Remove /* */ comments
+            .replace(/\/\/.*$/gm, '') // Remove // comments
+            .replace(/\s+/g, ' ') // Compress whitespace
+            .replace(/;\s*}/g, ';}') // Compress semicolon-brace patterns
+            .trim();
+        }
+        
+        // Write to 0x1 directory
+        await Bun.write(join(framework0x1Dir, 'error-boundary.js'), content);
+        
+        if (!this.options.silent) {
+          logger.success(`✅ Error boundary ready for production: ${(content.length / 1024).toFixed(1)}KB`);
+        }
+      } else {
+        if (!this.options.silent) {
+          logger.warn('⚠️ Error boundary source not found, skipping...');
+        }
+      }
+    } catch (error) {
+      if (!this.options.silent) {
+        logger.error(`❌ Failed to copy error boundary: ${error}`);
+      }
+    }
   }
 
   // CRITICAL FIX: Use actual router from shared core (SINGLE SOURCE OF TRUTH)
@@ -1912,6 +2118,8 @@ if (typeof window !== 'undefined') {
     if (defaultExports.useFetch) window.useFetch = defaultExports.useFetch;
     if (defaultExports.useForm) window.useForm = defaultExports.useForm;
     if (defaultExports.useLocalStorage) window.useLocalStorage = defaultExports.useLocalStorage;
+    if (defaultExports.useGlobalState) window.useGlobalState = defaultExports.useGlobalState;
+    if (defaultExports.useTheme) window.useTheme = defaultExports.useTheme;
   } catch (e) {
     // If default export access fails, try direct access to exported functions
     if (typeof t === 'function') window.useClickOutside = t;
@@ -1941,9 +2149,17 @@ if (typeof window !== 'undefined') {
   window.__0x1_hooks_init_done = true;
   window.__0x1_component_context_ready = true;
 
+  // CRITICAL: Initialize action handlers for production 
+  if (typeof window.__0x1_attachDataActionHandlers === 'function') {
+    // Delay action handler attachment to ensure DOM is ready
+    setTimeout(() => {
+      window.__0x1_attachDataActionHandlers();
+      window.__0x1_attachEventListeners();
+    }, 100);
+  }
+
   // Log success with actual working hooks
-  console.log('[0x1 Hooks] IMMEDIATE hook availability initialized');
-  console.log('[0x1 Hooks] Available hooks:', Object.keys(window).filter(k => k.startsWith('use')));
+  console.log('[0x1 Hooks] PRODUCTION hook system initialized with action handlers');
 }
 `;
 
@@ -2000,6 +2216,8 @@ export const useClickOutside = createHookGetter('useClickOutside');
 export const useFetch = createHookGetter('useFetch');
 export const useForm = createHookGetter('useForm');
 export const useLocalStorage = createHookGetter('useLocalStorage');
+export const useGlobalState = createHookGetter('useGlobalState');
+export const useTheme = createHookGetter('useTheme');
 
 // MINIFICATION-SAFE JSX runtime delegation using string access
 export function jsx(type, props, key) {
@@ -2197,6 +2415,7 @@ export const version = '0.1.0';
 export default {
   useState: useState, useEffect: useEffect, useCallback: useCallback, useMemo: useMemo, useRef: useRef,
   useClickOutside: useClickOutside, useFetch: useFetch, useForm: useForm, useLocalStorage: useLocalStorage,
+  useGlobalState: useGlobalState, useTheme: useTheme,
   jsx: jsx, jsxs: jsxs, jsxDEV: jsxDEV, createElement: createElement, Fragment: Fragment,
   Link: Link, Router: Router, version: version
 };
@@ -2229,33 +2448,33 @@ export default {
       2
     );
 
-    // Generate app.js with client-side metadata updates for production SPA
-    const appScript = `// 0x1 Framework App Bundle - Production Ready
+    // CRITICAL FIX: Use EXACT same app generation as DevOrchestrator for consistency
+    const appScript = `// 0x1 Framework App Bundle - Production Ready (DevOrchestrator Pattern)
 const DEBUG = false; // PRODUCTION: Disable verbose logging
 
 // Server-discovered routes with layout information
 const serverRoutes = ${routesJson};
 
-// ===== CLIENT-SIDE METADATA SYSTEM =====
+// ===== CLIENT-SIDE METADATA SYSTEM (SAME AS PRODUCTION) =====
 async function updatePageMetadata(route) {
   if (!route) return;
-
+  
   try {
     // Try to extract metadata from the route component
     const componentModule = await import(route.componentPath);
-
+    
     // Check if component has metadata export (Next.js 15 style)
     if (componentModule.metadata) {
       const metadata = componentModule.metadata;
-
+      
       // Update document title
       if (metadata.title) {
-        const resolvedTitle = typeof metadata.title === 'string'
-          ? metadata.title
+        const resolvedTitle = typeof metadata.title === 'string' 
+          ? metadata.title 
           : metadata.title.default || metadata.title.template || 'Page';
         document.title = resolvedTitle;
       }
-
+      
       // Update meta description
       if (metadata.description) {
         let metaDesc = document.querySelector('meta[name="description"]');
@@ -2266,11 +2485,11 @@ async function updatePageMetadata(route) {
         }
         metaDesc.setAttribute('content', metadata.description);
       }
-
+      
       // Update Open Graph tags
       if (metadata.openGraph) {
         const og = metadata.openGraph;
-
+        
         // OG Title
         if (og.title) {
           let ogTitle = document.querySelector('meta[property="og:title"]');
@@ -2281,7 +2500,7 @@ async function updatePageMetadata(route) {
           }
           ogTitle.setAttribute('content', og.title);
         }
-
+        
         // OG Description
         if (og.description) {
           let ogDesc = document.querySelector('meta[property="og:description"]');
@@ -2292,7 +2511,7 @@ async function updatePageMetadata(route) {
           }
           ogDesc.setAttribute('content', og.description);
         }
-
+        
         // OG URL
         if (og.url) {
           let ogUrl = document.querySelector('meta[property="og:url"]');
@@ -2304,11 +2523,11 @@ async function updatePageMetadata(route) {
           ogUrl.setAttribute('content', og.url);
         }
       }
-
+      
       // Update Twitter tags
       if (metadata.twitter) {
         const twitter = metadata.twitter;
-
+        
         if (twitter.title) {
           let twitterTitle = document.querySelector('meta[name="twitter:title"]');
           if (!twitterTitle) {
@@ -2318,7 +2537,7 @@ async function updatePageMetadata(route) {
           }
           twitterTitle.setAttribute('content', twitter.title);
         }
-
+        
         if (twitter.description) {
           let twitterDesc = document.querySelector('meta[name="twitter:description"]');
           if (!twitterDesc) {
@@ -2329,11 +2548,15 @@ async function updatePageMetadata(route) {
           twitterDesc.setAttribute('content', twitter.description);
         }
       }
-
-      if (DEBUG) console.log('[0x1 App] Updated page metadata for:', route.path);
+      
+      if (DEBUG) {
+        console.log('[0x1 Production] Updated page metadata for:', route.path);
+      }
     }
   } catch (error) {
-    if (DEBUG) console.warn('[0x1 App] Failed to update metadata for route:', route.path, error);
+    if (DEBUG) {
+      console.warn('[0x1 Production] Failed to update metadata for route:', route.path, error);
+    }
   }
 }
 
@@ -2345,28 +2568,61 @@ async function loadLayoutOnce(layoutPath) {
   if (layoutCache.has(layoutPath)) {
     return layoutCache.get(layoutPath);
   }
-
+  
   try {
-    if (DEBUG) console.log('[0x1 App] Loading layout:', layoutPath);
-    const layoutModule = await import(layoutPath);
-
+    if (DEBUG) {
+      console.log('[0x1 Production] 📄 Loading layout:', layoutPath);
+    }
+    
+    // Add cache-busting to ensure fresh module loading
+    const url = layoutPath + '?t=' + Date.now();
+    const layoutModule = await import(url);
+    
+    // ENHANCED: Try multiple export patterns for better compatibility
+    let layoutComponent = null;
+    
     if (layoutModule && layoutModule.default) {
-      if (DEBUG) console.log('[0x1 App] Layout loaded successfully:', layoutPath);
-      layoutCache.set(layoutPath, layoutModule.default);
-      return layoutModule.default;
+      layoutComponent = layoutModule.default;
+      if (DEBUG) {
+        console.log('[0x1 Production] ✅ Layout loaded (default export):', layoutPath);
+      }
+    } else if (layoutModule && typeof layoutModule === 'function') {
+      layoutComponent = layoutModule;
+      if (DEBUG) {
+        console.log('[0x1 Production] ✅ Layout loaded (direct function):', layoutPath);
+      }
+    } else if (layoutModule && layoutModule.Layout) {
+      layoutComponent = layoutModule.Layout;
+      if (DEBUG) {
+        console.log('[0x1 Production] ✅ Layout loaded (named Layout export):', layoutPath);
+      }
+    } else if (layoutModule && Object.keys(layoutModule).length > 0) {
+      // Try the first exported function
+      const firstExport = Object.values(layoutModule).find(exp => typeof exp === 'function');
+      if (firstExport) {
+        layoutComponent = firstExport;
+        if (DEBUG) {
+          console.log('[0x1 Production] ✅ Layout loaded (first function export):', layoutPath);
+        }
+      }
+    }
+    
+    if (layoutComponent) {
+      layoutCache.set(layoutPath, layoutComponent);
+      return layoutComponent;
     } else {
-      if (DEBUG) console.warn('[0x1 App] Layout has no default export:', layoutPath);
+      console.warn('[0x1 Production] ⚠️ Layout has no compatible export, using passthrough fallback:', layoutPath);
       const fallbackLayout = ({ children }) => {
-        if (DEBUG) console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+        console.warn('[0x1 Production] Using passthrough layout for:', layoutPath);
         return children;
       };
       layoutCache.set(layoutPath, fallbackLayout);
       return fallbackLayout;
     }
   } catch (error) {
-    if (DEBUG) console.error('[0x1 App] Failed to load layout:', layoutPath, error);
+    console.error('[0x1 Production] ❌ Failed to load layout:', layoutPath, error);
     const fallbackLayout = ({ children }) => {
-      if (DEBUG) console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+      console.warn('[0x1 Production] Using error fallback layout for:', layoutPath);
       return children;
     };
     layoutCache.set(layoutPath, fallbackLayout);
@@ -2377,18 +2633,24 @@ async function loadLayoutOnce(layoutPath) {
 async function loadLayoutHierarchy(layouts) {
   // CRITICAL: Create cache key from layout paths to avoid duplicate loading
   const cacheKey = layouts.map(l => l.componentPath).join('|');
-
+  
   if (hierarchyCache.has(cacheKey)) {
-    if (DEBUG) console.log('[0x1 App] Using cached layout hierarchy:', layouts.length, 'layouts');
+    if (DEBUG) {
+      console.log('[0x1 Production] ✅ Using cached layout hierarchy:', layouts.length, 'layouts');
+    }
     return hierarchyCache.get(cacheKey);
   }
-
-  if (DEBUG) console.log('[0x1 App] Loading layout hierarchy...', layouts.length, 'layouts');
-
+  
+  if (DEBUG) {
+    console.log('[0x1 Production] 📁 Loading layout hierarchy...', layouts.length, 'layouts');
+  }
+  
   // Ensure hook context is available before loading any layouts
   if (typeof window.useState !== 'function') {
-    if (DEBUG) console.warn('[0x1 App] Hook context not available, waiting...');
-
+    if (DEBUG) {
+      console.warn('[0x1 Production] ⚠️ Hook context not available, waiting...');
+    }
+    
     // Wait for hooks to be available
     await new Promise((resolve) => {
       const checkHooks = () => {
@@ -2401,240 +2663,242 @@ async function loadLayoutHierarchy(layouts) {
       checkHooks();
     });
   }
-
+      
   const loadedLayouts = [];
   for (const layout of layouts) {
     const loadedLayout = await loadLayoutOnce(layout.componentPath);
     loadedLayouts.push(loadedLayout);
   }
-
+  
   // CRITICAL: Cache the loaded hierarchy
   hierarchyCache.set(cacheKey, loadedLayouts);
-
-  if (DEBUG) console.log('[0x1 App] Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
+  
+  if (DEBUG) {
+    console.log('[0x1 Production] ✅ Layout hierarchy loaded:', loadedLayouts.length, 'layouts');
+  }
   return loadedLayouts;
 }
 
-// ===== NESTED LAYOUT COMPOSITION (from DevOrchestrator) =====
+// ===== NESTED LAYOUT COMPOSITION =====
 function composeNestedLayouts(pageComponent, layouts) {
   if (layouts.length === 0) {
     return pageComponent;
   }
-
-  return (props) => {
-    let wrappedComponent = pageComponent(props);
-
+  
+  // CRITICAL FIX: Create a named function instead of anonymous function
+  // This prevents "AnonymousComponent" issues in the JSX runtime
+  const ComposedComponent = function ComposedComponent(props) {
+    // CRITICAL FIX: Create shared update callback for all nested components
+    const sharedUpdateCallback = () => {
+      if (window.router && typeof window.router.reRender === 'function') {
+        window.router.reRender();
+      } else if (window.router && typeof window.router.navigate === 'function') {
+        // Trigger navigation to same path to force re-render
+        window.router.navigate(window.location.pathname, false);
+      } else {
+        console.warn('[0x1 Production] Router not available for nested component update');
+      }
+    };
+    
+    // CRITICAL FIX: Use stable component ID based on route path to preserve state across re-renders
+    const routePath = (typeof window !== 'undefined' ? window.location.pathname : '/').replace(/[^a-zA-Z0-9]/g, '_') || 'root';
+    const composedComponentId = 'ComposedComponent_' + routePath;
+    
+    // CRITICAL FIX: Track component contexts to clear them at the end
+    const componentContexts = [];
+    
+    // CRITICAL FIX: Set the composed component context once for all nested components
+    if (typeof window.__0x1_enterComponentContext === 'function') {
+      window.__0x1_enterComponentContext(composedComponentId, sharedUpdateCallback);
+      componentContexts.push(composedComponentId);
+      
+      if (DEBUG) {
+        console.log('[0x1 Production] Setting composed component context:', composedComponentId);
+        console.log('[0x1 Production] Page and all layouts will use this context:', pageComponent.name || 'Page');
+      }
+    }
+    
+    // CRITICAL FIX: Use JSX runtime to call page component for proper re-rendering
+    let wrappedComponent;
+    
+    try {
+      // DON'T set separate page context - use the composed context
+      
+      // CRITICAL FIX: Call page component through JSX runtime for proper integration
+      const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+      if (jsxRuntime && typeof pageComponent === 'function') {
+        // Use JSX runtime to call the component - this enables proper re-rendering
+        wrappedComponent = jsxRuntime(pageComponent, props);
+      } else {
+        // Fallback: direct call
+        wrappedComponent = pageComponent(props);
+      }
+      
+      // DON'T clear component context yet - keep it active for re-rendering
+    } catch (error) {
+      console.error('[0x1 Production] Page component error:', error);
+      wrappedComponent = {
+        type: 'div',
+        props: { children: ['Page component error: ' + error.message] }
+      };
+    }
+    
     // Apply layouts in reverse order (innermost to outermost)
     for (let i = layouts.length - 1; i >= 0; i--) {
       const currentLayout = layouts[i];
       const children = wrappedComponent;
-
+      const layoutId = composedComponentId + '_layout_' + i;
+      
       try {
-        wrappedComponent = currentLayout({
-          children: children,
-          ...props
-        });
+        // CRITICAL FIX: Don't set separate context for layouts - they should use the composed component context
+        // This ensures layout components update the ComposedComponent rather than looking for their own DOM elements
+        if (DEBUG) {
+          console.log('[0x1 Production] Layout will use composed component context for re-rendering:', currentLayout.name || 'Layout');
+        }
+        
+        // CRITICAL FIX: Use JSX runtime to call layout component for proper integration
+        const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+        if (jsxRuntime && typeof currentLayout === 'function') {
+          // Use JSX runtime to call the layout - this enables proper re-rendering
+          wrappedComponent = jsxRuntime(currentLayout, { 
+            children: children,
+            ...props 
+          });
+        } else {
+          // Fallback: direct call
+          wrappedComponent = currentLayout({ 
+            children: children,
+            ...props 
+          });
+        }
+        
+        // DON'T clear component context yet - keep it active for re-rendering
       } catch (error) {
-        if (DEBUG) console.error('[0x1] Layout composition error at level', i, ':', error);
+        console.error('[0x1 Production] Layout composition error at level', i, ':', error);
         wrappedComponent = children;
       }
     }
-
+    
+    // CRITICAL FIX: Add cleanup function that clears contexts when component unmounts
+    // but only if this is the initial render, not a re-render
+    if (typeof window !== 'undefined' && !window.__0x1_layoutContextsActive) {
+      window.__0x1_layoutContextsActive = true;
+      
+      // Set up cleanup on page navigation or app unmount
+      const cleanup = () => {
+        componentContexts.forEach(contextId => {
+          if (typeof window.__0x1_exitComponentContext === 'function') {
+            try {
+              window.__0x1_exitComponentContext();
+            } catch (error) {
+              if (DEBUG) {
+                console.debug('[0x1 Production] Context cleanup error:', error);
+              }
+            }
+          }
+        });
+        window.__0x1_layoutContextsActive = false;
+      };
+      
+      // Cleanup on navigation
+      if (window.router) {
+        const originalNavigate = window.router.navigate;
+        window.router.navigate = function(...args) {
+          cleanup();
+          return originalNavigate.apply(this, args);
+        };
+      }
+      
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', cleanup);
+    }
+    
     return wrappedComponent;
   };
+  
+  return ComposedComponent;
 }
 
-// Production-ready initialization (same as DevOrchestrator)
+// ===== PRODUCTION APP INITIALIZATION =====
 async function initApp() {
   try {
-    if (DEBUG) console.log('[0x1 App] Starting production initialization...');
-
+    if (DEBUG) {
+      console.log('[0x1 Production] 🚀 Starting production initialization...');
+    }
+    
     // Step 1: Load and initialize essential dependencies FIRST
-    if (DEBUG) console.log('[0x1 App] Loading essential dependencies...');
-
+    if (DEBUG) {
+      console.log('[0x1 Production] 🎯 Loading essential dependencies...');
+    }
+    
     // Load hooks and ensure they're fully initialized
     await new Promise((resolve, reject) => {
-    const hooksScript = document.createElement('script');
-    hooksScript.type = 'module';
-    hooksScript.src = '/0x1/hooks.js';
+      const hooksScript = document.createElement('script');
+      hooksScript.type = 'module';
+      hooksScript.src = '/0x1/hooks.js';
       hooksScript.onload = () => {
-        if (DEBUG) console.log('[0x1 App] Hooks system loaded');
-
-        // CRITICAL FIX: Wait for hooks to actually initialize (they use setTimeout internally)
-        const checkHooksReady = () => {
-          // Check for the flags that are actually set by the hooks system
-          if (window.__0x1_hooks_init_done === true ||
-              (window.__0x1_hooks && window.__0x1_hooks.isInitialized === true) ||
-              (window.__0x1_hooksSystem && window.__0x1_hooksSystem.isInitialized === true) ||
-              typeof window.useState === 'function') {
-            if (DEBUG) console.log('[0x1 App] Hook context verified (immediate)');
+        if (DEBUG) {
+          console.log('[0x1 Production] ✅ Hooks system loaded');
+        }
+        
+        // Wait a tick to ensure hooks are fully initialized
+        setTimeout(() => {
+          // Verify hooks are available
+          if (typeof window.useState === 'function') {
+            if (DEBUG) {
+              console.log('[0x1 Production] ✅ Hook context verified');
+            }
             resolve();
           } else {
-            // Wait a bit more for hooks to initialize (they use setTimeout(0))
-            setTimeout(checkHooksReady, 10);
+            reject(new Error('Hook system not properly initialized'));
           }
-        };
-
-        // Start checking immediately
-        checkHooksReady();
-
-        // Set a timeout as fallback to prevent infinite waiting
-        setTimeout(() => {
-          if (window.__0x1_hooks_init_done !== true &&
-              (!window.__0x1_hooks || window.__0x1_hooks.isInitialized !== true) &&
-              (!window.__0x1_hooksSystem || window.__0x1_hooksSystem.isInitialized !== true) &&
-              typeof window.useState !== 'function') {
-            reject(new Error('Hook system not properly initialized - hooks should be available immediately after module load'));
-          }
-        }, 200); // Give up to 200ms for hooks to initialize
+        }, 50); // Small delay to ensure initialization
       };
       hooksScript.onerror = reject;
       document.head.appendChild(hooksScript);
     });
-
+    
     // Step 2: Initialize component context globals BEFORE loading any components
-    if (DEBUG) console.log('[0x1 App] Setting up component context...');
-
+    if (DEBUG) {
+      console.log('[0x1 Production] 🔧 Setting up component context...');
+    }
+    
     // Ensure React-compatible globals are available
     if (!window.React) {
       window.React = {};
     }
-
+    
     // Copy hooks to React namespace for compatibility
     ['useState', 'useEffect', 'useLayoutEffect', 'useMemo', 'useCallback', 'useRef'].forEach(hookName => {
       if (typeof window[hookName] === 'function') {
         window.React[hookName] = window[hookName];
       }
     });
-
-    if (DEBUG) console.log('[0x1 App] Component context ready');
-
-    // CRITICAL: Load JSX runtime BEFORE router to prevent fallback rendering
-    if (DEBUG) console.log('[0x1 App] Loading JSX runtime...');
-    await new Promise((resolve, reject) => {
-      const jsxScript = document.createElement('script');
-      jsxScript.type = 'module';
-      jsxScript.src = '/0x1/jsx-runtime.js';
-      jsxScript.onload = () => {
-        if (DEBUG) console.log('[0x1 App] JSX runtime loaded');
-
-        // CRITICAL FIX: Check for JSX runtime availability more robustly
-        const checkJsxReady = () => {
-          // JSX runtime functions might be available in different forms
-          if (typeof window.jsx === 'function' ||
-              typeof window.jsxDEV === 'function' ||
-              typeof window.jsxs === 'function' ||
-              typeof window.createElement === 'function' ||
-              (window.__0x1_jsx && window.__0x1_jsx.isInitialized === true)) {
-            if (DEBUG) console.log('[0x1 App] JSX runtime verified (immediate)');
-            resolve();
-          } else {
-            // Wait a bit more for JSX runtime to initialize
-            setTimeout(checkJsxReady, 10);
-          }
-        };
-
-        // Start checking immediately
-        checkJsxReady();
-
-        // Set a timeout as fallback
-        setTimeout(() => {
-          if (typeof window.jsx !== 'function' &&
-              typeof window.jsxDEV !== 'function' &&
-              typeof window.jsxs !== 'function' &&
-              typeof window.createElement !== 'function' &&
-              (!window.__0x1_jsx || window.__0x1_jsx.isInitialized !== true)) {
-            reject(new Error('JSX runtime not properly initialized - JSX should be available immediately after module load'));
-          }
-        }, 200); // Give up to 200ms for JSX runtime to initialize
-      };
-      jsxScript.onerror = reject;
-      document.head.appendChild(jsxScript);
-    });
-
+    
+    if (DEBUG) {
+      console.log('[0x1 Production] ✅ Component context ready');
+    }
+    
     // Step 3: Create router
-    if (DEBUG) console.log('[0x1 App] Loading router...');
+    if (DEBUG) {
+      console.log('[0x1 Production] 🧭 Loading router...');
+    }
     const routerModule = await import('/0x1/router.js');
-
-    // CRITICAL FIX: Robust router detection for all export patterns (including minified)
-    let RouterConstructor = null;
-
-    // Log all available exports for debugging
-    const availableExports = Object.keys(routerModule);
-    // console.log('[0x1 App] Available router exports:', availableExports);
-
-    // Method 1: Try standard Router class
-    if (routerModule.Router && typeof routerModule.Router === 'function') {
-      RouterConstructor = routerModule.Router;
-      // console.log('[0x1 App] ✅ Using Router class from export');
+    const { Router } = routerModule;
+    
+    if (typeof Router !== 'function') {
+      throw new Error('Router class not found in router module');
     }
-    // Method 2: Try createRouter function
-    else if (routerModule.createRouter && typeof routerModule.createRouter === 'function') {
-      RouterConstructor = routerModule.createRouter;
-      // console.log('[0x1 App] ✅ Using createRouter function from export');
-    }
-    // Method 3: Try default export
-    else if (routerModule.default && typeof routerModule.default === 'function') {
-      RouterConstructor = routerModule.default;
-      // console.log('[0x1 App] ✅ Using default export as router');
-    }
-    // Method 4: CRITICAL FIX - Find ANY function that can create router instances
-    else {
-      // Look for any function export that might be a router constructor
-      for (const [exportName, exportValue] of Object.entries(routerModule)) {
-        if (typeof exportValue === 'function') {
-          try {
-            // Test if this function can create a router-like object
-            const testInstance = new exportValue({});
-            if (testInstance &&
-                (typeof testInstance.addRoute === 'function' ||
-                 typeof testInstance.navigate === 'function' ||
-                 typeof testInstance.init === 'function')) {
-              RouterConstructor = exportValue;
-              // console.log('[0x1 App] ✅ Found router constructor via testing:', exportName);
-              break;
-            }
-          } catch (error) {
-            // Try as factory function instead of constructor
-            try {
-              const testInstance = exportValue({});
-              if (testInstance &&
-                  (typeof testInstance.addRoute === 'function' ||
-                   typeof testInstance.navigate === 'function' ||
-                   typeof testInstance.init === 'function')) {
-                RouterConstructor = exportValue;
-                // console.log('[0x1 App] ✅ Found router factory via testing:', exportName);
-                break;
-              }
-            } catch (factoryError) {
-              // This export is not a router, continue
-            }
-          }
-        }
-      }
-
-      // If still no router found, throw detailed error
-      if (!RouterConstructor) {
-        console.error('[0x1 App] ❌ No router constructor found in any export');
-        console.error('[0x1 App] ❌ Available exports:', availableExports);
-        console.error('[0x1 App] ❌ Export types:', availableExports.map(name => \`\${name}: \${typeof routerModule[name]}\`));
-        throw new Error(\`Router class not found in router module. Available exports: \${availableExports.join(', ')}\`);
-      }
-    }
-
-    if (!RouterConstructor) {
-      throw new Error('Router constructor not found in router module');
-    }
-
+    
     const appElement = document.getElementById('app');
     if (!appElement) {
       throw new Error('App container element not found');
     }
-
+    
     // Create 404 component
     const notFoundComponent = () => ({
       type: 'div',
-      props: {
+      props: { 
         className: 'flex flex-col items-center justify-center min-h-[60vh] text-center px-4'
       },
       children: [
@@ -2676,124 +2940,151 @@ async function initApp() {
       ],
       key: null
     });
-
-    // CRITICAL FIX: Handle both constructor and factory patterns
-    let router;
-    try {
-      // Try as constructor first (new RouterConstructor)
-      router = new RouterConstructor({
+    
+    const router = new Router({
       rootElement: appElement,
       mode: 'history',
       debug: false,
       base: '/',
       notFoundComponent: notFoundComponent
     });
-      console.log('[0x1 App] ✅ Router created using constructor pattern');
-    } catch (constructorError) {
-      try {
-        // Try as factory function (RouterConstructor())
-        router = RouterConstructor({
-          rootElement: appElement,
-          mode: 'history',
-          debug: false,
-          base: '/',
-          notFoundComponent: notFoundComponent
-        });
-        console.log('[0x1 App] ✅ Router created using factory pattern');
-      } catch (factoryError) {
-        console.error('[0x1 App] ❌ Failed to create router with constructor:', constructorError);
-        console.error('[0x1 App] ❌ Failed to create router with factory:', factoryError);
-        throw new Error(\`Failed to create router instance. Constructor error: \${constructorError.message}, Factory error: \${factoryError.message}\`);
-      }
-    }
-
+    
     window.__0x1_ROUTER__ = router;
     window.__0x1_router = router;
     window.router = router;
-
-    // Step 4: Register routes with cached layout loading and metadata updates
+    
+    // Step 4: Register routes with nested layout support
     for (const route of serverRoutes) {
       try {
-        // Load all layouts for this route ONCE using cache
+        // Load all layouts for this route
         const layouts = route.layouts || [];
         const loadedLayouts = await loadLayoutHierarchy(layouts);
-
-      const routeComponent = async (props) => {
+        
+        const routeComponent = async (props) => {
           try {
-        const componentModule = await import(route.componentPath);
-
+            const componentModule = await import(route.componentPath);
+            
+            // CRITICAL: Update metadata when route loads (same as production)
+            await updatePageMetadata(route);
+            
             if (componentModule && componentModule.default) {
-              // CRITICAL: Update page metadata when route loads
-              await updatePageMetadata(route);
-
-              // Compose the page component with all its layouts
-              const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
-              return composedComponent(props);
+              // CRITICAL FIX: Set up component context with UPDATE CALLBACK
+              const componentId = 'route_' + route.path.replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now();
+              
+              // Ensure component context functions are available
+              if (typeof window.__0x1_enterComponentContext !== 'function') {
+                console.error('[0x1 Production] Component context functions not available');
+                throw new Error('Component context system not initialized');
+              }
+              
+              // CRITICAL FIX: Create a proper update callback that triggers router re-render
+              const routeUpdateCallback = () => {
+                if (window.router && typeof window.router.reRender === 'function') {
+                  if (DEBUG) {
+                    console.log('[0x1 Production] Triggering route re-render via router.reRender()');
+                  }
+                  window.router.reRender();
+                } else if (window.router && typeof window.router.navigate === 'function') {
+                  if (DEBUG) {
+                    console.log('[0x1 Production] Triggering route re-render via router.navigate()');
+                  }
+                  window.router.navigate(window.location.pathname, false);
+                } else {
+                  console.warn('[0x1 Production] Router not available for route update callback');
+                }
+              };
+              
+              // CRITICAL FIX: Use JSX runtime's callComponentWithContext for proper integration
+              // This ensures the page component gets proper re-render capabilities
+              try {
+                // Set route-level component context
+                window.__0x1_enterComponentContext(componentId, routeUpdateCallback);
+                
+                // Compose the page component with all its layouts FIRST
+                const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+                
+                // CRITICAL FIX: Call the composed component through JSX runtime for proper integration
+                // This gives it the same treatment as Header component
+                const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+                if (jsxRuntime && typeof composedComponent === 'function') {
+                  // Use JSX runtime to call the component - this enables proper re-rendering
+                  const result = jsxRuntime(composedComponent, props);
+                  
+                  // Clear context after successful render
+                  window.__0x1_exitComponentContext();
+                  return result;
+                } else {
+                  // Fallback: direct call (but this won't have proper re-rendering)
+                  const result = composedComponent(props);
+                  window.__0x1_exitComponentContext();
+                  return result;
+                }
+              } catch (error) {
+                console.error('[0x1 Production] Component execution error:', error);
+                // Clear context on error
+                if (typeof window.__0x1_exitComponentContext === 'function') {
+                  window.__0x1_exitComponentContext();
+                }
+                throw error;
+              }
             } else {
-              if (DEBUG) console.warn('[0x1] Component has no default export:', route.path);
+              console.warn('[0x1 Production] Component has no default export:', route.path);
               return {
                 type: 'div',
-                props: {
+                props: { 
                   className: 'p-8 text-center',
-                  style: 'color: #f59e0b;'
+                  style: 'color: #f59e0b;' 
                 },
                 children: ['Component loaded but has no default export: ' + route.path]
               };
             }
           } catch (error) {
-            if (DEBUG) console.error('[0x1] Route component error:', route.path, error);
+            console.error('[0x1 Production] Route component error:', route.path, error);
             return {
               type: 'div',
-              props: {
+              props: { 
                 className: 'p-8 text-center',
-                style: 'color: #ef4444;'
+                style: 'color: #ef4444;' 
               },
               children: ['❌ Failed to load component: ' + route.path]
             };
           }
         };
-
-        router.addRoute(route.path, routeComponent, {
+        
+        router.addRoute(route.path, routeComponent, { 
           componentPath: route.componentPath,
           layouts: layouts
         });
-
+        
       } catch (error) {
-        if (DEBUG) console.error('[0x1] Failed to register route:', route.path, error);
+        console.error('[0x1 Production] Failed to register route:', route.path, error);
       }
     }
-
+    
     // Step 5: Start router
     router.init();
-
-    // CRITICAL: Navigate to current path and update metadata
-    const currentPath = window.location.pathname;
-    const currentRoute = serverRoutes.find(route => route.path === currentPath);
-    if (currentRoute) {
-      await updatePageMetadata(currentRoute);
+    router.navigate(window.location.pathname, false);
+    
+    if (DEBUG) {
+      console.log('[0x1 Production] ✅ App initialized successfully');
     }
-
-    router.navigate(currentPath, false);
-
-    console.log('[0x1] App initialized successfully');
-
+    
   } catch (error) {
-    console.error('[0x1] Initialization failed:', error);
-
+    console.error('[0x1 Production] ❌ Initialization failed:', error);
+    
     const appElement = document.getElementById('app');
     if (appElement) {
-      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
+      appElement.innerHTML = '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;"><h2 style="color: #ef4444; margin-bottom: 16px;">Application Error</h2><p style="color: #6b7280; margin-bottom: 20px;">' + error.message + '</p><details style="text-align: left; background: #f9fafb; padding: 16px; border-radius: 8px;"><summary style="cursor: pointer; font-weight: bold;">Error Details</summary><pre style="font-size: 12px; overflow-x: auto;">' + (error.stack || 'No stack trace') + '</pre></details><button onclick="window.location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button></div>';
     }
   }
 }
 
-// Start immediately
+// ===== START IMMEDIATELY =====
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
   initApp();
-}
-`;
+}`;
 
     await Bun.write(join(outputPath, "app.js"), appScript);
 
@@ -3623,7 +3914,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
     const nodeModulesOutputPath = join(outputPath, "node_modules");
 
     // CRITICAL: Dynamic detection of ALL scoped packages being imported
-    const scopedPackages = await this.detectScopedPackageImports();
+    const scopedPackages = await this.detectPackageImports();
 
     for (const packageName of scopedPackages) {
       const packageSourcePath = join(
@@ -3710,41 +4001,61 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
   }
 
   /**
-   * Dynamically detect ALL scoped packages being imported in the project
-   * ZERO HARDCODING - discovers any @scope/package pattern
-   */
-  private async detectScopedPackageImports(): Promise<string[]> {
-    const scopedPackages = new Set<string>();
+ * Dynamically detect ALL packages being imported in the project
+ * ZERO HARDCODING - discovers any package pattern (scoped and regular)
+ */
+  private async detectPackageImports(): Promise<string[]> {
+    const packages = new Set<string>();
 
-    // Scan all source files for scoped imports
+    // Scan all source files for package imports
     const sourceFiles = await this.findAllSourceFiles();
 
     for (const filePath of sourceFiles) {
       try {
         const content = readFileSync(filePath, "utf-8");
 
-        // Match all scoped package imports: @scope/package
+        // Match scoped package imports: @scope/package
         const scopedImportMatches = content.match(
-          /from\s+["'](@[^/]+\/[^/"']+)/g
+          /from\s+["'](@[^/"']+\/[^/"']+)/g
         );
         if (scopedImportMatches) {
           for (const match of scopedImportMatches) {
-            const packageMatch = match.match(/from\s+["'](@[^/]+\/[^/"']+)/);
+            const packageMatch = match.match(/from\s+["'](@[^/"']+\/[^/"']+)/);
             if (packageMatch) {
-              scopedPackages.add(packageMatch[1]);
+              packages.add(packageMatch[1]);
             }
           }
         }
 
-        // Also match direct imports: import "@scope/package"
+        // Match regular package imports: openai, stream, etc.
+        const regularImportMatches = content.match(
+          /from\s+["']([a-zA-Z][a-zA-Z0-9_-]*(?:\/[a-zA-Z0-9_-]+)*)/g
+        );
+        if (regularImportMatches) {
+          for (const match of regularImportMatches) {
+            const packageMatch = match.match(/from\s+["']([a-zA-Z][a-zA-Z0-9_-]*)/);
+            if (packageMatch) {
+              const packageName = packageMatch[1];
+              // Skip relative imports and internal paths
+              if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
+                packages.add(packageName);
+              }
+            }
+          }
+        }
+
+        // Also match direct imports: import "package"
         const directImportMatches = content.match(
-          /import\s+["'](@[^/]+\/[^/"']+)/g
+          /import\s+["']([a-zA-Z@][^/"']*)/g
         );
         if (directImportMatches) {
           for (const match of directImportMatches) {
-            const packageMatch = match.match(/import\s+["'](@[^/]+\/[^/"']+)/);
+            const packageMatch = match.match(/import\s+["']([a-zA-Z@][^/"']*)/);
             if (packageMatch) {
-              scopedPackages.add(packageMatch[1]);
+              const packageName = packageMatch[1];
+              if (!packageName.startsWith('.') && !packageName.startsWith('/')) {
+                packages.add(packageName);
+              }
             }
           }
         }
@@ -3753,7 +4064,7 @@ body{line-height:1.6;font-family:system-ui,sans-serif;margin:0}
       }
     }
 
-    return Array.from(scopedPackages);
+    return Array.from(packages);
   }
 
   /**
@@ -4585,6 +4896,7 @@ export default function ErrorComponent(props) {
         "      } catch {}\n" +
         "    })();\n" +
         "  </script>\n" +
+        `  <script src="/0x1/error-boundary.js?v=${cacheBust}"></script>\n` +
         `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
         `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
         `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
@@ -4746,6 +5058,7 @@ export default function ErrorComponent(props) {
       "    }\n" +
       "  </script>\n\n" +
       "  <!-- PERFORMANCE: Safe preloaded module loading for instant rendering -->\n" +
+      `  <script src="/0x1/error-boundary.js?v=${cacheBust}"></script>\n` +
       `  <script src="/0x1/hooks.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/jsx-runtime.js?v=${cacheBust}" type="module"></script>\n` +
       `  <script src="/0x1/router.js?v=${cacheBust}" type="module"></script>\n` +
