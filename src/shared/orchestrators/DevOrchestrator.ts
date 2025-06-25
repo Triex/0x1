@@ -6,7 +6,7 @@
 
 import { serve, ServerWebSocket, type Server } from 'bun';
 import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 
 // Import shared core utilities
 import { getConfigurationManager } from '../core/ConfigurationManager';
@@ -24,7 +24,6 @@ import { notFoundHandler } from '../../cli/server/middleware/error-boundary';
 import { serveStaticFile } from '../../cli/server/middleware/static-files';
 
 // CRITICAL FIX: Import Tailwind v4 handler from working implementation
-import { tailwindV4Handler } from '../../cli/commands/utils/server/tailwind-v4';
 import { injectPWAIntoHTML, PWAConfig, PWAHandler } from '../core/PWAHandler';
 
 // WORKING: Import actual working handlers from dev-server.bak.ts
@@ -206,7 +205,6 @@ export class DevOrchestrator {
     logger.success(`✅ Development server ready with ${routeCount} routes`);
     
     // Beautiful server info box (like Next.js)
-    logger.spacer();
     logger.box(
       `🚀 0x1 Development Server
 
@@ -257,11 +255,12 @@ Powered by Bun    v${Bun.version}`
   private discoverRoutesFromFileSystem(projectPath: string): Route[] {
     const routes: Route[] = [];
     
-    const scanDirectory = (
-      dirPath: string, 
-      routePath: string = "", 
-      parentLayouts: Array<{ path: string; componentPath: string }> = []
-    ) => {
+      const scanDirectory = (
+    dirPath: string, 
+    routePath: string = "", 
+    parentLayouts: Array<{ path: string; componentPath: string }> = [],
+    groupInfo?: { routeGroup: string; isRouteGroup: boolean }
+  ) => {
       try {
         if (!existsSync(dirPath)) return;
 
@@ -276,14 +275,48 @@ Powered by Bun    v${Bun.version}`
         const currentLayouts = [...parentLayouts];
         if (layoutFiles.length > 0) {
           const actualLayoutFile = layoutFiles[0];
-          const layoutComponentPath = `/app${routePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
-          currentLayouts.push({ 
-            path: routePath || "/", 
-            componentPath: layoutComponentPath 
-          });
           
-          if (this.options.debug) {
-            logger.debug(`Found layout: ${routePath || "/"} -> ${layoutComponentPath}`);
+          // CRITICAL FIX: Determine actual file system path relative to dirPath
+          const relativePath = relative(join(this.options.projectPath, 'app'), dirPath);
+          const layoutComponentPath = relativePath 
+            ? `/app/${relativePath}/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`
+            : `/app/${actualLayoutFile.replace(/\.(tsx|ts)$/, ".js")}`;
+          
+          // CRITICAL FIX: Route group layouts should REPLACE parent layouts, not add to them
+          // This prevents duplicate layout nesting (root + chat layout)
+          const isRouteGroupLayout = relativePath.includes('(') && relativePath.includes(')');
+          
+          if (isRouteGroupLayout) {
+            // Route group layouts replace the root layout for their specific routes
+            currentLayouts.length = 0; // Clear parent layouts
+            currentLayouts.push({ 
+              path: routePath || "/", 
+              componentPath: layoutComponentPath 
+            });
+            
+            if (this.options.debug) {
+              logger.debug(`Route group layout replaces root layout: ${routePath || "/"} -> ${layoutComponentPath}`);
+            }
+          } else {
+            // Regular layouts check for duplicates and add to hierarchy
+            const isDuplicate = currentLayouts.some(layout => 
+              layout.componentPath === layoutComponentPath
+            );
+            
+            if (!isDuplicate) {
+              currentLayouts.push({ 
+                path: routePath || "/", 
+                componentPath: layoutComponentPath 
+              });
+              
+              if (this.options.debug) {
+                logger.debug(`Found layout: ${routePath || "/"} -> ${layoutComponentPath} (relative: ${relativePath})`);
+              }
+            } else {
+              if (this.options.debug) {
+                logger.debug(`Skipping duplicate layout: ${layoutComponentPath}`);
+              }
+            }
           }
         }
 
@@ -326,8 +359,30 @@ Powered by Bun    v${Bun.version}`
 
         for (const subdir of subdirs) {
           const subdirPath = join(dirPath, subdir);
+          
+                  // ENHANCED: Handle route groups (directories wrapped in parentheses)
+        const isRouteGroup = subdir.startsWith('(') && subdir.endsWith(')');
+        
+        if (isRouteGroup) {
+          // Route groups don't affect the URL path, but their layouts are included
+          const groupName = subdir.slice(1, -1); // Extract group name without parentheses
+          
+          if (this.options.debug) {
+            logger.debug(`Processing route group: ${subdir} (group: ${groupName}, path remains: ${routePath})`);
+          }
+          
+          // CRITICAL FIX: Pass route group information for better debugging and conflict resolution
+          scanDirectory(subdirPath, routePath, currentLayouts, { routeGroup: groupName, isRouteGroup: true });
+        } else {
+          // Regular directories add to the route path
           const subroutePath = routePath + "/" + subdir;
+          
+          if (this.options.debug) {
+            logger.debug(`Processing regular directory: ${subdir} (new path: ${subroutePath})`);
+          }
+          
           scanDirectory(subdirPath, subroutePath, currentLayouts);
+        }
         }
       } catch (error) {
         if (this.options.debug) {
@@ -455,7 +510,7 @@ Powered by Bun    v${Bun.version}`
 
       // 3. Framework core files (CRITICAL - RESTORED FROM WORKING VERSION)
       if (this.isFrameworkRequest(reqPath)) {
-        return await this.handleFrameworkRequest(reqPath);
+        return await this.handleFrameworkRequest(reqPath, req);
       }
 
       // 4. Node modules polyfill system (CRITICAL - RESTORED)
@@ -505,7 +560,7 @@ Powered by Bun    v${Bun.version}`
   /**
    * Handle framework core requests - RESTORED FROM WORKING VERSION
    */
-  private async handleFrameworkRequest(reqPath: string): Promise<Response> {
+  private async handleFrameworkRequest(reqPath: string, req?: Request): Promise<Response> {
     const frameworkPath = this.getFrameworkPath();
 
     // Handle JSX runtime requests
@@ -557,6 +612,8 @@ if (typeof window !== 'undefined') {
                 'import { $1 } from "/0x1/jsx-runtime.js"')
               .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
                 'import { $1 } from "/0x1/router.js"')
+              .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/server-actions["']/g, 
+                'import { $1 } from "/0x1/server-actions.js"')
               .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
                 'import { $1 } from "/node_modules/0x1/index.js"');
             
@@ -600,36 +657,71 @@ if (typeof window !== 'undefined') {
               content += await output.text();
             }
             
-            // Add essential browser compatibility
+            // CRITICAL FIX: Override router's minimal hooks setup with full system
             content += `
 if (typeof window !== 'undefined') {
-  // Initialize React-compatible global context
-  window.React = window.React || {};
+  // CRITICAL: Override any existing minimal hook systems (like router's) with full system
+  // This ensures the router uses the real hooks instead of its own minimal version
   
-  // Make hooks available globally (no complex context checking)
-  Object.assign(window, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
-  
-  // Also make available in React namespace for compatibility
-  Object.assign(window.React, {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage
-  });
-  
-  // Global hooks registry
-  window.__0x1_hooks = {
-    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
-    useClickOutside, useFetch, useForm, useLocalStorage,
-    isInitialized: true,
-    contextReady: true
+  // Store references to the real hooks functions
+  const realHookSystem = {
+    enterComponentContext,
+    exitComponentContext,
+    setComponentContext,
+    clearComponentContext,
+    triggerComponentUpdate
   };
   
-  console.log('[0x1 Hooks] IMMEDIATE browser compatibility initialized (no timing delays)');
+  // Make hooks available globally
+  Object.assign(window, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage, useGlobalState, useTheme
+  });
+  
+  // Initialize React compatibility  
+  window.React = window.React || {};
+  Object.assign(window.React, {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage, useGlobalState, useTheme
+  });
+  
+  // CRITICAL: Override router's hook context functions with real implementations
+  window.__0x1_enterComponentContext = realHookSystem.enterComponentContext;
+  window.__0x1_exitComponentContext = realHookSystem.exitComponentContext;
+  window.__0x1_triggerUpdate = realHookSystem.triggerComponentUpdate;
+  
+  // Full hooks registry (override any minimal version)
+  window.__0x1_hooks = {
+    useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef,
+    useClickOutside, useFetch, useForm, useLocalStorage, useGlobalState, useTheme,
+    isInitialized: true,
+    contextReady: true,
+    // Keep router compatibility fields but delegate to real system
+    currentComponent: null,
+    stateIndex: 0,
+    states: new Map(),
+    isRenderingComponent: false,
+    componentStack: [],
+    // Add real system access
+    componentRegistry,
+    updateQueue,
+    componentContextStack,
+    currentComponentId,
+    currentHookIndex,
+    // Global state system access
+    setGlobalState,
+    getGlobalState,
+    subscribeToGlobalState,
+    unsubscribeFromGlobalState
+  };
+  
+  console.log('[0x1 Hooks] FULL hooks system initialized - router integration ready');
   
   // Component context ready flag
   window.__0x1_component_context_ready = true;
+  
+  // CRITICAL: Initialize browser compatibility immediately
+  initializeBrowserCompat();
 }
 `;
             
@@ -676,6 +768,8 @@ export const useClickOutside = createHookGetter('useClickOutside');
 export const useFetch = createHookGetter('useFetch');
 export const useForm = createHookGetter('useForm');
 export const useLocalStorage = createHookGetter('useLocalStorage');
+export const useGlobalState = createHookGetter('useGlobalState');
+export const useTheme = createHookGetter('useTheme');
 
 // JSX runtime delegation
 export function jsx(type, props, key) {
@@ -812,6 +906,96 @@ if (typeof window !== 'undefined') {
       return this.createErrorResponse('Router not built - run "bun run build:framework" first');
     }
 
+    // Handle error boundary requests (both paths for compatibility)
+    if (reqPath === '/error-boundary.js' || reqPath === '/0x1-error-boundary.js' || reqPath.startsWith('/0x1-error-boundary.js?')) {
+      try {
+        const errorBoundaryPath = join(frameworkPath, 'src', 'browser', 'error', 'error-boundary.js');
+        if (existsSync(errorBoundaryPath)) {
+          let content = readFileSync(errorBoundaryPath, 'utf-8');
+          
+          // Add development mode enhancements
+          content += `\n\n// Development mode enhancements
+console.log('[0x1 Error Boundary] Loaded in development mode with enhanced debugging');
+
+// Auto-capture console errors immediately
+if (typeof window !== 'undefined' && window.__0x1_errorBoundary) {
+  // FIXED: Completely disable automatic SVG error detection - too many false positives
+  // SVG errors will only be caught if they actually appear in console.error with specific messages
+  setTimeout(() => {
+    // Only trigger if there's an actual browser SVG parsing error in the console
+    // This prevents false positives from the word "path" appearing in normal code
+    // REMOVED: SVG error detection - too many false positives
+    // Only actual SVG parsing errors will be shown by the browser console
+  }, 100);
+}
+`;
+          
+          return new Response(content, {
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'X-Error-Boundary': 'development'
+            }
+          });
+        }
+      } catch (error) {
+        logger.error(`Error boundary error: ${error}`);
+      }
+      
+      return this.createErrorResponse('Error boundary not available');
+    }
+
+    // Handle server actions endpoint
+    if (reqPath === '/__0x1_server_action') {
+      if (!req) {
+        return this.createErrorResponse('Request object required for server actions', 400);
+      }
+      
+      try {
+        const { handleServerAction } = await import('../../core/directives.js');
+        // Pass the original request directly to the handler
+        return await handleServerAction(req);
+      } catch (error) {
+        logger.error(`Server action handler error: ${error}`);
+        return this.createErrorResponse('Server action handler not available', 500);
+      }
+    }
+
+    // Handle server actions client wrapper
+    if (reqPath === '/0x1/server-actions.js' || reqPath === '/0x1/server-actions') {
+      try {
+        const serverActionsPath = join(frameworkPath, 'src', 'core', 'server-actions-client.ts');
+        if (existsSync(serverActionsPath)) {
+          const transpiled = await Bun.build({
+            entrypoints: [serverActionsPath],
+            target: 'browser',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            external: []
+          });
+          
+          if (transpiled.success && transpiled.outputs.length > 0) {
+            let content = '';
+            for (const output of transpiled.outputs) {
+              content += await output.text();
+            }
+            
+            return new Response(content, {
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              }
+            });
+          }
+        }
+      } catch (error) {
+        logger.error(`Server actions client error: ${error}`);
+      }
+      
+      return this.createErrorResponse('Server actions client not available');
+    }
+
     // Handle dedicated Link component - Clean implementation
     if (reqPath === '/0x1/link' || reqPath === '/0x1/link.js') {
       const linkComponent = `
@@ -874,6 +1058,285 @@ export default function Link({ href, className, children, target, rel, onClick, 
   }
 
   /**
+   * Preprocess source code for browser compatibility
+   */
+  private preprocessSourceForBrowser(sourceContent: string): string {
+    let processed = sourceContent;
+    
+    // Remove 'use client' directives (Next.js specific)
+    processed = processed.replace(/['"]use client['"];\s*/g, '');
+    
+    // Replace React types with generic types
+    processed = processed.replace(/React\.ReactNode/g, 'any');
+    processed = processed.replace(/React\.FC</g, '(props: ');
+    processed = processed.replace(/React\.Component</g, 'Component<');
+    
+    // Fix JSX return statements without parentheses
+    processed = processed.replace(/return\s+(<[^>]*[\s\S]*?)$/gm, 'return ($1');
+    
+    // Add missing closing parentheses for JSX returns
+    const lines = processed.split('\n');
+    let inJsxReturn = false;
+    let braceCount = 0;
+    let parenCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      if (line.match(/return\s*\(/)) {
+        inJsxReturn = true;
+        parenCount = 1;
+        braceCount = 0;
+      } else if (inJsxReturn) {
+        // Count braces and parentheses to find the end of JSX
+        for (const char of line) {
+          if (char === '(') parenCount++;
+          if (char === ')') parenCount--;
+          if (char === '{') braceCount++;
+          if (char === '}') braceCount--;
+        }
+        
+        // If we've closed all parens and we're at a function boundary, end JSX
+        if (parenCount === 0 && braceCount <= 0 && (line.includes('}') || line.includes(';'))) {
+          inJsxReturn = false;
+          if (!line.includes(')')) {
+            lines[i] = line + ')';
+          }
+        }
+      }
+    }
+    
+    processed = lines.join('\n');
+    
+    return processed;
+  }
+
+  /**
+   * Create browser polyfills for Node.js built-in modules
+   */
+  private createNodeBuiltinPolyfill(moduleName: string): Response {
+    let polyfillCode = '';
+
+    switch (moduleName) {
+      case 'stream/web':
+        polyfillCode = `
+// Browser polyfill for stream/web
+export class ReadableStream {
+  constructor(underlyingSource = {}, strategy = {}) {
+    if (typeof window !== 'undefined' && window.ReadableStream) {
+      return new window.ReadableStream(underlyingSource, strategy);
+    }
+    
+    // Minimal fallback implementation
+    this._source = underlyingSource;
+    this._strategy = strategy;
+    this._reader = null;
+  }
+  
+  getReader() {
+    if (typeof window !== 'undefined' && window.ReadableStream) {
+      return new window.ReadableStream(this._source, this._strategy).getReader();
+    }
+    
+    return {
+      read: () => Promise.resolve({ done: true, value: undefined }),
+      releaseLock: () => {},
+      cancel: () => Promise.resolve()
+    };
+  }
+}
+
+export class WritableStream {
+  constructor(underlyingSink = {}, strategy = {}) {
+    if (typeof window !== 'undefined' && window.WritableStream) {
+      return new window.WritableStream(underlyingSink, strategy);
+    }
+    
+    this._sink = underlyingSink;
+    this._strategy = strategy;
+  }
+  
+  getWriter() {
+    if (typeof window !== 'undefined' && window.WritableStream) {
+      return new window.WritableStream(this._sink, this._strategy).getWriter();
+    }
+    
+    return {
+      write: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+      abort: () => Promise.resolve(),
+      releaseLock: () => {}
+    };
+  }
+}
+
+export class TransformStream {
+  constructor(transformer = {}, readableStrategy = {}, writableStrategy = {}) {
+    if (typeof window !== 'undefined' && window.TransformStream) {
+      return new window.TransformStream(transformer, readableStrategy, writableStrategy);
+    }
+    
+    this.readable = new ReadableStream();
+    this.writable = new WritableStream();
+  }
+}
+
+// Make available globally
+if (typeof globalThis !== 'undefined') {
+  globalThis.ReadableStream = globalThis.ReadableStream || ReadableStream;
+  globalThis.WritableStream = globalThis.WritableStream || WritableStream;
+  globalThis.TransformStream = globalThis.TransformStream || TransformStream;
+}
+
+console.log('[0x1] stream/web polyfill loaded');
+`;
+        break;
+
+      case 'stream':
+        polyfillCode = `
+// Browser polyfill for Node.js stream module
+export class Readable {
+  constructor(options = {}) {
+    this._readableState = { flowing: false, ended: false };
+    this._options = options;
+  }
+  
+  pipe(destination) {
+    return destination;
+  }
+  
+  read() {
+    return null;
+  }
+  
+  on(event, listener) {
+    return this;
+  }
+  
+  emit(event, ...args) {
+    return false;
+  }
+}
+
+export class Writable {
+  constructor(options = {}) {
+    this._writableState = { ended: false };
+    this._options = options;
+  }
+  
+  write(chunk, encoding, callback) {
+    if (typeof encoding === 'function') {
+      callback = encoding;
+      encoding = 'utf8';
+    }
+    if (callback) callback();
+    return true;
+  }
+  
+  end(chunk, encoding, callback) {
+    if (typeof chunk === 'function') {
+      callback = chunk;
+      chunk = null;
+    }
+    if (typeof encoding === 'function') {
+      callback = encoding;
+      encoding = 'utf8';
+    }
+    if (callback) callback();
+  }
+}
+
+export class Transform extends Readable {
+  constructor(options = {}) {
+    super(options);
+  }
+  
+  _transform(chunk, encoding, callback) {
+    callback(null, chunk);
+  }
+}
+
+console.log('[0x1] stream polyfill loaded');
+`;
+        break;
+
+      case 'buffer':
+        polyfillCode = `
+// Browser polyfill for Node.js buffer module
+export const Buffer = (function() {
+  if (typeof window !== 'undefined' && window.Buffer) {
+    return window.Buffer;
+  }
+  
+  // Minimal Buffer implementation
+  function Buffer(data, encoding = 'utf8') {
+    if (typeof data === 'string') {
+      return new TextEncoder().encode(data);
+    }
+    if (Array.isArray(data)) {
+      return new Uint8Array(data);
+    }
+    if (typeof data === 'number') {
+      return new Uint8Array(data);
+    }
+    return new Uint8Array(data || 0);
+  }
+  
+  Buffer.from = function(data, encoding) {
+    return new Buffer(data, encoding);
+  };
+  
+  Buffer.alloc = function(size, fill = 0) {
+    const buf = new Uint8Array(size);
+    buf.fill(fill);
+    return buf;
+  };
+  
+  Buffer.isBuffer = function(obj) {
+    return obj instanceof Uint8Array;
+  };
+  
+  return Buffer;
+})();
+
+export default Buffer;
+console.log('[0x1] buffer polyfill loaded');
+`;
+        break;
+
+      default:
+        polyfillCode = `
+// Generic Node.js built-in polyfill for ${moduleName}
+console.warn('[0x1] Using generic polyfill for Node.js built-in: ${moduleName}');
+
+const polyfill = new Proxy({}, {
+  get(target, prop) {
+    if (typeof prop === 'string') {
+      return function(...args) {
+        console.warn('[0x1] Called polyfilled function: ' + '${moduleName}' + '.' + prop);
+        return {};
+      };
+    }
+    return undefined;
+  }
+});
+
+export default polyfill;
+export const ${moduleName.replace(/[^a-zA-Z0-9]/g, '_')} = polyfill;
+`;
+        break;
+    }
+
+    return new Response(polyfillCode, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Polyfill': moduleName
+      }
+    });
+  }
+
+  /**
    * Handle node_modules requests with intelligent polyfills - RESTORED
    */
   private async handleNodeModulesRequest(reqPath: string): Promise<Response> {
@@ -900,9 +1363,26 @@ export default function Link({ href, className, children, target, rel, onClick, 
       filePath = parts.slice(2).join('/'); // dist/index.js
     } else {
       // Regular package: package/file/path
-      const parts = packagePath.split('/');
-      packageName = parts[0];
-      filePath = parts.slice(1).join('/');
+      packageName = packagePath.split('/')[0];
+      filePath = packagePath.substring(packageName.length + 1);
+    }
+
+    // ENHANCED: Handle Node.js built-in modules with browser polyfills
+    const nodeBuiltins = [
+      'stream', 'stream/web', 'stream/consumers', 'stream/promises',
+      'fs', 'fs/promises', 'path', 'crypto', 'http', 'https', 'url', 'util',
+      'events', 'buffer', 'os', 'child_process', 'cluster', 'dgram', 'dns',
+      'net', 'tls', 'readline', 'repl', 'string_decoder', 'tty', 'vm',
+      'worker_threads', 'zlib', 'assert', 'async_hooks', 'console',
+      'constants', 'domain', 'module', 'perf_hooks', 'process', 'punycode',
+      'querystring', 'sys', 'timers', 'trace_events', 'v8'
+    ];
+
+    if (nodeBuiltins.includes(packageName)) {
+      if (this.options.debug) {
+        logger.debug(`[DevOrchestrator] Providing browser polyfill for Node.js built-in: ${packageName}`);
+      }
+      return this.createNodeBuiltinPolyfill(packageName);
     }
 
     // Check if package exists first
@@ -912,42 +1392,77 @@ export default function Link({ href, className, children, target, rel, onClick, 
         // Try to serve the exact requested file
         const requestedFilePath = join(packageDir, filePath);
         
+        // CRITICAL FIX: Check if the requested path is a directory first
         if (existsSync(requestedFilePath)) {
-          let content = readFileSync(requestedFilePath, 'utf-8');
+          const stats = statSync(requestedFilePath);
           
-          // CRITICAL: Handle CSS files specially
-          if (requestedFilePath.endsWith('.css')) {
-            // Rewrite relative CSS imports to absolute URLs
-            content = content.replace(
-              /@import\s+['"]\.\/([^'"]+)['"];?/g,
-              (match, filename) => {
-                const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
-                return `@import '${absoluteUrl}';`;
+          if (stats.isDirectory()) {
+            // If it's a directory, try to resolve to index.js or package.json main
+            const packageJsonPath = join(requestedFilePath, 'package.json');
+            let entryFile = 'index.js';
+            
+            if (existsSync(packageJsonPath)) {
+              try {
+                const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+                entryFile = packageJson.module || packageJson.main || 'index.js';
+              } catch (e) {
+                // Fallback to index.js if package.json is malformed
               }
-            );
+            }
+            
+            const resolvedPath = join(requestedFilePath, entryFile);
+            if (existsSync(resolvedPath) && stats.isFile()) {
+              const content = readFileSync(resolvedPath, 'utf-8');
+              
+              if (!this.options.silent) {
+                logger.debug(`[DevOrchestrator] Resolved directory to entry: ${packageName}/${filePath} -> ${entryFile}`);
+              }
+              
+              return new Response(content, {
+                headers: {
+                  'Content-Type': 'application/javascript; charset=utf-8',
+                  'Cache-Control': 'no-cache'
+                }
+              });
+            }
+          } else if (stats.isFile()) {
+            // It's a file, read it normally
+            let content = readFileSync(requestedFilePath, 'utf-8');
+            
+            // CRITICAL: Handle CSS files specially
+            if (requestedFilePath.endsWith('.css')) {
+              // Rewrite relative CSS imports to absolute URLs
+              content = content.replace(
+                /@import\s+['"]\.\/([^'"]+)['"];?/g,
+                (match, filename) => {
+                  const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
+                  return `@import '${absoluteUrl}';`;
+                }
+              );
+              
+              if (!this.options.silent) {
+                logger.debug(`[DevOrchestrator] Serving CSS: ${packageName}/${filePath} (${content.length} bytes)`);
+              }
+              
+              return new Response(content, {
+                headers: {
+                  'Content-Type': 'text/css; charset=utf-8',
+                  'Cache-Control': 'no-cache'
+                }
+              });
+            }
             
             if (!this.options.silent) {
-              logger.debug(`[DevOrchestrator] Serving CSS: ${packageName}/${filePath} (${content.length} bytes)`);
+              logger.debug(`[DevOrchestrator] Serving: ${packageName}/${filePath}`);
             }
             
             return new Response(content, {
               headers: {
-                'Content-Type': 'text/css; charset=utf-8',
+                'Content-Type': requestedFilePath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
                 'Cache-Control': 'no-cache'
               }
             });
           }
-          
-          if (!this.options.silent) {
-            logger.debug(`[DevOrchestrator] Serving: ${packageName}/${filePath}`);
-          }
-          
-          return new Response(content, {
-            headers: {
-              'Content-Type': requestedFilePath.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/plain',
-              'Cache-Control': 'no-cache'
-            }
-          });
         }
         
         // If exact file doesn't exist, try fallbacks
@@ -1138,9 +1653,8 @@ commonExportPatterns.forEach(exportName => {
 // Make available globally
 if (typeof window !== 'undefined') {
   window['${packageName}'] = intelligentNamespace;
-}
-if (typeof globalThis !== 'undefined') {
-  globalThis['${packageName}'] = intelligentNamespace;
+} else if (typeof global !== 'undefined') {
+  global['${packageName}'] = intelligentNamespace;
 }
 `;
 
@@ -1185,9 +1699,23 @@ if (typeof globalThis !== 'undefined') {
         logger.debug(`[DevOrchestrator] Found source file: ${sourcePath}`);
       }
 
-      // Check cache first
+      // CRITICAL FIX: Skip cache for components that previously failed export detection
       const cached = this.state.components.get(sourcePath);
-      if (cached && await this.isFileUnchanged(sourcePath, cached.mtime)) {
+      const shouldSkipCache = cached && (
+        cached.content.includes('Component has no default export') ||
+        !cached.content.includes('export default') ||
+        cached.content.includes('undefined')
+      );
+      
+      // Clear problematic cache entries
+      if (shouldSkipCache) {
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] Clearing problematic cache for: ${sourcePath}`);
+        }
+        this.state.components.delete(sourcePath);
+      }
+      
+      if (cached && !shouldSkipCache && await this.isFileUnchanged(sourcePath, cached.mtime)) {
         if (this.options.debug) {
           logger.debug(`[DevOrchestrator] Serving cached component: ${sourcePath}`);
         }
@@ -1202,7 +1730,10 @@ if (typeof globalThis !== 'undefined') {
       }
       
       // Read source file
-      const sourceContent = readFileSync(sourcePath, 'utf-8');
+      let sourceContent = readFileSync(sourcePath, 'utf-8');
+      
+      // CRITICAL FIX: Handle client directives and React types
+      sourceContent = this.preprocessSourceForBrowser(sourceContent);
       
       // Create Bun transpiler with explicit JSX configuration
       const transpiler = new Bun.Transpiler({
@@ -1252,91 +1783,174 @@ if (typeof globalThis !== 'undefined') {
         .replace(/jsxs_[a-zA-Z0-9]+/g, 'jsxs')
         .replace(/Fragment_[a-zA-Z0-9]+/g, 'Fragment');
 
-      // // CRITICAL FIX: Transform ES module syntax (export default) to browser-compatible format
-      // // This addresses the SyntaxError: Unexpected token 'default' issue
-      // const hasExportDefault = content.includes('export default');
-      // if (hasExportDefault) {
-      //   if (this.options.debug) {
-      //     logger.debug(`[DevOrchestrator] Transforming ES module syntax in: ${sourcePath}`);
-      //   }
+      // ENHANCED ES MODULE TRANSFORMATION - BULLETPROOF FOR ALL CASES
+      const hasExportDefault = content.includes('export default');
+      if (hasExportDefault) {
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] Enhanced transformation for: ${sourcePath}`);
+          logger.debug(`[DevOrchestrator] BEFORE:\n${content.substring(0, 300)}`);
+        }
         
-      //   // Pattern 1: export default function Component() {...}
-      //   content = content.replace(
-      //     /export\s+default\s+function\s+([A-Za-z0-9_$]+)\s*\(([^)]*)\)\s*\{/g, 
-      //     'function $1($2) {\n// Expose component as window.Component\nwindow.$1 = $1;\n'
-      //   );
+        // STEP 1: Smart component name extraction with fallbacks
+        let componentName = '';
         
-      //   // Pattern 2: export default class Component {...}
-      //   content = content.replace(
-      //     /export\s+default\s+class\s+([A-Za-z0-9_$]+)\s*\{/g, 
-      //     'class $1 {\n// Expose class as window.Component\nwindow.$1 = $1;\n'
-      //   );
+        // Try multiple patterns for component detection
+        const patterns = [
+          // Function declarations: function ComponentName() {}
+          /function\s+([A-Z]\w*)\s*\([^)]*\)\s*\{/,
+          // Arrow functions: const ComponentName = () => {}
+          /(?:const|let|var)\s+([A-Z]\w*)\s*=\s*\([^)]*\)\s*=>/,
+          // Arrow functions with props: const ComponentName = (props) => {}
+          /(?:const|let|var)\s+([A-Z]\w*)\s*=\s*\(\s*\{[^}]*\}\s*\)\s*=>/,
+          // Function expressions: const ComponentName = function() {}
+          /(?:const|let|var)\s+([A-Z]\w*)\s*=\s*function/,
+          // Export default function: export default function ComponentName() {}
+          /export\s+default\s+function\s+([A-Z]\w*)\s*\(/,
+          // Default export with name: export default ComponentName
+          /export\s+default\s+([A-Z]\w+)(?:\s|;|$)/
+        ];
         
-      //   // Pattern 3: export default SomeComponent
-      //   content = content.replace(
-      //     /export\s+default\s+([A-Za-z0-9_$]+);?/g,
-      //     'window.$1 = $1;'
-      //   );
+        for (const pattern of patterns) {
+          const match = content.match(pattern);
+          if (match && match[1]) {
+            componentName = match[1];
+            break;
+          }
+        }
         
-      //   // Pattern 4: export default { ... } or export default () => {...}
-      //   content = content.replace(
-      //     /export\s+default\s+(?:\{|\()/g,
-      //     'window.__defaultExport = {'
-      //   );
-      // }
+        // Fallback to filename-based component name
+        if (!componentName) {
+          componentName = basename(reqPath, extname(reqPath))
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .replace(/^[a-z]/, c => c.toUpperCase());
+          
+          // Ensure it's a valid component name
+          if (!componentName || componentName.length === 0) {
+            componentName = 'DefaultComponent';
+          } else if (!/^[A-Z]/.test(componentName)) {
+            componentName = componentName.charAt(0).toUpperCase() + componentName.slice(1);
+          }
+          
+          if (!componentName.endsWith('Component') && componentName.length < 8) {
+            componentName += 'Component';
+          }
+        }
+        
+        // STEP 2: ENHANCED EXPORT REPLACEMENT - Handle all edge cases
+        try {
+          // Pattern 1: export default function ComponentName() {}
+          if (content.includes('export default function')) {
+            content = content.replace(/export\s+default\s+function\s+(\w+)/g, 'function $1');
+          }
+          
+          // Pattern 2: export default ComponentName (at end of file)
+          else if (content.match(/export\s+default\s+\w+\s*;?\s*$/)) {
+            content = content.replace(/export\s+default\s+(\w+)\s*;?\s*$/, '');
+          }
+          
+          // Pattern 3: const ComponentName = () => {}; export default ComponentName;
+          else if (content.includes('export default ' + componentName)) {
+            content = content.replace(new RegExp(`export\\s+default\\s+${componentName}\\s*;?`, 'g'), '');
+          }
+          
+          // Pattern 4: Generic export default removal (fallback)
+          else {
+            content = content.replace(/export\s+default\s+/g, '');
+          }
+          
+          // STEP 3: Add ES module compatible assignment
+          content += `
 
+// 0x1 Framework: ES Module Compatible Export
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = ${componentName};
+  module.exports.default = ${componentName};
+  module.exports.__esModule = true;
+}
+
+// Browser global assignment
+if (typeof window !== 'undefined') {
+  window.default = ${componentName};
+  window['${componentName}'] = ${componentName};
+}
+
+// Node.js global assignment
+if (typeof global !== 'undefined') {
+  global.default = ${componentName};
+  global['${componentName}'] = ${componentName};
+}
+
+// Dynamic import compatibility
+export default ${componentName};
+`;
+          
+          if (this.options.debug) {
+            logger.debug(`[DevOrchestrator] Enhanced transformation completed`);
+            logger.debug(`[DevOrchestrator] Component name: ${componentName}`);
+          }
+          
+        } catch (transformError) {
+          logger.error(`[DevOrchestrator] Transform error for ${sourcePath}: ${transformError}`);
+          
+          // Emergency fallback - just remove export default
+          content = content.replace(/export\s+default\s+/g, '');
+          content += `\n\n// Emergency fallback export\nif (typeof module !== 'undefined' && module.exports) { module.exports = ${componentName}; }\n`;
+        }
+      }
+      
       // CRITICAL: Rewrite import paths to browser-resolvable URLs
       content = content
         .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']\.\.\/components\/([^"']+)["']/g, 
           'import { $1 } from "/components/$2.js"')
         .replace(/import\s*["']\.\/globals\.css["']/g, '// CSS import externalized')
-        .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized');
+        .replace(/import\s*["']\.\.\/globals\.css["']/g, '// CSS import externalized')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-dev-runtime["']/g, 
+          'import { $1 } from "/0x1/jsx-runtime.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/jsx-runtime["']/g, 
+          'import { $1 } from "/0x1/jsx-runtime.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/link["']/g, 
+          'import { $1 } from "/0x1/router.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1\/server-actions["']/g, 
+          'import { $1 } from "/0x1/server-actions.js"')
+        .replace(/import\s*{\s*([^}]+)\s*}\s*from\s*["']0x1["']/g, 
+          'import { $1 } from "/node_modules/0x1/index.js"');
+        
+        // CRITICAL: Transform server actions first (before import transformation)
+        const { transformServerActions } = await import('../../core/server-actions-transformer.js');
+        content = transformServerActions(content, sourcePath, this.options.projectPath, 'development');
 
-      // CRITICAL: Use unified ImportTransformer for robust import handling (SINGLE SOURCE OF TRUTH)
-      content = ImportTransformer.transformImports(content, {
-        sourceFilePath: sourcePath,
-        projectPath: this.options.projectPath,
-        mode: 'development',
-        debug: this.options.debug || false // Only enable when explicitly debugging
-      });
+        // CRITICAL: Use unified ImportTransformer for robust import handling (SINGLE SOURCE OF TRUTH)
+        content = ImportTransformer.transformImports(content, {
+          sourceFilePath: sourcePath,
+          projectPath: this.options.projectPath,
+          mode: 'development',
+          debug: this.options.debug || false // Only enable when explicitly debugging
+        });
 
-      // Add error boundary injection to ensure errors are captured and displayed
-      if (content.indexOf('__0x1_errorBoundary') === -1) {
-        content = `// Error boundary injection
-if (typeof window !== 'undefined' && !window.__0x1_errorBoundary) {
-  // Load error boundary script if not already loaded
-  const errorScript = document.createElement('script');
-  errorScript.src = '/error-boundary.js';
-  errorScript.async = false;
-  document.head.appendChild(errorScript);
-}
+        // Error boundary is loaded via script tag in HTML template - no need for dynamic injection
 
-${content}`;
-      }
+        // Cache the transformed content
+        this.state.components.set(sourcePath, {
+          content,
+          mtime: statSync(sourcePath).mtime.getTime()
+        });
 
-      if (this.options.debug) {
-        logger.debug(`[DevOrchestrator] Transpilation successful: ${sourcePath} (${content.length} bytes)`);
-      }
+        if (this.options.debug) {
+          logger.debug(`[DevOrchestrator] Component transformation completed: ${sourcePath}`);
+        }
 
-      // Cache the result
-      const stats = statSync(sourcePath);
-      this.state.components.set(sourcePath, {
-        content,
-        mtime: stats.mtimeMs
-      });
-
-      return new Response(content, {
-        headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-      });
+        return new Response(content, {
+          headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+        });
 
     } catch (error) {
-      logger.error(`[DevOrchestrator] Component transpilation failed: ${error}`);
-      return this.createErrorResponse(error);
+      logger.error(`[DevOrchestrator] Component request failed: ${error}`);
+      return this.createErrorResponse(`Component transformation failed: ${error}`, 500);
     }
   }
 
   /**
-   * Generate possible source file paths - ENHANCED FOR LAYOUT FILES
+   * Generate possible source file paths - ENHANCED FOR ROUTE GROUPS
    */
   private generatePossiblePaths(relativePath: string): string[] {
     const extensions = ['.tsx', '.jsx', '.ts', '.js'];
@@ -1358,6 +1972,26 @@ ${content}`;
       for (const ext of extensions) {
         paths.push(`${appBasePath}${ext}`);
       }
+
+      // CRITICAL: Handle Next.js route groups
+      // For /app/chat/page.js, also check /app/(chat)/chat/page.tsx
+      const pathSegments = appRelativePath.split('/');
+      if (pathSegments.length >= 2) {
+        const [firstSegment, ...restSegments] = pathSegments;
+        
+        // Try route group variations: wrap the first segment in parentheses and duplicate it
+        const routeGroupVariations = [
+          `(${firstSegment})/${firstSegment}/${restSegments.join('/')}`,
+          `(${firstSegment})/${restSegments.join('/')}`
+        ];
+        
+        for (const variation of routeGroupVariations) {
+          const routeGroupPath = join(this.options.projectPath, 'app', variation);
+          for (const ext of extensions) {
+            paths.push(`${routeGroupPath}${ext}`);
+          }
+        }
+      }
     }
     
     return paths;
@@ -1373,6 +2007,112 @@ ${content}`;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Generate comprehensive Tailwind fallback CSS for Entity Zero app
+   */
+  private generateTailwindFallback(originalCss: string): string {
+    // CRITICAL: Replace the Tailwind import with actual utility classes, preserving Entity Zero styles
+    const processedCss = originalCss.replace(
+      /@import\s+["']tailwindcss["'];?\s*/g, 
+      `/* Tailwind CSS utilities - generated fallback for Entity Zero */
+
+/* Tailwind Base Reset */
+*, ::before, ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: var(--border); }
+
+/* Essential Tailwind Utilities */
+.container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+.py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+.py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+.px-8 { padding-left: 2rem; padding-right: 2rem; }
+.pt-20 { padding-top: 5rem; }
+.pb-32 { padding-bottom: 8rem; }
+.mb-8 { margin-bottom: 2rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-12 { margin-bottom: 3rem; }
+.mb-16 { margin-bottom: 4rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mt-auto { margin-top: auto; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-row { flex-direction: row; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.flex-grow { flex-grow: 1; }
+.grid { display: grid; }
+.gap-3 { gap: 0.75rem; }
+.w-full { width: 100%; }
+.w-5 { width: 1.25rem; }
+.h-full { height: 100%; }
+.h-5 { height: 1.25rem; }
+.min-h-screen { min-height: 100vh; }
+.max-w-4xl { max-width: 56rem; }
+.max-w-2xl { max-width: 42rem; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.bg-background { background-color: var(--background); }
+.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
+.bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
+.from-background { --tw-gradient-from: var(--background); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255, 255, 255, 0)); }
+.via-background\\/90 { --tw-gradient-stops: var(--tw-gradient-from), rgba(255, 255, 255, 0.9), var(--tw-gradient-to, rgba(255, 255, 255, 0)); }
+.to-background\\/80 { --tw-gradient-to: rgba(255, 255, 255, 0.8); }
+.from-primary { --tw-gradient-from: var(--primary); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255, 255, 255, 0)); }
+.to-accent { --tw-gradient-to: var(--accent); }
+.dark\\:from-background:is(.dark *) { --tw-gradient-from: var(--background); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255, 255, 255, 0)); }
+.dark\\:via-\\[\\#0f0f18\\]:is(.dark *) { --tw-gradient-stops: var(--tw-gradient-from), #0f0f18, var(--tw-gradient-to, rgba(255, 255, 255, 0)); }
+.dark\\:to-\\[\\#121220\\]:is(.dark *) { --tw-gradient-to: #121220; }
+.text-foreground { color: var(--foreground); }
+.text-muted-foreground { color: var(--muted-foreground); }
+.text-white { color: #ffffff; }
+.text-center { text-align: center; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-5xl { font-size: 3rem; line-height: 1; }
+.text-7xl { font-size: 4.5rem; line-height: 1; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.leading-tight { line-height: 1.25; }
+.leading-relaxed { line-height: 1.625; }
+.border { border-width: 1px; }
+.border-t { border-top-width: 1px; }
+.border-border { border-color: var(--border); }
+.rounded-xl { border-radius: 0.75rem; }
+.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+.transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+.duration-300 { transition-duration: 300ms; }
+.hover\\:-translate-y-1:hover { transform: translateY(-0.25rem); }
+.animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+.overflow-hidden { overflow: hidden; }
+.inline-flex { display: inline-flex; }
+.space-x-1 > :not([hidden]) ~ :not([hidden]) { margin-left: 0.25rem; }
+.space-x-2 > :not([hidden]) ~ :not([hidden]) { margin-left: 0.5rem; }
+.space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+@media (min-width: 640px) {
+  .sm\\:flex-row { flex-direction: row; }
+  .sm\\:space-y-0 > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
+  .sm\\:space-x-4 > :not([hidden]) ~ :not([hidden]) { margin-left: 1rem; }
+}
+@media (min-width: 768px) {
+  .md\\:text-7xl { font-size: 4.5rem; line-height: 1; }
+  .md\\:text-2xl { font-size: 1.5rem; line-height: 2rem; }
+}
+
+`
+    );
+
+    // Also remove any other Tailwind imports
+    return processedCss
+      .replace(/@import\s+["']@tailwindcss\/base["'];?\s*/g, '')
+      .replace(/@import\s+["']@tailwindcss\/components["'];?\s*/g, '')
+      .replace(/@import\s+["']@tailwindcss\/utilities["'];?\s*/g, '');
   }
 
   /**
@@ -1401,197 +2141,70 @@ ${content}`;
               join(packageDir, 'dist', 'styles.css'), // Wrapper files (lower priority)
               join(packageDir, 'dist', 'style.css'),
               join(packageDir, 'lib', 'styles.css'),
+              join(packageDir, 'lib', 'style.css'),
+              join(packageDir, 'style.css'),
               join(packageDir, 'styles.css'),
-              join(packageDir, 'style.css')
+              join(packageDir, 'index.css')
             ];
-            
-            // Find the best CSS file (prioritize by size - actual content over wrappers)
-            let bestCssPath = null;
-            let bestSize = 0;
-            
-            for (const cssPattern of possibleCssPaths) {
-              if (cssPattern.includes('*')) {
+
+            // Enhanced CSS file search with glob pattern support
+            let foundCssPath: string | null = null;
+            for (const pattern of possibleCssPaths) {
+              if (pattern.includes('*')) {
                 // Handle glob patterns
-                const dir = dirname(cssPattern);
-                const pattern = basename(cssPattern);
-                if (existsSync(dir)) {
-                  const files = readdirSync(dir).filter(f => 
-                    pattern.replace('*', '').split('').every(char => f.includes(char))
-                  );
-                  for (const file of files) {
-                    const fullPath = join(dir, file);
-                    if (existsSync(fullPath)) {
-                      const size = statSync(fullPath).size;
-                      if (size > bestSize) {
-                        bestCssPath = fullPath;
-                        bestSize = size;
+                try {
+                  const glob = await import('glob');
+                  const matches = glob.sync(pattern);
+                  if (matches.length > 0) {
+                    // Prefer hashed files (typically contain actual CSS content)
+                    const hashedFile = matches.find((m: string) => /-([\da-f]{8}|[\da-f]{6})\.css$/.test(m));
+                    foundCssPath = hashedFile || matches[0];
+                    break;
+                  }
+                } catch {
+                  // Fallback if glob is not available
+                  const dir = dirname(pattern);
+                  const fileName = basename(pattern).replace('*', '');
+                  if (existsSync(dir)) {
+                    try {
+                      const files = readdirSync(dir);
+                      const match = files.find(f => f.includes(fileName.replace('.css', '')) && f.endsWith('.css'));
+                      if (match) {
+                        foundCssPath = join(dir, match);
+                        break;
                       }
+                    } catch {
+                      // Continue to next pattern
                     }
                   }
                 }
-              } else if (existsSync(cssPattern)) {
-                const size = statSync(cssPattern).size;
-                if (size > bestSize) {
-                  bestCssPath = cssPattern;
-                  bestSize = size;
-                }
+              } else if (existsSync(pattern)) {
+                foundCssPath = pattern;
+                break;
               }
             }
-            
-            if (bestCssPath) {
-              const cssContent = readFileSync(bestCssPath, 'utf-8');
-              
-              if (!this.options.silent) {
-                logger.success(`✅ Serving CSS from ${packageName} (${(cssContent.length / 1024).toFixed(1)}KB)`);
-              }
 
-              // CRITICAL: Rewrite relative CSS imports to absolute URLs for dev server
-              const rewrittenCss = this.rewriteCssImports(cssContent, packageName);
-
-              return new Response(rewrittenCss, {
-                headers: {
-                  'Content-Type': 'text/css; charset=utf-8',
-                  'Cache-Control': 'no-cache',
-                  'X-Framework': '0x1',
-                  'X-CSS-Source': packageName
-                }
-              });
-            }
-          }
-        }
-        
-        return this.createNotFoundResponse('External package CSS not found');
-      }
-      
-      // CRITICAL FIX: Use CSS configuration system for intelligent processing
-      if (reqPath === '/styles.css' || reqPath === '/dist/styles.css' || reqPath === '/globals.css') {
-        // Get CSS configuration from ConfigurationManager
-        const configManager = getConfigurationManager(this.options.projectPath);
-        const cssConfig = await configManager.getCSSConfig();
-        
-        if (!this.options.silent) {
-          logger.info(`🎨 CSS Processor: ${cssConfig.processor} (${cssConfig.processor === '0x1-enhanced' ? 'Dev Lightning mode' : 'Standard mode'})`);
-        }
-
-        // Try 0x1 Enhanced TailwindHandler if configured
-        if (cssConfig.processor === '0x1-enhanced') {
-          try {
-            if (!this.options.silent) {
-              logger.info('⚡ Using 0x1 Enhanced TailwindHandler for development...');
-            }
-            
-            // Use dynamic import with constructed path to avoid TS resolution
-            let processTailwindFast;
-            try {
-              // Try built framework path first
-              const distPath = ['..', '..', 'dist', 'core', 'tailwind-handler.js'].join('/');
-              const builtHandler = await import(distPath);
-              processTailwindFast = builtHandler.processTailwindFast;
-            } catch {
+            if (foundCssPath) {
               try {
-                // Fallback to experimental path during development
-                const expPath = ['..', '..', '..', '0x1-experimental', 'tailwind-handler', 'TailwindHandler.js'].join('/');
-                const expHandler = await import(expPath);
-                processTailwindFast = expHandler.processTailwindFast;
-              } catch {
-                throw new Error('TailwindHandler not available');
-              }
-            }
-            
-            const result = await processTailwindFast(this.options.projectPath, {
-              outputPath: join(this.options.projectPath, 'dist', 'styles.css'),
-              config: {
-                content: cssConfig.content || [
-                  'app/**/*.{js,ts,jsx,tsx}',
-                  'components/**/*.{js,ts,jsx,tsx}',
-                  'pages/**/*.{js,ts,jsx,tsx}',
-                  '**/*.{html,js,ts,jsx,tsx}'
-                ],
-                darkMode: cssConfig.darkMode,
-                theme: cssConfig.theme
-              }
-            });
-            
-            if (result.success && result.css.length > 1000) {
-              const cacheStatus = result.fromCache ? '(cached)' : '(fresh)';
-              
-              if (!this.options.silent) {
-                logger.success(`✅ 0x1 Enhanced CSS: ${result.processingTime.toFixed(1)}ms ${cacheStatus} (${(result.css.length / 1024).toFixed(1)}KB)`);
-              }
-
-              return new Response(result.css, {
-                headers: {
-                  'Content-Type': 'text/css; charset=utf-8',
-                  'Cache-Control': 'no-cache',
-                  'X-Framework': '0x1',
-                  'X-CSS-Engine': '0x1-Enhanced',
-                  'X-Processing-Time': `${result.processingTime}ms`,
-                  'X-Cache-Hit': result.fromCache.toString()
+                const cssContent = readFileSync(foundCssPath, 'utf-8');
+                
+                if (!this.options.silent) {
+                  logger.debug(`[DevOrchestrator] Serving external package CSS: ${packageName} -> ${foundCssPath}`);
                 }
-              });
-            } else {
-              if (!this.options.silent) {
-                logger.warn('⚠️ 0x1 Enhanced handler produced minimal CSS, falling back...');
-              }
-            }
-          } catch (enhancedError) {
-            if (this.options.debug) {
-              logger.debug(`[DevOrchestrator] Enhanced handler failed: ${enhancedError}`);
-            }
-            if (!this.options.silent) {
-              logger.info('💠 Falling back to Tailwind v4...');
-            }
-          }
-        }
-
-        // Use Tailwind v4 (either as primary choice or fallback)
-        if (cssConfig.processor === 'tailwind-v4' || cssConfig.processor === '0x1-enhanced') {
-          // Check if Tailwind v4 is available first (same logic as working dev-server.bak.ts)
-          const isV4Available = await tailwindV4Handler.isAvailable(this.options.projectPath);
-          
-          if (isV4Available) {
-            if (!this.options.silent) {
-              logger.info(`🌈 Processing Tailwind CSS v4 from ${reqPath}`);
-            }
-
-            // Use working Tailwind v4 processing
-            let inputFile = tailwindV4Handler.findInputFile(this.options.projectPath);
-            if (!inputFile) {
-              inputFile = tailwindV4Handler.createDefaultInput(this.options.projectPath);
-            }
-
-            // Only proceed if we have a valid input file
-            if (inputFile) {
-              // Start Tailwind v4 process (minimal logging)
-              try {
-                const tailwindProcess = await tailwindV4Handler.startProcess(
-                  this.options.projectPath,
-                  inputFile,
-                  join(this.options.projectPath, 'dist', 'styles.css')
-                );
-
-                if (tailwindProcess && tailwindProcess.success) {
-                  const cssPath = join(this.options.projectPath, 'dist', 'styles.css');
-                  if (existsSync(cssPath)) {
-                    const cssContent = readFileSync(cssPath, 'utf-8');
-                    
-                    if (!this.options.silent) {
-                      logger.success(`✅ Serving Tailwind CSS v4 from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
-                    }
-
-                    return new Response(cssContent, {
-                      headers: {
-                        'Content-Type': 'text/css; charset=utf-8',
-                        'Cache-Control': 'no-cache',
-                        'X-Framework': '0x1',
-                        'X-CSS-Engine': 'Tailwind-v4'
-                      }
-                    });
+                
+                return new Response(cssContent, {
+                  headers: {
+                    'Content-Type': 'text/css; charset=utf-8',
+                    'Cache-Control': 'no-cache',
+                    'X-Framework': '0x1',
+                    'X-CSS-Engine': '0x1-Enhanced',
+                    'X-Processing-Time': `${Date.now()}ms`,
+                    'X-Cache-Hit': 'false'
                   }
-                }
-              } catch (tailwindError) {
-                if (this.options.debug) {
-                  logger.debug(`[DevOrchestrator] Tailwind v4 process failed: ${tailwindError}`);
+                });
+              } catch (error) {
+                if (!this.options.silent) {
+                  logger.warn(`Failed to read CSS file ${foundCssPath}: ${error}`);
                 }
               }
             }
@@ -1599,43 +2212,252 @@ ${content}`;
         }
       }
 
-      // Enhanced fallback CSS handling
-      const cssDirectories = [
-        join(this.options.projectPath, 'dist'),
-        join(this.options.projectPath, 'public'),
-        join(this.options.projectPath, 'app'),
-        join(this.options.projectPath, 'src')
+      // ENHANCED: Handle standard CSS files and Tailwind v4 integration
+      const cleanPath = reqPath.split('?')[0];
+      const possibleCssPaths = [
+        join(this.options.projectPath, 'app', cleanPath.substring(1)),
+        join(this.options.projectPath, 'src', cleanPath.substring(1)),
+        join(this.options.projectPath, cleanPath.substring(1)),
+        join(this.options.projectPath, 'app', 'globals.css'),
+        join(this.options.projectPath, 'src', 'globals.css'),
+        join(this.options.projectPath, 'globals.css')
       ];
 
-      for (const dir of cssDirectories) {
-        const possiblePaths = [
-          join(dir, 'styles.css'),
-          join(dir, 'globals.css'),
-          join(dir, 'global.css'),
-          join(dir, 'app.css'),
-          join(dir, 'main.css')
-        ];
+      // Find existing CSS file
+      let cssPath: string | null = null;
+      for (const path of possibleCssPaths) {
+        if (existsSync(path)) {
+          cssPath = path;
+          break;
+        }
+      }
 
-        for (const cssPath of possiblePaths) {
-          if (existsSync(cssPath)) {
-            const cssContent = readFileSync(cssPath, 'utf-8');
+      if (cssPath) {
+        try {
+          let cssContent = readFileSync(cssPath, 'utf-8');
+          
+          // ENHANCED: Apply Tailwind v4 processing with intelligent fallback
+          const isTailwindFile = cssContent.includes('@tailwind') || cssContent.includes('tailwindcss');
+          
+          if (isTailwindFile) {
+            // Check if this is a Tailwind v4 CSS file
+            const isTailwindCSS = cssContent.includes('@import "tailwindcss"') || 
+                                cssContent.includes("@import 'tailwindcss'");
             
-            if (!this.options.silent) {
-              logger.success(`✅ Serving CSS from ${cssPath.replace(this.options.projectPath, '')} (${(cssContent.length / 1024).toFixed(1)}KB)`);
-            }
-
-            return new Response(cssContent, {
-              headers: {
-                'Content-Type': 'text/css; charset=utf-8',
-                'Cache-Control': 'no-cache',
-                'X-Framework': '0x1'
+            if (isTailwindCSS) {
+              // Process with PostCSS and Tailwind v4
+              try {
+                // Dynamic import of PostCSS and Tailwind v4 PostCSS plugin
+                const [postcss, tailwindPlugin] = await Promise.all([
+                  import('postcss'),
+                  import('@tailwindcss/postcss').catch(() => null)
+                ]);
+                
+                if (postcss && tailwindPlugin) {
+                  const processor = postcss.default([
+                    tailwindPlugin.default({})
+                  ]);
+                  
+                  const result = await processor.process(cssContent, {
+                    from: cssPath,
+                    to: cssPath
+                  });
+                  
+                  cssContent = result.css;
+                  
+                  if (!this.options.silent) {
+                    logger.debug(`[DevOrchestrator] ✅ Processed Tailwind v4 CSS with PostCSS: ${cssPath}`);
+                  }
+                } else {
+                  if (!this.options.silent) {
+                    logger.warn(`[DevOrchestrator] ⚠️ Tailwind v4 PostCSS plugin not available, serving raw CSS`);
+                  }
+                  // Don't fallback - just serve the raw CSS and let browser handle it
+                }
+              } catch (tailwindError: any) {
+                if (!this.options.silent) {
+                  logger.warn(`[DevOrchestrator] ⚠️ Tailwind v4 PostCSS processing failed, serving raw CSS: ${tailwindError?.message || tailwindError}`);
+                }
+                // Don't fallback - just serve the raw CSS
               }
-            });
+            }
+          }
+
+          if (!this.options.silent) {
+            logger.debug(`[DevOrchestrator] Serving CSS: ${cssPath} (${cssContent.length} bytes)`);
+          }
+
+          return new Response(cssContent, {
+            headers: {
+              'Content-Type': 'text/css; charset=utf-8',
+              'Cache-Control': 'no-cache',
+              'X-Framework': '0x1'
+            }
+          });
+        } catch (error) {
+          if (!this.options.silent) {
+            logger.warn(`Failed to read CSS file ${cssPath}: ${error}`);
           }
         }
       }
 
-      return this.createNotFoundResponse('CSS file not found');
+      // Enhanced fallback CSS generation with better styling
+      const fallbackCss = `
+  /* 0x1 Framework - Enhanced Fallback CSS */
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background: #f8fafc;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* Enhanced component styling */
+  .component {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+  }
+
+  /* Enhanced typography */
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0 0 16px 0;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  h1 { font-size: 2.25rem; color: #1a202c; }
+  h2 { font-size: 1.875rem; color: #2d3748; }
+  h3 { font-size: 1.5rem; color: #4a5568; }
+
+  p {
+    margin: 0 0 16px 0;
+    color: #4a5568;
+  }
+
+  /* Enhanced button styles */
+  button, .btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #3182ce;
+    color: white;
+  }
+
+  button:hover, .btn:hover {
+    background: #2c5aa0;
+    transform: translateY(-1px);
+  }
+
+  /* Enhanced form styling */
+  input, textarea, select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: #3182ce;
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+  }
+
+  /* Enhanced layout utilities */
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .items-center { align-items: center; }
+  .justify-center { justify-content: center; }
+  .gap-4 { gap: 1rem; }
+  .gap-8 { gap: 2rem; }
+
+  .text-center { text-align: center; }
+  .text-left { text-align: left; }
+  .text-right { text-align: right; }
+
+  .mt-4 { margin-top: 1rem; }
+  .mb-4 { margin-bottom: 1rem; }
+  .mx-auto { margin-left: auto; margin-right: auto; }
+
+  .p-4 { padding: 1rem; }
+  .px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+
+  /* Enhanced responsive design */
+  @media (max-width: 768px) {
+    body { padding: 10px; }
+    .container { padding: 0 10px; }
+    h1 { font-size: 1.875rem; }
+    h2 { font-size: 1.5rem; }
+  }
+
+  /* Enhanced loading and error states */
+  .loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3182ce;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .error {
+    background: #fed7d7;
+    color: #9b2c2c;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #feb2b2;
+  }
+
+  .success {
+    background: #c6f6d5;
+    color: #276749;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #9ae6b4;
+  }
+  `;
+
+      if (!this.options.silent) {
+        logger.debug(`[DevOrchestrator] Serving enhanced fallback CSS for: ${reqPath}`);
+      }
+
+      return new Response(fallbackCss, {
+        headers: {
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Framework': '0x1',
+          'X-CSS-Source': 'fallback-enhanced'
+        }
+      });
 
     } catch (error) {
       logger.error(`[DevOrchestrator] CSS request failed: ${error}`);
@@ -1801,16 +2623,39 @@ async function loadLayoutOnce(layoutPath) {
   
   try {
     console.log('[0x1 App] 📄 Loading layout:', layoutPath);
-    const layoutModule = await import(layoutPath);
+    
+    // Add cache-busting to ensure fresh module loading
+    const url = layoutPath + '?t=' + Date.now();
+    const layoutModule = await import(url);
+    
+    // ENHANCED: Try multiple export patterns for better compatibility
+    let layoutComponent = null;
     
     if (layoutModule && layoutModule.default) {
-      console.log('[0x1 App] ✅ Layout loaded successfully:', layoutPath);
-      layoutCache.set(layoutPath, layoutModule.default);
-      return layoutModule.default;
+      layoutComponent = layoutModule.default;
+      console.log('[0x1 App] ✅ Layout loaded (default export):', layoutPath);
+    } else if (layoutModule && typeof layoutModule === 'function') {
+      layoutComponent = layoutModule;
+      console.log('[0x1 App] ✅ Layout loaded (direct function):', layoutPath);
+    } else if (layoutModule && layoutModule.Layout) {
+      layoutComponent = layoutModule.Layout;
+      console.log('[0x1 App] ✅ Layout loaded (named Layout export):', layoutPath);
+    } else if (layoutModule && Object.keys(layoutModule).length > 0) {
+      // Try the first exported function
+      const firstExport = Object.values(layoutModule).find(exp => typeof exp === 'function');
+      if (firstExport) {
+        layoutComponent = firstExport;
+        console.log('[0x1 App] ✅ Layout loaded (first function export):', layoutPath);
+      }
+    }
+    
+    if (layoutComponent) {
+      layoutCache.set(layoutPath, layoutComponent);
+      return layoutComponent;
     } else {
-      console.warn('[0x1 App] ⚠️ Layout has no default export:', layoutPath);
+      console.warn('[0x1 App] ⚠️ Layout has no compatible export, using passthrough fallback:', layoutPath);
       const fallbackLayout = ({ children }) => {
-        console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+        console.warn('[0x1 App] Using passthrough layout for:', layoutPath);
         return children;
       };
       layoutCache.set(layoutPath, fallbackLayout);
@@ -1819,7 +2664,7 @@ async function loadLayoutOnce(layoutPath) {
   } catch (error) {
     console.error('[0x1 App] ❌ Failed to load layout:', layoutPath, error);
     const fallbackLayout = ({ children }) => {
-      console.warn('[0x1 App] Using fallback layout for:', layoutPath);
+      console.warn('[0x1 App] Using error fallback layout for:', layoutPath);
       return children;
     };
     layoutCache.set(layoutPath, fallbackLayout);
@@ -1874,27 +2719,168 @@ function composeNestedLayouts(pageComponent, layouts) {
     return pageComponent;
   }
   
-  return (props) => {
-    let wrappedComponent = pageComponent(props);
+  // CRITICAL FIX: Create a named function instead of anonymous function
+  // This prevents "AnonymousComponent" issues in the JSX runtime
+  const ComposedComponent = function ComposedComponent(props) {
+    // CRITICAL FIX: Create shared update callback that preserves header elements
+    const sharedUpdateCallback = () => {
+      // CRITICAL FIX: Set preservation flags to prevent header disappearance
+      if (typeof window !== 'undefined') {
+        window.__0x1_preserveHeaderElements = true;
+        window.__0x1_layoutUpdateInProgress = true;
+      }
+      
+      // Use a more targeted update approach
+      if (window.router && typeof window.router.reRender === 'function') {
+        window.router.reRender();
+      } else if (window.router && typeof window.router.navigate === 'function') {
+        // Trigger navigation to same path to force re-render
+        window.router.navigate(window.location.pathname, false);
+      } else {
+        console.warn('[0x1] Router not available for nested component update');
+      }
+      
+      // Clear preservation flags after a short delay
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.__0x1_preserveHeaderElements = false;
+          window.__0x1_layoutUpdateInProgress = false;
+        }
+      }, 100);
+    };
+    
+    // CRITICAL FIX: Set a single composed component context that all nested components will use
+    // CRITICAL FIX: Use stable component ID based on route path to preserve state across re-renders
+    const routePath = (typeof window !== 'undefined' ? window.location.pathname : '/').replace(/[^a-zA-Z0-9]/g, '_') || 'root';
+    const composedComponentId = 'ComposedComponent_' + routePath;
+    
+    // CRITICAL FIX: Track component contexts to clear them at the end
+    const componentContexts = [];
+    
+    // CRITICAL FIX: Set the composed component context once for all nested components
+    if (typeof window.__0x1_enterComponentContext === 'function') {
+      window.__0x1_enterComponentContext(composedComponentId, sharedUpdateCallback);
+      componentContexts.push(composedComponentId);
+      
+      console.log('[0x1 App] Setting composed component context:', composedComponentId);
+      console.log('[0x1 App] Page and all layouts will use this context:', pageComponent.name || 'Page');
+    }
+    
+    // CRITICAL FIX: Use JSX runtime to call page component for proper re-rendering
+    let wrappedComponent;
+    
+    try {
+      // DON'T set separate page context - use the composed context
+      
+      // CRITICAL FIX: Call page component through JSX runtime for proper integration
+      const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+      if (jsxRuntime && typeof pageComponent === 'function') {
+        // Use JSX runtime to call the component - this enables proper re-rendering
+        wrappedComponent = jsxRuntime(pageComponent, props);
+      } else {
+        // Fallback: direct call
+        wrappedComponent = pageComponent(props);
+      }
+      
+      // DON'T clear component context yet - keep it active for re-rendering
+    } catch (error) {
+      console.error('[0x1] Page component error:', error);
+      wrappedComponent = {
+        type: 'div',
+        props: { children: ['Page component error: ' + error.message] }
+      };
+    }
     
     // Apply layouts in reverse order (innermost to outermost)
     for (let i = layouts.length - 1; i >= 0; i--) {
       const currentLayout = layouts[i];
       const children = wrappedComponent;
+      const layoutId = composedComponentId + '_layout_' + i;
       
       try {
-        wrappedComponent = currentLayout({ 
-          children: children,
-          ...props 
-        });
+        // CRITICAL FIX: Don't set separate context for layouts - they should use the composed component context
+        // This ensures layout components update the ComposedComponent rather than looking for their own DOM elements
+        console.log('[0x1 App] Layout will use composed component context for re-rendering:', currentLayout.name || 'Layout');
+        
+        // SIMPLE FIX: Just call the layout directly like ChatPage - no complex wrappers
+        const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+        if (jsxRuntime && typeof currentLayout === 'function') {
+          console.log('[0x1 App] Calling layout directly like ChatPage:', currentLayout.name || 'Layout');
+          
+          // Use JSX runtime to call the layout directly - same as ChatPage
+          wrappedComponent = jsxRuntime(currentLayout, { 
+            children: children,
+            ...props 
+          });
+          
+          // CRITICAL DEBUG: Log what the ChatLayout JSX runtime call returns
+          if (currentLayout.name === 'ChatLayout') {
+            console.log('[0x1 App] DEBUG: ChatLayout JSX runtime call returned:', {
+              wrappedComponentType: typeof wrappedComponent,
+              hasProps: !!(wrappedComponent && typeof wrappedComponent === 'object' && 'props' in wrappedComponent),
+              componentId: wrappedComponent && typeof wrappedComponent === 'object' && 'props' in wrappedComponent ? wrappedComponent.props['data-component-id'] : 'NONE',
+              nodeType: wrappedComponent && typeof wrappedComponent === 'object' && 'type' in wrappedComponent ? wrappedComponent.type : 'UNKNOWN',
+              propsKeys: wrappedComponent && typeof wrappedComponent === 'object' && 'props' in wrappedComponent ? Object.keys(wrappedComponent.props || {}) : []
+            });
+          }
+          
+          // The JSX runtime's callComponentWithContext function already:
+          // 1. Generates the component ID using the stable ID system
+          // 2. Sets up the component context with update callback
+          // 3. Applies metadata via ensureComponentMetadata
+          // 4. All we need to do is trust that system
+          
+        } else {
+          // Fallback: direct call
+          wrappedComponent = currentLayout({ 
+            children: children,
+            ...props 
+          });
+        }
+        
+        // DON'T clear component context yet - keep it active for re-rendering
       } catch (error) {
         console.error('[0x1] Layout composition error at level', i, ':', error);
         wrappedComponent = children;
       }
     }
     
+    // CRITICAL FIX: Add cleanup function that clears contexts when component unmounts
+    // but only if this is the initial render, not a re-render
+    if (typeof window !== 'undefined' && !window.__0x1_layoutContextsActive) {
+      window.__0x1_layoutContextsActive = true;
+      
+      // Set up cleanup on page navigation or app unmount
+      const cleanup = () => {
+        componentContexts.forEach(contextId => {
+          if (typeof window.__0x1_exitComponentContext === 'function') {
+            try {
+              window.__0x1_exitComponentContext();
+            } catch (error) {
+              console.debug('[0x1] Context cleanup error:', error);
+            }
+          }
+        });
+        window.__0x1_layoutContextsActive = false;
+      };
+      
+      // Cleanup on navigation
+      if (window.router) {
+        const originalNavigate = window.router.navigate;
+        window.router.navigate = function(...args) {
+          cleanup();
+          return originalNavigate.apply(this, args);
+        };
+      }
+      
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', cleanup);
+    }
+    
     return wrappedComponent;
   };
+  
+  return ComposedComponent;
 }
 
 // ===== DEVELOPMENT APP INITIALIZATION =====
@@ -2032,9 +3018,61 @@ async function initApp() {
             await updatePageMetadata(route);
             
             if (componentModule && componentModule.default) {
-              // Compose the page component with all its layouts
-              const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
-              return composedComponent(props);
+              // CRITICAL FIX: Set up component context with UPDATE CALLBACK
+              const componentId = 'route_' + route.path.replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now();
+              
+              // Ensure component context functions are available
+              if (typeof window.__0x1_enterComponentContext !== 'function') {
+                console.error('[0x1] Component context functions not available');
+                throw new Error('Component context system not initialized');
+              }
+              
+              // CRITICAL FIX: Create a proper update callback that triggers router re-render
+              const routeUpdateCallback = () => {
+                if (window.router && typeof window.router.reRender === 'function') {
+                  console.log('[0x1] Triggering route re-render via router.reRender()');
+                  window.router.reRender();
+                } else if (window.router && typeof window.router.navigate === 'function') {
+                  console.log('[0x1] Triggering route re-render via router.navigate()');
+                  window.router.navigate(window.location.pathname, false);
+                } else {
+                  console.warn('[0x1] Router not available for route update callback');
+                }
+              };
+              
+              // CRITICAL FIX: Use JSX runtime's callComponentWithContext for proper integration
+              // This ensures the page component gets proper re-render capabilities
+              try {
+                // Set route-level component context
+                window.__0x1_enterComponentContext(componentId, routeUpdateCallback);
+                
+                // Compose the page component with all its layouts FIRST
+                const composedComponent = composeNestedLayouts(componentModule.default, loadedLayouts);
+                
+                // CRITICAL FIX: Call the composed component through JSX runtime for proper integration
+                // This gives it the same treatment as Header component
+                const jsxRuntime = window.jsx || window.jsxDEV || window.React?.createElement;
+                if (jsxRuntime && typeof composedComponent === 'function') {
+                  // Use JSX runtime to call the component - this enables proper re-rendering
+                  const result = jsxRuntime(composedComponent, props);
+                  
+                  // Clear context after successful render
+                  window.__0x1_exitComponentContext();
+                  return result;
+                } else {
+                  // Fallback: direct call (but this won't have proper re-rendering)
+                  const result = composedComponent(props);
+                  window.__0x1_exitComponentContext();
+                  return result;
+                }
+              } catch (error) {
+                console.error('[0x1] Component execution error:', error);
+                // Clear context on error
+                if (typeof window.__0x1_exitComponentContext === 'function') {
+                  window.__0x1_exitComponentContext();
+                }
+                throw error;
+              }
             } else {
               console.warn('[0x1] Component has no default export:', route.path);
               return {
@@ -2162,73 +3200,61 @@ if (document.readyState === 'loading') {
       join(this.options.projectPath, 'app'),
       join(this.options.projectPath, 'src')
     ];
-    
-    const faviconExtensions = ['.svg', '.ico', '.png', '.jpg', '.jpeg'];
-    const foundFavicons: Array<{ path: string; name: string; priority: number }> = [];
-    
-    // Search for favicons with priority system
+
+    let faviconLink = "";
     for (const dir of faviconSearchDirs) {
-      if (!existsSync(dir)) continue;
-      
-      try {
-        const files = readdirSync(dir);
-        for (const file of files) {
-          const lowerFile = file.toLowerCase();
-          
-          // Check if it's a favicon file
-          if (lowerFile.startsWith('favicon')) {
-            const ext = faviconExtensions.find(e => lowerFile.endsWith(e));
-            if (ext) {
-              // Priority: .svg > .ico > .png > .jpg/.jpeg
-              const priority = ext === '.svg' ? 1 : 
-                             ext === '.ico' ? 2 : 
-                             ext === '.png' ? 3 : 4;
-              
-              foundFavicons.push({
-                path: join(dir, file),
-                name: file,
-                priority
-              });
-            }
-          }
-        }
-      } catch (error) {
-        // Silent fail for individual directories
+      const faviconSvg = join(dir, 'favicon.svg');
+      const faviconIco = join(dir, 'favicon.ico');
+      const faviconPng = join(dir, 'favicon.png');
+
+      if (existsSync(faviconSvg)) {
+        faviconLink =
+          '  <link rel="icon" href="/favicon.svg" type="image/svg+xml">';
+        break;
+      } else if (existsSync(faviconIco)) {
+        faviconLink =
+          '  <link rel="icon" href="/favicon.ico" type="image/x-icon">';
+        break;
+      } else if (existsSync(faviconPng)) {
+        faviconLink =
+          '  <link rel="icon" href="/favicon.png" type="image/png">';
+        break;
       }
     }
-    
-    // Sort by priority (lower number = higher priority)
-    foundFavicons.sort((a, b) => a.priority - b.priority);
-    
-    if (foundFavicons.length > 0) {
-      const selectedFavicon = foundFavicons[0];
-      
-      try {
-        const faviconContent = readFileSync(selectedFavicon.path);
-        const ext = selectedFavicon.name.substring(selectedFavicon.name.lastIndexOf('.'));
-        
-        const contentType = ext === '.svg' ? 'image/svg+xml' :
-                           ext === '.ico' ? 'image/x-icon' :
-                           ext === '.png' ? 'image/png' :
-                           'image/jpeg';
-        
-        if (!this.options.silent) {
-          logger.debug(`[DevOrchestrator] Serving favicon: ${selectedFavicon.name}`);
-        }
-        
-        return new Response(faviconContent, {
+
+    // Try to serve existing favicon files first
+    for (const dir of faviconSearchDirs) {
+      const faviconSvg = join(dir, 'favicon.svg');
+      const faviconIco = join(dir, 'favicon.ico');
+      const faviconPng = join(dir, 'favicon.png');
+
+      if (existsSync(faviconSvg)) {
+        const content = readFileSync(faviconSvg, 'utf-8');
+        return new Response(content, {
           headers: {
-            'Content-Type': contentType,
+            'Content-Type': 'image/svg+xml',
             'Cache-Control': 'public, max-age=31536000'
           }
         });
-      } catch (error) {
-        if (!this.options.silent) {
-          logger.warn(`Failed to serve favicon: ${error}`);
-        }
+      } else if (existsSync(faviconIco)) {
+        const content = readFileSync(faviconIco);
+        return new Response(content, {
+          headers: {
+            'Content-Type': 'image/x-icon',
+            'Cache-Control': 'public, max-age=31536000'
+          }
+        });
+      } else if (existsSync(faviconPng)) {
+        const content = readFileSync(faviconPng);
+        return new Response(content, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=31536000'
+          }
+        });
       }
     }
-    
+
     // Generate minimal favicon.ico as fallback
     const faviconData = new Uint8Array([
       0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x68, 0x05,
@@ -2236,7 +3262,7 @@ if (document.readyState === 'loading') {
       0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
     ]);
-    
+
     return new Response(faviconData, {
       headers: {
         'Content-Type': 'image/x-icon',
@@ -2519,7 +3545,21 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join("\n") + "\n" : ""}  <scrip
   <div id="app"></div>
   <script>
     window.process={env:{NODE_ENV:'development'}};
-    (function(){try{const t=localStorage.getItem('0x1-dark-mode');t==='light'?(document.documentElement.classList.remove('dark'),document.body.className='bg-white text-gray-900'):(document.documentElement.classList.add('dark'),document.body.className='bg-slate-900 text-white')}catch{document.documentElement.classList.add('dark')}})();
+    (function(){
+      try{
+        const t=localStorage.getItem('0x1-dark-mode');
+        const isDark = t !== 'light';
+        document.documentElement.classList.toggle('dark', isDark);
+        document.body.className = isDark ? 'bg-slate-900 text-white' : 'bg-white text-gray-900';
+        
+        // Initialize global theme state for 0x1 framework
+        window.__0x1_initialTheme = isDark;
+      }catch{
+        document.documentElement.classList.add('dark');
+        document.body.className = 'bg-slate-900 text-white';
+        window.__0x1_initialTheme = true;
+      }
+    })();
   </script>
   <script>
     // LIVE RELOAD for development
@@ -2533,14 +3573,10 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join("\n") + "\n" : ""}  <scrip
       const ws = new WebSocket(wsUrl);
       
       ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === 'reload' || message.type === 'file-changed') {
-            console.log('[0x1 Dev] Reloading due to file change:', message.filename || 'unknown');
-            window.location.reload();
-          }
-        } catch (error) {
-          console.debug('[0x1 Dev] Non-JSON message received:', event.data);
+        const message = JSON.parse(event.data);
+        if (message.type === 'reload' || message.type === 'file-changed') {
+          console.log('[0x1 Dev] Reloading due to file change:', message.filename || 'unknown');
+          window.location.reload();
         }
       };
       
@@ -2553,13 +3589,26 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join("\n") + "\n" : ""}  <scrip
         setTimeout(connectWebSocket, 1000);
       };
       
-      ws.onerror = (error) => {
-        console.warn('[0x1 Dev] Live reload error:', error);
+      ws.onerror = () => {
+        console.warn('[0x1 Dev] Live reload connection error');
       };
     }
     
     // Start live reload connection
     connectWebSocket();
+  </script>
+  <script src="/0x1-error-boundary.js?v=${cacheBust}&enhanced=true"></script>
+  <script>
+    // CRITICAL: Force error detection immediately after error boundary loads
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        // Check for SVG path errors that are currently visible
+        const errorLogs = [];
+        
+        // REMOVED: SVG error detection - too many false positives
+        // Only actual SVG parsing errors will be shown by the browser console
+      }, 100);
+    });
   </script>
   <script src="/app.js?v=${cacheBust}" type="module"></script>
 </body>
@@ -2657,17 +3706,60 @@ ${externalCssLinks.length > 0 ? externalCssLinks.join("\n") + "\n" : ""}  <scrip
     return path.startsWith('/0x1/') || 
            path.startsWith('/node_modules/0x1/') || 
            path.includes('hooks-') ||
-           path === '/node_modules/0x1/core/hooks.js';
+           path === '/node_modules/0x1/core/hooks.js' ||
+           path === '/error-boundary.js' ||
+           path === '/0x1-error-boundary.js' ||
+           path.startsWith('/0x1-error-boundary.js?') ||
+           path === '/__0x1_server_action';
   }
 
   private isComponentRequest(path: string): boolean {
-    return (path.endsWith('.js') && (
+    // Basic path checks
+    const isJSFile = path.endsWith('.js') && (
       path.includes('/app/') || 
       path.includes('/components/') || 
       path.includes('/lib/') || 
       path.includes('/src/')
-    )) || path.startsWith('/components/') || path.startsWith('/lib/') ||
-    (path.includes('/layout.js') || path.includes('/page.js'));
+    );
+    
+    const isSpecialFile = path.startsWith('/components/') || path.startsWith('/lib/') ||
+      (path.includes('/layout.js') || path.includes('/page.js'));
+
+    if (!isJSFile && !isSpecialFile) {
+      return false;
+    }
+
+    // CRITICAL: Exclude server actions files
+    // Check if this is a potential server actions file by looking for common patterns
+    if (path.includes('actions.js') || path.includes('api/')) {
+      // Need to check if the source file contains "use server"
+      const possiblePaths = this.generatePossiblePaths(
+        path.startsWith('/') ? path.slice(1) : path.replace('.js', '')
+      );
+      
+      for (const sourcePath of possiblePaths) {
+        if (existsSync(sourcePath)) {
+          try {
+            const content = readFileSync(sourcePath, 'utf-8');
+            // Check for "use server" directive at the top of the file
+            if (content.trim().startsWith('"use server"') || content.trim().startsWith("'use server'")) {
+              if (this.options.debug) {
+                logger.debug(`[DevOrchestrator] Excluding server actions file: ${path} -> ${sourcePath}`);
+              }
+              return false;
+            }
+          } catch (error) {
+            // If we can't read the file, assume it's not a server action
+            if (this.options.debug) {
+              logger.debug(`[DevOrchestrator] Could not read potential server actions file: ${sourcePath}`);
+            }
+          }
+          break; // Found the source file, no need to check others
+        }
+      }
+    }
+
+    return isJSFile || isSpecialFile;
   }
 
   private isRouteRequest(path: string): boolean {
@@ -2727,17 +3819,17 @@ const maxReconnectAttempts = 5;
 function connect() {
   ws = new WebSocket('ws://localhost:${this.options.port}/__0x1_ws');
   
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'reload' || message.type === 'file-changed') {
+      console.log('[0x1] Reloading due to file change:', message.filename || 'unknown');
+      window.location.reload();
+    }
+  };
+  
   ws.onopen = () => {
     console.log('[0x1] Live reload ready');
     reconnectAttempts = 0;
-  };
-  
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'reload') {
-      console.log('[0x1] Reloading...', data.filename || '');
-      window.location.reload();
-    }
   };
   
   ws.onclose = () => {
@@ -2763,27 +3855,6 @@ connect();
     return new Response('SSE not implemented', { status: 501 });
   }
 
-  private getFrameworkPath(): string {
-    return process.cwd().includes('00-Dev/0x1') 
-      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
-      : join(process.cwd(), '../0x1');
-  }
-
-  private createErrorResponse(error: any): Response {
-    const message = error instanceof Error ? error.message : String(error);
-    return new Response(`Error: ${message}`, {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain' }
-    });
-  }
-
-  private createNotFoundResponse(message: string): Response {
-    return new Response(message, {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain' }
-    });
-  }
-
   /**
    * Check if request is for an external scoped package
    */
@@ -2792,9 +3863,6 @@ connect();
     return path.match(/^\/@[^/]+\/[^/]+/) !== null;
   }
 
-  /**
-   * Handle external scoped package requests
-   */
   private async handleExternalScopedPackageRequest(reqPath: string): Promise<Response> {
     try {
       // Extract package name from path like /@0x1js/highlighter/dist/index.js
@@ -2819,22 +3887,23 @@ connect();
           join(fullPackagePath, 'dist', packagePath),
           join(fullPackagePath, 'lib', packagePath)
         ];
-        
-        let foundPath = null;
+
+        // Enhanced fallback logic
+        let foundPath: string | null = null;
         for (const fallback of fallbacks) {
           if (existsSync(fallback)) {
             foundPath = fallback;
             break;
           }
         }
-        
+
         if (!foundPath) {
           if (!this.options.silent) {
             logger.warn(`External package file not found: ${reqPath}`);
           }
           return this.createNotFoundResponse(`External package file not found: ${reqPath}`);
         }
-        
+
         // Serve the fallback file
         let content = readFileSync(foundPath, 'utf-8');
         
@@ -2844,6 +3913,7 @@ connect();
           content = content.replace(
             /@import\s+['"]\.\/([^'"]+)['"];?/g,
             (match, filename) => {
+              // Generate the absolute URL for the imported CSS file
               const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
               return `@import '${absoluteUrl}';`;
             }
@@ -2874,14 +3944,11 @@ connect();
         content = content.replace(
           /@import\s+['"]\.\/([^'"]+)['"];?/g,
           (match, filename) => {
+            // Generate the absolute URL for the imported CSS file
             const absoluteUrl = `/node_modules/${packageName}/dist/${filename}`;
             return `@import '${absoluteUrl}';`;
           }
         );
-        
-        if (!this.options.silent) {
-          logger.debug(`[DevOrchestrator] Serving external CSS: ${packageName}${packagePath} (${content.length} bytes)`);
-        }
         
         return new Response(content, {
           headers: {
@@ -2889,10 +3956,6 @@ connect();
             'Cache-Control': 'no-cache'
           }
         });
-      }
-      
-      if (!this.options.silent) {
-        logger.debug(`[DevOrchestrator] Serving external package: ${packageName}${packagePath}`);
       }
       
       return new Response(content, {
@@ -2910,53 +3973,9 @@ connect();
     }
   }
 
-  async cleanup(): Promise<void> {
-    if (!this.options.silent) {
-      logger.info('🧹 Shutting down development server...');
-    }
-
-    if (this.fileWatcher) {
-      this.fileWatcher.close();
-      this.fileWatcher = null;
-    }
-
-    for (const client of this.state.clientConnections) {
-      try {
-        client.close();
-      } catch (error) {
-        // Ignore errors during cleanup
-      }
-    }
-
-    if (this.server) {
-      this.server.stop();
-      this.server = null;
-    }
-
-    this.state.clientConnections.clear();
-    this.state.components.clear();
-    
-    if (!this.options.silent) {
-      logger.success('✅ Development server shutdown complete');
-    }
-  }
-
   /**
-   * Rewrite relative CSS imports to absolute URLs for dev server
+   * Handle CSS style requests from scoped packages like @0x1js/highlighter/styles
    */
-  private rewriteCssImports(cssContent: string, packageName: string): string {
-    // Convert relative imports like @import './styles-7a9baf8b.css' to absolute URLs
-    return cssContent.replace(
-      /@import\s+['"]\.\/([^'"]+)['"];?/g,
-      (match, filename) => {
-        // Generate the absolute URL for the imported CSS file
-        const absoluteUrl = `/${packageName.replace('@', '').replace(/\//g, '-')}-${filename}`;
-        return `@import '${absoluteUrl}';`;
-      }
-    );
-  }
-
-  // Handle external scoped package requests (e.g., /@0x1js/highlighter/...)
   private async handleScopedPackageStylesRequest(reqPath: string): Promise<Response> {
     try {
       // Handle different path patterns:
@@ -2977,14 +3996,14 @@ connect();
         const packagePath = join(this.options.projectPath, 'node_modules', packageName);
         
         // Try multiple possible locations for the CSS file
-        const possiblePaths = [
+        const possibleCssPaths = [
           join(packagePath, 'dist', 'styles.css'),
           join(packagePath, 'styles.css'),
           join(packagePath, 'dist', 'index.css'),
           join(packagePath, 'index.css')
         ];
-        
-        actualFilePath = possiblePaths.find(path => existsSync(path)) || '';
+
+        actualFilePath = possibleCssPaths.find(path => existsSync(path)) || '';
         
       } else if (reqPath.includes('node_modules/@')) {
         // Direct file request like /node_modules/@0x1js/highlighter/dist/styles.css
@@ -3013,9 +4032,9 @@ connect();
       return new Response(content, {
         headers: {
           'Content-Type': 'text/css; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0'
+          'Cache-Control': 'no-cache',
+          'X-Framework': '0x1',
+          'X-CSS-Source': packageName
         }
       });
     } catch (error) {
@@ -3047,5 +4066,42 @@ connect();
 
     const essentialIcons = ['icon-192x192.png', 'icon-512x512.png'];
     return essentialIcons.some(icon => existsSync(join(filesystemPath, icon)));
+  }
+
+  /**
+   * Handle server-sent events for live reload
+   */
+  private handleSSE(): Response {
+    return new Response('SSE not implemented', { status: 501 });
+  }
+
+  /**
+   * Get the framework path for serving 0x1 framework files
+   */
+  private getFrameworkPath(): string {
+    return process.cwd().includes('00-Dev/0x1') 
+      ? process.cwd().split('00-Dev/0x1')[0] + '00-Dev/0x1'
+      : join(process.cwd(), '../0x1');
+  }
+
+  /**
+   * Create error response for request failures
+   */
+  private createErrorResponse(error: any, status = 500): Response {
+    const message = error instanceof Error ? error.message : String(error);
+    return new Response(`Error: ${message}`, {
+      status,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+
+  /**
+   * Create not found response for missing resources
+   */
+  private createNotFoundResponse(message: string): Response {
+    return new Response(message, {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' }
+    });
   }
 }
